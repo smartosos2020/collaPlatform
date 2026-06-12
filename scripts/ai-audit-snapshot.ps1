@@ -45,8 +45,8 @@ try {
     $report += "- File count excluding generated artifacts: $fileCount"
     $report += ""
     $report += "## Toolchain"
-    $report += "```text"
-    $report += (Invoke-Capture "java -version")
+    $report += '```text'
+    $report += (Invoke-Capture 'cmd /c "java -version 2>&1"')
     $report += (Invoke-Capture "mvn -version")
     $nodeVersion = Invoke-Capture "node --version"
     $pnpmVersion = Invoke-Capture "pnpm --version"
@@ -54,26 +54,27 @@ try {
     $report += "node $nodeVersion"
     $report += "pnpm $pnpmVersion"
     $report += "docker $dockerVersion"
-    $report += "```"
+    $report += '```'
     $report += ""
     $report += "## Git Status"
-    $report += "```text"
+    $report += '```text'
     if (Test-Path ".git") {
         $report += Invoke-Capture "git status --short"
     } else {
         $report += "Not a git repository."
     }
-    $report += "```"
+    $report += '```'
     $report += ""
     $report += "## Docker Compose"
-    $report += "```text"
+    $report += '```text'
     $report += Invoke-Capture "docker compose ps"
-    $report += "```"
+    $report += '```'
     $report += ""
     $report += "## Source Inventory"
-    $report += "```text"
-    $report += Invoke-Capture "rg --files -g '!node_modules' -g '!target' -g '!dist' -g '!.local-reports' -g '!.local-logs'"
-    $report += "```"
+    $report += '```text'
+    $sourceInventoryCommand = "rg --files -g '!node_modules' -g '!target' -g '!dist' -g '!.local-reports' -g '!.local-logs'"
+    $report += Invoke-Capture $sourceInventoryCommand
+    $report += '```'
 
     Set-Content -Path $ReportPath -Value ($report -join [Environment]::NewLine) -Encoding UTF8
     Write-Host "Audit snapshot: $ReportPath"
