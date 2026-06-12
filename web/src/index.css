@@ -1,0 +1,76 @@
+html,
+body,
+#root {
+  min-width: 320px;
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  background: #f5f7fb;
+}
+
+.app-shell {
+  min-height: 100vh;
+}
+
+.app-sidebar {
+  background: #ffffff;
+  border-right: 1px solid #e5e7eb;
+}
+
+.app-brand {
+  height: 56px;
+  padding: 16px 20px;
+  color: #111827;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.app-header {
+  height: 56px;
+  padding: 0 24px;
+  background: #ffffff;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.app-header-content {
+  width: 100%;
+  height: 56px;
+  justify-content: space-between;
+}
+
+.app-content {
+  padding: 24px;
+}
+
+.page-stack {
+  width: 100%;
+}
+
+.page-card {
+  min-height: 240px;
+}
+
+.login-page {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 24px;
+  background: #f5f7fb;
+}
+
+.login-card {
+  width: min(100%, 380px);
+}
+
+@media (max-width: 720px) {
+  .app-sidebar {
+    display: none;
+  }
+
+  .app-content {
+    padding: 16px;
+  }
+}
+

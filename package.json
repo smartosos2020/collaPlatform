@@ -1,0 +1,17 @@
+{
+  "name": "colla-platform",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@9.4.0",
+  "scripts": {
+    "audit:snapshot": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ai-audit-snapshot.ps1",
+    "work:start": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ai-work-cycle.ps1 -Stage start",
+    "work:checkpoint": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ai-work-cycle.ps1 -Stage checkpoint",
+    "work:finish": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ai-work-cycle.ps1 -Stage finish",
+    "verify": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ai-quality-gate.ps1 -Mode quick",
+    "verify:full": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ai-quality-gate.ps1 -Mode full",
+    "web:dev": "pnpm --dir web dev",
+    "web:build": "pnpm --dir web build",
+    "web:lint": "pnpm --dir web lint"
+  }
+}

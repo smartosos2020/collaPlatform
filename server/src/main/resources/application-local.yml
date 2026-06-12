@@ -1,0 +1,20 @@
+spring:
+  datasource:
+    url: ${COLLA_DATASOURCE_URL:jdbc:postgresql://localhost:5432/colla_platform}
+    username: ${COLLA_DATASOURCE_USERNAME:colla}
+    password: ${COLLA_DATASOURCE_PASSWORD:colla_dev_password}
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+colla:
+  storage:
+    endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
+    access-key: ${MINIO_ACCESS_KEY:colla_minio}
+    secret-key: ${MINIO_SECRET_KEY:colla_minio_password}
+    bucket: ${MINIO_BUCKET:colla-files}
+  security:
+    access-secret: ${JWT_ACCESS_SECRET:change-me-access}
+    refresh-secret: ${JWT_REFRESH_SECRET:change-me-refresh}
+
