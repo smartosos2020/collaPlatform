@@ -43,13 +43,27 @@ jobs:
 
       - name: Backend tests
         working-directory: server
-        run: mvn test
+        run: mvn -B test
+
+      - name: Backend package
+        working-directory: server
+        run: mvn -B -DskipTests package
 
       - name: Frontend lint
         run: pnpm web:lint
 
       - name: Frontend build
         run: pnpm web:build
+
+      - name: Upload build reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-reports
+          path: |
+            server/target/surefire-reports
+            web/dist
+          if-no-files-found: ignore
 
       - name: Stop local dependencies
         if: always()

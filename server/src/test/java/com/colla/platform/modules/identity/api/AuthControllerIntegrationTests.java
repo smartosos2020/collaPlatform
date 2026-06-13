@@ -1,0 +1,140 @@
+package com.colla.platform.modules.identity.api;
+
+import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.blankOrNullString;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.MockMvc;
+
+@SpringBootTest
+@AutoConfigureMockMvc
+class AuthControllerIntegrationTests {
+    @Autowired
+    private MockMvc mockMvc;
+
+    @Autowired
+    private ObjectMapper objectMapper;
+
+    @Test
+    void loginMeRefreshAndLogout() throws Exception {
+        String loginResponse = mockMvc.perform(post("/api/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                        {
+                          "username": "admin",
+                          "password": "admin123456",
+                          "deviceType": "web",
+                          "deviceFingerprint": "test-web-device",
+                          "deviceName": "MockMvc",
+                          "appVersion": "test"
+                        }
+                        """
+                ))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.tokenType").value("Bearer"))
+            .andExpect(jsonPath("$.accessToken", not(blankOrNullString())))
+            .andExpect(jsonPath("$.refreshToken", not(blankOrNullString())))
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+
+        JsonNode loginJson = objectMapper.readTree(loginResponse);
+        String accessToken = loginJson.get("accessToken").asText();
+        String refreshToken = loginJson.get("refreshToken").asText();
+
+        mockMvc.perform(get("/api/auth/me")
+                .header("Authorization", "Bearer " + accessToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.username").value("admin"))
+            .andExpect(jsonPath("$.roles[0]").value("admin"));
+
+        String refreshResponse = mockMvc.perform(post("/api/auth/refresh")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"refreshToken\":\"" + refreshToken + "\"}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.accessToken", not(blankOrNullString())))
+            .andExpect(jsonPath("$.refreshToken", not(blankOrNullString())))
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+
+        JsonNode refreshJson = objectMapper.readTree(refreshResponse);
+        String rotatedRefreshToken = refreshJson.get("refreshToken").asText();
+
+        mockMvc.perform(post("/api/auth/refresh")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"refreshToken\":\"" + refreshToken + "\"}"))
+            .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(post("/api/auth/logout")
+                .header("Authorization", "Bearer " + refreshJson.get("accessToken").asText())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"refreshToken\":\"" + rotatedRefreshToken + "\"}"))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/auth/refresh")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"refreshToken\":\"" + rotatedRefreshToken + "\"}"))
+            .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void rejectsInvalidLogin() throws Exception {
+        mockMvc.perform(post("/api/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                        {
+                          "username": "admin",
+                          "password": "wrong-password",
+                          "deviceType": "web",
+                          "deviceFingerprint": "invalid-login-device"
+                        }
+                        """
+                ))
+            .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void rejectsMalformedLoginAndRefreshRequests() throws Exception {
+        mockMvc.perform(post("/api/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                        {
+                          "username": "",
+                          "password": "",
+                          "deviceType": "web",
+                          "deviceFingerprint": ""
+                        }
+                        """
+                ))
+            .andExpect(status().isBadRequest());
+
+        mockMvc.perform(post("/api/auth/refresh")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"refreshToken\":\"not-a-refresh-jwt\"}"))
+            .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void protectedProfileRequiresValidAccessToken() throws Exception {
+        mockMvc.perform(get("/api/auth/me"))
+            .andExpect(status().isForbidden());
+
+        mockMvc.perform(get("/api/auth/me")
+                .header("Authorization", "Bearer invalid-access-jwt"))
+            .andExpect(status().isForbidden());
+    }
+}

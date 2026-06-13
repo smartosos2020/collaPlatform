@@ -1,0 +1,29 @@
+spring:
+  datasource:
+    url: ${COLLA_DATASOURCE_URL}
+    username: ${COLLA_DATASOURCE_USERNAME}
+    password: ${COLLA_DATASOURCE_PASSWORD}
+  data:
+    redis:
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT:6379}
+
+colla:
+  storage:
+    endpoint: ${MINIO_ENDPOINT}
+    access-key: ${MINIO_ACCESS_KEY}
+    secret-key: ${MINIO_SECRET_KEY}
+    bucket: ${MINIO_BUCKET}
+    max-upload-size-bytes: ${MAX_UPLOAD_SIZE_BYTES:104857600}
+  security:
+    access-secret: ${JWT_ACCESS_SECRET}
+    refresh-secret: ${JWT_REFRESH_SECRET}
+    access-token-ttl-minutes: ${JWT_ACCESS_TOKEN_TTL_MINUTES:30}
+    refresh-token-ttl-days: ${JWT_REFRESH_TOKEN_TTL_DAYS:30}
+  web-security:
+    cors-allowed-origins: ${CORS_ALLOWED_ORIGINS}
+  init-admin:
+    username: ${INIT_ADMIN_USERNAME}
+    password: ${INIT_ADMIN_PASSWORD}
+    display-name: ${INIT_ADMIN_DISPLAY_NAME}
+    email: ${INIT_ADMIN_EMAIL}

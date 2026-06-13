@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { ConfigProvider } from 'antd'
+import { App as AntdApp, ConfigProvider } from 'antd'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -23,8 +23,9 @@ export function AppProviders({ children }: { children: ReactNode }) {
         },
       }}
     >
-      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      <AntdApp>
+        <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      </AntdApp>
     </ConfigProvider>
   )
 }
-

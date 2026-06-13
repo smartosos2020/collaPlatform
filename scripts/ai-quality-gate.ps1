@@ -146,9 +146,42 @@ if (-not $SkipFrontend) {
     Invoke-Step "Frontend build" {
         Invoke-LoggedCommand "pnpm web:build" $Root
     }
+
+    Invoke-Step "Frontend chunk budget" {
+        $assetDir = Join-Path $Root "web\dist\assets"
+        if (-not (Test-Path $assetDir)) {
+            throw "Frontend assets directory not found: $assetDir"
+        }
+
+        $maxBytes = 500KB
+        $oversized = Get-ChildItem -Path $assetDir -Filter "*.js" -File | Where-Object { $_.Length -gt $maxBytes }
+        if ($oversized) {
+            $details = $oversized | ForEach-Object { "$($_.Name)=$([math]::Round($_.Length / 1KB, 2))KB" }
+            throw "JavaScript chunks exceed 500KB budget: $($details -join ', ')"
+        }
+    }
+
+    Invoke-Step "Frontend route lazy-loading" {
+        $routerPath = Join-Path $Root "web\src\app\router.tsx"
+        $router = Get-Content -LiteralPath $routerPath -Raw
+        if ($router -match "import\s+\{[^}]+Page[^}]*\}\s+from\s+['""]\.\./modules/.+/pages/.+Page['""]") {
+            throw "Route pages must be loaded with lazyRoute dynamic imports, not static imports"
+        }
+        if ($router -notmatch "lazyRoute\(\(\)\s*=>\s*import\(") {
+            throw "Router must use lazyRoute dynamic imports for page components"
+        }
+    }
 }
 
 if (-not $SkipAudit) {
+    Invoke-Step "Mockito javaagent configuration" {
+        $pomPath = Join-Path $Root "server\pom.xml"
+        $pom = Get-Content -LiteralPath $pomPath -Raw
+        if ($pom -notmatch "maven-surefire-plugin" -or $pom -notmatch "-javaagent:\$\{settings\.localRepository\}/org/mockito/mockito-core") {
+            throw "Server test runtime must configure Mockito as a javaagent in maven-surefire-plugin"
+        }
+    }
+
     Invoke-Step "Sensitive data scan" {
         $patterns = @(
             "BEGIN RSA PRIVATE KEY",
@@ -203,10 +236,19 @@ if (-not $SkipAudit) {
 
     Invoke-Step "Generated artifact scan" {
         $blocked = @()
-        foreach ($path in @("web\dist", "server\target", "node_modules", ".local-logs")) {
+        $generatedPaths = @("web\dist", "server\target", "node_modules", ".local-logs")
+        foreach ($path in $generatedPaths) {
             $fullPath = Join-Path $Root $path
-            if (Test-Path $fullPath) {
-                Add-Warning "Generated/local path exists: $path. It must stay ignored and out of commits."
+            if ((Test-Path $fullPath) -and (Test-CommandExists "git") -and (Test-Path (Join-Path $Root ".git"))) {
+                Push-Location $Root
+                try {
+                    git check-ignore -q -- $path
+                    if ($LASTEXITCODE -ne 0) {
+                        throw "Generated/local path is not ignored: $path"
+                    }
+                } finally {
+                    Pop-Location
+                }
             }
         }
 
@@ -229,7 +271,7 @@ if (-not $SkipAudit) {
 
     Invoke-Step "TODO/FIXME inventory" {
         if (Test-CommandExists "rg") {
-            $todo = & rg -n "TODO|FIXME|HACK|XXX" $Root `
+            $todo = & rg -n "\b(TODO|FIXME|HACK|XXX)\b" $Root `
                 -g "!node_modules" -g "!target" -g "!dist" -g "!.local-logs" -g "!.local-reports" `
                 -g "!scripts/ai-quality-gate.ps1" -g "!docs/ai-engineering-governance.md" 2>$null
             if ($todo) {

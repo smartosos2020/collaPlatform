@@ -13,6 +13,7 @@ Thumbs.db
 logs/
 .local-logs/
 .local-reports/
+.local-connection-info.md
 
 # Java
 target/

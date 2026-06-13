@@ -7,6 +7,7 @@ Project-level helper scripts live here.
 - `ai-quality-gate.ps1` - runs local quality gates for backend, frontend, Docker dependencies, migration order, secret scan, and generated artifact checks.
 - `ai-audit-snapshot.ps1` - writes a local audit snapshot under `.local-reports/`.
 - `ai-work-cycle.ps1` - wraps the long-running AI work cycle: `start`, `checkpoint`, and `finish`.
+- `performance-baseline.ps1` - measures key API latency paths against a running local server.
 
 Root commands:
 
@@ -17,4 +18,10 @@ pnpm audit:snapshot
 pnpm work:start
 pnpm work:checkpoint
 pnpm work:finish
+```
+
+Performance baseline:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/performance-baseline.ps1
 ```

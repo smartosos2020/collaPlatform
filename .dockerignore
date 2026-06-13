@@ -1,0 +1,10 @@
+.git
+.local-logs
+.local-reports
+node_modules
+web/dist
+server/target
+desktop/tauri-spike/target
+mobile/**/node_modules
+**/.env
+**/.env.local

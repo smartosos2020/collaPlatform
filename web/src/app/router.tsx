@@ -1,38 +1,80 @@
+import { Suspense, lazy } from 'react'
+import type { ComponentType, ReactElement } from 'react'
 import { Navigate, createBrowserRouter } from 'react-router-dom'
+import { Spin } from 'antd'
 
 import { AppLayout } from './layout/AppLayout'
-import { AdminUsersPage } from '../modules/admin/pages/AdminUsersPage'
-import { AuthLoginPage } from '../modules/auth/pages/AuthLoginPage'
-import { BasesPage } from '../modules/bases/pages/BasesPage'
-import { DashboardPage } from '../modules/dashboard/pages/DashboardPage'
-import { DocsPage } from '../modules/docs/pages/DocsPage'
-import { MessengerPage } from '../modules/messenger/pages/MessengerPage'
-import { NotificationsPage } from '../modules/notifications/pages/NotificationsPage'
-import { ProjectsPage } from '../modules/projects/pages/ProjectsPage'
+import { RequireAuth } from '../modules/auth/components/RequireAuth'
+
+const AdminUsersPage = lazyRoute(() => import('../modules/admin/pages/AdminUsersPage'), 'AdminUsersPage')
+const ApprovalsPage = lazyRoute(() => import('../modules/approvals/pages/ApprovalsPage'), 'ApprovalsPage')
+const AuthLoginPage = lazyRoute(() => import('../modules/auth/pages/AuthLoginPage'), 'AuthLoginPage')
+const BasesPage = lazyRoute(() => import('../modules/bases/pages/BasesPage'), 'BasesPage')
+const DashboardPage = lazyRoute(() => import('../modules/dashboard/pages/DashboardPage'), 'DashboardPage')
+const DevicesPage = lazyRoute(() => import('../modules/devices/pages/DevicesPage'), 'DevicesPage')
+const DocsPage = lazyRoute(() => import('../modules/docs/pages/DocsPage'), 'DocsPage')
+const MessengerPage = lazyRoute(() => import('../modules/messenger/pages/MessengerPage'), 'MessengerPage')
+const NotificationsPage = lazyRoute(
+  () => import('../modules/notifications/pages/NotificationsPage'),
+  'NotificationsPage',
+)
+const ProjectsPage = lazyRoute(() => import('../modules/projects/pages/ProjectsPage'), 'ProjectsPage')
+const SearchPage = lazyRoute(() => import('../modules/search/pages/SearchPage'), 'SearchPage')
+const AppErrorPage = lazyRoute(() => import('../shared/components/AppErrorPage'), 'AppErrorPage')
+const routeLoadingElement = (
+  <div className="route-loading">
+    <Spin />
+  </div>
+)
+
+function lazyRoute<TModule extends Record<string, ComponentType>>(
+  importer: () => Promise<TModule>,
+  exportName: keyof TModule,
+) {
+  return lazy(async () => {
+    const module = await importer()
+    return { default: module[exportName] }
+  })
+}
+
+function routeElement(element: ReactElement) {
+  return <Suspense fallback={routeLoadingElement}>{element}</Suspense>
+}
 
 export const router = createBrowserRouter([
   {
     path: '/login',
-    element: <AuthLoginPage />,
+    element: routeElement(<AuthLoginPage />),
   },
   {
     path: '/',
-    element: <AppLayout />,
+    element: (
+      <RequireAuth>
+        <AppLayout />
+      </RequireAuth>
+    ),
     children: [
-      { index: true, element: <DashboardPage /> },
-      { path: 'im', element: <MessengerPage /> },
+      { index: true, element: routeElement(<DashboardPage />) },
+      { path: 'im', element: routeElement(<MessengerPage />) },
       { path: 'messages', element: <Navigate to="/im" replace /> },
-      { path: 'projects', element: <ProjectsPage /> },
-      { path: 'projects/:projectId', element: <ProjectsPage /> },
-      { path: 'issues/:issueId', element: <ProjectsPage /> },
-      { path: 'docs', element: <DocsPage /> },
-      { path: 'docs/:docId', element: <DocsPage /> },
-      { path: 'bases', element: <BasesPage /> },
-      { path: 'bases/:baseId', element: <BasesPage /> },
-      { path: 'bases/:baseId/tables/:tableId', element: <BasesPage /> },
-      { path: 'notifications', element: <NotificationsPage /> },
-      { path: 'admin/users', element: <AdminUsersPage /> },
-      { path: 'admin/roles', element: <AdminUsersPage /> },
+      { path: 'projects', element: routeElement(<ProjectsPage />) },
+      { path: 'projects/:projectId', element: routeElement(<ProjectsPage />) },
+      { path: 'issues/:issueId', element: routeElement(<ProjectsPage />) },
+      { path: 'docs', element: routeElement(<DocsPage />) },
+      { path: 'docs/:docId', element: routeElement(<DocsPage />) },
+      { path: 'bases', element: routeElement(<BasesPage />) },
+      { path: 'bases/:baseId', element: routeElement(<BasesPage />) },
+      { path: 'bases/:baseId/tables/:tableId', element: routeElement(<BasesPage />) },
+      { path: 'bases/:baseId/tables/:tableId/records/:recordId', element: routeElement(<BasesPage />) },
+      { path: 'approvals', element: routeElement(<ApprovalsPage />) },
+      { path: 'approvals/:approvalId', element: routeElement(<ApprovalsPage />) },
+      { path: 'notifications', element: routeElement(<NotificationsPage />) },
+      { path: 'devices', element: routeElement(<DevicesPage />) },
+      { path: 'search', element: routeElement(<SearchPage />) },
+      { path: 'admin/users', element: routeElement(<AdminUsersPage />) },
+      { path: 'admin/roles', element: routeElement(<AdminUsersPage />) },
+      { path: 'error/:state', element: routeElement(<AppErrorPage />) },
+      { path: '*', element: routeElement(<AppErrorPage stateOverride="404" />) },
     ],
   },
 ])
