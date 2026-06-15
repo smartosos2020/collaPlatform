@@ -457,6 +457,22 @@ function DocumentEditor({
 
       <section className="doc-meta-grid">
         <div className="doc-panel">
+          <Typography.Title level={5}>结构化块</Typography.Title>
+          <Space orientation="vertical" size={8} className="doc-panel-list">
+            {detail.blocks.length > 0 ? (
+              detail.blocks.map((block) => (
+                <div className="doc-block-item" key={block.id}>
+                  <Tag>{blockTypeText(block.blockType)}</Tag>
+                  <span>{block.content || '空块'}</span>
+                </div>
+              ))
+            ) : (
+              <Typography.Text type="secondary">暂无块</Typography.Text>
+            )}
+          </Space>
+        </div>
+
+        <div className="doc-panel">
           <Typography.Title level={5}>版本</Typography.Title>
           <Space orientation="vertical" size={8} className="doc-panel-list">
             {versions.map((version) => (
@@ -547,6 +563,17 @@ function hasPermission(current: string | undefined, required: 'view' | 'edit' | 
 
 function permissionText(permission: string) {
   return { view: '可查看', edit: '可编辑', manage: '可管理' }[permission] ?? permission
+}
+
+function blockTypeText(blockType: string) {
+  return {
+    paragraph: '段落',
+    heading: '标题',
+    list: '列表',
+    task: '任务',
+    quote: '引用',
+    code: '代码',
+  }[blockType] ?? blockType
 }
 
 function renderMarkdownPreview(content: string) {

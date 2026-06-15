@@ -11,7 +11,9 @@ export function useWebSocketConnection(onEvent: (event: PlatformWebSocketEvent) 
   const accessToken = useAuthStore((state) => state.accessToken)
   const [status, setStatus] = useState<WebSocketStatus>('idle')
   const eventHandlerRef = useRef(onEvent)
+  const reconnectAttemptRef = useRef(0)
   const reconnectTimerRef = useRef<number | null>(null)
+  const seenEventIdsRef = useRef<string[]>([])
   const socketRef = useRef<WebSocket | null>(null)
 
   useEffect(() => {
@@ -30,10 +32,20 @@ export function useWebSocketConnection(onEvent: (event: PlatformWebSocketEvent) 
       const socket = new WebSocket(`${WS_BASE_URL}?token=${encodeURIComponent(accessToken)}`)
       socketRef.current = socket
 
-      socket.onopen = () => setStatus('connected')
+      socket.onopen = () => {
+        reconnectAttemptRef.current = 0
+        setStatus('connected')
+      }
       socket.onmessage = (message) => {
         try {
-          eventHandlerRef.current(JSON.parse(message.data) as PlatformWebSocketEvent)
+          const event = JSON.parse(message.data) as PlatformWebSocketEvent
+          if (event.eventId && hasSeenEvent(event.eventId, seenEventIdsRef.current)) {
+            return
+          }
+          if (event.eventId) {
+            rememberEvent(event.eventId, seenEventIdsRef.current)
+          }
+          eventHandlerRef.current(event)
         } catch {
           // Ignore malformed server frames; REST sync remains the source of truth.
         }
@@ -45,7 +57,8 @@ export function useWebSocketConnection(onEvent: (event: PlatformWebSocketEvent) 
           return
         }
         setStatus('disconnected')
-        reconnectTimerRef.current = window.setTimeout(connect, 1500)
+        reconnectAttemptRef.current += 1
+        reconnectTimerRef.current = window.setTimeout(connect, reconnectDelay(reconnectAttemptRef.current))
       }
       socket.onerror = () => {
         socket.close()
@@ -64,4 +77,20 @@ export function useWebSocketConnection(onEvent: (event: PlatformWebSocketEvent) 
   }, [accessToken])
 
   return status
+}
+
+function reconnectDelay(attempt: number) {
+  const base = Math.min(15000, 1000 * 2 ** Math.max(0, attempt - 1))
+  return base + Math.floor(Math.random() * 300)
+}
+
+function hasSeenEvent(eventId: string, seenEventIds: string[]) {
+  return seenEventIds.includes(eventId)
+}
+
+function rememberEvent(eventId: string, seenEventIds: string[]) {
+  seenEventIds.push(eventId)
+  if (seenEventIds.length > 200) {
+    seenEventIds.splice(0, seenEventIds.length - 200)
+  }
 }

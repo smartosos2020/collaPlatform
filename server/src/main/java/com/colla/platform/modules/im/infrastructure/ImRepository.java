@@ -17,6 +17,14 @@ public interface ImRepository {
 
     void addMember(UUID workspaceId, UUID conversationId, UUID userId, String memberRole);
 
+    void removeMember(UUID workspaceId, UUID conversationId, UUID userId);
+
+    void setConversationMuted(UUID workspaceId, UUID conversationId, UUID userId, boolean muted);
+
+    void setConversationPinned(UUID workspaceId, UUID conversationId, UUID userId, boolean pinned);
+
+    void updateConversationType(UUID workspaceId, UUID conversationId, String conversationType);
+
     boolean isMember(UUID workspaceId, UUID conversationId, UUID userId);
 
     boolean isOwner(UUID workspaceId, UUID conversationId, UUID userId);
@@ -36,6 +44,8 @@ public interface ImRepository {
     Optional<MessageSummary> findMessage(UUID workspaceId, UUID conversationId, UUID messageId);
 
     Optional<MessageSummary> findMessageForUser(UUID workspaceId, UUID conversationId, UUID messageId, UUID userId);
+
+    Optional<MessageSummary> findMessageForUser(UUID workspaceId, UUID messageId, UUID userId);
 
     List<MessageSummary> listMessages(UUID workspaceId, UUID conversationId, UUID userId, UUID beforeId, int limit);
 

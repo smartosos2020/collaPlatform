@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 @Service
 public class InternalLinkService {
     private static final Pattern WEB_OBJECT_PATTERN = Pattern.compile("^/(issues|docs|bases|approvals)/([0-9a-fA-F-]{36})(?:/.*)?$");
+    private static final Pattern IM_MESSAGE_PATTERN = Pattern.compile("^/im\\?(?:.*&)?messageId=([0-9a-fA-F-]{36})(?:&.*)?$");
     private static final Pattern COLLA_OBJECT_PATTERN = Pattern.compile("^colla://([a-zA-Z_-]+)/([0-9a-fA-F-]{36})(?:/.*)?$");
 
     private final PlatformObjectRepository objectRepository;
@@ -41,6 +42,11 @@ public class InternalLinkService {
             return toParsed(currentUser, source, webType(webMatcher.group(1)), UUID.fromString(webMatcher.group(2)));
         }
 
+        Matcher imMessageMatcher = IM_MESSAGE_PATTERN.matcher(normalized);
+        if (imMessageMatcher.matches()) {
+            return toParsed(currentUser, source, "message", UUID.fromString(imMessageMatcher.group(1)));
+        }
+
         Matcher deepMatcher = COLLA_OBJECT_PATTERN.matcher(normalized);
         if (deepMatcher.matches()) {
             return toParsed(currentUser, source, deepType(deepMatcher.group(1)), UUID.fromString(deepMatcher.group(2)));
@@ -65,7 +71,7 @@ public class InternalLinkService {
     private String normalize(String source) {
         if (source.startsWith("http://") || source.startsWith("https://")) {
             URI uri = URI.create(source);
-            return uri.getPath();
+            return uri.getQuery() == null ? uri.getPath() : uri.getPath() + "?" + uri.getQuery();
         }
         return source;
     }

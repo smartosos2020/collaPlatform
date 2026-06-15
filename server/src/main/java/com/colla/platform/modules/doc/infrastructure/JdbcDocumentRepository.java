@@ -1,5 +1,7 @@
 package com.colla.platform.modules.doc.infrastructure;
 
+import com.colla.platform.modules.doc.domain.DocumentModels.DocumentBlock;
+import com.colla.platform.modules.doc.domain.DocumentModels.DocumentBlockDraft;
 import com.colla.platform.modules.doc.domain.DocumentModels.DocumentComment;
 import com.colla.platform.modules.doc.domain.DocumentModels.DocumentPermission;
 import com.colla.platform.modules.doc.domain.DocumentModels.DocumentRelation;
@@ -92,6 +94,61 @@ public class JdbcDocumentRepository implements DocumentRepository {
             title,
             content,
             createdBy
+        );
+    }
+
+    @Override
+    public void replaceBlocks(UUID workspaceId, UUID documentId, List<DocumentBlockDraft> blocks, UUID actorId) {
+        jdbcTemplate.update(
+            """
+                update document_blocks
+                set deleted_at = now(), updated_by = ?, updated_at = now()
+                where workspace_id = ? and document_id = ? and deleted_at is null
+                """,
+            actorId,
+            workspaceId,
+            documentId
+        );
+        for (DocumentBlockDraft block : blocks) {
+            jdbcTemplate.update(
+                """
+                    insert into document_blocks
+                        (id, workspace_id, document_id, block_type, content, sort_order,
+                         created_by, created_at, updated_by, updated_at)
+                    values (?, ?, ?, ?, ?, ?, ?, now(), ?, now())
+                    """,
+                UUID.randomUUID(),
+                workspaceId,
+                documentId,
+                block.blockType(),
+                block.content(),
+                block.sortOrder(),
+                actorId,
+                actorId
+            );
+        }
+    }
+
+    @Override
+    public List<DocumentBlock> listBlocks(UUID workspaceId, UUID documentId) {
+        return jdbcTemplate.query(
+            """
+                select id, document_id, block_type, content, sort_order, created_at, updated_at
+                from document_blocks
+                where workspace_id = ? and document_id = ? and deleted_at is null
+                order by sort_order, created_at
+                """,
+            (rs, rowNum) -> new DocumentBlock(
+                rs.getObject("id", UUID.class),
+                rs.getObject("document_id", UUID.class),
+                rs.getString("block_type"),
+                rs.getString("content"),
+                rs.getInt("sort_order"),
+                rs.getTimestamp("created_at").toInstant(),
+                rs.getTimestamp("updated_at").toInstant()
+            ),
+            workspaceId,
+            documentId
         );
     }
 

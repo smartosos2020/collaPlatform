@@ -21,6 +21,13 @@ export type PlatformObjectNavigation = {
   mobileFallbackPath?: string | null
 }
 
+export type PlatformObjectTypeRule = {
+  objectType: string
+  displayName: string
+  webPathPattern: string
+  deepLinkPattern: string
+}
+
 export type ParsedInternalLink = {
   resolved: boolean
   source: string
@@ -33,6 +40,10 @@ export type ParsedInternalLink = {
 
 export function resolveInternalLink(link: string) {
   return apiPost<ParsedInternalLink>('/platform/links/resolve', { link })
+}
+
+export function listPlatformObjectTypes() {
+  return apiGet<PlatformObjectTypeRule[]>('/platform/object-types')
 }
 
 export function getObjectNavigation(objectType: string, objectId: string) {

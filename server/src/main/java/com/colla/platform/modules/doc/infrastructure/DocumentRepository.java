@@ -1,6 +1,8 @@
 package com.colla.platform.modules.doc.infrastructure;
 
 import com.colla.platform.modules.doc.domain.DocumentModels.DocumentComment;
+import com.colla.platform.modules.doc.domain.DocumentModels.DocumentBlock;
+import com.colla.platform.modules.doc.domain.DocumentModels.DocumentBlockDraft;
 import com.colla.platform.modules.doc.domain.DocumentModels.DocumentPermission;
 import com.colla.platform.modules.doc.domain.DocumentModels.DocumentRelation;
 import com.colla.platform.modules.doc.domain.DocumentModels.DocumentSummary;
@@ -17,6 +19,10 @@ public interface DocumentRepository {
     void moveDocument(UUID workspaceId, UUID documentId, UUID parentId, UUID updatedBy);
 
     void addVersion(UUID workspaceId, UUID documentId, int versionNo, String title, String content, UUID createdBy);
+
+    void replaceBlocks(UUID workspaceId, UUID documentId, List<DocumentBlockDraft> blocks, UUID actorId);
+
+    List<DocumentBlock> listBlocks(UUID workspaceId, UUID documentId);
 
     List<DocumentSummary> listDocuments(UUID workspaceId, UUID userId);
 

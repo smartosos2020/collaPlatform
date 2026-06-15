@@ -105,7 +105,8 @@ class SearchCollaborationIntegrationTests {
             .andExpect(jsonPath("$.items[*].objectType").value(hasItem("issue")))
             .andExpect(jsonPath("$.items[*].objectType").value(hasItem("document")))
             .andExpect(jsonPath("$.items[*].objectType").value(hasItem("base_record")))
-            .andExpect(jsonPath("$.items[*].objectType").value(hasItem("message")));
+            .andExpect(jsonPath("$.items[*].objectType").value(hasItem("message")))
+            .andExpect(jsonPath("$.items[*].accessState").value(hasItem("available")));
 
         mockMvc.perform(get("/api/search?q=aurora&limit=20")
                 .header("Authorization", "Bearer " + outsiderToken))

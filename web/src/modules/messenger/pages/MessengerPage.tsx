@@ -1,5 +1,11 @@
 import {
+  BellOutlined,
   BugOutlined,
+  CloseCircleOutlined,
+  DeleteOutlined,
+  LogoutOutlined,
+  MenuFoldOutlined,
+  MenuUnfoldOutlined,
   EditOutlined,
   PlusOutlined,
   PushpinOutlined,
@@ -7,6 +13,7 @@ import {
   SmileOutlined,
   StopOutlined,
   TeamOutlined,
+  UserOutlined,
   WifiOutlined,
   DisconnectOutlined,
 } from '@ant-design/icons'
@@ -16,6 +23,7 @@ import {
   Avatar,
   Badge,
   Button,
+  Dropdown,
   Empty,
   Form,
   Input,
@@ -25,20 +33,26 @@ import {
   Tag,
   Typography,
 } from 'antd'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 
 import { useAuthStore } from '../../auth/authStore'
 import { ObjectSummaryCard } from '../../platform/components/InternalLinkCard'
 import {
+  addConversationMembers,
+  closeConversation,
   createConversation,
   editMessage,
   getConversation,
+  leaveConversation,
   listConversations,
   listDirectoryMembers,
   listMessages,
   markConversationRead,
+  muteConversation,
+  pinConversation,
   pinMessage,
+  removeConversationMember,
   revokeMessage,
   sendMessage,
   toggleReaction,
@@ -62,6 +76,9 @@ type ConvertMessageForm = {
   description?: string
 }
 
+const QUICK_REACTIONS = ['👍', '❤️', '😂', '🎉', '😮', '🙏']
+const COMPOSER_EMOJIS = ['😀', '😄', '😂', '😊', '👍', '❤️', '🎉', '🔥', '🙏', '💡', '✅', '🚀']
+
 export function MessengerPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [draft, setDraft] = useState('')
@@ -69,8 +86,17 @@ export function MessengerPage() {
   const [convertMessage, setConvertMessage] = useState<MessageSummary | null>(null)
   const [editingMessage, setEditingMessage] = useState<MessageSummary | null>(null)
   const [editDraft, setEditDraft] = useState('')
+  const [conversationListCollapsed, setConversationListCollapsed] = useState(false)
+  const [memberPanelOpen, setMemberPanelOpen] = useState(false)
+  const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null)
+  const [directMemberId, setDirectMemberId] = useState<string>()
+  const [memberToAddId, setMemberToAddId] = useState<string>()
+  const [composerEmojiOpen, setComposerEmojiOpen] = useState(false)
   const [form] = Form.useForm<CreateConversationForm>()
   const [convertForm] = Form.useForm<ConvertMessageForm>()
+  const messageListRef = useRef<HTMLElement | null>(null)
+  const messageRefs = useRef<Record<string, HTMLElement | null>>({})
+  const autoReadMessageIdRef = useRef<string | null>(null)
   const queryClient = useQueryClient()
   const currentUser = useAuthStore((state) => state.currentUser)
   const { message } = AntdApp.useApp()
@@ -131,6 +157,23 @@ export function MessengerPage() {
     },
   })
 
+  const createDirectMutation = useMutation({
+    mutationFn: (memberId: string) => {
+      const member = (directoryQuery.data ?? []).find((item) => item.id === memberId)
+      return createConversation({
+        conversationType: 'direct',
+        title: member?.displayName || member?.username || '单聊',
+        memberIds: [memberId],
+      })
+    },
+    onSuccess: async (conversation) => {
+      setDirectMemberId(undefined)
+      setSearchParams({ conversationId: conversation.id })
+      await refreshIm()
+    },
+    onError: () => message.error('创建单聊失败，请稍后重试'),
+  })
+
   const sendMutation = useMutation({
     mutationFn: () => sendMessage(selectedConversationId || '', draft),
     onSuccess: async () => {
@@ -159,6 +202,59 @@ export function MessengerPage() {
     onSuccess: refreshIm,
   })
 
+  const addMemberMutation = useMutation({
+    mutationFn: (memberId: string) => addConversationMembers(selectedConversationId || '', [memberId]),
+    onSuccess: async () => {
+      setMemberToAddId(undefined)
+      await refreshIm()
+    },
+    onError: () => message.error('添加成员失败，请稍后重试'),
+  })
+
+  const removeMemberMutation = useMutation({
+    mutationFn: (memberId: string) => removeConversationMember(selectedConversationId || '', memberId),
+    onSuccess: refreshIm,
+    onError: () => message.error('移除成员失败，请稍后重试'),
+  })
+
+  const leaveMutation = useMutation({
+    mutationFn: (conversationId?: string) => leaveConversation(conversationId || selectedConversationId || ''),
+    onSuccess: async (_data, conversationId) => {
+      setMemberPanelOpen(false)
+      const leavingConversationId = conversationId || selectedConversationId
+      if (!leavingConversationId || leavingConversationId === selectedConversationId) {
+        setSearchParams({})
+      }
+      await refreshIm()
+    },
+    onError: () => message.error('退出群聊失败，请稍后重试'),
+  })
+
+  const closeConversationMutation = useMutation({
+    mutationFn: (conversationId: string) => closeConversation(conversationId),
+    onSuccess: async (_data, conversationId) => {
+      if (conversationId === selectedConversationId) {
+        setSearchParams({})
+      }
+      await refreshIm()
+    },
+    onError: () => message.error('关闭单聊失败，请稍后重试'),
+  })
+
+  const muteConversationMutation = useMutation({
+    mutationFn: ({ conversationId, muted }: { conversationId: string; muted: boolean }) =>
+      muteConversation(conversationId, muted),
+    onSuccess: refreshIm,
+    onError: () => message.error('更新静音失败，请稍后重试'),
+  })
+
+  const pinConversationMutation = useMutation({
+    mutationFn: ({ conversationId, pinned }: { conversationId: string; pinned: boolean }) =>
+      pinConversation(conversationId, pinned),
+    onSuccess: refreshIm,
+    onError: () => message.error('更新置顶失败，请稍后重试'),
+  })
+
   const editMutation = useMutation({
     mutationFn: () => editMessage(selectedConversationId || '', editingMessage?.id || '', editDraft),
     onSuccess: async () => {
@@ -183,6 +279,7 @@ export function MessengerPage() {
     mutationFn: ({ messageId, emoji }: { messageId: string; emoji: string }) =>
       toggleReaction(selectedConversationId || '', messageId, emoji),
     onSuccess: refreshIm,
+    onError: () => message.error('点赞失败，请稍后重试'),
   })
 
   useEffect(() => {
@@ -197,6 +294,96 @@ export function MessengerPage() {
     [messagesQuery.data?.items],
   )
   const selectedConversation = conversationQuery.data
+  const selectedMemberIds = useMemo(
+    () => new Set((selectedConversation?.members ?? []).map((member) => member.userId)),
+    [selectedConversation?.members],
+  )
+  const pinnedMessage = useMemo(
+    () =>
+      messages
+        .filter((item) => item.pinnedAt && !item.revokedAt)
+        .sort((left, right) => new Date(right.pinnedAt || '').getTime() - new Date(left.pinnedAt || '').getTime())[0],
+    [messages],
+  )
+  const directMemberOptions = useMemo(
+    () =>
+      (directoryQuery.data ?? [])
+        .filter((member) => member.id !== currentUser?.id)
+        .map((member) => ({
+          value: member.id,
+          label: `${member.displayName} @${member.username}`,
+        })),
+    [currentUser?.id, directoryQuery.data],
+  )
+  const addableMemberOptions = useMemo(
+    () =>
+      (directoryQuery.data ?? [])
+        .filter((member) => !selectedMemberIds.has(member.id))
+        .map((member) => ({
+          value: member.id,
+          label: `${member.displayName} @${member.username}`,
+        })),
+    [directoryQuery.data, selectedMemberIds],
+  )
+  const mentionQuery = useMemo(() => {
+    const match = draft.match(/(^|\s)@([a-zA-Z0-9_.-]*)$/)
+    return match ? match[2].toLowerCase() : null
+  }, [draft])
+  const mentionSuggestions = useMemo(
+    () =>
+      mentionQuery === null
+        ? []
+        : (selectedConversation?.members ?? [])
+            .filter((member) => member.userId !== currentUser?.id)
+            .filter((member) =>
+              `${member.displayName} ${member.username}`.toLowerCase().includes(mentionQuery),
+            )
+            .slice(0, 6),
+    [currentUser?.id, mentionQuery, selectedConversation?.members],
+  )
+
+  useEffect(() => {
+    autoReadMessageIdRef.current = null
+  }, [selectedConversationId])
+
+  useEffect(() => {
+    if (!selectedConversationId || messages.length === 0 || readMutation.isPending) {
+      return undefined
+    }
+    const root = messageListRef.current
+    if (!root) {
+      return undefined
+    }
+    const readableMessages = messages.filter((item) => item.senderId !== currentUser?.id)
+    if (readableMessages.length === 0) {
+      return undefined
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visibleMessageIds = new Set(
+          entries
+            .filter((entry) => entry.isIntersecting && entry.intersectionRatio >= 0.98)
+            .map((entry) => (entry.target as HTMLElement).dataset.messageId)
+            .filter(Boolean),
+        )
+        const latestVisibleMessage = [...readableMessages].reverse().find((item) => visibleMessageIds.has(item.id))
+        if (!latestVisibleMessage || latestVisibleMessage.id === autoReadMessageIdRef.current) {
+          return
+        }
+        autoReadMessageIdRef.current = latestVisibleMessage.id
+        readMutation.mutate(latestVisibleMessage.id)
+      },
+      { root, threshold: [0.98, 1] },
+    )
+
+    for (const item of readableMessages) {
+      const node = messageRefs.current[item.id]
+      if (node) {
+        observer.observe(node)
+      }
+    }
+    return () => observer.disconnect()
+  }, [currentUser?.id, messages, readMutation, selectedConversationId])
 
   const submitMessage = () => {
     if (!draft.trim() || !selectedConversationId) {
@@ -205,16 +392,60 @@ export function MessengerPage() {
     sendMutation.mutate()
   }
 
+  const insertTextToDraft = (value: string) => {
+    setDraft((current) => `${current}${value}`)
+  }
+
+  const insertMention = (username: string) => {
+    setDraft((current) => current.replace(/(^|\s)@([a-zA-Z0-9_.-]*)$/, `$1@${username} `))
+  }
+
+  const focusMessage = (messageId: string) => {
+    messageRefs.current[messageId]?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    setHighlightedMessageId(messageId)
+    window.setTimeout(() => setHighlightedMessageId(null), 1600)
+  }
+
   return (
-    <div className="im-workspace">
+    <div
+      className={[
+        'im-workspace',
+        conversationListCollapsed ? 'conversation-list-collapsed' : '',
+        memberPanelOpen ? 'members-open' : '',
+      ].join(' ')}
+    >
       <aside className="im-conversation-list">
         <Space className="im-panel-header">
+          {conversationListCollapsed ? null : (
+            <Space>
+              <Typography.Title level={3}>消息</Typography.Title>
+              <ConnectionTag status={wsStatus} />
+            </Space>
+          )}
           <Space>
-            <Typography.Title level={3}>消息</Typography.Title>
-            <ConnectionTag status={wsStatus} />
+            <Button
+              icon={conversationListCollapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+              onClick={() => setConversationListCollapsed((value) => !value)}
+            />
+            {conversationListCollapsed ? null : (
+              <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)} />
+            )}
           </Space>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)} />
         </Space>
+        {conversationListCollapsed ? null : (
+          <Select
+            className="im-direct-search"
+            showSearch
+            allowClear
+            placeholder="搜索成员开始单聊"
+            optionFilterProp="label"
+            loading={directoryQuery.isLoading || createDirectMutation.isPending}
+            options={directMemberOptions}
+            value={directMemberId}
+            onChange={(memberId) => setDirectMemberId(memberId)}
+            onSelect={(memberId) => createDirectMutation.mutate(memberId)}
+          />
+        )}
         <div className="im-conversation-items">
           {conversationsQuery.isLoading ? <Typography.Text type="secondary">加载中...</Typography.Text> : null}
           {(conversationsQuery.data ?? []).length === 0 && !conversationsQuery.isLoading ? (
@@ -225,7 +456,12 @@ export function MessengerPage() {
               key={conversation.id}
               conversation={conversation}
               active={conversation.id === selectedConversationId}
+              collapsed={conversationListCollapsed}
               onClick={() => setSearchParams({ conversationId: conversation.id })}
+              onPin={() => pinConversationMutation.mutate({ conversationId: conversation.id, pinned: !conversation.pinnedAt })}
+              onMute={() => muteConversationMutation.mutate({ conversationId: conversation.id, muted: !conversation.muted })}
+              onLeave={() => leaveMutation.mutate(conversation.id)}
+              onClose={() => closeConversationMutation.mutate(conversation.id)}
             />
           ))}
         </div>
@@ -234,75 +470,128 @@ export function MessengerPage() {
       <main className="im-message-panel">
         {selectedConversation ? (
           <>
-            <header className="im-message-header">
+            <header className="im-info-bar">
               <Space>
-                <TeamOutlined />
-                <Space orientation="vertical" size={0}>
-                  <Typography.Title level={4}>{selectedConversation.title}</Typography.Title>
-                  <Typography.Text type="secondary">
-                    {selectedConversation.memberCount} 名成员
-                  </Typography.Text>
-                </Space>
+                <ConversationAvatar conversation={selectedConversation} />
+                <Typography.Title level={4}>{selectedConversation.title}</Typography.Title>
               </Space>
-              <Button
-                loading={readMutation.isPending}
-                onClick={() => readMutation.mutate(messages.at(-1)?.id)}
-              >
-                标为已读
-              </Button>
+              <Space>
+                <Button
+                  icon={<TeamOutlined />}
+                  type={memberPanelOpen ? 'primary' : 'default'}
+                  onClick={() => setMemberPanelOpen((value) => !value)}
+                >
+                  {selectedConversation.memberCount}
+                </Button>
+                <Button
+                  loading={readMutation.isPending}
+                  onClick={() => readMutation.mutate(messages.at(-1)?.id)}
+                >
+                  标为已读
+                </Button>
+              </Space>
             </header>
+            {pinnedMessage ? (
+              <button className="im-pinned-bar" onClick={() => focusMessage(pinnedMessage.id)}>
+                <PushpinOutlined />
+                <span>{pinnedMessage.content || '消息已撤回'}</span>
+              </button>
+            ) : null}
 
-            <section className="im-message-list">
+            <section className="im-message-list" ref={messageListRef}>
               {messages.length === 0 ? (
                 <Empty description="还没有消息" />
               ) : (
-                messages.map((item) => (
-                  <MessageBubble
-                    key={item.id}
-                    item={item}
-                    mine={item.senderId === currentUser?.id}
-                    onCreateIssue={() => {
-                      setConvertMessage(item)
-                      convertForm.setFieldsValue({
-                        issueType: 'bug',
-                        title: item.content.slice(0, 120),
-                        description: item.content,
-                      })
-                    }}
-                    onEdit={() => {
-                      setEditingMessage(item)
-                      setEditDraft(item.content)
-                    }}
-                    onRevoke={() => revokeMutation.mutate(item.id)}
-                    onPin={() => pinMutation.mutate({ messageId: item.id, pinned: !item.pinnedAt })}
-                    onReact={(emoji) => reactionMutation.mutate({ messageId: item.id, emoji })}
-                  />
+                messages.map((item, index) => (
+                  <div key={item.id} className="im-message-row">
+                    {isFirstMessageOfDay(messages[index - 1], item) ? (
+                      <div className="im-message-date-separator">{formatMessageDate(item.createdAt)}</div>
+                    ) : null}
+                    <MessageBubble
+                      refCallback={(node) => {
+                        messageRefs.current[item.id] = node
+                      }}
+                      item={item}
+                      mine={item.senderId === currentUser?.id}
+                      highlighted={highlightedMessageId === item.id}
+                      onCreateIssue={() => {
+                        setConvertMessage(item)
+                        convertForm.setFieldsValue({
+                          issueType: 'bug',
+                          title: item.content.slice(0, 120),
+                          description: item.content,
+                        })
+                      }}
+                      onEdit={() => {
+                        setEditingMessage(item)
+                        setEditDraft(item.content)
+                      }}
+                      onRevoke={() => revokeMutation.mutate(item.id)}
+                      onPin={() => pinMutation.mutate({ messageId: item.id, pinned: !item.pinnedAt })}
+                      onReact={(emoji) => reactionMutation.mutate({ messageId: item.id, emoji })}
+                      reactionPending={reactionMutation.isPending}
+                    />
+                  </div>
                 ))
               )}
             </section>
 
             <footer className="im-message-composer">
-              <Input.TextArea
-                value={draft}
-                autoSize={{ minRows: 2, maxRows: 5 }}
-                placeholder="输入消息，使用 @username 提醒成员，粘贴 /issues、/docs 或 /bases 内部链接生成卡片"
-                onChange={(event) => setDraft(event.target.value)}
-                onPressEnter={(event) => {
-                  if (!event.shiftKey) {
+              <div className="im-composer-input-shell">
+                {mentionSuggestions.length > 0 ? (
+                  <div className="im-mention-popover">
+                    {mentionSuggestions.map((member) => (
+                      <button key={member.userId} type="button" onClick={() => insertMention(member.username)}>
+                        <Avatar size="small">{member.displayName.slice(0, 1)}</Avatar>
+                        <span>{member.displayName}</span>
+                        <small>@{member.username}</small>
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+                <Input.TextArea
+                  value={draft}
+                  autoSize={{ minRows: 1, maxRows: 5 }}
+                  placeholder="输入消息，使用 @username 提醒成员，粘贴 /issues、/docs 或 /bases 内部链接生成卡片"
+                  onChange={(event) => setDraft(event.target.value)}
+                  onPressEnter={(event) => {
+                    if (event.altKey) {
+                      return
+                    }
                     event.preventDefault()
                     submitMessage()
-                  }
-                }}
-              />
+                  }}
+                />
+              </div>
+              <div className="im-composer-emoji-shell">
+                {composerEmojiOpen ? (
+                  <div className="im-composer-emoji-popover">
+                    {COMPOSER_EMOJIS.map((emoji) => (
+                      <button
+                        key={emoji}
+                        type="button"
+                        onClick={() => {
+                          insertTextToDraft(emoji)
+                          setComposerEmojiOpen(false)
+                        }}
+                      >
+                        {emoji}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+                <Button
+                  icon={<SmileOutlined />}
+                  onClick={() => setComposerEmojiOpen((value) => !value)}
+                />
+              </div>
               <Button
                 type="primary"
                 icon={<SendOutlined />}
                 loading={sendMutation.isPending}
                 disabled={!draft.trim() || !selectedConversationId}
                 onClick={submitMessage}
-              >
-                发送
-              </Button>
+              />
             </footer>
           </>
         ) : (
@@ -312,22 +601,58 @@ export function MessengerPage() {
         )}
       </main>
 
-      <aside className="im-member-panel">
-        <Typography.Title level={4}>成员</Typography.Title>
-        <div className="im-member-items">
-          {(selectedConversation?.members ?? []).length === 0 ? <Empty description="暂无成员" /> : null}
-          {(selectedConversation?.members ?? []).map((member) => (
-            <div className="im-member-item" key={member.userId}>
-              <Avatar>{member.displayName.slice(0, 1)}</Avatar>
-              <Space orientation="vertical" size={0} className="im-member-text">
-                <Typography.Text>{member.displayName}</Typography.Text>
-                <Typography.Text type="secondary">@{member.username}</Typography.Text>
-              </Space>
-              {member.memberRole === 'owner' ? <Tag color="blue">owner</Tag> : null}
-            </div>
-          ))}
-        </div>
-      </aside>
+      {memberPanelOpen ? (
+        <aside className="im-member-panel">
+          <Space className="im-member-panel-header">
+            <Typography.Title level={4}>成员</Typography.Title>
+            {selectedConversation?.conversationType === 'group' ? (
+              <Button
+                danger
+                size="small"
+                icon={<LogoutOutlined />}
+                loading={leaveMutation.isPending}
+                onClick={() => leaveMutation.mutate(selectedConversationId || undefined)}
+              >
+                退出
+              </Button>
+            ) : null}
+          </Space>
+          <Select
+            className="im-member-add"
+            showSearch
+            allowClear
+            placeholder="搜索成员添加"
+            optionFilterProp="label"
+            loading={directoryQuery.isLoading || addMemberMutation.isPending}
+            options={addableMemberOptions}
+            value={memberToAddId}
+            onChange={(memberId) => setMemberToAddId(memberId)}
+            onSelect={(memberId) => addMemberMutation.mutate(memberId)}
+          />
+          <div className="im-member-items">
+            {(selectedConversation?.members ?? []).length === 0 ? <Empty description="暂无成员" /> : null}
+            {(selectedConversation?.members ?? []).map((member) => (
+              <div className="im-member-item" key={member.userId}>
+                <Avatar>{member.displayName.slice(0, 1)}</Avatar>
+                <Space orientation="vertical" size={0} className="im-member-text">
+                  <Typography.Text>{member.displayName}</Typography.Text>
+                  <Typography.Text type="secondary">@{member.username}</Typography.Text>
+                </Space>
+                {member.memberRole === 'owner' ? <Tag color="blue">owner</Tag> : null}
+                {member.userId !== currentUser?.id && currentUser?.id === selectedConversation?.members.find((item) => item.memberRole === 'owner')?.userId ? (
+                  <Button
+                    danger
+                    size="small"
+                    icon={<DeleteOutlined />}
+                    loading={removeMemberMutation.isPending}
+                    onClick={() => removeMemberMutation.mutate(member.userId)}
+                  />
+                ) : null}
+              </div>
+            ))}
+          </div>
+        </aside>
+      ) : null}
 
       <Modal
         title="新建会话"
@@ -357,12 +682,7 @@ export function MessengerPage() {
               mode="multiple"
               showSearch
               optionFilterProp="label"
-              options={(directoryQuery.data ?? [])
-                .filter((member) => member.id !== currentUser?.id)
-                .map((member) => ({
-                  value: member.id,
-                  label: `${member.displayName} @${member.username}`,
-                }))}
+              options={directMemberOptions}
             />
           </Form.Item>
         </Form>
@@ -423,110 +743,237 @@ export function MessengerPage() {
 function ConversationListItem({
   conversation,
   active,
+  collapsed,
   onClick,
+  onPin,
+  onMute,
+  onLeave,
+  onClose,
 }: {
   conversation: ConversationSummary
   active: boolean
+  collapsed: boolean
   onClick: () => void
+  onPin: () => void
+  onMute: () => void
+  onLeave: () => void
+  onClose: () => void
 }) {
+  const isDirect = conversation.conversationType === 'direct'
+  const menuItems = [
+    {
+      key: 'pin',
+      icon: <PushpinOutlined />,
+      label: conversation.pinnedAt ? '取消置顶' : '置顶',
+      onClick: onPin,
+    },
+    {
+      key: 'mute',
+      icon: <BellOutlined />,
+      label: conversation.muted ? '取消静音' : '静音',
+      onClick: onMute,
+    },
+    isDirect
+      ? {
+          key: 'close',
+          icon: <CloseCircleOutlined />,
+          label: '关闭',
+          danger: true,
+          onClick: onClose,
+        }
+      : {
+          key: 'leave',
+          icon: <LogoutOutlined />,
+          label: '离开',
+          danger: true,
+          onClick: onLeave,
+        },
+  ]
+
   return (
-    <button className={active ? 'im-conversation-item active' : 'im-conversation-item'} onClick={onClick}>
-      <Badge count={conversation.unreadCount}>
-        <Avatar icon={<TeamOutlined />} />
-      </Badge>
-      <span className="im-conversation-copy">
-        <span className="im-conversation-title">
-          <Typography.Text strong>{conversation.title}</Typography.Text>
-          <Tag>{conversation.conversationType}</Tag>
-        </span>
-        <Typography.Text type="secondary" ellipsis>
-          {conversation.lastMessage?.content || '暂无消息'}
-        </Typography.Text>
-      </span>
-    </button>
+    <Dropdown menu={{ items: menuItems }} trigger={['contextMenu']}>
+      <button className={active ? 'im-conversation-item active' : 'im-conversation-item'} onClick={onClick}>
+        <Badge count={conversation.unreadCount}>
+          <ConversationAvatar conversation={conversation} />
+        </Badge>
+        {collapsed ? null : (
+          <span className="im-conversation-copy">
+            <span className="im-conversation-title">
+              <Typography.Text strong>{conversation.title}</Typography.Text>
+              <Tag>{isDirect ? '单聊' : '群聊'}</Tag>
+              {conversation.pinnedAt ? <Tag color="gold">置顶</Tag> : null}
+              {conversation.muted ? <Tag>静音</Tag> : null}
+            </span>
+            <Typography.Text type="secondary" ellipsis>
+              {conversation.lastMessage?.content || '暂无消息'}
+            </Typography.Text>
+          </span>
+        )}
+      </button>
+    </Dropdown>
   )
 }
 
+function ConversationAvatar({ conversation }: { conversation: Pick<ConversationSummary, 'conversationType' | 'title'> }) {
+  const text = conversation.title.trim().slice(0, 1)
+  return <Avatar icon={text ? undefined : conversation.conversationType === 'direct' ? <UserOutlined /> : <TeamOutlined />}>{text}</Avatar>
+}
+
 function MessageBubble({
+  refCallback,
   item,
   mine,
+  highlighted,
   onCreateIssue,
   onEdit,
   onRevoke,
   onPin,
   onReact,
+  reactionPending,
 }: {
+  refCallback: (node: HTMLElement | null) => void
   item: MessageSummary
   mine: boolean
+  highlighted: boolean
   onCreateIssue: () => void
   onEdit: () => void
   onRevoke: () => void
   onPin: () => void
   onReact: (emoji: string) => void
+  reactionPending: boolean
 }) {
+  const contextItems = [
+    {
+      key: 'pin',
+      icon: <PushpinOutlined />,
+      label: item.pinnedAt ? '取消置顶' : '置顶',
+      disabled: Boolean(item.revokedAt),
+      onClick: onPin,
+    },
+    {
+      key: 'issue',
+      icon: <BugOutlined />,
+      label: '转事项',
+      disabled: Boolean(item.revokedAt),
+      onClick: onCreateIssue,
+    },
+    mine
+      ? {
+          key: 'edit',
+          icon: <EditOutlined />,
+          label: '编辑',
+          disabled: Boolean(item.revokedAt),
+          onClick: onEdit,
+        }
+      : null,
+    mine
+      ? {
+          key: 'revoke',
+          icon: <StopOutlined />,
+          label: '删除',
+          disabled: Boolean(item.revokedAt),
+          danger: true,
+          onClick: onRevoke,
+        }
+      : null,
+  ].filter((item): item is NonNullable<typeof item> => Boolean(item))
+
   return (
-    <article className={mine ? 'im-message mine' : 'im-message'}>
-      <Avatar>{item.senderName.slice(0, 1)}</Avatar>
-      <div className="im-message-body">
-        <Space size={8}>
-          <Typography.Text strong>{item.senderName}</Typography.Text>
-          <Typography.Text type="secondary">{new Date(item.createdAt).toLocaleString()}</Typography.Text>
-          {item.editedAt ? <Tag>已编辑</Tag> : null}
-          {item.pinnedAt ? <Tag color="gold">置顶</Tag> : null}
-        </Space>
-        <Typography.Paragraph className="im-message-content">
-          {item.revokedAt ? <Typography.Text type="secondary">消息已撤回</Typography.Text> : item.content}
-        </Typography.Paragraph>
-        {item.mentions.length > 0 ? (
-          <Space wrap>
-            {item.mentions.map((mention) => (
-              <Tag key={mention.userId} color="blue">
-                @{mention.username}
-              </Tag>
-            ))}
-          </Space>
-        ) : null}
-        {item.links.length > 0 ? (
-          <Space orientation="vertical" className="im-message-links">
-            {item.links.map((link) =>
-              link.summary ? (
-                <ObjectSummaryCard key={link.id} summary={link.summary} />
-              ) : (
-                <Typography.Link key={link.id}>{link.sourceUrl}</Typography.Link>
-              ),
-            )}
-          </Space>
-        ) : null}
-        {item.reactions.length > 0 ? (
-          <Space wrap size={4} className="im-message-reactions">
-            {item.reactions.map((reaction) => (
-              <Button
-                key={reaction.emoji}
-                size="small"
-                type={reaction.reactedByMe ? 'primary' : 'default'}
-                onClick={() => onReact(reaction.emoji)}
-              >
-                {reaction.emoji} {reaction.count}
-              </Button>
-            ))}
-          </Space>
-        ) : null}
-        <Space wrap className="im-message-actions">
-          <Button size="small" icon={<SmileOutlined />} disabled={Boolean(item.revokedAt)} onClick={() => onReact('👍')} />
-          <Button size="small" icon={<PushpinOutlined />} disabled={Boolean(item.revokedAt)} onClick={onPin} />
-          <Button size="small" icon={<BugOutlined />} disabled={Boolean(item.revokedAt)} onClick={onCreateIssue}>
-            转事项
-          </Button>
-          {mine ? (
-            <>
-              <Button size="small" icon={<EditOutlined />} disabled={Boolean(item.revokedAt)} onClick={onEdit} />
-              <Button size="small" icon={<StopOutlined />} disabled={Boolean(item.revokedAt)} onClick={onRevoke} />
-            </>
+    <article
+      ref={refCallback}
+      data-message-id={item.id}
+      className={[mine ? 'im-message mine' : 'im-message', highlighted ? 'highlighted' : ''].join(' ')}
+    >
+      <Dropdown menu={{ items: contextItems }} trigger={['contextMenu']}>
+        <div className="im-message-body">
+          {!item.revokedAt ? (
+            <div className="im-message-reaction-picker">
+              {QUICK_REACTIONS.map((emoji) => (
+                <button
+                  key={emoji}
+                  type="button"
+                  disabled={reactionPending}
+                  onClick={() => {
+                    onReact(emoji)
+                  }}
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
           ) : null}
-        </Space>
-      </div>
+          <Typography.Paragraph className="im-message-content">
+            {item.revokedAt ? <Typography.Text type="secondary">{item.senderName}撤回一条消息</Typography.Text> : item.content}
+          </Typography.Paragraph>
+          {item.mentions.length > 0 ? (
+            <Space wrap>
+              {item.mentions.map((mention) => (
+                <Tag key={mention.userId} color="blue">
+                  @{mention.username}
+                </Tag>
+              ))}
+            </Space>
+          ) : null}
+          {item.links.length > 0 ? (
+            <Space orientation="vertical" className="im-message-links">
+              {item.links.map((link) =>
+                link.summary ? (
+                  <ObjectSummaryCard key={link.id} summary={link.summary} />
+                ) : (
+                  <Typography.Link key={link.id}>{link.sourceUrl}</Typography.Link>
+                ),
+              )}
+            </Space>
+          ) : null}
+          {item.reactions.length > 0 ? (
+            <Space wrap size={4} className="im-message-reactions">
+              {item.reactions.map((reaction) => (
+                <button
+                  key={reaction.emoji}
+                  type="button"
+                  className={reaction.reactedByMe ? 'im-message-reaction reacted' : 'im-message-reaction'}
+                  disabled={reactionPending || Boolean(item.revokedAt)}
+                  onClick={() => onReact(reaction.emoji)}
+                >
+                  {reaction.emoji} {reaction.count}
+                </button>
+              ))}
+            </Space>
+          ) : null}
+          <div className="im-message-meta">
+            {item.editedAt ? <span>已编辑</span> : null}
+            {item.pinnedAt ? <span>置顶</span> : null}
+            <time>{formatMessageTime(item.createdAt)}</time>
+          </div>
+        </div>
+      </Dropdown>
     </article>
   )
+}
+
+function isFirstMessageOfDay(previous: MessageSummary | undefined, current: MessageSummary) {
+  if (!previous) {
+    return true
+  }
+  return dayKey(previous.createdAt) !== dayKey(current.createdAt)
+}
+
+function dayKey(value: string) {
+  const date = new Date(value)
+  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`
+}
+
+function formatMessageDate(value: string) {
+  const date = new Date(value)
+  const today = new Date()
+  if (date.toDateString() === today.toDateString()) {
+    return '今天'
+  }
+  return date.toLocaleDateString(undefined, { month: 'long', day: 'numeric' })
+}
+
+function formatMessageTime(value: string) {
+  return new Date(value).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
 }
 
 function ConnectionTag({ status }: { status: string }) {

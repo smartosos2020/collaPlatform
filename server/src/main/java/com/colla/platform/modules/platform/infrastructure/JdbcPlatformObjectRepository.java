@@ -2,6 +2,7 @@ package com.colla.platform.modules.platform.infrastructure;
 
 import com.colla.platform.modules.platform.domain.PlatformModels.ObjectLinkRecord;
 import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectReference;
+import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectTypeRule;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.List;
@@ -84,6 +85,23 @@ public class JdbcPlatformObjectRepository implements PlatformObjectRepository {
     @Override
     public List<String> listObjectTypes() {
         return jdbcTemplate.queryForList("select object_type from object_type_rules order by object_type", String.class);
+    }
+
+    @Override
+    public List<PlatformObjectTypeRule> listObjectTypeRules() {
+        return jdbcTemplate.query(
+            """
+                select object_type, web_path_pattern, deep_link_pattern
+                from object_type_rules
+                order by object_type
+                """,
+            (rs, rowNum) -> new PlatformObjectTypeRule(
+                rs.getString("object_type"),
+                displayName(rs.getString("object_type")),
+                rs.getString("web_path_pattern"),
+                rs.getString("deep_link_pattern")
+            )
+        );
     }
 
     @Override
@@ -204,5 +222,19 @@ public class JdbcPlatformObjectRepository implements PlatformObjectRepository {
             rs.getString("title_snapshot"),
             rs.getTimestamp("touched_at").toInstant()
         );
+    }
+
+    private String displayName(String objectType) {
+        return switch (objectType) {
+            case "issue" -> "事项";
+            case "document" -> "文档";
+            case "base" -> "表格空间";
+            case "base_table" -> "数据表";
+            case "base_record" -> "表格记录";
+            case "message" -> "消息";
+            case "approval" -> "审批";
+            case "file" -> "文件";
+            default -> objectType;
+        };
     }
 }

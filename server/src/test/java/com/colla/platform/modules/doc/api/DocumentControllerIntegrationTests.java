@@ -58,6 +58,8 @@ class DocumentControllerIntegrationTests {
             .andExpect(jsonPath("$.document.title").value("M5 Design Note"))
             .andExpect(jsonPath("$.document.currentVersionNo").value(1))
             .andExpect(jsonPath("$.content").value("# M5\nInitial"))
+            .andExpect(jsonPath("$.blocks[0].blockType").value("heading"))
+            .andExpect(jsonPath("$.blocks[0].content").value("M5"))
             .andReturn()
             .getResponse()
             .getContentAsString();
@@ -90,7 +92,8 @@ class DocumentControllerIntegrationTests {
                 ))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.document.currentVersionNo").value(2))
-            .andExpect(jsonPath("$.content").value("# M5\nUpdated"));
+            .andExpect(jsonPath("$.content").value("# M5\nUpdated"))
+            .andExpect(jsonPath("$.blocks[1].content").value("Updated"));
 
         mockMvc.perform(patch("/api/docs/" + documentId)
                 .header("Authorization", "Bearer " + editorToken)
@@ -155,6 +158,48 @@ class DocumentControllerIntegrationTests {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.document.currentVersionNo").value(3))
             .andExpect(jsonPath("$.content").value("# M5\nInitial"));
+    }
+
+    @Test
+    void documentBlocksCanBeReadAndSaved() throws Exception {
+        String adminToken = login("admin", "admin123456", "doc-block-admin-device-" + UUID.randomUUID());
+
+        String docResponse = mockMvc.perform(post("/api/docs")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"title\":\"Block Doc\",\"content\":\"# Plan\\nFirst step\"}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.blocks.length()").value(2))
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+        UUID documentId = UUID.fromString(objectMapper.readTree(docResponse).get("document").get("id").asText());
+
+        mockMvc.perform(get("/api/docs/" + documentId + "/blocks")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$[0].blockType").value("heading"))
+            .andExpect(jsonPath("$[1].content").value("First step"));
+
+        mockMvc.perform(patch("/api/docs/" + documentId + "/blocks")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                        {
+                          "baseVersionNo": 1,
+                          "blocks": [
+                            {"blockType": "heading", "content": "Block Plan"},
+                            {"blockType": "task", "content": "Ship API"}
+                          ]
+                        }
+                        """
+                ))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.document.currentVersionNo").value(2))
+            .andExpect(jsonPath("$.content").value("# Block Plan\n- [ ] Ship API"))
+            .andExpect(jsonPath("$.blocks[1].blockType").value("task"))
+            .andExpect(jsonPath("$.blocks[1].sortOrder").value(1));
     }
 
     @Test

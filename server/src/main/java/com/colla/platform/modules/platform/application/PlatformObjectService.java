@@ -4,6 +4,7 @@ import com.colla.platform.modules.platform.domain.PlatformModels.ObjectAccessSta
 import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectNavigation;
 import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectReference;
 import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectSummary;
+import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectTypeRule;
 import com.colla.platform.modules.platform.infrastructure.PlatformObjectRepository;
 import com.colla.platform.shared.auth.CurrentUser;
 import java.util.List;
@@ -65,6 +66,10 @@ public class PlatformObjectService {
 
     public void removeFavorite(CurrentUser currentUser, String objectType, UUID objectId) {
         objectRepository.removeFavorite(currentUser.workspaceId(), currentUser.id(), objectType, objectId);
+    }
+
+    public List<PlatformObjectTypeRule> objectTypes() {
+        return objectRepository.listObjectTypeRules();
     }
 
     private PlatformObjectSummary resolveReference(CurrentUser currentUser, PlatformObjectReference reference) {

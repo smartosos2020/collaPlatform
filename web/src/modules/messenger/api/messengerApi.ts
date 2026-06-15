@@ -1,4 +1,4 @@
-import { apiGet, apiPatch, apiPost } from '../../../shared/api/httpClient'
+import { apiDelete, apiGet, apiPatch, apiPost } from '../../../shared/api/httpClient'
 import type { PlatformObjectSummary } from '../../platform/api/platformObjectsApi'
 
 export type ConversationMember = {
@@ -48,6 +48,8 @@ export type ConversationSummary = {
   conversationType: string
   title: string
   memberCount: number
+  muted: boolean
+  pinnedAt?: string | null
   lastMessage?: MessageSummary | null
   unreadCount: number
   lastMessageAt?: string | null
@@ -87,6 +89,30 @@ export function createConversation(request: { conversationType: string; title?: 
 
 export function getConversation(conversationId: string) {
   return apiGet<ConversationDetail>(`/conversations/${conversationId}`)
+}
+
+export function addConversationMembers(conversationId: string, memberIds: string[]) {
+  return apiPost<ConversationDetail>(`/conversations/${conversationId}/members`, { memberIds })
+}
+
+export function removeConversationMember(conversationId: string, memberId: string) {
+  return apiDelete<ConversationDetail>(`/conversations/${conversationId}/members/${memberId}`)
+}
+
+export function leaveConversation(conversationId: string) {
+  return apiPost<void>(`/conversations/${conversationId}/leave`, {})
+}
+
+export function closeConversation(conversationId: string) {
+  return apiPost<void>(`/conversations/${conversationId}/close`, {})
+}
+
+export function muteConversation(conversationId: string, muted: boolean) {
+  return apiPost<ConversationDetail>(`/conversations/${conversationId}/mute`, { muted })
+}
+
+export function pinConversation(conversationId: string, pinned: boolean) {
+  return apiPost<ConversationDetail>(`/conversations/${conversationId}/pin`, { pinned })
 }
 
 export function listMessages(conversationId: string, beforeId?: string | null) {

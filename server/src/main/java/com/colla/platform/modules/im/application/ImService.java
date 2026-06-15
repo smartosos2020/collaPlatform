@@ -8,8 +8,8 @@ import com.colla.platform.modules.im.domain.ImModels.MessageSummary;
 import com.colla.platform.modules.im.domain.ImModels.UnreadState;
 import com.colla.platform.modules.im.infrastructure.ImRepository;
 import com.colla.platform.modules.platform.application.InternalLinkService;
-import com.colla.platform.modules.platform.domain.PlatformModels.ObjectAccessState;
 import com.colla.platform.modules.platform.domain.PlatformModels.ParsedInternalLink;
+import com.colla.platform.modules.platform.infrastructure.PlatformObjectRepository;
 import com.colla.platform.shared.auth.CurrentUser;
 import com.colla.platform.shared.websocket.WebSocketMessageSender;
 import java.util.ArrayList;
@@ -35,17 +35,20 @@ public class ImService {
     private final InternalLinkService internalLinkService;
     private final DomainEventRepository eventRepository;
     private final WebSocketMessageSender webSocketMessageSender;
+    private final PlatformObjectRepository objectRepository;
 
     public ImService(
         ImRepository imRepository,
         InternalLinkService internalLinkService,
         DomainEventRepository eventRepository,
-        WebSocketMessageSender webSocketMessageSender
+        WebSocketMessageSender webSocketMessageSender,
+        PlatformObjectRepository objectRepository
     ) {
         this.imRepository = imRepository;
         this.internalLinkService = internalLinkService;
         this.eventRepository = eventRepository;
         this.webSocketMessageSender = webSocketMessageSender;
+        this.objectRepository = objectRepository;
     }
 
     public List<ConversationSummary> listConversations(CurrentUser currentUser) {
@@ -91,10 +94,66 @@ public class ImService {
 
     @Transactional
     public ConversationDetail addMembers(CurrentUser currentUser, UUID conversationId, List<UUID> memberIds) {
-        requireOwner(currentUser, conversationId);
-        for (UUID memberId : new LinkedHashSet<>(memberIds == null ? List.of() : memberIds)) {
+        ConversationDetail conversation = getConversation(currentUser, conversationId);
+        List<UUID> normalizedMemberIds = new ArrayList<>(new LinkedHashSet<>(memberIds == null ? List.of() : memberIds));
+        if (normalizedMemberIds.isEmpty()) {
+            return conversation;
+        }
+        if ("direct".equals(conversation.conversationType())) {
+            imRepository.updateConversationType(currentUser.workspaceId(), conversationId, "group");
+        }
+        for (UUID memberId : normalizedMemberIds) {
             imRepository.addMember(currentUser.workspaceId(), conversationId, memberId, "member");
         }
+        ConversationDetail updated = getConversation(currentUser, conversationId);
+        pushConversationEvents(currentUser, conversationId, updated);
+        return updated;
+    }
+
+    @Transactional
+    public ConversationDetail removeMember(CurrentUser currentUser, UUID conversationId, UUID memberId) {
+        requireOwner(currentUser, conversationId);
+        if (currentUser.id().equals(memberId)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Use leave conversation to remove yourself");
+        }
+        ConversationDetail before = getConversation(currentUser, conversationId);
+        imRepository.removeMember(currentUser.workspaceId(), conversationId, memberId);
+        ConversationDetail updated = getConversation(currentUser, conversationId);
+        pushConversationEvents(currentUser, conversationId, updated, before.members().stream().map(member -> member.userId()).toList());
+        return updated;
+    }
+
+    @Transactional
+    public void leaveConversation(CurrentUser currentUser, UUID conversationId) {
+        ConversationDetail conversation = getConversation(currentUser, conversationId);
+        if ("direct".equals(conversation.conversationType()) || "system".equals(conversation.conversationType())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Conversation cannot be left");
+        }
+        imRepository.removeMember(currentUser.workspaceId(), conversationId, currentUser.id());
+        pushConversationEvents(currentUser, conversationId, conversation, List.of(currentUser.id()));
+    }
+
+    @Transactional
+    public void closeDirectConversation(CurrentUser currentUser, UUID conversationId) {
+        ConversationDetail conversation = getConversation(currentUser, conversationId);
+        if (!"direct".equals(conversation.conversationType())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Only direct conversation can be closed");
+        }
+        imRepository.removeMember(currentUser.workspaceId(), conversationId, currentUser.id());
+        pushConversationEvents(currentUser, conversationId, conversation, List.of(currentUser.id()));
+    }
+
+    @Transactional
+    public ConversationDetail setConversationMuted(CurrentUser currentUser, UUID conversationId, boolean muted) {
+        requireMember(currentUser, conversationId);
+        imRepository.setConversationMuted(currentUser.workspaceId(), conversationId, currentUser.id(), muted);
+        return getConversation(currentUser, conversationId);
+    }
+
+    @Transactional
+    public ConversationDetail setConversationPinned(CurrentUser currentUser, UUID conversationId, boolean pinned) {
+        requireMember(currentUser, conversationId);
+        imRepository.setConversationPinned(currentUser.workspaceId(), conversationId, currentUser.id(), pinned);
         return getConversation(currentUser, conversationId);
     }
 
@@ -149,6 +208,7 @@ public class ImService {
         imRepository.updateConversationLastMessage(currentUser.workspaceId(), conversationId, inserted.id());
 
         MessageSummary message = imRepository.findMessageForUser(currentUser.workspaceId(), conversationId, inserted.id(), currentUser.id()).orElse(inserted);
+        registerMessageObject(currentUser.workspaceId(), conversationId, message);
         appendMessageCreatedEvent(currentUser, conversationId, message);
         pushMessageEvents(currentUser, conversationId, message);
         return message;
@@ -223,11 +283,17 @@ public class ImService {
         webSocketMessageSender.sendToUser(
             currentUser.id(),
             "conversation.read",
+            currentUser.workspaceId(),
+            "conversation",
+            conversationId,
             Map.of("conversationId", conversationId, "unread", state)
         );
         webSocketMessageSender.sendToUser(
             currentUser.id(),
             "unread.changed",
+            currentUser.workspaceId(),
+            "conversation",
+            conversationId,
             Map.of("conversationId", conversationId, "unread", state)
         );
         return state;
@@ -285,16 +351,65 @@ public class ImService {
             webSocketMessageSender.sendToUser(
                 memberId,
                 "message.created",
+                currentUser.workspaceId(),
+                "message",
+                message.id(),
                 Map.of("conversationId", conversationId, "message", message)
             );
             webSocketMessageSender.sendToUser(
                 memberId,
                 "conversation.updated",
+                currentUser.workspaceId(),
+                "conversation",
+                conversationId,
                 Map.of("conversationId", conversationId, "conversation", conversation)
             );
             webSocketMessageSender.sendToUser(
                 memberId,
                 "unread.changed",
+                currentUser.workspaceId(),
+                "conversation",
+                conversationId,
+                Map.of(
+                    "conversationId",
+                    conversationId,
+                    "unreadCount",
+                    imRepository.unreadCount(currentUser.workspaceId(), conversationId, memberId),
+                    "totalUnreadCount",
+                    imRepository.totalUnreadCount(currentUser.workspaceId(), memberId)
+                )
+            );
+        }
+    }
+
+    private void pushConversationEvents(CurrentUser currentUser, UUID conversationId, ConversationDetail conversation) {
+        pushConversationEvents(currentUser, conversationId, conversation, List.of());
+    }
+
+    private void pushConversationEvents(
+        CurrentUser currentUser,
+        UUID conversationId,
+        ConversationDetail conversation,
+        List<UUID> extraRecipientIds
+    ) {
+        Set<UUID> recipientIds = new LinkedHashSet<>(imRepository.listMemberIds(currentUser.workspaceId(), conversationId));
+        recipientIds.addAll(extraRecipientIds);
+        conversation.members().stream().map(member -> member.userId()).forEach(recipientIds::add);
+        for (UUID memberId : recipientIds) {
+            webSocketMessageSender.sendToUser(
+                memberId,
+                "conversation.updated",
+                currentUser.workspaceId(),
+                "conversation",
+                conversationId,
+                Map.of("conversationId", conversationId, "conversation", conversation)
+            );
+            webSocketMessageSender.sendToUser(
+                memberId,
+                "unread.changed",
+                currentUser.workspaceId(),
+                "conversation",
+                conversationId,
                 Map.of(
                     "conversationId",
                     conversationId,
@@ -317,6 +432,26 @@ public class ImService {
             Map.of("conversationId", conversationId.toString(), "messageId", message.id().toString()),
             "message.created:" + message.id()
         );
+    }
+
+    private void registerMessageObject(UUID workspaceId, UUID conversationId, MessageSummary message) {
+        objectRepository.upsertObjectLink(
+            workspaceId,
+            "message",
+            message.id(),
+            "/im?conversationId=" + conversationId + "&messageId=" + message.id(),
+            "colla://message/" + message.id(),
+            messageTitle(message)
+        );
+    }
+
+    private String messageTitle(MessageSummary message) {
+        String content = message.content() == null ? "" : message.content().replaceAll("\\s+", " ").trim();
+        if (content.isBlank()) {
+            return message.senderName() + " 的消息";
+        }
+        String preview = content.length() <= 72 ? content : content.substring(0, 72) + "...";
+        return message.senderName() + ": " + preview;
     }
 
     private void appendMessageMutationEvent(CurrentUser currentUser, String eventType, UUID conversationId, MessageSummary message) {

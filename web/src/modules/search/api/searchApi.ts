@@ -9,6 +9,7 @@ export type SearchResult = {
   deepLink: string
   score: number
   updatedAt: string
+  accessState: 'available' | 'forbidden' | 'deleted' | 'not_found' | 'invalid'
 }
 
 export type SearchResponse = {

@@ -44,6 +44,14 @@ public final class PlatformModels {
     ) {
     }
 
+    public record PlatformObjectTypeRule(
+        String objectType,
+        String displayName,
+        String webPathPattern,
+        String deepLinkPattern
+    ) {
+    }
+
     public record ParsedInternalLink(
         boolean resolved,
         String source,

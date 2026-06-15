@@ -16,7 +16,8 @@ public final class SearchModels {
         String webPath,
         String deepLink,
         double score,
-        Instant updatedAt
+        Instant updatedAt,
+        String accessState
     ) {
     }
 

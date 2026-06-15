@@ -3,14 +3,17 @@ import { Alert, Button, Card, Skeleton, Space, Tag, Typography } from 'antd'
 import { LinkOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 
+import { resolveNavigationPath } from '../../../shared/client/collaClient'
 import { getObjectNavigation, resolveInternalLink } from '../api/platformObjectsApi'
 import type { PlatformObjectSummary } from '../api/platformObjectsApi'
+import { objectTypeText } from '../objectTypeLabels'
 
 type InternalLinkCardProps = {
   link: string
 }
 
 const accessText: Record<string, string> = {
+  available: '可打开',
   forbidden: '无权限查看',
   deleted: '对象已删除',
   not_found: '对象不存在',
@@ -37,7 +40,7 @@ export function InternalLinkCard({ link }: InternalLinkCardProps) {
 
   const summary = linkQuery.data.summary
   if (summary.accessState !== 'available') {
-    return <Alert type="warning" title={accessText[summary.accessState]} showIcon />
+    return <Alert type="warning" title={accessText[summary.accessState] ?? '对象不可访问'} showIcon />
   }
 
   return <ObjectSummaryCard summary={summary} />
@@ -48,7 +51,7 @@ export function ObjectSummaryCard({ summary, onOpen }: { summary: PlatformObject
   const openMutation = useMutation({
     mutationFn: () => getObjectNavigation(summary.objectType, summary.objectId),
     onSuccess: (navigation) => {
-      const target = navigation.webPath || navigation.mobileFallbackPath || summary.webPath
+      const target = resolveNavigationPath(navigation) || resolveNavigationPath(summary)
       if (target) {
         navigate(target)
       }
@@ -70,7 +73,7 @@ export function ObjectSummaryCard({ summary, onOpen }: { summary: PlatformObject
           <Space size={8}>
             <LinkOutlined />
             <Typography.Text strong>{summary.title || '未命名对象'}</Typography.Text>
-            <Tag>{summary.objectType}</Tag>
+            <Tag>{objectTypeText[summary.objectType] ?? summary.objectType}</Tag>
             {summary.status ? <Tag color="blue">{summary.status}</Tag> : null}
           </Space>
           {summary.subtitle ? <Typography.Text type="secondary">{summary.subtitle}</Typography.Text> : null}

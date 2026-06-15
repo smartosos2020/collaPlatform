@@ -72,6 +72,8 @@ public class JdbcImRepository implements ImRepository {
                               last_read_message_id = excluded.last_read_message_id,
                               last_read_at = excluded.last_read_at,
                               joined_at = now(),
+                              muted = false,
+                              pinned_at = null,
                               archived_at = null
                 """,
             workspaceId,
@@ -81,6 +83,64 @@ public class JdbcImRepository implements ImRepository {
             conversationId,
             userId,
             memberRole
+        );
+    }
+
+    @Override
+    public void removeMember(UUID workspaceId, UUID conversationId, UUID userId) {
+        jdbcTemplate.update(
+            """
+                update conversation_members
+                set archived_at = now()
+                where workspace_id = ? and conversation_id = ? and user_id = ? and archived_at is null
+                """,
+            workspaceId,
+            conversationId,
+            userId
+        );
+    }
+
+    @Override
+    public void setConversationMuted(UUID workspaceId, UUID conversationId, UUID userId, boolean muted) {
+        jdbcTemplate.update(
+            """
+                update conversation_members
+                set muted = ?
+                where workspace_id = ? and conversation_id = ? and user_id = ? and archived_at is null
+                """,
+            muted,
+            workspaceId,
+            conversationId,
+            userId
+        );
+    }
+
+    @Override
+    public void setConversationPinned(UUID workspaceId, UUID conversationId, UUID userId, boolean pinned) {
+        jdbcTemplate.update(
+            """
+                update conversation_members
+                set pinned_at = case when ? then now() else null end
+                where workspace_id = ? and conversation_id = ? and user_id = ? and archived_at is null
+                """,
+            pinned,
+            workspaceId,
+            conversationId,
+            userId
+        );
+    }
+
+    @Override
+    public void updateConversationType(UUID workspaceId, UUID conversationId, String conversationType) {
+        jdbcTemplate.update(
+            """
+                update conversations
+                set conversation_type = ?, updated_at = now()
+                where workspace_id = ? and id = ? and archived_at is null
+                """,
+            conversationType,
+            workspaceId,
+            conversationId
         );
     }
 
@@ -118,19 +178,23 @@ public class JdbcImRepository implements ImRepository {
 
     @Override
     public List<ConversationSummary> listConversations(UUID workspaceId, UUID userId) {
-        return jdbcTemplate.query(
+        List<ConversationRow> rows = jdbcTemplate.query(
             """
                 select c.id, c.conversation_type, c.title, c.last_message_id, c.last_message_at, c.created_at,
+                       cm.muted, cm.pinned_at,
                        (select count(*) from conversation_members cm2 where cm2.conversation_id = c.id and cm2.archived_at is null) member_count
                 from conversations c
                 join conversation_members cm on cm.conversation_id = c.id
                 where c.workspace_id = ? and cm.user_id = ? and cm.archived_at is null and c.archived_at is null
-                order by c.last_message_at desc nulls last, c.created_at desc
+                order by cm.pinned_at desc nulls last, c.last_message_at desc nulls last, c.created_at desc
                 """,
-            (rs, rowNum) -> mapConversationSummary(rs, workspaceId, userId),
+            (rs, rowNum) -> mapConversationRow(rs),
             workspaceId,
             userId
         );
+        return rows.stream()
+            .map(row -> toConversationSummary(row, workspaceId, userId))
+            .toList();
     }
 
     @Override
@@ -139,26 +203,32 @@ public class JdbcImRepository implements ImRepository {
             return Optional.empty();
         }
         try {
-            return Optional.ofNullable(jdbcTemplate.queryForObject(
+            ConversationRow row = jdbcTemplate.queryForObject(
                 """
                     select c.id, c.conversation_type, c.title, c.last_message_id, c.last_message_at, c.created_at,
+                           cm.muted, cm.pinned_at,
                            (select count(*) from conversation_members cm2 where cm2.conversation_id = c.id and cm2.archived_at is null) member_count
                     from conversations c
+                    join conversation_members cm on cm.conversation_id = c.id and cm.user_id = ? and cm.archived_at is null
                     where c.workspace_id = ? and c.id = ? and c.archived_at is null
                     """,
-                (rs, rowNum) -> new ConversationDetail(
-                    rs.getObject("id", UUID.class),
-                    rs.getString("conversation_type"),
-                    rs.getString("title"),
-                    rs.getInt("member_count"),
-                    listMembers(workspaceId, conversationId),
-                    nullableMessage(workspaceId, conversationId, rs.getObject("last_message_id", UUID.class)),
-                    unreadCount(workspaceId, conversationId, userId),
-                    toInstant(rs, "last_message_at"),
-                    rs.getTimestamp("created_at").toInstant()
-                ),
+                (rs, rowNum) -> mapConversationRow(rs),
+                userId,
                 workspaceId,
                 conversationId
+            );
+            return Optional.of(new ConversationDetail(
+                row.id(),
+                row.conversationType(),
+                row.title(),
+                row.memberCount(),
+                listMembers(workspaceId, row.id()),
+                row.muted(),
+                row.pinnedAt(),
+                nullableMessage(workspaceId, row.id(), row.lastMessageId()),
+                unreadCount(workspaceId, row.id(), userId),
+                row.lastMessageAt(),
+                row.createdAt()
             ));
         } catch (EmptyResultDataAccessException exception) {
             return Optional.empty();
@@ -259,7 +329,7 @@ public class JdbcImRepository implements ImRepository {
             return Optional.empty();
         }
         try {
-            return Optional.ofNullable(jdbcTemplate.queryForObject(
+            MessageRow row = jdbcTemplate.queryForObject(
                 """
                     select m.id, m.conversation_id, m.sender_id, u.display_name sender_name,
                            m.message_type, m.content, m.client_message_id, m.created_at,
@@ -268,11 +338,12 @@ public class JdbcImRepository implements ImRepository {
                     join users u on u.id = m.sender_id
                     where m.workspace_id = ? and m.conversation_id = ? and m.id = ? and m.deleted_at is null
                     """,
-                (rs, rowNum) -> mapMessage(rs, null),
+                (rs, rowNum) -> mapMessageRow(rs),
                 workspaceId,
                 conversationId,
                 messageId
-            ));
+            );
+            return Optional.of(toMessageSummary(workspaceId, row, null));
         } catch (EmptyResultDataAccessException exception) {
             return Optional.empty();
         }
@@ -284,7 +355,7 @@ public class JdbcImRepository implements ImRepository {
             return Optional.empty();
         }
         try {
-            return Optional.ofNullable(jdbcTemplate.queryForObject(
+            MessageRow row = jdbcTemplate.queryForObject(
                 """
                     select m.id, m.conversation_id, m.sender_id, u.display_name sender_name,
                            m.message_type, m.content, m.client_message_id, m.created_at,
@@ -293,11 +364,40 @@ public class JdbcImRepository implements ImRepository {
                     join users u on u.id = m.sender_id
                     where m.workspace_id = ? and m.conversation_id = ? and m.id = ? and m.deleted_at is null
                     """,
-                (rs, rowNum) -> mapMessage(rs, userId),
+                (rs, rowNum) -> mapMessageRow(rs),
                 workspaceId,
                 conversationId,
                 messageId
-            ));
+            );
+            return Optional.of(toMessageSummary(workspaceId, row, userId));
+        } catch (EmptyResultDataAccessException exception) {
+            return Optional.empty();
+        }
+    }
+
+    @Override
+    public Optional<MessageSummary> findMessageForUser(UUID workspaceId, UUID messageId, UUID userId) {
+        if (messageId == null) {
+            return Optional.empty();
+        }
+        try {
+            MessageRow row = jdbcTemplate.queryForObject(
+                """
+                    select m.id, m.conversation_id, m.sender_id, u.display_name sender_name,
+                           m.message_type, m.content, m.client_message_id, m.created_at,
+                           m.edited_at, m.revoked_at, m.pinned_at, m.pinned_by
+                    from messages m
+                    join users u on u.id = m.sender_id
+                    join conversations c on c.id = m.conversation_id and c.archived_at is null
+                    join conversation_members cm on cm.conversation_id = c.id and cm.user_id = ? and cm.archived_at is null
+                    where m.workspace_id = ? and m.id = ? and m.deleted_at is null
+                    """,
+                (rs, rowNum) -> mapMessageRow(rs),
+                userId,
+                workspaceId,
+                messageId
+            );
+            return Optional.of(toMessageSummary(workspaceId, row, userId));
         } catch (EmptyResultDataAccessException exception) {
             return Optional.empty();
         }
@@ -311,7 +411,7 @@ public class JdbcImRepository implements ImRepository {
         if (beforeId == null) {
             return listLatestMessages(workspaceId, conversationId, userId, limit);
         }
-        return jdbcTemplate.query(
+        List<MessageRow> rows = jdbcTemplate.query(
             """
                 select m.id, m.conversation_id, m.sender_id, u.display_name sender_name,
                        m.message_type, m.content, m.client_message_id, m.created_at,
@@ -320,19 +420,22 @@ public class JdbcImRepository implements ImRepository {
                 join users u on u.id = m.sender_id
                 where m.workspace_id = ? and m.conversation_id = ? and m.deleted_at is null
                   and m.message_seq < (select message_seq from messages where id = ?)
-                order by m.pinned_at desc nulls last, m.message_seq desc
+                order by m.message_seq desc
                 limit ?
                 """,
-            (rs, rowNum) -> mapMessage(rs, userId),
+            (rs, rowNum) -> mapMessageRow(rs),
             workspaceId,
             conversationId,
             beforeId,
             limit
         );
+        return rows.stream()
+            .map(row -> toMessageSummary(workspaceId, row, userId))
+            .toList();
     }
 
     private List<MessageSummary> listLatestMessages(UUID workspaceId, UUID conversationId, UUID userId, int limit) {
-        return jdbcTemplate.query(
+        List<MessageRow> rows = jdbcTemplate.query(
             """
                 select m.id, m.conversation_id, m.sender_id, u.display_name sender_name,
                        m.message_type, m.content, m.client_message_id, m.created_at,
@@ -340,14 +443,17 @@ public class JdbcImRepository implements ImRepository {
                 from messages m
                 join users u on u.id = m.sender_id
                 where m.workspace_id = ? and m.conversation_id = ? and m.deleted_at is null
-                order by m.pinned_at desc nulls last, m.message_seq desc
+                order by m.message_seq desc
                 limit ?
                 """,
-            (rs, rowNum) -> mapMessage(rs, userId),
+            (rs, rowNum) -> mapMessageRow(rs),
             workspaceId,
             conversationId,
             limit
         );
+        return rows.stream()
+            .map(row -> toMessageSummary(workspaceId, row, userId))
+            .toList();
     }
 
     @Override
@@ -570,12 +676,20 @@ public class JdbcImRepository implements ImRepository {
                 update conversation_members
                 set last_read_message_id = ?, last_read_at = ?
                 where workspace_id = ? and conversation_id = ? and user_id = ? and archived_at is null
+                  and (
+                      ? is null
+                      or last_read_message_id is null
+                      or (select target_message.message_seq from messages target_message where target_message.id = ?)
+                         >= (select read_marker.message_seq from messages read_marker where read_marker.id = last_read_message_id)
+                  )
                 """,
             targetMessageId,
             lastReadAt,
             workspaceId,
             conversationId,
-            userId
+            userId,
+            targetMessageId,
+            targetMessageId
         );
     }
 
@@ -585,7 +699,7 @@ public class JdbcImRepository implements ImRepository {
             """
                 select count(*)
                 from messages m
-                join conversation_members cm on cm.conversation_id = m.conversation_id and cm.user_id = ?
+                join conversation_members cm on cm.conversation_id = m.conversation_id and cm.user_id = ? and cm.archived_at is null
                 where m.workspace_id = ? and m.conversation_id = ? and m.sender_id <> ?
                   and m.deleted_at is null
                   and (
@@ -612,7 +726,7 @@ public class JdbcImRepository implements ImRepository {
             """
                 select count(*)
                 from messages m
-                join conversation_members cm on cm.conversation_id = m.conversation_id and cm.user_id = ?
+                join conversation_members cm on cm.conversation_id = m.conversation_id and cm.user_id = ? and cm.archived_at is null
                 where m.workspace_id = ? and m.sender_id <> ? and m.deleted_at is null
                   and (
                       cm.last_read_message_id is null
@@ -631,25 +745,38 @@ public class JdbcImRepository implements ImRepository {
         return count == null ? 0 : count;
     }
 
-    private ConversationSummary mapConversationSummary(ResultSet rs, UUID workspaceId, UUID userId) throws SQLException {
-        UUID conversationId = rs.getObject("id", UUID.class);
-        return new ConversationSummary(
-            conversationId,
+    private ConversationRow mapConversationRow(ResultSet rs) throws SQLException {
+        return new ConversationRow(
+            rs.getObject("id", UUID.class),
             rs.getString("conversation_type"),
             rs.getString("title"),
-            rs.getInt("member_count"),
-            nullableMessage(workspaceId, conversationId, rs.getObject("last_message_id", UUID.class)),
-            unreadCount(workspaceId, conversationId, userId),
+            rs.getObject("last_message_id", UUID.class),
             toInstant(rs, "last_message_at"),
-            rs.getTimestamp("created_at").toInstant()
+            rs.getTimestamp("created_at").toInstant(),
+            rs.getBoolean("muted"),
+            toInstant(rs, "pinned_at"),
+            rs.getInt("member_count")
         );
     }
 
-    private MessageSummary mapMessage(ResultSet rs, UUID currentUserId) throws SQLException {
-        UUID messageId = rs.getObject("id", UUID.class);
-        UUID workspaceId = currentWorkspaceId(rs.getObject("conversation_id", UUID.class));
-        return new MessageSummary(
-            messageId,
+    private ConversationSummary toConversationSummary(ConversationRow row, UUID workspaceId, UUID userId) {
+        return new ConversationSummary(
+            row.id(),
+            row.conversationType(),
+            row.title(),
+            row.memberCount(),
+            row.muted(),
+            row.pinnedAt(),
+            nullableMessage(workspaceId, row.id(), row.lastMessageId()),
+            unreadCount(workspaceId, row.id(), userId),
+            row.lastMessageAt(),
+            row.createdAt()
+        );
+    }
+
+    private MessageRow mapMessageRow(ResultSet rs) throws SQLException {
+        return new MessageRow(
+            rs.getObject("id", UUID.class),
             rs.getObject("conversation_id", UUID.class),
             rs.getObject("sender_id", UUID.class),
             rs.getString("sender_name"),
@@ -660,16 +787,33 @@ public class JdbcImRepository implements ImRepository {
             toInstant(rs, "edited_at"),
             toInstant(rs, "revoked_at"),
             toInstant(rs, "pinned_at"),
-            rs.getObject("pinned_by", UUID.class),
-            listMentions(workspaceId, messageId),
-            listLinks(workspaceId, messageId),
-            listReactions(workspaceId, messageId, currentUserId)
+            rs.getObject("pinned_by", UUID.class)
+        );
+    }
+
+    private MessageSummary toMessageSummary(UUID workspaceId, MessageRow row, UUID currentUserId) {
+        return new MessageSummary(
+            row.id(),
+            row.conversationId(),
+            row.senderId(),
+            row.senderName(),
+            row.messageType(),
+            row.content(),
+            row.clientMessageId(),
+            row.createdAt(),
+            row.editedAt(),
+            row.revokedAt(),
+            row.pinnedAt(),
+            row.pinnedBy(),
+            listMentions(workspaceId, row.id()),
+            listLinks(workspaceId, row.id()),
+            listReactions(workspaceId, row.id(), currentUserId)
         );
     }
 
     private Optional<MessageSummary> findMessageByClientId(UUID workspaceId, UUID conversationId, UUID senderId, String clientMessageId) {
         try {
-            return Optional.ofNullable(jdbcTemplate.queryForObject(
+            MessageRow row = jdbcTemplate.queryForObject(
                 """
                     select m.id, m.conversation_id, m.sender_id, u.display_name sender_name,
                            m.message_type, m.content, m.client_message_id, m.created_at,
@@ -678,12 +822,13 @@ public class JdbcImRepository implements ImRepository {
                     join users u on u.id = m.sender_id
                     where m.workspace_id = ? and m.conversation_id = ? and m.sender_id = ? and m.client_message_id = ?
                     """,
-                (rs, rowNum) -> mapMessage(rs, senderId),
+                (rs, rowNum) -> mapMessageRow(rs),
                 workspaceId,
                 conversationId,
                 senderId,
                 clientMessageId
-            ));
+            );
+            return Optional.of(toMessageSummary(workspaceId, row, senderId));
         } catch (EmptyResultDataAccessException exception) {
             return Optional.empty();
         }
@@ -712,10 +857,6 @@ public class JdbcImRepository implements ImRepository {
         }
     }
 
-    private UUID currentWorkspaceId(UUID conversationId) {
-        return jdbcTemplate.queryForObject("select workspace_id from conversations where id = ?", UUID.class, conversationId);
-    }
-
     private Instant toInstant(ResultSet rs, String column) throws SQLException {
         Timestamp timestamp = rs.getTimestamp(column);
         return timestamp == null ? null : timestamp.toInstant();
@@ -741,5 +882,34 @@ public class JdbcImRepository implements ImRepository {
         } catch (Exception exception) {
             throw new IllegalStateException("Invalid card snapshot", exception);
         }
+    }
+
+    private record ConversationRow(
+        UUID id,
+        String conversationType,
+        String title,
+        UUID lastMessageId,
+        Instant lastMessageAt,
+        Instant createdAt,
+        boolean muted,
+        Instant pinnedAt,
+        int memberCount
+    ) {
+    }
+
+    private record MessageRow(
+        UUID id,
+        UUID conversationId,
+        UUID senderId,
+        String senderName,
+        String messageType,
+        String content,
+        String clientMessageId,
+        Instant createdAt,
+        Instant editedAt,
+        Instant revokedAt,
+        Instant pinnedAt,
+        UUID pinnedBy
+    ) {
     }
 }

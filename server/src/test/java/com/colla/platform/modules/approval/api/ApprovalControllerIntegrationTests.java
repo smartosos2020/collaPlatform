@@ -56,7 +56,7 @@ class ApprovalControllerIntegrationTests {
         mockMvc.perform(get("/api/notifications?status=unread&targetType=approval")
                 .header("Authorization", "Bearer " + adminToken))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$[0].targetId").value(approvedInstanceId.toString()));
+            .andExpect(jsonPath("$[*].targetId", hasItem(approvedInstanceId.toString())));
 
         UUID conversationId = createConversation(applicantToken, adminId);
         mockMvc.perform(post("/api/conversations/" + conversationId + "/messages")
@@ -81,7 +81,7 @@ class ApprovalControllerIntegrationTests {
                 .content("{\"comment\":\"同意\"}"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.instance.status").value("approved"))
-            .andExpect(jsonPath("$.actions[0].action").value("approved"));
+            .andExpect(jsonPath("$.actions[*].action", hasItem("approved")));
 
         UUID withdrawnInstanceId = startLeave(applicantToken, leaveFormId, "M10 撤回审批");
         mockMvc.perform(post("/api/approvals/instances/" + withdrawnInstanceId + "/withdraw")
@@ -98,7 +98,7 @@ class ApprovalControllerIntegrationTests {
                 .content("{\"assigneeId\":\"" + reviewerId + "\",\"comment\":\"请代审\"}"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.tasks[0].assigneeId").value(reviewerId.toString()))
-            .andExpect(jsonPath("$.actions[0].action").value("transferred"));
+            .andExpect(jsonPath("$.actions[*].action", hasItem("transferred")));
 
         mockMvc.perform(post("/api/approvals/instances/" + rejectedInstanceId + "/reject")
                 .header("Authorization", "Bearer " + reviewerToken)

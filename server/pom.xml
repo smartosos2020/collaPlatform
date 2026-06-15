@@ -114,6 +114,9 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <configuration>
                     <argLine>-Xshare:off -javaagent:${settings.localRepository}/org/mockito/mockito-core/${mockito.version}/mockito-core-${mockito.version}.jar</argLine>
+                    <systemPropertyVariables>
+                        <LOG_PATH>${project.basedir}/../.local-logs/server-test</LOG_PATH>
+                    </systemPropertyVariables>
                 </configuration>
             </plugin>
         </plugins>

@@ -3,6 +3,7 @@ package com.colla.platform.modules.event.application;
 import com.colla.platform.modules.event.domain.DomainEventModels.DomainEvent;
 import com.colla.platform.modules.event.infrastructure.DomainEventRepository;
 import com.colla.platform.modules.notification.infrastructure.NotificationRepository;
+import com.colla.platform.modules.search.application.SearchIndexService;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Map;
@@ -16,10 +17,16 @@ public class DomainEventWorker {
 
     private final DomainEventRepository eventRepository;
     private final NotificationRepository notificationRepository;
+    private final SearchIndexService searchIndexService;
 
-    public DomainEventWorker(DomainEventRepository eventRepository, NotificationRepository notificationRepository) {
+    public DomainEventWorker(
+        DomainEventRepository eventRepository,
+        NotificationRepository notificationRepository,
+        SearchIndexService searchIndexService
+    ) {
         this.eventRepository = eventRepository;
         this.notificationRepository = notificationRepository;
+        this.searchIndexService = searchIndexService;
     }
 
     @Scheduled(fixedDelayString = "${colla.events.worker-delay-ms:5000}")
@@ -58,5 +65,6 @@ public class DomainEventWorker {
                 payload.getOrDefault("dedupeKey", event.id().toString()).toString()
             );
         }
+        searchIndexService.handleEvent(event);
     }
 }

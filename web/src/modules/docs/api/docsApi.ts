@@ -44,9 +44,26 @@ export type DocumentComment = {
   createdAt: string
 }
 
+export type DocumentBlock = {
+  id: string
+  documentId: string
+  blockType: 'paragraph' | 'heading' | 'list' | 'task' | 'quote' | 'code'
+  content: string
+  sortOrder: number
+  createdAt: string
+  updatedAt: string
+}
+
+export type DocumentBlockDraft = {
+  blockType: DocumentBlock['blockType']
+  content: string
+  sortOrder?: number
+}
+
 export type DocumentDetail = {
   document: DocumentSummary
   content: string
+  blocks: DocumentBlock[]
   relations: DocumentRelation[]
   permissions: DocumentPermission[]
   comments: DocumentComment[]
@@ -91,6 +108,17 @@ export function getDocument(documentId: string) {
 
 export function saveDocument(documentId: string, request: { baseVersionNo: number; title: string; content: string }) {
   return apiPatch<DocumentDetail>(`/docs/${documentId}`, request)
+}
+
+export function listDocumentBlocks(documentId: string) {
+  return apiGet<DocumentBlock[]>(`/docs/${documentId}/blocks`)
+}
+
+export function saveDocumentBlocks(
+  documentId: string,
+  request: { baseVersionNo: number; blocks: DocumentBlockDraft[] },
+) {
+  return apiPatch<DocumentDetail>(`/docs/${documentId}/blocks`, request)
 }
 
 export function moveDocument(documentId: string, parentId?: string | null) {

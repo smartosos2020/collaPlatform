@@ -1,6 +1,8 @@
 package com.colla.platform.modules.doc.api;
 
 import com.colla.platform.modules.doc.application.DocumentService;
+import com.colla.platform.modules.doc.domain.DocumentModels.DocumentBlock;
+import com.colla.platform.modules.doc.domain.DocumentModels.DocumentBlockDraft;
 import com.colla.platform.modules.doc.domain.DocumentModels.DocumentDetail;
 import com.colla.platform.modules.doc.domain.DocumentModels.DocumentSummary;
 import com.colla.platform.modules.doc.domain.DocumentModels.DocumentVersion;
@@ -59,6 +61,20 @@ public class DocumentController {
             request.title(),
             request.content()
         );
+    }
+
+    @GetMapping("/docs/{documentId}/blocks")
+    public List<DocumentBlock> blocks(@PathVariable UUID documentId, Authentication authentication) {
+        return documentService.listBlocks(currentUser(authentication), documentId);
+    }
+
+    @PatchMapping("/docs/{documentId}/blocks")
+    public DocumentDetail saveBlocks(
+        @PathVariable UUID documentId,
+        @Valid @RequestBody SaveDocumentBlocksRequest request,
+        Authentication authentication
+    ) {
+        return documentService.saveBlocks(currentUser(authentication), documentId, request.baseVersionNo(), request.blocks());
     }
 
     @PostMapping("/docs/{documentId}/move")
@@ -129,6 +145,9 @@ public class DocumentController {
     }
 
     public record SaveDocumentRequest(int baseVersionNo, @Size(max = 255) String title, String content) {
+    }
+
+    public record SaveDocumentBlocksRequest(int baseVersionNo, @NotNull List<DocumentBlockDraft> blocks) {
     }
 
     public record MoveDocumentRequest(UUID parentId) {

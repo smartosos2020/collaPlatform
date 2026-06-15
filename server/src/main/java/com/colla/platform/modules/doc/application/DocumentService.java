@@ -2,6 +2,8 @@ package com.colla.platform.modules.doc.application;
 
 import com.colla.platform.modules.base.application.BaseService;
 import com.colla.platform.modules.audit.application.AuditService;
+import com.colla.platform.modules.doc.domain.DocumentModels.DocumentBlock;
+import com.colla.platform.modules.doc.domain.DocumentModels.DocumentBlockDraft;
 import com.colla.platform.modules.doc.domain.DocumentModels.DocumentDetail;
 import com.colla.platform.modules.doc.domain.DocumentModels.DocumentDiffLine;
 import com.colla.platform.modules.doc.domain.DocumentModels.DocumentSummary;
@@ -11,6 +13,7 @@ import com.colla.platform.modules.doc.infrastructure.DocumentRepository;
 import com.colla.platform.modules.event.infrastructure.DomainEventRepository;
 import com.colla.platform.modules.file.infrastructure.FileRepository;
 import com.colla.platform.modules.platform.infrastructure.PlatformObjectRepository;
+import com.colla.platform.modules.permission.application.PermissionDecisionService;
 import com.colla.platform.modules.project.domain.ProjectModels.IssueSummary;
 import com.colla.platform.modules.project.infrastructure.ProjectRepository;
 import com.colla.platform.shared.auth.CurrentUser;
@@ -38,6 +41,7 @@ public class DocumentService {
     private final FileRepository fileRepository;
     private final BaseService baseService;
     private final AuditService auditService;
+    private final PermissionDecisionService permissionDecisionService;
 
     public DocumentService(
         DocumentRepository documentRepository,
@@ -46,7 +50,8 @@ public class DocumentService {
         ProjectRepository projectRepository,
         FileRepository fileRepository,
         BaseService baseService,
-        AuditService auditService
+        AuditService auditService,
+        PermissionDecisionService permissionDecisionService
     ) {
         this.documentRepository = documentRepository;
         this.objectRepository = objectRepository;
@@ -55,6 +60,7 @@ public class DocumentService {
         this.fileRepository = fileRepository;
         this.baseService = baseService;
         this.auditService = auditService;
+        this.permissionDecisionService = permissionDecisionService;
     }
 
     public List<DocumentSummary> listDocuments(CurrentUser currentUser) {
@@ -71,6 +77,7 @@ public class DocumentService {
         UUID documentId = documentRepository.createDocument(currentUser.workspaceId(), parentId, normalizedTitle, normalizedContent, currentUser.id());
         documentRepository.upsertPermission(currentUser.workspaceId(), documentId, currentUser.id(), "manage", currentUser.id());
         documentRepository.addVersion(currentUser.workspaceId(), documentId, 1, normalizedTitle, normalizedContent, currentUser.id());
+        documentRepository.replaceBlocks(currentUser.workspaceId(), documentId, blocksFromContent(normalizedContent), currentUser.id());
         registerDocumentObject(currentUser.workspaceId(), documentId, normalizedTitle);
         eventRepository.append(
             currentUser.workspaceId(),
@@ -91,6 +98,7 @@ public class DocumentService {
         return new DocumentDetail(
             summary,
             content,
+            documentRepository.listBlocks(currentUser.workspaceId(), documentId),
             documentRepository.listRelations(currentUser.workspaceId(), documentId),
             documentRepository.listPermissions(currentUser.workspaceId(), documentId),
             documentRepository.listComments(currentUser.workspaceId(), documentId)
@@ -116,6 +124,7 @@ public class DocumentService {
             currentUser.id()
         );
         documentRepository.addVersion(currentUser.workspaceId(), documentId, nextVersionNo, normalizedTitle, normalizedContent, currentUser.id());
+        documentRepository.replaceBlocks(currentUser.workspaceId(), documentId, blocksFromContent(normalizedContent), currentUser.id());
         registerDocumentObject(currentUser.workspaceId(), documentId, normalizedTitle);
         eventRepository.append(
             currentUser.workspaceId(),
@@ -147,6 +156,44 @@ public class DocumentService {
         return documentRepository.listVersions(currentUser.workspaceId(), documentId);
     }
 
+    public List<DocumentBlock> listBlocks(CurrentUser currentUser, UUID documentId) {
+        requireView(currentUser, documentId);
+        return documentRepository.listBlocks(currentUser.workspaceId(), documentId);
+    }
+
+    @Transactional
+    public DocumentDetail saveBlocks(CurrentUser currentUser, UUID documentId, int baseVersionNo, List<DocumentBlockDraft> blocks) {
+        DocumentSummary before = requireEdit(currentUser, documentId);
+        if (baseVersionNo != before.currentVersionNo()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Document version conflict");
+        }
+        List<DocumentBlockDraft> normalizedBlocks = normalizeBlocks(blocks);
+        String normalizedContent = contentFromBlocks(normalizedBlocks);
+        int nextVersionNo = before.currentVersionNo() + 1;
+        documentRepository.updateDocument(
+            currentUser.workspaceId(),
+            documentId,
+            before.parentId(),
+            before.title(),
+            normalizedContent,
+            nextVersionNo,
+            currentUser.id()
+        );
+        documentRepository.addVersion(currentUser.workspaceId(), documentId, nextVersionNo, before.title(), normalizedContent, currentUser.id());
+        documentRepository.replaceBlocks(currentUser.workspaceId(), documentId, normalizedBlocks, currentUser.id());
+        registerDocumentObject(currentUser.workspaceId(), documentId, before.title());
+        eventRepository.append(
+            currentUser.workspaceId(),
+            "document.blocks.updated",
+            "document",
+            documentId,
+            currentUser.id(),
+            Map.of("documentId", documentId.toString(), "versionNo", Integer.toString(nextVersionNo)),
+            "document.blocks.updated:" + documentId + ":" + nextVersionNo
+        );
+        return getDocument(currentUser, documentId);
+    }
+
     public DocumentVersionDiff diffVersions(CurrentUser currentUser, UUID documentId, int fromVersionNo, int toVersionNo) {
         requireView(currentUser, documentId);
         DocumentVersion from = documentRepository.findVersion(currentUser.workspaceId(), documentId, fromVersionNo)
@@ -172,6 +219,7 @@ public class DocumentService {
             currentUser.id()
         );
         documentRepository.addVersion(currentUser.workspaceId(), documentId, nextVersionNo, version.title(), version.content(), currentUser.id());
+        documentRepository.replaceBlocks(currentUser.workspaceId(), documentId, blocksFromContent(version.content()), currentUser.id());
         registerDocumentObject(currentUser.workspaceId(), documentId, version.title());
         eventRepository.append(
             currentUser.workspaceId(),
@@ -278,7 +326,7 @@ public class DocumentService {
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Document not found"));
         String permission = documentRepository.findPermissionLevel(currentUser.workspaceId(), documentId, currentUser.id())
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "Document access denied"));
-        if (!hasPermission(permission, requiredLevel)) {
+        if (!permissionDecisionService.hasLevel(permission, requiredLevel)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Document access denied");
         }
         return withPermission(document, permission);
@@ -365,19 +413,6 @@ public class DocumentService {
         return (content == null ? "" : content).split("\\R", -1);
     }
 
-    private boolean hasPermission(String currentLevel, String requiredLevel) {
-        return permissionRank(currentLevel) >= permissionRank(requiredLevel);
-    }
-
-    private int permissionRank(String permissionLevel) {
-        return switch (permissionLevel) {
-            case "manage" -> 3;
-            case "edit" -> 2;
-            case "view" -> 1;
-            default -> 0;
-        };
-    }
-
     private DocumentSummary withPermission(DocumentSummary document, String permissionLevel) {
         return new DocumentSummary(
             document.id(),
@@ -414,6 +449,87 @@ public class DocumentService {
         String type = targetType == null ? "" : targetType.toLowerCase();
         if (!List.of("issue", "base", "base_table", "base_record", "file").contains(type)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid relation target type");
+        }
+        return type;
+    }
+
+    private List<DocumentBlockDraft> blocksFromContent(String content) {
+        String[] lines = splitLines(content);
+        List<DocumentBlockDraft> blocks = new ArrayList<>();
+        for (String line : lines) {
+            String trimmed = line.trim();
+            if (trimmed.isBlank()) {
+                continue;
+            }
+            blocks.add(new DocumentBlockDraft(inferBlockType(trimmed), normalizeBlockContent(trimmed), blocks.size()));
+        }
+        if (blocks.isEmpty()) {
+            blocks.add(new DocumentBlockDraft("paragraph", "", 0));
+        }
+        return blocks;
+    }
+
+    private List<DocumentBlockDraft> normalizeBlocks(List<DocumentBlockDraft> blocks) {
+        if (blocks == null || blocks.isEmpty()) {
+            return List.of(new DocumentBlockDraft("paragraph", "", 0));
+        }
+        List<DocumentBlockDraft> normalized = new ArrayList<>();
+        for (DocumentBlockDraft block : blocks) {
+            String blockType = normalizeBlockType(block.blockType());
+            String content = block.content() == null ? "" : block.content();
+            normalized.add(new DocumentBlockDraft(blockType, content, normalized.size()));
+        }
+        return normalized;
+    }
+
+    private String contentFromBlocks(List<DocumentBlockDraft> blocks) {
+        return blocks.stream()
+            .map(block -> switch (block.blockType()) {
+                case "heading" -> "# " + block.content();
+                case "list" -> "- " + block.content();
+                case "task" -> "- [ ] " + block.content();
+                case "quote" -> "> " + block.content();
+                case "code" -> "```\n" + block.content() + "\n```";
+                default -> block.content();
+            })
+            .toList()
+            .stream()
+            .reduce((left, right) -> left + "\n" + right)
+            .orElse("");
+    }
+
+    private String inferBlockType(String line) {
+        if (line.startsWith("#")) {
+            return "heading";
+        }
+        String lowerLine = line.toLowerCase();
+        if (line.startsWith("- [ ]") || lowerLine.startsWith("- [x]")) {
+            return "task";
+        }
+        if (line.startsWith("- ")) {
+            return "list";
+        }
+        if (line.startsWith(">")) {
+            return "quote";
+        }
+        if (line.startsWith("```")) {
+            return "code";
+        }
+        return "paragraph";
+    }
+
+    private String normalizeBlockContent(String line) {
+        return line
+            .replaceFirst("^#{1,6}\\s*", "")
+            .replaceFirst("^- \\[[ xX]\\]\\s*", "")
+            .replaceFirst("^-\\s+", "")
+            .replaceFirst("^>\\s*", "");
+    }
+
+    private String normalizeBlockType(String blockType) {
+        String type = blockType == null ? "" : blockType.toLowerCase();
+        if (!List.of("paragraph", "heading", "list", "task", "quote", "code").contains(type)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid document block type");
         }
         return type;
     }

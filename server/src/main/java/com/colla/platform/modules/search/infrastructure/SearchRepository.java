@@ -6,4 +6,6 @@ import java.util.UUID;
 
 public interface SearchRepository {
     List<SearchResult> search(UUID workspaceId, UUID userId, String query, int limit);
+
+    void refreshWorkspaceIndex(UUID workspaceId);
 }

@@ -24,6 +24,20 @@ public class WebSocketMessageSender {
         }
     }
 
+    public void sendToUser(
+        UUID userId,
+        String type,
+        UUID workspaceId,
+        String objectType,
+        UUID objectId,
+        Map<String, Object> payload
+    ) {
+        WebSocketEventPayload event = WebSocketEventPayload.of(type, workspaceId, objectType, objectId, payload);
+        for (WebSocketSession session : registry.sessions(userId)) {
+            send(session, event);
+        }
+    }
+
     private void send(WebSocketSession session, WebSocketEventPayload event) {
         if (!session.isOpen()) {
             return;

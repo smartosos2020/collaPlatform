@@ -2,6 +2,7 @@ package com.colla.platform.modules.platform.infrastructure;
 
 import com.colla.platform.modules.platform.domain.PlatformModels.ObjectLinkRecord;
 import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectReference;
+import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectTypeRule;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -14,6 +15,8 @@ public interface PlatformObjectRepository {
     void upsertObjectLink(UUID workspaceId, String objectType, UUID objectId, String webPath, String deepLink, String titleSnapshot);
 
     List<String> listObjectTypes();
+
+    List<PlatformObjectTypeRule> listObjectTypeRules();
 
     void recordRecentAccess(UUID workspaceId, UUID userId, String objectType, UUID objectId, String webPath, String deepLink, String titleSnapshot);
 

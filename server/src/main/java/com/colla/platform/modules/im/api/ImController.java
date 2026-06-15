@@ -14,6 +14,7 @@ import jakarta.validation.constraints.Size;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -64,6 +65,43 @@ public class ImController {
         Authentication authentication
     ) {
         return imService.addMembers(currentUser(authentication), conversationId, request.memberIds());
+    }
+
+    @DeleteMapping("/{conversationId}/members/{memberId}")
+    public ConversationDetail removeMember(
+        @PathVariable UUID conversationId,
+        @PathVariable UUID memberId,
+        Authentication authentication
+    ) {
+        return imService.removeMember(currentUser(authentication), conversationId, memberId);
+    }
+
+    @PostMapping("/{conversationId}/leave")
+    public void leave(@PathVariable UUID conversationId, Authentication authentication) {
+        imService.leaveConversation(currentUser(authentication), conversationId);
+    }
+
+    @PostMapping("/{conversationId}/close")
+    public void close(@PathVariable UUID conversationId, Authentication authentication) {
+        imService.closeDirectConversation(currentUser(authentication), conversationId);
+    }
+
+    @PostMapping("/{conversationId}/mute")
+    public ConversationDetail mute(
+        @PathVariable UUID conversationId,
+        @RequestBody ConversationMutedRequest request,
+        Authentication authentication
+    ) {
+        return imService.setConversationMuted(currentUser(authentication), conversationId, request.muted());
+    }
+
+    @PostMapping("/{conversationId}/pin")
+    public ConversationDetail pin(
+        @PathVariable UUID conversationId,
+        @RequestBody PinConversationRequest request,
+        Authentication authentication
+    ) {
+        return imService.setConversationPinned(currentUser(authentication), conversationId, request.pinned());
     }
 
     @GetMapping("/{conversationId}/messages")
@@ -151,6 +189,12 @@ public class ImController {
     }
 
     public record AddMembersRequest(List<UUID> memberIds) {
+    }
+
+    public record ConversationMutedRequest(boolean muted) {
+    }
+
+    public record PinConversationRequest(boolean pinned) {
     }
 
     public record SendMessageRequest(

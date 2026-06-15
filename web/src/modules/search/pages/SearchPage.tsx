@@ -4,14 +4,9 @@ import { Button, Empty, Input, Space, Tag, Typography } from 'antd'
 import { useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
+import { resolveNavigationPath } from '../../../shared/client/collaClient'
 import { searchAll, type SearchResult } from '../api/searchApi'
-
-const typeText: Record<string, string> = {
-  issue: '事项',
-  document: '文档',
-  base_record: '表格记录',
-  message: '消息',
-}
+import { objectTypeText } from '../../platform/objectTypeLabels'
 
 export function SearchPage() {
   const navigate = useNavigate()
@@ -59,7 +54,7 @@ export function SearchPage() {
           {Object.entries(grouped).map(([type, items]) => (
             <section className="search-section" key={type}>
               <Space className="search-section-title">
-                <Typography.Title level={5}>{typeText[type] ?? type}</Typography.Title>
+                <Typography.Title level={5}>{objectTypeText[type] ?? type}</Typography.Title>
                 <Tag>{items.length}</Tag>
               </Space>
               <Space orientation="vertical" size={8} className="search-result-list">
@@ -68,12 +63,12 @@ export function SearchPage() {
                   <div className="search-result-item" key={`${item.objectType}-${item.objectId}`}>
                     <div>
                       <Space>
-                        <Tag>{typeText[item.objectType]}</Tag>
+                        <Tag>{objectTypeText[item.objectType] ?? item.objectType}</Tag>
                         <Typography.Text strong>{item.title}</Typography.Text>
                       </Space>
                       <Typography.Paragraph type="secondary">{item.excerpt || item.webPath}</Typography.Paragraph>
                     </div>
-                    <Button type="link" onClick={() => navigate(item.webPath)}>
+                    <Button type="link" onClick={() => navigate(resolveNavigationPath(item) ?? item.webPath)}>
                       打开
                     </Button>
                   </div>

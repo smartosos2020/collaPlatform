@@ -6,6 +6,7 @@ import com.colla.platform.modules.platform.application.PlatformObjectResolverReg
 import com.colla.platform.modules.platform.domain.PlatformModels.ParsedInternalLink;
 import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectNavigation;
 import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectSummary;
+import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectTypeRule;
 import com.colla.platform.shared.auth.CurrentUser;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -40,6 +41,11 @@ public class PlatformObjectController {
     @GetMapping("/objects/{type}/{id}/summary")
     public PlatformObjectSummary summary(@PathVariable String type, @PathVariable UUID id, Authentication authentication) {
         return resolverRegistry.resolve(currentUser(authentication), type, id);
+    }
+
+    @GetMapping("/object-types")
+    public List<PlatformObjectTypeRule> objectTypes() {
+        return platformObjectService.objectTypes();
     }
 
     @GetMapping("/objects/{type}/{id}/navigation")

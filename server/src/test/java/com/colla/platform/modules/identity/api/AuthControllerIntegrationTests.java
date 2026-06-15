@@ -2,8 +2,11 @@ package com.colla.platform.modules.identity.api;
 
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.blankOrNullString;
+import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -24,6 +27,18 @@ class AuthControllerIntegrationTests {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Test
+    void allowsWebClientCorsPreflightHeaders() throws Exception {
+        mockMvc.perform(options("/api/auth/login")
+                .header("Origin", "http://127.0.0.1:5173")
+                .header("Access-Control-Request-Method", "POST")
+                .header("Access-Control-Request-Headers", "content-type,x-colla-client,x-colla-retry-attempt"))
+            .andExpect(status().isOk())
+            .andExpect(header().string("Access-Control-Allow-Origin", "http://127.0.0.1:5173"))
+            .andExpect(header().string("Access-Control-Allow-Headers", containsString("x-colla-client")))
+            .andExpect(header().string("Access-Control-Allow-Headers", containsString("x-colla-retry-attempt")));
+    }
 
     @Test
     void loginMeRefreshAndLogout() throws Exception {

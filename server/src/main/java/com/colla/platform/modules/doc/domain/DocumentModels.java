@@ -27,10 +27,25 @@ public final class DocumentModels {
     public record DocumentDetail(
         DocumentSummary document,
         String content,
+        List<DocumentBlock> blocks,
         List<DocumentRelation> relations,
         List<DocumentPermission> permissions,
         List<DocumentComment> comments
     ) {
+    }
+
+    public record DocumentBlock(
+        UUID id,
+        UUID documentId,
+        String blockType,
+        String content,
+        int sortOrder,
+        Instant createdAt,
+        Instant updatedAt
+    ) {
+    }
+
+    public record DocumentBlockDraft(String blockType, String content, int sortOrder) {
     }
 
     public record DocumentVersion(
