@@ -33,10 +33,10 @@ import {
   Tag,
   Typography,
 } from 'antd'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 
-import { useAuthStore } from '../../auth/authStore'
+import { useAuthStore, type CurrentUser } from '../../auth/authStore'
 import { ObjectSummaryCard } from '../../platform/components/InternalLinkCard'
 import {
   addConversationMembers,
@@ -47,6 +47,7 @@ import {
   leaveConversation,
   listConversations,
   listDirectoryMembers,
+  listMessageContext,
   listMessages,
   markConversationRead,
   muteConversation,
@@ -57,6 +58,7 @@ import {
   sendMessage,
   toggleReaction,
   type ConversationSummary,
+  type MessagePage,
   type MessageSummary,
 } from '../api/messengerApi'
 import { useWebSocketConnection } from '../../../shared/websocket/useWebSocketConnection'
@@ -76,6 +78,12 @@ type ConvertMessageForm = {
   description?: string
 }
 
+type MessageDeliveryStatus = 'sending' | 'failed'
+
+type ChatMessage = MessageSummary & {
+  deliveryStatus?: MessageDeliveryStatus
+}
+
 const QUICK_REACTIONS = ['👍', '❤️', '😂', '🎉', '😮', '🙏']
 const COMPOSER_EMOJIS = ['😀', '😄', '😂', '😊', '👍', '❤️', '🎉', '🔥', '🙏', '💡', '✅', '🚀']
 
@@ -92,16 +100,21 @@ export function MessengerPage() {
   const [directMemberId, setDirectMemberId] = useState<string>()
   const [memberToAddId, setMemberToAddId] = useState<string>()
   const [composerEmojiOpen, setComposerEmojiOpen] = useState(false)
+  const [localMessages, setLocalMessages] = useState<ChatMessage[]>([])
+  const [syncingAfterReconnect, setSyncingAfterReconnect] = useState(false)
   const [form] = Form.useForm<CreateConversationForm>()
   const [convertForm] = Form.useForm<ConvertMessageForm>()
   const messageListRef = useRef<HTMLElement | null>(null)
   const messageRefs = useRef<Record<string, HTMLElement | null>>({})
   const autoReadMessageIdRef = useRef<string | null>(null)
+  const focusedMessageIdRef = useRef<string | null>(null)
+  const previousWsStatusRef = useRef<string>('idle')
   const queryClient = useQueryClient()
   const currentUser = useAuthStore((state) => state.currentUser)
   const { message } = AntdApp.useApp()
 
   const selectedConversationId = searchParams.get('conversationId')
+  const selectedMessageId = searchParams.get('messageId')
 
   const conversationsQuery = useQuery({
     queryKey: ['im', 'conversations'],
@@ -123,13 +136,21 @@ export function MessengerPage() {
     enabled: Boolean(selectedConversationId),
   })
 
+  const messagesQueryKey = useMemo(
+    () => ['im', 'messages', selectedConversationId, selectedMessageId] as const,
+    [selectedConversationId, selectedMessageId],
+  )
+
   const messagesQuery = useQuery({
-    queryKey: ['im', 'messages', selectedConversationId],
-    queryFn: () => listMessages(selectedConversationId || ''),
+    queryKey: messagesQueryKey,
+    queryFn: () =>
+      selectedConversationId && selectedMessageId
+        ? listMessageContext(selectedConversationId, selectedMessageId)
+        : listMessages(selectedConversationId || ''),
     enabled: Boolean(selectedConversationId),
   })
 
-  const refreshIm = async () => {
+  const refreshIm = useCallback(async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['im', 'conversations'] }),
       selectedConversationId
@@ -139,10 +160,22 @@ export function MessengerPage() {
         ? queryClient.invalidateQueries({ queryKey: ['im', 'messages', selectedConversationId] })
         : Promise.resolve(),
     ])
-  }
+  }, [queryClient, selectedConversationId])
 
   const wsStatus = useWebSocketConnection((event: PlatformWebSocketEvent) => {
-    if (['message.created', 'conversation.updated', 'conversation.read', 'unread.changed'].includes(event.type)) {
+    if (
+      [
+        'message.created',
+        'message.edited',
+        'message.revoked',
+        'message.pinned',
+        'message.unpinned',
+        'message.reaction.toggled',
+        'conversation.updated',
+        'conversation.read',
+        'unread.changed',
+      ].includes(event.type)
+    ) {
       void refreshIm()
     }
   })
@@ -175,10 +208,28 @@ export function MessengerPage() {
   })
 
   const sendMutation = useMutation({
-    mutationFn: () => sendMessage(selectedConversationId || '', draft),
-    onSuccess: async () => {
-      setDraft('')
+    mutationFn: ({
+      conversationId,
+      content,
+      clientMessageId,
+    }: {
+      conversationId: string
+      content: string
+      clientMessageId: string
+    }) => sendMessage(conversationId, content, clientMessageId),
+    onSuccess: async (serverMessage) => {
+      setLocalMessages((items) => items.filter((item) => item.clientMessageId !== serverMessage.clientMessageId))
       await refreshIm()
+    },
+    onError: (_error, variables) => {
+      setLocalMessages((items) =>
+        items.map((item) =>
+          item.clientMessageId === variables.clientMessageId
+            ? { ...item, deliveryStatus: 'failed' }
+            : item,
+        ),
+      )
+      message.error('消息发送失败，可在消息气泡中重试')
     },
   })
 
@@ -289,11 +340,25 @@ export function MessengerPage() {
     }
   }, [conversationsQuery.data, selectedConversationId, setSearchParams])
 
-  const messages = useMemo(
-    () => [...(messagesQuery.data?.items ?? [])].reverse(),
-    [messagesQuery.data?.items],
-  )
+  const messages = useMemo<ChatMessage[]>(() => {
+    const serverMessages = [...(messagesQuery.data?.items ?? [])].reverse()
+    const serverClientIds = new Set(serverMessages.map((item) => item.clientMessageId))
+    const pendingMessages = localMessages.filter(
+      (item) => item.conversationId === selectedConversationId && !serverClientIds.has(item.clientMessageId),
+    )
+    return [...serverMessages, ...pendingMessages].sort(
+      (left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime(),
+    )
+  }, [localMessages, messagesQuery.data?.items, selectedConversationId])
   const selectedConversation = conversationQuery.data
+  const latestServerMessageSeq = useMemo(
+    () =>
+      messages.reduce(
+        (latest, item) => (item.deliveryStatus ? latest : Math.max(latest, item.messageSeq)),
+        0,
+      ),
+    [messages],
+  )
   const selectedMemberIds = useMemo(
     () => new Set((selectedConversation?.members ?? []).map((member) => member.userId)),
     [selectedConversation?.members],
@@ -342,9 +407,55 @@ export function MessengerPage() {
     [currentUser?.id, mentionQuery, selectedConversation?.members],
   )
 
+  const focusMessage = useCallback((messageId: string) => {
+    messageRefs.current[messageId]?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    setHighlightedMessageId(messageId)
+    window.setTimeout(() => setHighlightedMessageId(null), 1600)
+  }, [])
+
+  const syncAfterReconnect = useCallback(async () => {
+    if (!selectedConversationId || latestServerMessageSeq <= 0) {
+      await refreshIm()
+      return
+    }
+    setSyncingAfterReconnect(true)
+    try {
+      const page = await listMessages(selectedConversationId, null, latestServerMessageSeq)
+      if (page.items.length > 0) {
+        queryClient.setQueryData<MessagePage>(messagesQueryKey, (current) => mergeMessagePage(current, page))
+      }
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['im', 'conversations'] }),
+        queryClient.invalidateQueries({ queryKey: ['im', 'conversation', selectedConversationId] }),
+      ])
+    } finally {
+      setSyncingAfterReconnect(false)
+    }
+  }, [latestServerMessageSeq, messagesQueryKey, queryClient, refreshIm, selectedConversationId])
+
   useEffect(() => {
     autoReadMessageIdRef.current = null
-  }, [selectedConversationId])
+    focusedMessageIdRef.current = null
+  }, [selectedConversationId, selectedMessageId])
+
+  useEffect(() => {
+    const previousStatus = previousWsStatusRef.current
+    previousWsStatusRef.current = wsStatus
+    if (wsStatus === 'connected' && previousStatus !== 'connected') {
+      void syncAfterReconnect()
+    }
+  }, [syncAfterReconnect, wsStatus])
+
+  useEffect(() => {
+    if (!selectedMessageId || focusedMessageIdRef.current === selectedMessageId) {
+      return
+    }
+    if (!messages.some((item) => item.id === selectedMessageId)) {
+      return
+    }
+    focusedMessageIdRef.current = selectedMessageId
+    window.setTimeout(() => focusMessage(selectedMessageId), 80)
+  }, [focusMessage, messages, selectedMessageId])
 
   useEffect(() => {
     if (!selectedConversationId || messages.length === 0 || readMutation.isPending) {
@@ -354,7 +465,7 @@ export function MessengerPage() {
     if (!root) {
       return undefined
     }
-    const readableMessages = messages.filter((item) => item.senderId !== currentUser?.id)
+    const readableMessages = messages.filter((item) => item.senderId !== currentUser?.id && !item.deliveryStatus)
     if (readableMessages.length === 0) {
       return undefined
     }
@@ -389,7 +500,35 @@ export function MessengerPage() {
     if (!draft.trim() || !selectedConversationId) {
       return
     }
-    sendMutation.mutate()
+    const content = draft.trim()
+    const clientMessageId = crypto.randomUUID()
+    setDraft('')
+    setLocalMessages((items) => [
+      ...items,
+      createLocalMessage({
+        clientMessageId,
+        conversationId: selectedConversationId,
+        content,
+        currentUser,
+        status: 'sending',
+      }),
+    ])
+    sendMutation.mutate({ conversationId: selectedConversationId, content, clientMessageId })
+  }
+
+  const retryMessage = (item: ChatMessage) => {
+    setLocalMessages((items) =>
+      items.map((messageItem) =>
+        messageItem.clientMessageId === item.clientMessageId
+          ? { ...messageItem, deliveryStatus: 'sending' }
+          : messageItem,
+      ),
+    )
+    sendMutation.mutate({
+      conversationId: item.conversationId,
+      content: item.content,
+      clientMessageId: item.clientMessageId,
+    })
   }
 
   const insertTextToDraft = (value: string) => {
@@ -398,12 +537,6 @@ export function MessengerPage() {
 
   const insertMention = (username: string) => {
     setDraft((current) => current.replace(/(^|\s)@([a-zA-Z0-9_.-]*)$/, `$1@${username} `))
-  }
-
-  const focusMessage = (messageId: string) => {
-    messageRefs.current[messageId]?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-    setHighlightedMessageId(messageId)
-    window.setTimeout(() => setHighlightedMessageId(null), 1600)
   }
 
   return (
@@ -474,6 +607,7 @@ export function MessengerPage() {
               <Space>
                 <ConversationAvatar conversation={selectedConversation} />
                 <Typography.Title level={4}>{selectedConversation.title}</Typography.Title>
+                {syncingAfterReconnect ? <Tag color="blue">同步中</Tag> : null}
               </Space>
               <Space>
                 <Button
@@ -529,6 +663,7 @@ export function MessengerPage() {
                       onRevoke={() => revokeMutation.mutate(item.id)}
                       onPin={() => pinMutation.mutate({ messageId: item.id, pinned: !item.pinnedAt })}
                       onReact={(emoji) => reactionMutation.mutate({ messageId: item.id, emoji })}
+                      onRetry={() => retryMessage(item)}
                       reactionPending={reactionMutation.isPending}
                     />
                   </div>
@@ -740,6 +875,56 @@ export function MessengerPage() {
   )
 }
 
+function createLocalMessage({
+  clientMessageId,
+  conversationId,
+  content,
+  currentUser,
+  status,
+}: {
+  clientMessageId: string
+  conversationId: string
+  content: string
+  currentUser: CurrentUser | null
+  status: MessageDeliveryStatus
+}): ChatMessage {
+  return {
+    id: `local-${clientMessageId}`,
+    conversationId,
+    senderId: currentUser?.id ?? 'local-user',
+    senderName: currentUser?.displayName ?? currentUser?.username ?? '我',
+    messageType: 'text',
+    content,
+    clientMessageId,
+    messageSeq: 0,
+    createdAt: new Date().toISOString(),
+    editedAt: null,
+    revokedAt: null,
+    pinnedAt: null,
+    pinnedBy: null,
+    mentions: [],
+    links: [],
+    reactions: [],
+    deliveryStatus: status,
+  }
+}
+
+function mergeMessagePage(current: MessagePage | undefined, incoming: MessagePage): MessagePage {
+  const byId = new Map<string, MessageSummary>()
+  for (const item of current?.items ?? []) {
+    byId.set(item.id, item)
+  }
+  for (const item of incoming.items) {
+    byId.set(item.id, item)
+  }
+  return {
+    items: [...byId.values()]
+      .sort((left, right) => right.messageSeq - left.messageSeq)
+      .slice(0, 100),
+    nextCursor: current?.nextCursor ?? incoming.nextCursor ?? null,
+  }
+}
+
 function ConversationListItem({
   conversation,
   active,
@@ -829,10 +1014,11 @@ function MessageBubble({
   onRevoke,
   onPin,
   onReact,
+  onRetry,
   reactionPending,
 }: {
   refCallback: (node: HTMLElement | null) => void
-  item: MessageSummary
+  item: ChatMessage
   mine: boolean
   highlighted: boolean
   onCreateIssue: () => void
@@ -840,21 +1026,23 @@ function MessageBubble({
   onRevoke: () => void
   onPin: () => void
   onReact: (emoji: string) => void
+  onRetry: () => void
   reactionPending: boolean
 }) {
+  const isLocal = Boolean(item.deliveryStatus)
   const contextItems = [
     {
       key: 'pin',
       icon: <PushpinOutlined />,
       label: item.pinnedAt ? '取消置顶' : '置顶',
-      disabled: Boolean(item.revokedAt),
+      disabled: Boolean(item.revokedAt) || isLocal,
       onClick: onPin,
     },
     {
       key: 'issue',
       icon: <BugOutlined />,
       label: '转事项',
-      disabled: Boolean(item.revokedAt),
+      disabled: Boolean(item.revokedAt) || isLocal,
       onClick: onCreateIssue,
     },
     mine
@@ -862,7 +1050,7 @@ function MessageBubble({
           key: 'edit',
           icon: <EditOutlined />,
           label: '编辑',
-          disabled: Boolean(item.revokedAt),
+          disabled: Boolean(item.revokedAt) || isLocal,
           onClick: onEdit,
         }
       : null,
@@ -871,7 +1059,7 @@ function MessageBubble({
           key: 'revoke',
           icon: <StopOutlined />,
           label: '删除',
-          disabled: Boolean(item.revokedAt),
+          disabled: Boolean(item.revokedAt) || isLocal,
           danger: true,
           onClick: onRevoke,
         }
@@ -886,7 +1074,7 @@ function MessageBubble({
     >
       <Dropdown menu={{ items: contextItems }} trigger={['contextMenu']}>
         <div className="im-message-body">
-          {!item.revokedAt ? (
+          {!item.revokedAt && !isLocal ? (
             <div className="im-message-reaction-picker">
               {QUICK_REACTIONS.map((emoji) => (
                 <button
@@ -941,6 +1129,12 @@ function MessageBubble({
             </Space>
           ) : null}
           <div className="im-message-meta">
+            {item.deliveryStatus === 'sending' ? <span>发送中</span> : null}
+            {item.deliveryStatus === 'failed' ? (
+              <button type="button" className="im-message-retry" onClick={onRetry}>
+                发送失败，重试
+              </button>
+            ) : null}
             {item.editedAt ? <span>已编辑</span> : null}
             {item.pinnedAt ? <span>置顶</span> : null}
             <time>{formatMessageTime(item.createdAt)}</time>

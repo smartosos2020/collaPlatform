@@ -6,6 +6,7 @@ import java.sql.SQLException;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
@@ -86,7 +87,8 @@ public class JdbcSearchRepository implements SearchRepository {
     }
 
     @Override
-    public void refreshWorkspaceIndex(UUID workspaceId) {
+    @Transactional
+    public synchronized void refreshWorkspaceIndex(UUID workspaceId) {
         jdbcTemplate.update("delete from search_index_documents where workspace_id = ?", workspaceId);
         indexIssues(workspaceId);
         indexDocuments(workspaceId);

@@ -55,6 +55,7 @@ public final class ImModels {
         String messageType,
         String content,
         String clientMessageId,
+        long messageSeq,
         Instant createdAt,
         Instant editedAt,
         Instant revokedAt,

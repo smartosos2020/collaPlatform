@@ -193,6 +193,10 @@ export function updateRecord(baseId: string, tableId: string, recordId: string, 
   return apiPatch<BaseRecord>(`/bases/${baseId}/tables/${tableId}/records/${recordId}`, { values })
 }
 
+export function getBaseRecord(recordId: string) {
+  return apiGet<BaseRecord>(`/base-records/${recordId}`)
+}
+
 export function createView(baseId: string, tableId: string, request: { name: string; filters: BaseFilter[]; sorts: BaseSort[] }) {
   return apiPost<BaseView>(`/bases/${baseId}/tables/${tableId}/views`, request)
 }

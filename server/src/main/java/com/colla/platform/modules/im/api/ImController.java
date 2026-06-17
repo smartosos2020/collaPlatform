@@ -108,10 +108,21 @@ public class ImController {
     public MessagePage messages(
         @PathVariable UUID conversationId,
         @RequestParam(required = false) UUID beforeId,
+        @RequestParam(required = false) Long afterSeq,
         @RequestParam(defaultValue = "50") int limit,
         Authentication authentication
     ) {
-        return imService.listMessages(currentUser(authentication), conversationId, beforeId, limit);
+        return imService.listMessages(currentUser(authentication), conversationId, beforeId, afterSeq, limit);
+    }
+
+    @GetMapping("/{conversationId}/messages/{messageId}/context")
+    public MessagePage messageContext(
+        @PathVariable UUID conversationId,
+        @PathVariable UUID messageId,
+        @RequestParam(defaultValue = "50") int limit,
+        Authentication authentication
+    ) {
+        return imService.listMessageContext(currentUser(authentication), conversationId, messageId, limit);
     }
 
     @PostMapping("/{conversationId}/messages")

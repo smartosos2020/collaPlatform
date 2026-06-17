@@ -13,6 +13,7 @@ Thumbs.db
 logs/
 .local-logs/
 .local-reports/
+.local-backups/
 .local-connection-info.md
 
 # Java
@@ -24,6 +25,8 @@ node_modules/
 dist/
 .vite/
 coverage/
+test-results/
+playwright-report/
 
 # IDE
 .idea/

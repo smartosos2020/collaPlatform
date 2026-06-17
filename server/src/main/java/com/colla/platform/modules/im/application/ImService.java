@@ -147,24 +147,50 @@ public class ImService {
     public ConversationDetail setConversationMuted(CurrentUser currentUser, UUID conversationId, boolean muted) {
         requireMember(currentUser, conversationId);
         imRepository.setConversationMuted(currentUser.workspaceId(), conversationId, currentUser.id(), muted);
-        return getConversation(currentUser, conversationId);
+        ConversationDetail conversation = getConversation(currentUser, conversationId);
+        pushConversationPreferenceEvent(currentUser, conversationId, conversation);
+        return conversation;
     }
 
     @Transactional
     public ConversationDetail setConversationPinned(CurrentUser currentUser, UUID conversationId, boolean pinned) {
         requireMember(currentUser, conversationId);
         imRepository.setConversationPinned(currentUser.workspaceId(), conversationId, currentUser.id(), pinned);
-        return getConversation(currentUser, conversationId);
+        ConversationDetail conversation = getConversation(currentUser, conversationId);
+        pushConversationPreferenceEvent(currentUser, conversationId, conversation);
+        return conversation;
     }
 
-    public MessagePage listMessages(CurrentUser currentUser, UUID conversationId, UUID beforeId, int limit) {
+    public MessagePage listMessages(CurrentUser currentUser, UUID conversationId, UUID beforeId, Long afterSeq, int limit) {
         requireMember(currentUser, conversationId);
         int boundedLimit = Math.max(1, Math.min(limit, 100));
+        if (afterSeq != null) {
+            return new MessagePage(
+                imRepository.listMessagesAfterSeq(currentUser.workspaceId(), conversationId, currentUser.id(), afterSeq, boundedLimit),
+                null
+            );
+        }
         List<MessageSummary> messages = imRepository.listMessages(
             currentUser.workspaceId(),
             conversationId,
             currentUser.id(),
             beforeId,
+            boundedLimit + 1
+        );
+        UUID nextCursor = messages.size() > boundedLimit ? messages.get(boundedLimit).id() : null;
+        List<MessageSummary> items = messages.stream().limit(boundedLimit).toList();
+        return new MessagePage(items, nextCursor);
+    }
+
+    public MessagePage listMessageContext(CurrentUser currentUser, UUID conversationId, UUID messageId, int limit) {
+        requireMember(currentUser, conversationId);
+        requireExistingMessage(currentUser, conversationId, messageId);
+        int boundedLimit = Math.max(1, Math.min(limit, 100));
+        List<MessageSummary> messages = imRepository.listMessageContext(
+            currentUser.workspaceId(),
+            conversationId,
+            currentUser.id(),
+            messageId,
             boundedLimit + 1
         );
         UUID nextCursor = messages.size() > boundedLimit ? messages.get(boundedLimit).id() : null;
@@ -190,6 +216,16 @@ public class ImService {
             ? UUID.randomUUID().toString()
             : clientMessageId.trim();
 
+        MessageSummary existing = imRepository.findMessageByClientId(
+            currentUser.workspaceId(),
+            conversationId,
+            currentUser.id(),
+            normalizedClientId
+        ).orElse(null);
+        if (existing != null) {
+            return existing;
+        }
+
         MessageSummary inserted = imRepository.insertMessage(
             currentUser.workspaceId(),
             conversationId,
@@ -210,7 +246,7 @@ public class ImService {
         MessageSummary message = imRepository.findMessageForUser(currentUser.workspaceId(), conversationId, inserted.id(), currentUser.id()).orElse(inserted);
         registerMessageObject(currentUser.workspaceId(), conversationId, message);
         appendMessageCreatedEvent(currentUser, conversationId, message);
-        pushMessageEvents(currentUser, conversationId, message);
+        pushMessageEvents(currentUser, conversationId, message, "message.created");
         return message;
     }
 
@@ -231,7 +267,7 @@ public class ImService {
         imRepository.editMessage(currentUser.workspaceId(), conversationId, messageId, currentUser.id(), trimmedContent);
         MessageSummary updated = requireExistingMessage(currentUser, conversationId, messageId);
         appendMessageMutationEvent(currentUser, "message.edited", conversationId, updated);
-        pushMessageEvents(currentUser, conversationId, updated);
+        pushMessageEvents(currentUser, conversationId, updated, "message.edited");
         return updated;
     }
 
@@ -245,7 +281,7 @@ public class ImService {
         imRepository.revokeMessage(currentUser.workspaceId(), conversationId, messageId, currentUser.id());
         MessageSummary updated = requireExistingMessage(currentUser, conversationId, messageId);
         appendMessageMutationEvent(currentUser, "message.revoked", conversationId, updated);
-        pushMessageEvents(currentUser, conversationId, updated);
+        pushMessageEvents(currentUser, conversationId, updated, "message.revoked");
         return updated;
     }
 
@@ -256,7 +292,7 @@ public class ImService {
         imRepository.setPinned(currentUser.workspaceId(), conversationId, messageId, currentUser.id(), pinned);
         MessageSummary updated = requireExistingMessage(currentUser, conversationId, messageId);
         appendMessageMutationEvent(currentUser, pinned ? "message.pinned" : "message.unpinned", conversationId, updated);
-        pushMessageEvents(currentUser, conversationId, updated);
+        pushMessageEvents(currentUser, conversationId, updated, pinned ? "message.pinned" : "message.unpinned");
         return updated;
     }
 
@@ -271,13 +307,16 @@ public class ImService {
         imRepository.toggleReaction(currentUser.workspaceId(), conversationId, messageId, currentUser.id(), normalizedEmoji);
         MessageSummary updated = requireExistingMessage(currentUser, conversationId, messageId);
         appendMessageMutationEvent(currentUser, "message.reaction.toggled", conversationId, updated);
-        pushMessageEvents(currentUser, conversationId, updated);
+        pushMessageEvents(currentUser, conversationId, updated, "message.reaction.toggled");
         return updated;
     }
 
     @Transactional
     public UnreadState markRead(CurrentUser currentUser, UUID conversationId, UUID messageId) {
         requireMember(currentUser, conversationId);
+        if (messageId != null) {
+            requireExistingMessage(currentUser, conversationId, messageId);
+        }
         imRepository.markRead(currentUser.workspaceId(), conversationId, currentUser.id(), messageId);
         UnreadState state = unreadState(currentUser, conversationId);
         webSocketMessageSender.sendToUser(
@@ -345,12 +384,12 @@ public class ImService {
         }
     }
 
-    private void pushMessageEvents(CurrentUser currentUser, UUID conversationId, MessageSummary message) {
+    private void pushMessageEvents(CurrentUser currentUser, UUID conversationId, MessageSummary message, String eventType) {
         ConversationDetail conversation = getConversation(currentUser, conversationId);
         for (UUID memberId : imRepository.listMemberIds(currentUser.workspaceId(), conversationId)) {
             webSocketMessageSender.sendToUser(
                 memberId,
-                "message.created",
+                eventType,
                 currentUser.workspaceId(),
                 "message",
                 message.id(),
@@ -384,6 +423,17 @@ public class ImService {
 
     private void pushConversationEvents(CurrentUser currentUser, UUID conversationId, ConversationDetail conversation) {
         pushConversationEvents(currentUser, conversationId, conversation, List.of());
+    }
+
+    private void pushConversationPreferenceEvent(CurrentUser currentUser, UUID conversationId, ConversationDetail conversation) {
+        webSocketMessageSender.sendToUser(
+            currentUser.id(),
+            "conversation.updated",
+            currentUser.workspaceId(),
+            "conversation",
+            conversationId,
+            Map.of("conversationId", conversationId, "conversation", conversation)
+        );
     }
 
     private void pushConversationEvents(

@@ -333,7 +333,7 @@ public class JdbcImRepository implements ImRepository {
                 """
                     select m.id, m.conversation_id, m.sender_id, u.display_name sender_name,
                            m.message_type, m.content, m.client_message_id, m.created_at,
-                           m.edited_at, m.revoked_at, m.pinned_at, m.pinned_by
+                           m.message_seq, m.edited_at, m.revoked_at, m.pinned_at, m.pinned_by
                     from messages m
                     join users u on u.id = m.sender_id
                     where m.workspace_id = ? and m.conversation_id = ? and m.id = ? and m.deleted_at is null
@@ -359,7 +359,7 @@ public class JdbcImRepository implements ImRepository {
                 """
                     select m.id, m.conversation_id, m.sender_id, u.display_name sender_name,
                            m.message_type, m.content, m.client_message_id, m.created_at,
-                           m.edited_at, m.revoked_at, m.pinned_at, m.pinned_by
+                           m.message_seq, m.edited_at, m.revoked_at, m.pinned_at, m.pinned_by
                     from messages m
                     join users u on u.id = m.sender_id
                     where m.workspace_id = ? and m.conversation_id = ? and m.id = ? and m.deleted_at is null
@@ -385,7 +385,7 @@ public class JdbcImRepository implements ImRepository {
                 """
                     select m.id, m.conversation_id, m.sender_id, u.display_name sender_name,
                            m.message_type, m.content, m.client_message_id, m.created_at,
-                           m.edited_at, m.revoked_at, m.pinned_at, m.pinned_by
+                           m.message_seq, m.edited_at, m.revoked_at, m.pinned_at, m.pinned_by
                     from messages m
                     join users u on u.id = m.sender_id
                     join conversations c on c.id = m.conversation_id and c.archived_at is null
@@ -415,7 +415,7 @@ public class JdbcImRepository implements ImRepository {
             """
                 select m.id, m.conversation_id, m.sender_id, u.display_name sender_name,
                        m.message_type, m.content, m.client_message_id, m.created_at,
-                       m.edited_at, m.revoked_at, m.pinned_at, m.pinned_by
+                       m.message_seq, m.edited_at, m.revoked_at, m.pinned_at, m.pinned_by
                 from messages m
                 join users u on u.id = m.sender_id
                 where m.workspace_id = ? and m.conversation_id = ? and m.deleted_at is null
@@ -434,12 +434,75 @@ public class JdbcImRepository implements ImRepository {
             .toList();
     }
 
+    @Override
+    public List<MessageSummary> listMessagesAfterSeq(UUID workspaceId, UUID conversationId, UUID userId, long afterSeq, int limit) {
+        if (!isMember(workspaceId, conversationId, userId)) {
+            return List.of();
+        }
+        List<MessageRow> rows = jdbcTemplate.query(
+            """
+                select m.id, m.conversation_id, m.sender_id, u.display_name sender_name,
+                       m.message_type, m.content, m.client_message_id, m.created_at,
+                       m.message_seq, m.edited_at, m.revoked_at, m.pinned_at, m.pinned_by
+                from messages m
+                join users u on u.id = m.sender_id
+                where m.workspace_id = ? and m.conversation_id = ? and m.deleted_at is null
+                  and m.message_seq > ?
+                order by m.message_seq asc
+                limit ?
+                """,
+            (rs, rowNum) -> mapMessageRow(rs),
+            workspaceId,
+            conversationId,
+            afterSeq,
+            limit
+        );
+        return rows.stream()
+            .map(row -> toMessageSummary(workspaceId, row, userId))
+            .toList();
+    }
+
+    @Override
+    public List<MessageSummary> listMessageContext(UUID workspaceId, UUID conversationId, UUID userId, UUID messageId, int limit) {
+        if (!isMember(workspaceId, conversationId, userId)) {
+            return List.of();
+        }
+        List<MessageRow> rows = jdbcTemplate.query(
+            """
+                with target as (
+                    select message_seq
+                    from messages
+                    where workspace_id = ? and conversation_id = ? and id = ? and deleted_at is null
+                )
+                select m.id, m.conversation_id, m.sender_id, u.display_name sender_name,
+                       m.message_type, m.content, m.client_message_id, m.created_at,
+                       m.message_seq, m.edited_at, m.revoked_at, m.pinned_at, m.pinned_by
+                from messages m
+                join users u on u.id = m.sender_id
+                join target on m.message_seq <= target.message_seq
+                where m.workspace_id = ? and m.conversation_id = ? and m.deleted_at is null
+                order by m.message_seq desc
+                limit ?
+                """,
+            (rs, rowNum) -> mapMessageRow(rs),
+            workspaceId,
+            conversationId,
+            messageId,
+            workspaceId,
+            conversationId,
+            limit
+        );
+        return rows.stream()
+            .map(row -> toMessageSummary(workspaceId, row, userId))
+            .toList();
+    }
+
     private List<MessageSummary> listLatestMessages(UUID workspaceId, UUID conversationId, UUID userId, int limit) {
         List<MessageRow> rows = jdbcTemplate.query(
             """
                 select m.id, m.conversation_id, m.sender_id, u.display_name sender_name,
                        m.message_type, m.content, m.client_message_id, m.created_at,
-                       m.edited_at, m.revoked_at, m.pinned_at, m.pinned_by
+                       m.message_seq, m.edited_at, m.revoked_at, m.pinned_at, m.pinned_by
                 from messages m
                 join users u on u.id = m.sender_id
                 where m.workspace_id = ? and m.conversation_id = ? and m.deleted_at is null
@@ -783,6 +846,7 @@ public class JdbcImRepository implements ImRepository {
             rs.getString("message_type"),
             rs.getString("content"),
             rs.getString("client_message_id"),
+            rs.getLong("message_seq"),
             rs.getTimestamp("created_at").toInstant(),
             toInstant(rs, "edited_at"),
             toInstant(rs, "revoked_at"),
@@ -800,6 +864,7 @@ public class JdbcImRepository implements ImRepository {
             row.messageType(),
             row.content(),
             row.clientMessageId(),
+            row.messageSeq(),
             row.createdAt(),
             row.editedAt(),
             row.revokedAt(),
@@ -811,13 +876,14 @@ public class JdbcImRepository implements ImRepository {
         );
     }
 
-    private Optional<MessageSummary> findMessageByClientId(UUID workspaceId, UUID conversationId, UUID senderId, String clientMessageId) {
+    @Override
+    public Optional<MessageSummary> findMessageByClientId(UUID workspaceId, UUID conversationId, UUID senderId, String clientMessageId) {
         try {
             MessageRow row = jdbcTemplate.queryForObject(
                 """
                     select m.id, m.conversation_id, m.sender_id, u.display_name sender_name,
                            m.message_type, m.content, m.client_message_id, m.created_at,
-                           m.edited_at, m.revoked_at, m.pinned_at, m.pinned_by
+                           m.message_seq, m.edited_at, m.revoked_at, m.pinned_at, m.pinned_by
                     from messages m
                     join users u on u.id = m.sender_id
                     where m.workspace_id = ? and m.conversation_id = ? and m.sender_id = ? and m.client_message_id = ?
@@ -905,6 +971,7 @@ public class JdbcImRepository implements ImRepository {
         String messageType,
         String content,
         String clientMessageId,
+        long messageSeq,
         Instant createdAt,
         Instant editedAt,
         Instant revokedAt,

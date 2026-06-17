@@ -364,16 +364,17 @@ public class JdbcDocumentRepository implements DocumentRepository {
     }
 
     @Override
-    public UUID addComment(UUID workspaceId, UUID documentId, UUID authorId, String content) {
+    public UUID addComment(UUID workspaceId, UUID documentId, UUID blockId, UUID authorId, String content) {
         UUID id = UUID.randomUUID();
         jdbcTemplate.update(
             """
-                insert into document_comments (id, workspace_id, document_id, author_id, content, created_at)
-                values (?, ?, ?, ?, ?, now())
+                insert into document_comments (id, workspace_id, document_id, block_id, author_id, content, created_at)
+                values (?, ?, ?, ?, ?, ?, now())
                 """,
             id,
             workspaceId,
             documentId,
+            blockId,
             authorId,
             content
         );
@@ -381,21 +382,43 @@ public class JdbcDocumentRepository implements DocumentRepository {
     }
 
     @Override
+    public void resolveComment(UUID workspaceId, UUID documentId, UUID commentId, UUID resolvedBy) {
+        jdbcTemplate.update(
+            """
+                update document_comments
+                set resolved_at = coalesce(resolved_at, now()), resolved_by = coalesce(resolved_by, ?)
+                where workspace_id = ? and document_id = ? and id = ? and deleted_at is null
+                """,
+            resolvedBy,
+            workspaceId,
+            documentId,
+            commentId
+        );
+    }
+
+    @Override
     public List<DocumentComment> listComments(UUID workspaceId, UUID documentId) {
         return jdbcTemplate.query(
             """
-                select c.id, c.document_id, c.author_id, u.display_name author_name, c.content, c.created_at
+                select c.id, c.document_id, c.block_id, c.author_id, u.display_name author_name, c.content,
+                       c.resolved_at, c.resolved_by, resolved_user.display_name resolved_by_name, c.created_at
                 from document_comments c
                 join users u on u.id = c.author_id
+                left join users resolved_user on resolved_user.id = c.resolved_by
                 where c.workspace_id = ? and c.document_id = ? and c.deleted_at is null
                 order by c.created_at
                 """,
             (rs, rowNum) -> new DocumentComment(
                 rs.getObject("id", UUID.class),
                 rs.getObject("document_id", UUID.class),
+                rs.getObject("block_id", UUID.class),
                 rs.getObject("author_id", UUID.class),
                 rs.getString("author_name"),
                 rs.getString("content"),
+                rs.getTimestamp("resolved_at") != null,
+                rs.getTimestamp("resolved_at") == null ? null : rs.getTimestamp("resolved_at").toInstant(),
+                rs.getObject("resolved_by", UUID.class),
+                rs.getString("resolved_by_name"),
                 rs.getTimestamp("created_at").toInstant()
             ),
             workspaceId,

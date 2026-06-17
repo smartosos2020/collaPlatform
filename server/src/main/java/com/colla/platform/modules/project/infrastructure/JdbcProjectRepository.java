@@ -3,6 +3,8 @@ package com.colla.platform.modules.project.infrastructure;
 import com.colla.platform.modules.project.domain.ProjectModels.IssueActivity;
 import com.colla.platform.modules.project.domain.ProjectModels.IssueAttachment;
 import com.colla.platform.modules.project.domain.ProjectModels.IssueComment;
+import com.colla.platform.modules.project.domain.ProjectModels.IssueRelation;
+import com.colla.platform.modules.project.domain.ProjectModels.IssueVerification;
 import com.colla.platform.modules.project.domain.ProjectModels.IssueSummary;
 import com.colla.platform.modules.project.domain.ProjectModels.CountBucket;
 import com.colla.platform.modules.project.domain.ProjectModels.ProjectDetail;
@@ -277,7 +279,16 @@ public class JdbcProjectRepository implements ProjectRepository {
     }
 
     @Override
-    public List<IssueSummary> listIssues(UUID workspaceId, UUID projectId, UUID userId, String status, String issueType) {
+    public List<IssueSummary> listIssues(
+        UUID workspaceId,
+        UUID projectId,
+        UUID userId,
+        String status,
+        String issueType,
+        String priority,
+        UUID assigneeId,
+        String sort
+    ) {
         if (!isProjectMember(workspaceId, projectId, userId)) {
             return List.of();
         }
@@ -302,7 +313,15 @@ public class JdbcProjectRepository implements ProjectRepository {
             sql.append(" and i.issue_type = ?");
             args.add(issueType);
         }
-        sql.append(" order by i.updated_at desc");
+        if (priority != null && !priority.isBlank()) {
+            sql.append(" and i.priority = ?");
+            args.add(priority);
+        }
+        if (assigneeId != null) {
+            sql.append(" and i.assignee_id = ?");
+            args.add(assigneeId);
+        }
+        sql.append(issueSortClause(sort));
         return jdbcTemplate.query(sql.toString(), this::mapIssue, args.toArray());
     }
 
@@ -565,6 +584,111 @@ public class JdbcProjectRepository implements ProjectRepository {
         );
     }
 
+    @Override
+    public UUID addVerification(
+        UUID workspaceId,
+        UUID issueId,
+        UUID verifierId,
+        String result,
+        String note,
+        String environment,
+        String reproductionSteps,
+        String fixVersion
+    ) {
+        UUID id = UUID.randomUUID();
+        jdbcTemplate.update(
+            """
+                insert into issue_verification_logs
+                    (id, workspace_id, issue_id, verifier_id, result, note, environment, reproduction_steps, fix_version, created_at)
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, now())
+                """,
+            id,
+            workspaceId,
+            issueId,
+            verifierId,
+            result,
+            note,
+            environment,
+            reproductionSteps,
+            fixVersion
+        );
+        return id;
+    }
+
+    @Override
+    public List<IssueVerification> listVerifications(UUID workspaceId, UUID issueId) {
+        return jdbcTemplate.query(
+            """
+                select v.id, v.issue_id, v.verifier_id, u.display_name verifier_name,
+                       v.result, v.note, v.environment, v.reproduction_steps, v.fix_version, v.created_at
+                from issue_verification_logs v
+                join users u on u.id = v.verifier_id
+                where v.workspace_id = ? and v.issue_id = ?
+                order by v.created_at desc
+                """,
+            (rs, rowNum) -> new IssueVerification(
+                rs.getObject("id", UUID.class),
+                rs.getObject("issue_id", UUID.class),
+                rs.getObject("verifier_id", UUID.class),
+                rs.getString("verifier_name"),
+                rs.getString("result"),
+                rs.getString("note"),
+                rs.getString("environment"),
+                rs.getString("reproduction_steps"),
+                rs.getString("fix_version"),
+                rs.getTimestamp("created_at").toInstant()
+            ),
+            workspaceId,
+            issueId
+        );
+    }
+
+    @Override
+    public UUID addRelation(UUID workspaceId, UUID issueId, String targetType, UUID targetId, UUID createdBy) {
+        UUID id = UUID.randomUUID();
+        jdbcTemplate.update(
+            """
+                insert into issue_relations
+                    (id, workspace_id, issue_id, target_type, target_id, created_by, created_at)
+                values (?, ?, ?, ?, ?, ?, now())
+                on conflict (workspace_id, issue_id, target_type, target_id)
+                do update set deleted_at = null
+                """,
+            id,
+            workspaceId,
+            issueId,
+            targetType,
+            targetId,
+            createdBy
+        );
+        return id;
+    }
+
+    @Override
+    public List<IssueRelation> listRelations(UUID workspaceId, UUID issueId) {
+        return jdbcTemplate.query(
+            """
+                select r.id, r.issue_id, r.target_type, r.target_id, r.created_by, u.display_name created_by_name, r.created_at
+                from issue_relations r
+                join users u on u.id = r.created_by
+                where r.workspace_id = ? and r.issue_id = ? and r.deleted_at is null
+                order by r.created_at desc
+                """,
+            (rs, rowNum) -> new IssueRelation(
+                rs.getObject("id", UUID.class),
+                rs.getObject("issue_id", UUID.class),
+                rs.getString("target_type"),
+                rs.getObject("target_id", UUID.class),
+                rs.getObject("created_by", UUID.class),
+                rs.getString("created_by_name"),
+                rs.getTimestamp("created_at").toInstant(),
+                null
+            ),
+            workspaceId,
+            issueId
+        );
+    }
+
     private ProjectSummary mapProjectSummary(ResultSet rs, int rowNum) throws SQLException {
         return new ProjectSummary(
             rs.getObject("id", UUID.class),
@@ -604,5 +728,21 @@ public class JdbcProjectRepository implements ProjectRepository {
 
     private CountBucket mapBucket(ResultSet rs, int rowNum) throws SQLException {
         return new CountBucket(rs.getString("key"), rs.getString("label"), rs.getLong("issue_count"));
+    }
+
+    private String issueSortClause(String sort) {
+        return switch (sort == null ? "updated_desc" : sort) {
+            case "due_asc" -> " order by i.due_at asc nulls last, i.updated_at desc";
+            case "priority_desc" -> """
+                 order by case i.priority
+                    when 'urgent' then 4
+                    when 'high' then 3
+                    when 'medium' then 2
+                    else 1
+                 end desc, i.updated_at desc
+                """;
+            case "created_desc" -> " order by i.created_at desc";
+            default -> " order by i.updated_at desc";
+        };
     }
 }

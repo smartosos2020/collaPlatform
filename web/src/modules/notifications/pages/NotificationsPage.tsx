@@ -4,6 +4,8 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { InternalLinkCard } from '../../platform/components/InternalLinkCard'
+import { useWebSocketConnection } from '../../../shared/websocket/useWebSocketConnection'
+import type { PlatformWebSocketEvent } from '../../../shared/websocket/websocketEvents'
 import {
   getUnreadCount,
   listNotifications,
@@ -41,6 +43,12 @@ export function NotificationsPage() {
       queryClient.invalidateQueries({ queryKey: ['notifications', 'unread-count'] }),
     ])
   }
+
+  useWebSocketConnection((event: PlatformWebSocketEvent) => {
+    if (['notification.created', 'notification.read', 'notification.unread.changed'].includes(event.type)) {
+      void refreshNotifications()
+    }
+  })
 
   const markReadMutation = useMutation({
     mutationFn: markNotificationRead,

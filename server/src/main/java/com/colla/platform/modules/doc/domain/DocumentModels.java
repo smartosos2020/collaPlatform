@@ -96,9 +96,14 @@ public final class DocumentModels {
     public record DocumentComment(
         UUID id,
         UUID documentId,
+        UUID blockId,
         UUID authorId,
         String authorName,
         String content,
+        boolean resolved,
+        Instant resolvedAt,
+        UUID resolvedBy,
+        String resolvedByName,
         Instant createdAt
     ) {
     }

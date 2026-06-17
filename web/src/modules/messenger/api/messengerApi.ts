@@ -33,6 +33,7 @@ export type MessageSummary = {
   messageType: string
   content: string
   clientMessageId: string
+  messageSeq: number
   createdAt: string
   editedAt?: string | null
   revokedAt?: string | null
@@ -115,17 +116,24 @@ export function pinConversation(conversationId: string, pinned: boolean) {
   return apiPost<ConversationDetail>(`/conversations/${conversationId}/pin`, { pinned })
 }
 
-export function listMessages(conversationId: string, beforeId?: string | null) {
+export function listMessages(conversationId: string, beforeId?: string | null, afterSeq?: number | null) {
   const params = new URLSearchParams({ limit: '50' })
   if (beforeId) {
     params.set('beforeId', beforeId)
   }
+  if (afterSeq !== undefined && afterSeq !== null) {
+    params.set('afterSeq', String(afterSeq))
+  }
   return apiGet<MessagePage>(`/conversations/${conversationId}/messages?${params}`)
 }
 
-export function sendMessage(conversationId: string, content: string) {
+export function listMessageContext(conversationId: string, messageId: string) {
+  return apiGet<MessagePage>(`/conversations/${conversationId}/messages/${messageId}/context?limit=50`)
+}
+
+export function sendMessage(conversationId: string, content: string, clientMessageId: string = crypto.randomUUID()) {
   return apiPost<MessageSummary>(`/conversations/${conversationId}/messages`, {
-    clientMessageId: crypto.randomUUID(),
+    clientMessageId,
     messageType: 'text',
     content,
   })

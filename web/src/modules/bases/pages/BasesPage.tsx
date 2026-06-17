@@ -2,7 +2,10 @@ import {
   ApartmentOutlined,
   AppstoreOutlined,
   CalendarOutlined,
+  CommentOutlined,
+  EditOutlined,
   FilterOutlined,
+  LinkOutlined,
   PlusOutlined,
   SaveOutlined,
   ShareAltOutlined,
@@ -37,6 +40,7 @@ import {
   createTable,
   createView,
   getBase,
+  getBaseRecord,
   getCalendarView,
   getKanbanView,
   getTable,
@@ -151,6 +155,11 @@ export function BasesPage() {
         offset: 0,
       }),
     enabled: Boolean(activeBaseId && activeTableId),
+  })
+  const recordDetailQuery = useQuery({
+    queryKey: ['base-records', recordId],
+    queryFn: () => getBaseRecord(recordId || ''),
+    enabled: Boolean(recordId),
   })
   const membersQuery = useQuery({ queryKey: ['members', 'directory'], queryFn: listDirectoryMembers })
 
@@ -288,6 +297,7 @@ export function BasesPage() {
   })
 
   const rows = recordsQuery.data?.items ?? []
+  const selectedRecord = rows.find((record) => record.id === recordId) ?? recordDetailQuery.data ?? null
   const memberNameById = useMemo(() => {
     const entries = (membersQuery.data ?? []).map((member) => [member.id, member.displayName] as const)
     return new Map(entries)
@@ -554,6 +564,18 @@ export function BasesPage() {
       <aside className="bases-panel">
         <Typography.Title level={4}>字段与视图</Typography.Title>
         <Space orientation="vertical" size={12} className="bases-panel-stack">
+          {selectedRecord ? (
+            <BaseRecordDetail
+              record={selectedRecord}
+              fields={fields}
+              baseId={activeBaseId}
+              tableId={activeTableId}
+              memberNameById={memberNameById}
+              canEdit={canEdit}
+              onEdit={() => openRecordModal(selectedRecord)}
+            />
+          ) : null}
+
           <div className="base-side-section">
             <Space className="base-side-section-title">
               <Typography.Text strong>字段</Typography.Text>
@@ -638,6 +660,15 @@ export function BasesPage() {
                 </Button>
               ))}
               {(tableDetail?.views ?? []).length === 0 ? <Typography.Text type="secondary">暂无视图</Typography.Text> : null}
+            </Space>
+          </div>
+
+          <div className="base-side-section">
+            <Typography.Text strong>成员权限</Typography.Text>
+            <Space wrap className="base-view-tags">
+              {(baseQuery.data?.members ?? []).map((member) => (
+                <Tag key={member.id}>{member.displayName}: {permissionText(member.permissionLevel)}</Tag>
+              ))}
             </Space>
           </div>
         </Space>
@@ -787,6 +818,61 @@ export function BasesPage() {
   )
 }
 
+function BaseRecordDetail({
+  record,
+  fields,
+  baseId,
+  tableId,
+  memberNameById,
+  canEdit,
+  onEdit,
+}: {
+  record: BaseRecord
+  fields: BaseField[]
+  baseId: string | null
+  tableId: string | null
+  memberNameById: Map<string, string>
+  canEdit: boolean
+  onEdit: () => void
+}) {
+  const recordPath = baseId && tableId ? `/bases/${baseId}/tables/${tableId}/records/${record.id}` : ''
+  return (
+    <div className="base-side-section base-record-detail">
+      <Space className="base-side-section-title">
+        <Typography.Text strong>记录详情 #{record.recordNo}</Typography.Text>
+        <Space>
+          {recordPath ? (
+            <Tooltip title="打开链接">
+              <Button size="small" icon={<LinkOutlined />} href={recordPath} />
+            </Tooltip>
+          ) : null}
+          <Tooltip title="编辑记录">
+            <Button size="small" icon={<EditOutlined />} disabled={!canEdit} onClick={onEdit} />
+          </Tooltip>
+        </Space>
+      </Space>
+      <Typography.Text type="secondary">{record.primaryText || '未命名记录'}</Typography.Text>
+      <div className="base-record-detail-grid">
+        {fields.map((field) => (
+          <div className="base-record-detail-row" key={field.id}>
+            <span>{field.name}</span>
+            <CellValue field={field} record={record} memberNameById={memberNameById} />
+          </div>
+        ))}
+      </div>
+      <Space wrap>
+        <Tag>创建：{record.createdByName}</Tag>
+        <Tag>更新：{record.updatedByName}</Tag>
+      </Space>
+      <Typography.Text type="secondary">{new Date(record.updatedAt).toLocaleString()}</Typography.Text>
+      <div className="base-record-comments-placeholder">
+        <CommentOutlined />
+        <Typography.Text type="secondary">记录评论预留</Typography.Text>
+      </div>
+    </div>
+  )
+}
+
 function RecordFieldInput({ field, members }: { field: BaseField; members: Array<{ id: string; displayName: string }> }) {
   const rules = field.required ? [{ required: true, message: `请输入${field.name}` }] : []
   if (field.fieldType === 'number') {
@@ -823,15 +909,15 @@ function RecordFieldInput({ field, members }: { field: BaseField; members: Array
   }
   if (field.fieldType === 'date') {
     return (
-      <Form.Item name={field.id} label={field.name} rules={rules} extra="格式：YYYY-MM-DD">
-        <Input />
+      <Form.Item name={field.id} label={field.name} rules={rules}>
+        <Input type="date" />
       </Form.Item>
     )
   }
   if (field.fieldType === 'attachment') {
     return (
-      <Form.Item name={field.id} label={field.name} rules={rules} extra="输入已上传文件 ID">
-        <Input />
+      <Form.Item name={field.id} label={field.name} rules={rules} extra="当前轻量版输入已上传文件 ID">
+        <Input placeholder="fileId" />
       </Form.Item>
     )
   }

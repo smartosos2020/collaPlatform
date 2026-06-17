@@ -78,7 +78,7 @@ function Invoke-LoggedCommand {
 }
 
 function Get-TextFiles {
-    $excludeDirs = @("\node_modules\", "\target\", "\dist\", "\.local-logs\", "\.local-reports\", "\.git\")
+    $excludeDirs = @("\node_modules\", "\target\", "\dist\", "\.local-logs\", "\.local-reports\", "\.local-backups\", "\test-results\", "\playwright-report\", "\.git\")
     Get-ChildItem -Path $Root -Recurse -File | Where-Object {
         $fullName = $_.FullName
         -not ($excludeDirs | Where-Object { $fullName.Contains($_) }) -and
@@ -86,6 +86,95 @@ function Get-TextFiles {
         $_.Length -lt 2MB -and
         $_.Extension -notin @(".png", ".jpg", ".jpeg", ".gif", ".ico", ".jar", ".class", ".zip", ".gz")
     }
+}
+
+function Get-NormalizedGitStatusPaths {
+    if (-not (Test-CommandExists "git") -or -not (Test-Path (Join-Path $Root ".git"))) {
+        return @()
+    }
+
+    Push-Location $Root
+    try {
+        $status = git status --porcelain -uall
+        if (-not $status) {
+            return @()
+        }
+        return $status | ForEach-Object {
+            $path = $_.Substring(3).Trim()
+            if ($path -match " -> ") {
+                $path = ($path -split " -> ")[1]
+            }
+            $path.Replace("\", "/")
+        }
+    } finally {
+        Pop-Location
+    }
+}
+
+function Test-DocumentChanged {
+    param(
+        [string] $Path,
+        [string[]] $ChangedPaths
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        return $true
+    }
+    $normalized = $Path.Replace("\", "/")
+    return $ChangedPaths -contains $normalized
+}
+
+function Get-ComposeServices {
+    $output = docker compose ps --format json
+    if ($LASTEXITCODE -ne 0) {
+        throw "docker compose ps failed with code $LASTEXITCODE"
+    }
+    if (-not $output) {
+        return @()
+    }
+    return @($output | ConvertFrom-Json)
+}
+
+function Wait-DockerServicesHealthy {
+    param(
+        [string[]] $Services,
+        [int] $TimeoutSeconds = 90
+    )
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    $lastState = ""
+    while ((Get-Date) -lt $deadline) {
+        $ps = @(Get-ComposeServices)
+        $pending = New-Object System.Collections.Generic.List[string]
+
+        foreach ($service in $Services) {
+            $item = $ps | Where-Object { $_.Service -eq $service }
+            if (-not $item) {
+                $pending.Add("$service:not-found") | Out-Null
+                continue
+            }
+            if ($item.State -ne "running") {
+                $pending.Add("${service}:$($item.State)") | Out-Null
+                continue
+            }
+            if ($item.Health -and $item.Health -ne "healthy") {
+                $pending.Add("${service}:$($item.Health)") | Out-Null
+            }
+        }
+
+        if ($pending.Count -eq 0) {
+            return @(Get-ComposeServices)
+        }
+
+        $currentState = $pending -join ", "
+        if ($currentState -ne $lastState) {
+            Write-Host "Waiting for Docker services: $currentState"
+            $lastState = $currentState
+        }
+        Start-Sleep -Seconds 2
+    }
+
+    throw "Docker services did not become healthy within $TimeoutSeconds seconds: $lastState"
 }
 
 Invoke-Step "Toolchain" {
@@ -109,8 +198,8 @@ Invoke-Step "Toolchain" {
 if (-not $SkipDocker) {
     Invoke-Step "Docker dependencies" {
         Invoke-LoggedCommand "docker compose up -d postgres redis minio" $Root
-        $ps = docker compose ps --format json | ConvertFrom-Json
         $required = @("postgres", "redis", "minio")
+        $ps = @(Wait-DockerServicesHealthy -Services $required)
         foreach ($service in $required) {
             $item = $ps | Where-Object { $_.Service -eq $service }
             if (-not $item) {
@@ -236,7 +325,7 @@ if (-not $SkipAudit) {
 
     Invoke-Step "Generated artifact scan" {
         $blocked = @()
-        $generatedPaths = @("web\dist", "server\target", "node_modules", ".local-logs")
+        $generatedPaths = @("web\dist", "server\target", "node_modules", ".local-logs", ".local-reports", ".local-backups", "web\test-results", "web\playwright-report")
         foreach ($path in $generatedPaths) {
             $fullPath = Join-Path $Root $path
             if ((Test-Path $fullPath) -and (Test-CommandExists "git") -and (Test-Path (Join-Path $Root ".git"))) {
@@ -255,7 +344,7 @@ if (-not $SkipAudit) {
         if ((Test-CommandExists "git") -and (Test-Path (Join-Path $Root ".git"))) {
             Push-Location $Root
             try {
-                $trackedGenerated = git ls-files "web/dist" "server/target" "node_modules" ".local-logs" ".local-reports" 2>$null
+                $trackedGenerated = git ls-files "web/dist" "server/target" "node_modules" ".local-logs" ".local-reports" ".local-backups" "web/test-results" "web/playwright-report" 2>$null
                 if ($trackedGenerated) {
                     $blocked += $trackedGenerated
                 }
@@ -272,11 +361,136 @@ if (-not $SkipAudit) {
     Invoke-Step "TODO/FIXME inventory" {
         if (Test-CommandExists "rg") {
             $todo = & rg -n "\b(TODO|FIXME|HACK|XXX)\b" $Root `
-                -g "!node_modules" -g "!target" -g "!dist" -g "!.local-logs" -g "!.local-reports" `
-                -g "!scripts/ai-quality-gate.ps1" -g "!docs/ai-engineering-governance.md" 2>$null
+                -g "!node_modules" -g "!target" -g "!dist" -g "!.local-logs" -g "!.local-reports" -g "!.local-backups" -g "!test-results" -g "!playwright-report" `
+                -g "!scripts/ai-quality-gate.ps1" -g "!docs/03-engineering/ai-engineering-governance.md" 2>$null
             if ($todo) {
                 Add-Warning "Open implementation markers found. Review before release."
                 $todo | Select-Object -First 50 | ForEach-Object { Add-Warning "  $_" }
+            }
+        }
+    }
+
+    Invoke-Step "Documentation structure" {
+        $docsRoot = Join-Path $Root "docs"
+        if (-not (Test-Path $docsRoot)) {
+            throw "docs directory is missing"
+        }
+
+        $rootMarkdown = Get-ChildItem -Path $docsRoot -File -Filter "*.md"
+        $invalidRootDocs = $rootMarkdown | Where-Object { $_.Name -ne "README.md" }
+        if ($invalidRootDocs) {
+            throw "Only docs/README.md is allowed in docs root: $($invalidRootDocs.Name -join ', ')"
+        }
+
+        $activeDocs = @(
+            "docs/README.md",
+            "docs/00-product/current-product-scope.md",
+            "docs/01-architecture/current-architecture.md",
+            "docs/01-architecture/technology-selection.md",
+            "docs/01-architecture/platform-object-model.md",
+            "docs/02-roadmap/current-roadmap.md",
+            "docs/03-engineering/ai-engineering-governance.md"
+        )
+        foreach ($doc in $activeDocs) {
+            $fullPath = Join-Path $Root $doc
+            if (-not (Test-Path $fullPath)) {
+                throw "Active document is missing: $doc"
+            }
+            $content = Get-Content -LiteralPath $fullPath -Raw
+            if ($content -notmatch "(?s)^---\s+.*status:\s+active.*---") {
+                throw "Active document must have front matter with status: active: $doc"
+            }
+        }
+
+        $illegalRootPattern = Get-ChildItem -Path $docsRoot -File -Filter "*.md" | Where-Object {
+            $_.Name -match "^(m\d+|.*roadmap.*|.*report.*)\.md$" -and $_.Name -ne "README.md"
+        }
+        if ($illegalRootPattern) {
+            throw "Milestone, roadmap, and report documents are not allowed in docs root: $($illegalRootPattern.Name -join ', ')"
+        }
+    }
+
+    Invoke-Step "Work-cycle documentation contract" {
+        $contextPath = Join-Path $ReportDir "work-cycle-current.json"
+        if (-not (Test-Path $contextPath)) {
+            Add-Result "  no active work-cycle context; skipped strict document contract"
+            return
+        }
+
+        $context = Get-Content -LiteralPath $contextPath -Raw | ConvertFrom-Json
+        $changedPaths = @(Get-NormalizedGitStatusPaths)
+        if ($context.docMode -eq "archive-only") {
+            Add-Result "  archive-only document mode; code-doc-report contract not required"
+            return
+        }
+
+        if ($context.PSObject.Properties.Name -contains "workScope") {
+            $scope = $context.workScope
+            $maxMilestones = if ($null -ne $scope.maxMilestonesPerCycle) { [int] $scope.maxMilestonesPerCycle } else { 1 }
+            $maxTasks = if ($null -ne $scope.maxTasksPerCycle) { [int] $scope.maxTasksPerCycle } else { 8 }
+
+            if (-not [bool] $scope.scopeValid) {
+                throw "Active work-cycle scope is invalid: $($scope.scopeWarnings -join '; ')"
+            }
+            if ($null -ne $scope.milestoneCount -and [int] $scope.milestoneCount -gt $maxMilestones) {
+                throw "Active work-cycle crosses $($scope.milestoneCount) milestones; max is $maxMilestones"
+            }
+            if ($null -ne $scope.taskCount -and [int] $scope.taskCount -gt $maxTasks) {
+                throw "Active work-cycle contains $($scope.taskCount) tasks; max is $maxTasks"
+            }
+        } else {
+            $message = "Active work-cycle context has no scope metadata; restart with scripts/ai-work-cycle.ps1 start to enforce task range limits."
+            if ($Mode -eq "full") {
+                throw $message
+            }
+            Add-Warning $message
+        }
+
+        foreach ($doc in $context.requiredDocs) {
+            $fullPath = Join-Path $Root $doc
+            if (-not (Test-Path $fullPath)) {
+                throw "Required work-cycle document is missing: $doc"
+            }
+        }
+
+        if ($Mode -ne "full") {
+            foreach ($doc in $context.requiredDocs) {
+                if (-not (Test-DocumentChanged -Path $doc -ChangedPaths $changedPaths)) {
+                    Add-Warning "Work-cycle document has not changed yet: $doc"
+                }
+            }
+            return
+        }
+
+        foreach ($doc in $context.requiredDocs) {
+            if (-not (Test-DocumentChanged -Path $doc -ChangedPaths $changedPaths)) {
+                throw "Full work-cycle finish requires updating document: $doc"
+            }
+        }
+
+        $changedDocPaths = $changedPaths | Where-Object { $_ -like "docs/*.md" -or $_ -like "docs/*/*.md" -or $_ -like "docs/*/*/*.md" }
+        $hasBaseline = $context.PSObject.Properties.Name -contains "baselineChangedPaths"
+        if ($hasBaseline) {
+            $baselineChangedPaths = @($context.baselineChangedPaths)
+            $changedDocPaths = $changedDocPaths | Where-Object { $baselineChangedPaths -notcontains $_ }
+        } else {
+            Add-Warning "Active work-cycle context has no baselineChangedPaths; non-required dirty document boundary checks are skipped for this legacy context."
+            $changedDocPaths = @()
+        }
+
+        foreach ($path in $changedDocPaths) {
+            $fullChangedDocPath = Join-Path $Root $path
+            if (-not (Test-Path $fullChangedDocPath)) {
+                continue
+            }
+            if ($path -like "docs/99-archive/*") {
+                throw "docs/99-archive can only be edited in archive-only mode: $path"
+            }
+            if ($path -match "^docs/.*roadmap.*\.md$" -and $path -ne "docs/02-roadmap/current-roadmap.md" -and $path -notlike "docs/99-archive/*") {
+                throw "New or changed roadmap documents are not allowed outside docs/02-roadmap/current-roadmap.md: $path"
+            }
+            if ($path -match "^docs/m\d+.*\.md$") {
+                throw "Milestone documents are not allowed in docs root: $path"
             }
         }
     }

@@ -1,14 +1,19 @@
 package com.colla.platform.modules.project.application;
 
+import com.colla.platform.modules.audit.application.AuditService;
 import com.colla.platform.modules.event.infrastructure.DomainEventRepository;
 import com.colla.platform.modules.file.infrastructure.FileRepository;
 import com.colla.platform.modules.im.application.ImService;
 import com.colla.platform.modules.im.infrastructure.ImRepository;
+import com.colla.platform.modules.platform.application.PlatformObjectResolverRegistry;
+import com.colla.platform.modules.platform.domain.PlatformModels.ObjectAccessState;
+import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectSummary;
 import com.colla.platform.modules.platform.infrastructure.PlatformObjectRepository;
 import com.colla.platform.modules.project.domain.ProjectModels.IssueActivity;
 import com.colla.platform.modules.project.domain.ProjectModels.IssueAttachment;
 import com.colla.platform.modules.project.domain.ProjectModels.IssueComment;
 import com.colla.platform.modules.project.domain.ProjectModels.IssueDetail;
+import com.colla.platform.modules.project.domain.ProjectModels.IssueRelation;
 import com.colla.platform.modules.project.domain.ProjectModels.IssueSummary;
 import com.colla.platform.modules.project.domain.ProjectModels.ProjectDetail;
 import com.colla.platform.modules.project.domain.ProjectModels.ProjectStats;
@@ -38,23 +43,29 @@ public class ProjectService {
     private final ImRepository imRepository;
     private final ImService imService;
     private final PlatformObjectRepository objectRepository;
+    private final PlatformObjectResolverRegistry objectResolverRegistry;
     private final DomainEventRepository eventRepository;
     private final FileRepository fileRepository;
+    private final AuditService auditService;
 
     public ProjectService(
         ProjectRepository projectRepository,
         ImRepository imRepository,
         ImService imService,
         PlatformObjectRepository objectRepository,
+        PlatformObjectResolverRegistry objectResolverRegistry,
         DomainEventRepository eventRepository,
-        FileRepository fileRepository
+        FileRepository fileRepository,
+        AuditService auditService
     ) {
         this.projectRepository = projectRepository;
         this.imRepository = imRepository;
         this.imService = imService;
         this.objectRepository = objectRepository;
+        this.objectResolverRegistry = objectResolverRegistry;
         this.eventRepository = eventRepository;
         this.fileRepository = fileRepository;
+        this.auditService = auditService;
     }
 
     public List<ProjectSummary> listProjects(CurrentUser currentUser) {
@@ -104,6 +115,7 @@ public class ProjectService {
             Map.of("projectId", projectId.toString(), "conversationId", conversationId.toString()),
             "project.created:" + projectId
         );
+        auditService.log(currentUser, "project.created", "project", projectId, Map.of("projectKey", normalizedKey));
         return getProject(currentUser, projectId);
     }
 
@@ -131,18 +143,30 @@ public class ProjectService {
                 Map.of("projectId", projectId.toString(), "memberId", memberId.toString()),
                 "project.member.added:" + projectId + ":" + memberId
             );
+            auditService.log(currentUser, "project.member.added", "project", projectId, Map.of("memberId", memberId.toString()));
         }
         return getProject(currentUser, projectId);
     }
 
-    public List<IssueSummary> listIssues(CurrentUser currentUser, UUID projectId, String status, String issueType) {
+    public List<IssueSummary> listIssues(
+        CurrentUser currentUser,
+        UUID projectId,
+        String status,
+        String issueType,
+        String priority,
+        UUID assigneeId,
+        String sort
+    ) {
         requireProjectMember(currentUser, projectId);
         return projectRepository.listIssues(
             currentUser.workspaceId(),
             projectId,
             currentUser.id(),
-            blankToNull(status),
-            blankToNull(issueType)
+            normalizeOptionalStatus(status),
+            normalizeOptionalIssueType(issueType),
+            normalizeOptionalPriority(priority),
+            assigneeId,
+            normalizeIssueSort(sort)
         );
     }
 
@@ -192,6 +216,7 @@ public class ProjectService {
         appendIssueEvent(currentUser, "issue.created", issueId, Map.of("projectId", projectId.toString(), "issueId", issueId.toString()));
         notifyAssignee(currentUser, issueId, assigneeId, "issue.assigned", "你被指派了事项 " + issueKey);
         postProjectMessage(currentUser, project.conversationId(), "创建了 " + label(type) + " " + issueKey + " /issues/" + issueId);
+        auditService.log(currentUser, "issue.created", "issue", issueId, Map.of("projectId", projectId.toString(), "issueType", type));
         return getIssue(currentUser, issueId);
     }
 
@@ -201,7 +226,9 @@ public class ProjectService {
             issue,
             projectRepository.listComments(currentUser.workspaceId(), issueId),
             projectRepository.listAttachments(currentUser.workspaceId(), issueId),
-            projectRepository.listActivities(currentUser.workspaceId(), issueId)
+            projectRepository.listActivities(currentUser.workspaceId(), issueId),
+            projectRepository.listVerifications(currentUser.workspaceId(), issueId),
+            hydrateRelations(currentUser, projectRepository.listRelations(currentUser.workspaceId(), issueId))
         );
     }
 
@@ -236,6 +263,7 @@ public class ProjectService {
         }
         IssueSummary after = projectRepository.findIssue(currentUser.workspaceId(), issueId).orElseThrow();
         registerIssueObject(currentUser.workspaceId(), issueId, after.issueType(), after.issueKey(), after.title());
+        auditService.log(currentUser, "issue.updated", "issue", issueId, Map.of("projectId", before.projectId().toString()));
         return getIssue(currentUser, issueId);
     }
 
@@ -249,8 +277,16 @@ public class ProjectService {
         projectRepository.transitionIssue(currentUser.workspaceId(), issueId, next, currentUser.id());
         projectRepository.addActivity(currentUser.workspaceId(), issueId, currentUser.id(), "transitioned", issue.status(), next);
         appendIssueEvent(currentUser, "issue.transitioned", issueId, Map.of("issueId", issueId.toString(), "from", issue.status(), "to", next));
+        notifyIssueParticipants(
+            currentUser,
+            issue,
+            "issue.transitioned",
+            issue.issueKey() + " 状态已变更为 " + next,
+            issue.status() + " -> " + next
+        );
         ProjectSummary project = projectRepository.findProjectById(currentUser.workspaceId(), issue.projectId()).orElseThrow();
         postProjectMessage(currentUser, project.conversationId(), "流转了 " + issue.issueKey() + "：" + issue.status() + " -> " + next + " /issues/" + issueId);
+        auditService.log(currentUser, "issue.transitioned", "issue", issueId, Map.of("from", issue.status(), "to", next));
         return getIssue(currentUser, issueId);
     }
 
@@ -302,6 +338,94 @@ public class ProjectService {
         fileRepository.addUsage(currentUser.workspaceId(), fileId, "issue", issueId, currentUser.id());
         projectRepository.addActivity(currentUser.workspaceId(), issueId, currentUser.id(), "attachment.added", null, fileId.toString());
         return getIssue(currentUser, issue.id());
+    }
+
+    @Transactional
+    public IssueDetail addVerification(
+        CurrentUser currentUser,
+        UUID issueId,
+        String result,
+        String note,
+        String environment,
+        String reproductionSteps,
+        String fixVersion
+    ) {
+        IssueSummary issue = requireIssueEditor(currentUser, issueId);
+        if (!"bug".equals(issue.issueType())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Only bug issues can be verified");
+        }
+        String normalizedResult = normalizeVerificationResult(result);
+        String normalizedNote = note == null ? "" : note.trim();
+        String normalizedEnvironment = trimToNull(environment);
+        String normalizedSteps = trimToNull(reproductionSteps);
+        String normalizedFixVersion = trimToNull(fixVersion);
+        UUID verificationId = projectRepository.addVerification(
+            currentUser.workspaceId(),
+            issueId,
+            currentUser.id(),
+            normalizedResult,
+            normalizedNote,
+            normalizedEnvironment,
+            normalizedSteps,
+            normalizedFixVersion
+        );
+        projectRepository.addActivity(currentUser.workspaceId(), issueId, currentUser.id(), "verified", null, normalizedResult);
+        if ("passed".equals(normalizedResult) && "resolved".equals(issue.status())) {
+            projectRepository.transitionIssue(currentUser.workspaceId(), issueId, "closed", currentUser.id());
+            projectRepository.addActivity(currentUser.workspaceId(), issueId, currentUser.id(), "transitioned", "resolved", "closed");
+        } else if ("failed".equals(normalizedResult) && "resolved".equals(issue.status())) {
+            projectRepository.transitionIssue(currentUser.workspaceId(), issueId, "in_progress", currentUser.id());
+            projectRepository.addActivity(currentUser.workspaceId(), issueId, currentUser.id(), "transitioned", "resolved", "in_progress");
+        }
+        appendIssueEvent(
+            currentUser,
+            "issue.verified",
+            issueId,
+            Map.of("issueId", issueId.toString(), "verificationId", verificationId.toString(), "result", normalizedResult)
+        );
+        notifyIssueParticipants(
+            currentUser,
+            issue,
+            "issue.verified",
+            issue.issueKey() + " 已完成 BUG 验证",
+            normalizedResult
+        );
+        ProjectSummary project = projectRepository.findProjectById(currentUser.workspaceId(), issue.projectId()).orElseThrow();
+        postProjectMessage(currentUser, project.conversationId(), "验证了 " + issue.issueKey() + "：" + normalizedResult + " /issues/" + issueId);
+        auditService.log(currentUser, "issue.verified", "issue", issueId, Map.of("result", normalizedResult));
+        return getIssue(currentUser, issueId);
+    }
+
+    @Transactional
+    public IssueDetail addRelation(CurrentUser currentUser, UUID issueId, String targetType, UUID targetId) {
+        IssueSummary issue = requireIssueEditor(currentUser, issueId);
+        if (targetType == null || targetType.isBlank() || targetId == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Target object is required");
+        }
+        String normalizedTargetType = targetType.trim();
+        if ("issue".equals(normalizedTargetType) && issueId.equals(targetId)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Issue cannot relate to itself");
+        }
+        PlatformObjectSummary target = objectResolverRegistry.resolve(currentUser, normalizedTargetType, targetId);
+        if (target.accessState() != ObjectAccessState.available) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Target object is not available");
+        }
+        projectRepository.addRelation(currentUser.workspaceId(), issueId, normalizedTargetType, targetId, currentUser.id());
+        projectRepository.addActivity(currentUser.workspaceId(), issueId, currentUser.id(), "relation.added", null, normalizedTargetType + ":" + targetId);
+        appendIssueEvent(
+            currentUser,
+            "issue.relation.added",
+            issueId,
+            Map.of("issueId", issueId.toString(), "targetType", normalizedTargetType, "targetId", targetId.toString())
+        );
+        auditService.log(
+            currentUser,
+            "issue.relation.added",
+            "issue",
+            issueId,
+            Map.of("targetType", normalizedTargetType, "targetId", targetId.toString(), "projectId", issue.projectId().toString())
+        );
+        return getIssue(currentUser, issueId);
     }
 
     private IssueSummary requireIssueAccess(CurrentUser currentUser, UUID issueId) {
@@ -375,6 +499,36 @@ public class ProjectService {
         );
     }
 
+    private void notifyIssueParticipants(CurrentUser currentUser, IssueSummary issue, String eventType, String title, String body) {
+        Set<UUID> recipients = new LinkedHashSet<>();
+        if (issue.assigneeId() != null) {
+            recipients.add(issue.assigneeId());
+        }
+        recipients.add(issue.reporterId());
+        recipients.remove(currentUser.id());
+        for (UUID recipientId : recipients) {
+            UUID eventKey = UUID.randomUUID();
+            eventRepository.append(
+                currentUser.workspaceId(),
+                "notification.created",
+                "issue",
+                issue.id(),
+                currentUser.id(),
+                Map.of(
+                    "recipientId", recipientId.toString(),
+                    "notificationType", eventType,
+                    "title", title,
+                    "body", body,
+                    "targetType", "issue",
+                    "targetId", issue.id().toString(),
+                    "webPath", "/issues/" + issue.id(),
+                    "dedupeKey", eventType + ":" + issue.id() + ":" + recipientId + ":" + eventKey
+                ),
+                "notification:" + eventKey
+            );
+        }
+    }
+
     private void appendIssueEvent(CurrentUser currentUser, String eventType, UUID issueId, Map<String, Object> payload) {
         eventRepository.append(
             currentUser.workspaceId(),
@@ -426,6 +580,10 @@ public class ProjectService {
         return type;
     }
 
+    private String normalizeOptionalIssueType(String issueType) {
+        return issueType == null || issueType.isBlank() ? null : normalizeIssueType(issueType);
+    }
+
     private String normalizePriority(String priority) {
         String value = priority == null || priority.isBlank() ? "medium" : priority.toLowerCase(Locale.ROOT);
         if (!List.of("low", "medium", "high", "urgent").contains(value)) {
@@ -434,10 +592,34 @@ public class ProjectService {
         return value;
     }
 
+    private String normalizeOptionalPriority(String priority) {
+        return priority == null || priority.isBlank() ? null : normalizePriority(priority);
+    }
+
     private String normalizeStatus(String status) {
         String value = status == null || status.isBlank() ? "" : status.toLowerCase(Locale.ROOT);
         if (!List.of("open", "in_progress", "resolved", "closed").contains(value)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid issue status");
+        }
+        return value;
+    }
+
+    private String normalizeOptionalStatus(String status) {
+        return status == null || status.isBlank() ? null : normalizeStatus(status);
+    }
+
+    private String normalizeIssueSort(String sort) {
+        String value = sort == null || sort.isBlank() ? "updated_desc" : sort.toLowerCase(Locale.ROOT);
+        if (!List.of("updated_desc", "created_desc", "due_asc", "priority_desc").contains(value)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid issue sort");
+        }
+        return value;
+    }
+
+    private String normalizeVerificationResult(String result) {
+        String value = result == null || result.isBlank() ? "" : result.toLowerCase(Locale.ROOT);
+        if (!List.of("passed", "failed", "blocked").contains(value)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid verification result");
         }
         return value;
     }
@@ -462,5 +644,24 @@ public class ProjectService {
 
     private String blankToNull(String value) {
         return value == null || value.isBlank() ? null : value;
+    }
+
+    private String trimToNull(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private List<IssueRelation> hydrateRelations(CurrentUser currentUser, List<IssueRelation> relations) {
+        return relations.stream()
+            .map(relation -> new IssueRelation(
+                relation.id(),
+                relation.issueId(),
+                relation.targetType(),
+                relation.targetId(),
+                relation.createdBy(),
+                relation.createdByName(),
+                relation.createdAt(),
+                objectResolverRegistry.resolve(currentUser, relation.targetType(), relation.targetId())
+            ))
+            .toList();
     }
 }

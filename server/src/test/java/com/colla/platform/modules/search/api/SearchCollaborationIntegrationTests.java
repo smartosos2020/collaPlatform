@@ -98,6 +98,14 @@ class SearchCollaborationIntegrationTests {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.pinnedAt", not(blankOrNullString())));
 
+        mockMvc.perform(post("/api/search/reindex")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/search/reindex")
+                .header("Authorization", "Bearer " + memberToken))
+            .andExpect(status().isForbidden());
+
         mockMvc.perform(get("/api/search?q=aurora&limit=20")
                 .header("Authorization", "Bearer " + memberToken))
             .andExpect(status().isOk())

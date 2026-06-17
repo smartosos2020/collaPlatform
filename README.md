@@ -14,14 +14,18 @@ Lightweight internal collaboration workspace for IM, project/Bug management, doc
 
 ## Planning Documents
 
-- [PRD and architecture draft](docs/light-colla-platform-prd-architecture.md)
-- [Milestone execution roadmap](docs/milestone-execution-roadmap.md)
-- [AI engineering governance](docs/ai-engineering-governance.md)
-- [Phase 1 technical design](docs/phase1-technical-design.md)
-- [Technology selection](docs/technology-selection.md)
-- [Project skeleton initialization plan](docs/project-skeleton-initialization.md)
+- [Documentation index](docs/README.md)
+- [Current product scope](docs/00-product/current-product-scope.md)
+- [Current architecture](docs/01-architecture/current-architecture.md)
+- [Technology selection](docs/01-architecture/technology-selection.md)
+- [Current roadmap](docs/02-roadmap/current-roadmap.md)
+- [AI engineering governance](docs/03-engineering/ai-engineering-governance.md)
+- [Local development runbook](docs/05-runbooks/local-dev.md)
+- [Quality gate runbook](docs/05-runbooks/quality-gate.md)
 
 ## Local Development
+
+Follow the full runbook in [docs/05-runbooks/local-dev.md](docs/05-runbooks/local-dev.md).
 
 1. Copy `.env.example` to `.env` and adjust values if needed.
 2. Start dependencies:
@@ -46,6 +50,8 @@ pnpm dev
 ```
 
 ## Quality Gates
+
+See [docs/05-runbooks/quality-gate.md](docs/05-runbooks/quality-gate.md) for quick/full gate rules and failure handling.
 
 Run the quick AI engineering gate:
 

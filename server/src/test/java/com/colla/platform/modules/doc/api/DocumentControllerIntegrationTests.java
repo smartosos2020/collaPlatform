@@ -181,7 +181,7 @@ class DocumentControllerIntegrationTests {
             .andExpect(jsonPath("$[0].blockType").value("heading"))
             .andExpect(jsonPath("$[1].content").value("First step"));
 
-        mockMvc.perform(patch("/api/docs/" + documentId + "/blocks")
+        String blocksResponse = mockMvc.perform(patch("/api/docs/" + documentId + "/blocks")
                 .header("Authorization", "Bearer " + adminToken)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
@@ -199,7 +199,37 @@ class DocumentControllerIntegrationTests {
             .andExpect(jsonPath("$.document.currentVersionNo").value(2))
             .andExpect(jsonPath("$.content").value("# Block Plan\n- [ ] Ship API"))
             .andExpect(jsonPath("$.blocks[1].blockType").value("task"))
-            .andExpect(jsonPath("$.blocks[1].sortOrder").value(1));
+            .andExpect(jsonPath("$.blocks[1].sortOrder").value(1))
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+        JsonNode blocksJson = objectMapper.readTree(blocksResponse);
+        UUID taskBlockId = UUID.fromString(blocksJson.get("blocks").get(1).get("id").asText());
+
+        String commentResponse = mockMvc.perform(post("/api/docs/" + documentId + "/comments")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                        {
+                          "blockId": "%s",
+                          "content": "This block needs a clearer owner"
+                        }
+                        """.formatted(taskBlockId)
+                ))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.comments[0].blockId").value(taskBlockId.toString()))
+            .andExpect(jsonPath("$.comments[0].resolved").value(false))
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+        UUID commentId = UUID.fromString(objectMapper.readTree(commentResponse).get("comments").get(0).get("id").asText());
+
+        mockMvc.perform(post("/api/docs/" + documentId + "/comments/" + commentId + "/resolve")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.comments[0].resolved").value(true))
+            .andExpect(jsonPath("$.comments[0].resolvedByName").value("Administrator"));
     }
 
     @Test

@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
+import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectSummary;
 
 public final class ProjectModels {
     private ProjectModels() {
@@ -70,7 +71,9 @@ public final class ProjectModels {
         IssueSummary issue,
         List<IssueComment> comments,
         List<IssueAttachment> attachments,
-        List<IssueActivity> activities
+        List<IssueActivity> activities,
+        List<IssueVerification> verifications,
+        List<IssueRelation> relations
     ) {
     }
 
@@ -103,6 +106,32 @@ public final class ProjectModels {
         String fromValue,
         String toValue,
         Instant createdAt
+    ) {
+    }
+
+    public record IssueVerification(
+        UUID id,
+        UUID issueId,
+        UUID verifierId,
+        String verifierName,
+        String result,
+        String note,
+        String environment,
+        String reproductionSteps,
+        String fixVersion,
+        Instant createdAt
+    ) {
+    }
+
+    public record IssueRelation(
+        UUID id,
+        UUID issueId,
+        String targetType,
+        UUID targetId,
+        UUID createdBy,
+        String createdByName,
+        Instant createdAt,
+        PlatformObjectSummary target
     ) {
     }
 

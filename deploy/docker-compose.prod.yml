@@ -1,9 +1,16 @@
 name: colla-platform-prod
 
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "100m"
+    max-file: "14"
+
 services:
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
+    logging: *default-logging
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
@@ -19,6 +26,7 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
+    logging: *default-logging
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
       - redis_data:/data
@@ -31,6 +39,7 @@ services:
   minio:
     image: minio/minio:latest
     restart: unless-stopped
+    logging: *default-logging
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
@@ -47,6 +56,7 @@ services:
     build:
       context: ../server
     restart: unless-stopped
+    logging: *default-logging
     environment:
       SPRING_PROFILES_ACTIVE: prod
       COLLA_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
@@ -84,10 +94,12 @@ services:
       context: ..
       dockerfile: web/Dockerfile
     restart: unless-stopped
+    logging: *default-logging
 
   nginx:
     image: nginx:1.27-alpine
     restart: unless-stopped
+    logging: *default-logging
     ports:
       - "80:80"
       - "443:443"

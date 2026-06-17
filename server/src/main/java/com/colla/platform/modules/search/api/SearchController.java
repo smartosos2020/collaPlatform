@@ -5,6 +5,7 @@ import com.colla.platform.modules.search.domain.SearchModels.SearchResponse;
 import com.colla.platform.shared.auth.CurrentUser;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -25,5 +26,10 @@ public class SearchController {
         Authentication authentication
     ) {
         return searchService.search((CurrentUser) authentication.getPrincipal(), q, limit);
+    }
+
+    @PostMapping("/reindex")
+    public void reindex(Authentication authentication) {
+        searchService.reindex((CurrentUser) authentication.getPrincipal());
     }
 }

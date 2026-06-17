@@ -1,3 +1,8 @@
+---
+title: AI 编程工程治理规范
+status: active
+---
+
 # AI 编程工程治理规范
 
 ## 1. 文档目的
@@ -69,12 +74,20 @@ AI 在修改任何模块前必须先读取：
 
 ## 4. AI 工作循环
 
+AI 工作循环不是单纯的代码实现流程，而是固定闭环：
+
+```text
+代码实现 + 文档同步 + 验证报告
+```
+
+当用户输入“按 AI 工作循环推进 MXX-T01 到 MXX-T08”时，默认必须执行该闭环。
+
 ### 4.1 开始前
 
 执行：
 
 ```powershell
-pnpm work:start -- -Goal "M1-auth"
+pnpm work:start -- -Goal "M25-delivery" -TaskRange "M25-T01 到 M25-T08"
 ```
 
 要求：
@@ -82,6 +95,9 @@ pnpm work:start -- -Goal "M1-auth"
 - 生成审计快照。
 - 确认当前工程状态。
 - 明确本轮目标和不做范围。
+- 写入 `.local-reports/work-cycle-current.json`。
+- 输出 Document Contract。
+- 如果能识别 MXX，自动创建或复用 `docs/90-reports/mxx-execution-report.md`。
 
 ### 4.2 工作中
 
@@ -96,6 +112,7 @@ pnpm work:checkpoint -- -Goal "M1-auth" -GateMode quick
 - 运行快速质量门禁。
 - 修复新增失败。
 - 不把失败堆到最后。
+- quick 门禁会检查文档结构，并对尚未更新的工作循环文档给出警告。
 
 ### 4.3 结束前
 
@@ -110,6 +127,115 @@ pnpm work:finish -- -Goal "M1-auth"
 - 运行完整质量门禁。
 - 生成结束审计快照。
 - 输出最终交付说明。
+- full 门禁必须通过文档闭环检查。
+
+### 4.4 文档同步契约
+
+默认 `DocMode` 为 `code-doc-report`。除非用户明确要求归档整理，否则不得切换为其他模式。
+
+每轮工作循环必须：
+
+- 更新 `docs/02-roadmap/current-roadmap.md`。
+- 创建或更新 `docs/90-reports/mxx-execution-report.md`。
+- 在执行报告中记录完成项、代码变更、文档变更、验证结果、遗留 Gap 和下一步。
+- 按影响范围更新 active 真相文档：
+  - 产品能力变化：`docs/00-product/current-product-scope.md`
+  - 架构、API、数据库、WebSocket、搜索、权限变化：`docs/01-architecture/current-architecture.md`
+  - 平台对象、内部链接、对象卡片、搜索对象类型变化：`docs/01-architecture/platform-object-model.md`
+  - 技术栈变化：`docs/01-architecture/technology-selection.md`
+  - AI 工作规则、脚本、门禁变化：`docs/03-engineering/ai-engineering-governance.md`
+
+每轮工作循环禁止：
+
+- 新建 roadmap 文件。
+- 在 `docs/` 根目录新增 Markdown，`README.md` 除外。
+- 在非归档任务中编辑 `docs/99-archive/`。
+- 创建自由格式的 `mXX-*.md`、`next-plan.md`、`post-mXX-roadmap.md`。
+
+固定执行报告格式：
+
+```md
+---
+title: MXX 执行报告
+status: archived
+milestone: MXX
+updated_at: YYYY-MM-DD
+---
+
+# MXX 执行报告
+
+## 本轮范围
+
+## 完成项
+
+| 任务 | 状态 | 代码/文档依据 |
+| --- | --- | --- |
+
+## 代码变更
+
+- 后端：
+- 前端：
+- 数据库：
+- 脚本：
+
+## 文档变更
+
+| 文档 | 动作 | 原因 |
+| --- | --- | --- |
+
+## 验证
+
+- 后端测试：
+- 前端构建：
+- `pnpm verify`：
+- 浏览器冒烟：
+
+## 遗留 Gap
+
+## 下一步
+```
+
+### 4.5 文档模式
+
+| DocMode | 用途 | 允许行为 |
+| --- | --- | --- |
+| `code-doc-report` | 默认迭代闭环 | 代码实现、active 文档同步、路线图更新、执行报告更新 |
+| `archive-only` | 专门文档整理 | 只整理、迁移、归档文档，不改业务代码 |
+
+`archive-only` 只能在用户明确要求“文档整理、归档、迁移”时使用。
+
+### 4.6 单轮范围限制
+
+用户可以一次性描述较大的目标范围，但真正进入 `code-doc-report` 工作循环时，必须拆成可验证的小范围。
+
+单个工作循环上限：
+
+- 最多覆盖 1 个里程碑。
+- 最多覆盖 8 个任务，例如 `M25-T01 到 M25-T08`。
+- 不允许用一个工作循环直接覆盖 `M25-T01 到 M26-T08` 这类跨里程碑范围。
+- 不允许用一个工作循环直接覆盖 `M25-T01 到 M25-T12` 这类超过 8 个任务的范围。
+
+当用户输入范围超过上限时，AI 必须自动拆分，并且只启动第一个合规工作块。例如：
+
+- 用户输入 `按 AI 工作循环推进 M26-T01 到 M30-T08`。
+- AI 应先启动 `M26-T01 到 M26-T08`。
+- 完成代码、文档、验证报告闭环后，再继续下一个合规工作块。
+
+同一个会话不等于同一个工作循环。会话上下文可以连续保留，但每个合规工作块都必须重新经历 `start -> checkpoint -> finish`，并生成或更新对应的执行报告和质量门禁结果。
+
+### 4.7 浏览器冒烟验证
+
+当前端页面、路由、API 契约、认证会话、WebSocket 或影响布局的 CSS 发生变化时，完成代码验证后必须进行浏览器冒烟验证。
+
+最低要求：
+
+- 启动本地依赖、后端和前端。
+- 使用 `http://127.0.0.1:5173/login` 登录。
+- 使用 `admin / admin123456` 或本轮明确指定的测试账号。
+- 打开本轮影响的页面和至少一个相关主导航入口。
+- 在执行报告中记录目标 URL、账号、检查页面、结果和跳过原因。
+
+详细步骤见 `docs/05-runbooks/browser-smoke.md`。
 
 ## 5. 质量门禁
 
@@ -131,7 +257,7 @@ pnpm verify
 - 敏感信息扫描。
 - Flyway 迁移顺序检查。
 - 生成产物跟踪检查。
-- TODO/FIXME/HACK 库存提示。
+- 实现标记库存提示。
 
 ### 5.2 完整门禁
 

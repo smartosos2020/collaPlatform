@@ -44,7 +44,9 @@ public interface DocumentRepository {
 
     List<DocumentRelation> listRelations(UUID workspaceId, UUID documentId);
 
-    UUID addComment(UUID workspaceId, UUID documentId, UUID authorId, String content);
+    UUID addComment(UUID workspaceId, UUID documentId, UUID blockId, UUID authorId, String content);
+
+    void resolveComment(UUID workspaceId, UUID documentId, UUID commentId, UUID resolvedBy);
 
     List<DocumentComment> listComments(UUID workspaceId, UUID documentId);
 

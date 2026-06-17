@@ -2,6 +2,7 @@ import {
   BugOutlined,
   CheckCircleOutlined,
   ClockCircleOutlined,
+  LinkOutlined,
   PlusOutlined,
   ProjectOutlined,
 } from '@ant-design/icons'
@@ -28,6 +29,8 @@ import { useNavigate, useParams } from 'react-router-dom'
 
 import {
   addIssueComment,
+  addIssueRelation,
+  addIssueVerification,
   createIssue,
   createProject,
   getIssue,
@@ -38,9 +41,12 @@ import {
   listProjects,
   transitionIssue,
   type IssueDetail,
+  type IssueFilters,
   type IssueSummary,
   type ProjectSummary,
 } from '../api/projectsApi'
+import { ObjectSummaryCard } from '../../platform/components/InternalLinkCard'
+import { resolveInternalLink } from '../../platform/api/platformObjectsApi'
 
 type CreateProjectForm = {
   projectKey?: string
@@ -55,6 +61,7 @@ type CreateIssueForm = {
   description?: string
   priority: 'low' | 'medium' | 'high' | 'urgent'
   assigneeId?: string
+  dueAt?: string
 }
 
 const statusColumns = [
@@ -81,6 +88,14 @@ export function ProjectsPage() {
   const [projectModalOpen, setProjectModalOpen] = useState(false)
   const [issueModalOpen, setIssueModalOpen] = useState(false)
   const [commentDraft, setCommentDraft] = useState('')
+  const [verificationResult, setVerificationResult] = useState<'passed' | 'failed' | 'blocked'>('passed')
+  const [verificationNote, setVerificationNote] = useState('')
+  const [verificationEnvironment, setVerificationEnvironment] = useState('')
+  const [verificationSteps, setVerificationSteps] = useState('')
+  const [verificationFixVersion, setVerificationFixVersion] = useState('')
+  const [relationInput, setRelationInput] = useState('')
+  const [draggingIssueId, setDraggingIssueId] = useState<string | null>(null)
+  const [issueFilters, setIssueFilters] = useState<IssueFilters>({ sort: 'updated_desc' })
   const [projectForm] = Form.useForm<CreateProjectForm>()
   const [issueForm] = Form.useForm<CreateIssueForm>()
 
@@ -99,8 +114,8 @@ export function ProjectsPage() {
     enabled: Boolean(activeProjectId),
   })
   const issuesQuery = useQuery({
-    queryKey: ['projects', activeProjectId, 'issues'],
-    queryFn: () => listIssues(activeProjectId || ''),
+    queryKey: ['projects', activeProjectId, 'issues', issueFilters],
+    queryFn: () => listIssues(activeProjectId || '', issueFilters),
     enabled: Boolean(activeProjectId),
   })
   const issueQuery = useQuery({
@@ -164,16 +179,70 @@ export function ProjectsPage() {
     },
   })
 
+  const verificationMutation = useMutation({
+    mutationFn: () =>
+      addIssueVerification(selectedIssueId || '', {
+        result: verificationResult,
+        note: verificationNote,
+        environment: verificationEnvironment,
+        reproductionSteps: verificationSteps,
+        fixVersion: verificationFixVersion,
+      }),
+    onSuccess: async () => {
+      setVerificationResult('passed')
+      setVerificationNote('')
+      setVerificationEnvironment('')
+      setVerificationSteps('')
+      setVerificationFixVersion('')
+      await refreshProject()
+    },
+  })
+
+  const relationMutation = useMutation({
+    mutationFn: async () => {
+      const link = relationInput.trim()
+      if (!selectedIssueId || !link) {
+        throw new Error('请粘贴内部对象链接')
+      }
+      const parsed = await resolveInternalLink(link)
+      if (!parsed.summary || parsed.summary.accessState !== 'available') {
+        throw new Error('链接不可用或无权限')
+      }
+      return addIssueRelation(selectedIssueId, parsed.summary.objectType, parsed.summary.objectId)
+    },
+    onSuccess: async () => {
+      setRelationInput('')
+      await refreshProject()
+    },
+    onError: (error) => {
+      message.error(error instanceof Error ? error.message : '关联失败')
+    },
+  })
+
   const projects = projectsQuery.data ?? []
-  const issues = issuesQuery.data ?? []
+  const issues = useMemo(() => issuesQuery.data ?? [], [issuesQuery.data])
   const activeProject = projectQuery.data
   const selectedIssue = issueQuery.data
   const stats = statsQuery.data
+  const issueById = useMemo(() => new Map(issues.map((issue) => [issue.id, issue])), [issues])
 
   const openIssue = useCallback((issue: IssueSummary) => {
     setSelectedIssueId(issue.id)
     navigate(`/issues/${issue.id}`)
   }, [navigate])
+
+  const updateIssueFilter = (key: keyof IssueFilters, value?: string) => {
+    setIssueFilters((current) => ({ ...current, [key]: value || undefined }))
+  }
+
+  const dropIssueToStatus = (status: string) => {
+    const issue = draggingIssueId ? issueById.get(draggingIssueId) : undefined
+    setDraggingIssueId(null)
+    if (!issue || issue.status === status || !(nextStatuses[issue.status] ?? []).includes(status)) {
+      return
+    }
+    transitionMutation.mutate({ issue, status })
+  }
 
   const tableColumns: ColumnsType<IssueSummary> = useMemo(
     () => [
@@ -267,9 +336,76 @@ export function ProjectsPage() {
               </Card>
             </section>
 
+            <section className="issue-filters">
+              <Select
+                allowClear
+                className="issue-filter-control"
+                placeholder="状态"
+                value={issueFilters.status}
+                onChange={(value) => updateIssueFilter('status', value)}
+                options={[
+                  { value: 'open', label: '待处理' },
+                  { value: 'in_progress', label: '处理中' },
+                  { value: 'resolved', label: '已解决' },
+                  { value: 'closed', label: '已关闭' },
+                ]}
+              />
+              <Select
+                allowClear
+                className="issue-filter-control"
+                placeholder="类型"
+                value={issueFilters.issueType}
+                onChange={(value) => updateIssueFilter('issueType', value)}
+                options={[
+                  { value: 'requirement', label: '需求' },
+                  { value: 'task', label: '任务' },
+                  { value: 'bug', label: 'Bug' },
+                ]}
+              />
+              <Select
+                allowClear
+                className="issue-filter-control"
+                placeholder="优先级"
+                value={issueFilters.priority}
+                onChange={(value) => updateIssueFilter('priority', value)}
+                options={[
+                  { value: 'low', label: '低' },
+                  { value: 'medium', label: '中' },
+                  { value: 'high', label: '高' },
+                  { value: 'urgent', label: '紧急' },
+                ]}
+              />
+              <Select
+                allowClear
+                showSearch
+                className="issue-filter-control issue-filter-assignee"
+                optionFilterProp="label"
+                placeholder="负责人"
+                value={issueFilters.assigneeId}
+                onChange={(value) => updateIssueFilter('assigneeId', value)}
+                options={memberOptions}
+              />
+              <Select
+                className="issue-filter-control issue-filter-sort"
+                value={issueFilters.sort}
+                onChange={(value) => updateIssueFilter('sort', value)}
+                options={[
+                  { value: 'updated_desc', label: '最近更新' },
+                  { value: 'created_desc', label: '最近创建' },
+                  { value: 'priority_desc', label: '优先级高到低' },
+                  { value: 'due_at_asc', label: '截止日期近到远' },
+                ]}
+              />
+            </section>
+
             <section className="issue-board">
               {statusColumns.map((column) => (
-                <div className="issue-board-column" key={column.key}>
+                <div
+                  className="issue-board-column"
+                  key={column.key}
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={() => dropIssueToStatus(column.key)}
+                >
                   <Space className="issue-board-title">
                     {column.icon}
                     <Typography.Text strong>{column.title}</Typography.Text>
@@ -284,6 +420,8 @@ export function ProjectsPage() {
                           issue={issue}
                           onOpen={() => openIssue(issue)}
                           onTransition={(status) => transitionMutation.mutate({ issue, status })}
+                          onDragStart={() => setDraggingIssueId(issue.id)}
+                          onDragEnd={() => setDraggingIssueId(null)}
                         />
                       ))}
                   </div>
@@ -306,7 +444,19 @@ export function ProjectsPage() {
         detail={selectedIssue}
         loading={issueQuery.isLoading}
         commentDraft={commentDraft}
+        verificationResult={verificationResult}
+        verificationNote={verificationNote}
+        verificationEnvironment={verificationEnvironment}
+        verificationSteps={verificationSteps}
+        verificationFixVersion={verificationFixVersion}
+        relationInput={relationInput}
         onCommentDraftChange={setCommentDraft}
+        onVerificationResultChange={setVerificationResult}
+        onVerificationNoteChange={setVerificationNote}
+        onVerificationEnvironmentChange={setVerificationEnvironment}
+        onVerificationStepsChange={setVerificationSteps}
+        onVerificationFixVersionChange={setVerificationFixVersion}
+        onRelationInputChange={setRelationInput}
         onClose={() => {
           setSelectedIssueId(null)
           if (activeProjectId) {
@@ -321,6 +471,10 @@ export function ProjectsPage() {
           commentMutation.mutate()
         }}
         commenting={commentMutation.isPending}
+        onVerify={() => verificationMutation.mutate()}
+        verifying={verificationMutation.isPending}
+        onAddRelation={() => relationMutation.mutate()}
+        relating={relationMutation.isPending}
         onTransition={(issue, status) => transitionMutation.mutate({ issue, status })}
         transitioning={transitionMutation.isPending}
       />
@@ -384,6 +538,9 @@ export function ProjectsPage() {
           <Form.Item label="负责人" name="assigneeId">
             <Select allowClear showSearch optionFilterProp="label" options={memberOptions} />
           </Form.Item>
+          <Form.Item label="截止日期" name="dueAt">
+            <Input type="date" />
+          </Form.Item>
         </Form>
       </Modal>
     </div>
@@ -409,13 +566,17 @@ function IssueBoardCard({
   issue,
   onOpen,
   onTransition,
+  onDragStart,
+  onDragEnd,
 }: {
   issue: IssueSummary
   onOpen: () => void
   onTransition: (status: string) => void
+  onDragStart: () => void
+  onDragEnd: () => void
 }) {
   return (
-    <article className="issue-card">
+    <article className="issue-card" draggable onDragStart={onDragStart} onDragEnd={onDragEnd}>
       <Space className="issue-card-header">
         <Tag>{issue.issueKey}</Tag>
         <IssueTypeTag type={issue.issueType} />
@@ -442,20 +603,52 @@ function IssueDrawer({
   detail,
   loading,
   commentDraft,
+  verificationResult,
+  verificationNote,
+  verificationEnvironment,
+  verificationSteps,
+  verificationFixVersion,
+  relationInput,
   onCommentDraftChange,
+  onVerificationResultChange,
+  onVerificationNoteChange,
+  onVerificationEnvironmentChange,
+  onVerificationStepsChange,
+  onVerificationFixVersionChange,
+  onRelationInputChange,
   onClose,
   onComment,
   commenting,
+  onVerify,
+  verifying,
+  onAddRelation,
+  relating,
   onTransition,
   transitioning,
 }: {
   detail?: IssueDetail
   loading: boolean
   commentDraft: string
+  verificationResult: 'passed' | 'failed' | 'blocked'
+  verificationNote: string
+  verificationEnvironment: string
+  verificationSteps: string
+  verificationFixVersion: string
+  relationInput: string
   onCommentDraftChange: (value: string) => void
+  onVerificationResultChange: (value: 'passed' | 'failed' | 'blocked') => void
+  onVerificationNoteChange: (value: string) => void
+  onVerificationEnvironmentChange: (value: string) => void
+  onVerificationStepsChange: (value: string) => void
+  onVerificationFixVersionChange: (value: string) => void
+  onRelationInputChange: (value: string) => void
   onClose: () => void
   onComment: () => void
   commenting: boolean
+  onVerify: () => void
+  verifying: boolean
+  onAddRelation: () => void
+  relating: boolean
   onTransition: (issue: IssueSummary, status: string) => void
   transitioning: boolean
 }) {
@@ -470,6 +663,18 @@ function IssueDrawer({
             <PriorityTag priority={issue.priority} />
             <Tag>{issue.assigneeName || '未指派'}</Tag>
           </Space>
+          <Card size="small" title="基础信息">
+            <div className="issue-meta-grid">
+              <span>创建人</span>
+              <Typography.Text>{issue.reporterName}</Typography.Text>
+              <span>负责人</span>
+              <Typography.Text>{issue.assigneeName || '未指派'}</Typography.Text>
+              <span>截止日期</span>
+              <Typography.Text>{issue.dueAt || '未设置'}</Typography.Text>
+              <span>最近更新</span>
+              <Typography.Text>{new Date(issue.updatedAt).toLocaleString()}</Typography.Text>
+            </div>
+          </Card>
           <Typography.Paragraph>{issue.description || '暂无描述'}</Typography.Paragraph>
           <Space wrap>
             {(nextStatuses[issue.status] ?? []).map((status) => (
@@ -510,6 +715,96 @@ function IssueDrawer({
               <Typography.Text key={attachment.id}>{attachment.fileName}</Typography.Text>
             ))}
           </Card>
+          <Card title="关联对象">
+            <Space orientation="vertical" className="issue-drawer-stack">
+              <Space.Compact className="issue-relation-input">
+                <Input
+                  value={relationInput}
+                  placeholder="粘贴 /issues、/docs、/bases 或消息链接"
+                  onChange={(event) => onRelationInputChange(event.target.value)}
+                />
+                <Button icon={<LinkOutlined />} loading={relating} onClick={onAddRelation}>
+                  关联
+                </Button>
+              </Space.Compact>
+              {detail.relations.length === 0 ? <Empty description="暂无关联对象" /> : null}
+              <div className="issue-relation-list">
+                {detail.relations.map((relation) => (
+                  <div className="issue-relation-item" key={relation.id}>
+                    <ObjectSummaryCard summary={relation.target} />
+                    <Typography.Text type="secondary">
+                      {relation.createdByName} 关联于 {new Date(relation.createdAt).toLocaleString()}
+                    </Typography.Text>
+                  </div>
+                ))}
+              </div>
+            </Space>
+          </Card>
+          <Card title="验证记录">
+            <Space orientation="vertical" className="issue-drawer-stack">
+              {issue.issueType === 'bug' ? (
+                <Space orientation="vertical" className="issue-drawer-stack">
+                  <Select
+                    value={verificationResult}
+                    onChange={onVerificationResultChange}
+                    options={[
+                      { value: 'passed', label: '验证通过' },
+                      { value: 'failed', label: '验证失败' },
+                      { value: 'blocked', label: '验证阻塞' },
+                    ]}
+                  />
+                  <Input
+                    value={verificationEnvironment}
+                    placeholder="验证环境，例如 Windows / Chrome / 测试库"
+                    onChange={(event) => onVerificationEnvironmentChange(event.target.value)}
+                  />
+                  <Input
+                    value={verificationFixVersion}
+                    placeholder="修复版本，例如 v0.27.0"
+                    onChange={(event) => onVerificationFixVersionChange(event.target.value)}
+                  />
+                  <Input.TextArea
+                    value={verificationSteps}
+                    placeholder="复现步骤"
+                    autoSize={{ minRows: 2, maxRows: 5 }}
+                    onChange={(event) => onVerificationStepsChange(event.target.value)}
+                  />
+                  <Input.TextArea
+                    value={verificationNote}
+                    placeholder="验证结论"
+                    autoSize={{ minRows: 2, maxRows: 5 }}
+                    onChange={(event) => onVerificationNoteChange(event.target.value)}
+                  />
+                  <Button type="primary" loading={verifying} onClick={onVerify}>
+                    提交验证
+                  </Button>
+                </Space>
+              ) : null}
+              {detail.verifications.length === 0 ? <Empty description="暂无验证记录" /> : null}
+              {detail.verifications.map((verification) => (
+                <div className="issue-comment" key={verification.id}>
+                  <Avatar>{verification.verifierName.slice(0, 1)}</Avatar>
+                  <div>
+                    <Space>
+                      <Typography.Text strong>{verification.verifierName}</Typography.Text>
+                      <Tag color={verification.result === 'passed' ? 'green' : verification.result === 'failed' ? 'red' : 'orange'}>
+                        {verificationText(verification.result)}
+                      </Tag>
+                      <Typography.Text type="secondary">{new Date(verification.createdAt).toLocaleString()}</Typography.Text>
+                    </Space>
+                    <Space wrap>
+                      {verification.environment ? <Tag>{verification.environment}</Tag> : null}
+                      {verification.fixVersion ? <Tag color="blue">{verification.fixVersion}</Tag> : null}
+                    </Space>
+                    {verification.reproductionSteps ? (
+                      <Typography.Paragraph className="issue-verification-block">{verification.reproductionSteps}</Typography.Paragraph>
+                    ) : null}
+                    {verification.note ? <Typography.Paragraph>{verification.note}</Typography.Paragraph> : null}
+                  </div>
+                </div>
+              ))}
+            </Space>
+          </Card>
           <Card title="动态">
             <Space orientation="vertical" className="issue-drawer-stack">
               {detail.activities.map((activity) => (
@@ -548,4 +843,12 @@ function statusText(status: string) {
     resolved: '已解决',
     closed: '已关闭',
   }[status] ?? status
+}
+
+function verificationText(result: string) {
+  return {
+    passed: '验证通过',
+    failed: '验证失败',
+    blocked: '验证阻塞',
+  }[result] ?? result
 }

@@ -134,7 +134,16 @@ public class DocumentController {
         @Valid @RequestBody AddDocumentCommentRequest request,
         Authentication authentication
     ) {
-        return documentService.addComment(currentUser(authentication), documentId, request.content());
+        return documentService.addComment(currentUser(authentication), documentId, request.blockId(), request.content());
+    }
+
+    @PostMapping("/docs/{documentId}/comments/{commentId}/resolve")
+    public DocumentDetail resolveComment(
+        @PathVariable UUID documentId,
+        @PathVariable UUID commentId,
+        Authentication authentication
+    ) {
+        return documentService.resolveComment(currentUser(authentication), documentId, commentId);
     }
 
     private CurrentUser currentUser(Authentication authentication) {
@@ -159,6 +168,6 @@ public class DocumentController {
     public record AddDocumentRelationRequest(@NotBlank String targetType, @NotNull UUID targetId) {
     }
 
-    public record AddDocumentCommentRequest(@NotBlank String content) {
+    public record AddDocumentCommentRequest(UUID blockId, @NotBlank String content) {
     }
 }

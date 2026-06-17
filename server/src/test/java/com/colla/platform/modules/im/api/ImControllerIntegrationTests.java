@@ -463,6 +463,125 @@ class ImControllerIntegrationTests {
             .andExpect(jsonPath("$.items.length()").value(0));
     }
 
+    @Test
+    void supportsIdempotentSendAndSequenceSync() throws Exception {
+        String adminToken = login("admin", "admin123456", "im-reliable-admin-" + UUID.randomUUID());
+        String aliceUsername = "reliablealice" + UUID.randomUUID().toString().substring(0, 8);
+        UUID aliceId = createMember(adminToken, aliceUsername, "Reliable Alice");
+
+        String conversationResponse = mockMvc.perform(post("/api/conversations")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                        {
+                          "conversationType": "group",
+                          "title": "Reliable IM",
+                          "memberIds": ["%s"]
+                        }
+                        """.formatted(aliceId)
+                ))
+            .andExpect(status().isOk())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+        UUID conversationId = UUID.fromString(objectMapper.readTree(conversationResponse).get("id").asText());
+
+        String clientMessageId = "reliable-client-" + UUID.randomUUID();
+        String firstResponse = mockMvc.perform(post("/api/conversations/" + conversationId + "/messages")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                        {
+                          "clientMessageId": "%s",
+                          "messageType": "text",
+                          "content": "retry-safe payload"
+                        }
+                        """.formatted(clientMessageId)
+                ))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.clientMessageId").value(clientMessageId))
+            .andExpect(jsonPath("$.messageSeq", greaterThanOrEqualTo(1)))
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+        JsonNode firstJson = objectMapper.readTree(firstResponse);
+        UUID firstMessageId = UUID.fromString(firstJson.get("id").asText());
+        long firstSeq = firstJson.get("messageSeq").asLong();
+
+        mockMvc.perform(post("/api/conversations/" + conversationId + "/messages")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                        {
+                          "clientMessageId": "%s",
+                          "messageType": "text",
+                          "content": "retry-safe payload"
+                        }
+                        """.formatted(clientMessageId)
+                ))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.id").value(firstMessageId.toString()))
+            .andExpect(jsonPath("$.messageSeq").value((int) firstSeq));
+
+        Integer messageCount = jdbcTemplate.queryForObject(
+            "select count(*) from messages where conversation_id = ? and client_message_id = ?",
+            Integer.class,
+            conversationId,
+            clientMessageId
+        );
+        org.assertj.core.api.Assertions.assertThat(messageCount).isEqualTo(1);
+
+        String secondResponse = mockMvc.perform(post("/api/conversations/" + conversationId + "/messages")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                        {
+                          "clientMessageId": "%s",
+                          "messageType": "text",
+                          "content": "message after reconnect"
+                        }
+                        """.formatted(UUID.randomUUID())
+                ))
+            .andExpect(status().isOk())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+        UUID secondMessageId = UUID.fromString(objectMapper.readTree(secondResponse).get("id").asText());
+
+        mockMvc.perform(get("/api/conversations/" + conversationId + "/messages?afterSeq=" + firstSeq)
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.items.length()").value(1))
+            .andExpect(jsonPath("$.items[0].id").value(secondMessageId.toString()))
+            .andExpect(jsonPath("$.items[0].messageSeq", greaterThanOrEqualTo((int) firstSeq + 1)));
+
+        mockMvc.perform(get("/api/conversations/" + conversationId + "/messages/" + firstMessageId + "/context?limit=1")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.items.length()").value(1))
+            .andExpect(jsonPath("$.items[0].id").value(firstMessageId.toString()));
+    }
+
+    @Test
+    void rejectsReadMarkerFromAnotherConversation() throws Exception {
+        String adminToken = login("admin", "admin123456", "im-read-marker-admin-" + UUID.randomUUID());
+        UUID aliceId = createMember(adminToken, "readalice" + UUID.randomUUID().toString().substring(0, 8), "Read Alice");
+
+        UUID firstConversationId = createConversation(adminToken, "Read First", aliceId);
+        UUID secondConversationId = createConversation(adminToken, "Read Second", aliceId);
+        UUID foreignMessageId = sendText(adminToken, secondConversationId, "foreign message");
+
+        mockMvc.perform(post("/api/conversations/" + firstConversationId + "/read")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"messageId\":\"" + foreignMessageId + "\"}"))
+            .andExpect(status().isNotFound());
+    }
+
     private UUID createMember(String token, String username, String displayName) throws Exception {
         String response = mockMvc.perform(post("/api/admin/users")
                 .header("Authorization", "Bearer " + token)
@@ -480,6 +599,46 @@ class ImControllerIntegrationTests {
                 ))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.id", not(blankOrNullString())))
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+        return UUID.fromString(objectMapper.readTree(response).get("id").asText());
+    }
+
+    private UUID createConversation(String token, String title, UUID memberId) throws Exception {
+        String response = mockMvc.perform(post("/api/conversations")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                        {
+                          "conversationType": "group",
+                          "title": "%s",
+                          "memberIds": ["%s"]
+                        }
+                        """.formatted(title, memberId)
+                ))
+            .andExpect(status().isOk())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+        return UUID.fromString(objectMapper.readTree(response).get("id").asText());
+    }
+
+    private UUID sendText(String token, UUID conversationId, String content) throws Exception {
+        String response = mockMvc.perform(post("/api/conversations/" + conversationId + "/messages")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                        {
+                          "clientMessageId": "%s",
+                          "messageType": "text",
+                          "content": "%s"
+                        }
+                        """.formatted(UUID.randomUUID(), content)
+                ))
+            .andExpect(status().isOk())
             .andReturn()
             .getResponse()
             .getContentAsString();

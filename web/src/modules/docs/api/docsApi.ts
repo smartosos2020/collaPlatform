@@ -38,9 +38,14 @@ export type DocumentPermission = {
 export type DocumentComment = {
   id: string
   documentId: string
+  blockId?: string | null
   authorId: string
   authorName: string
   content: string
+  resolved: boolean
+  resolvedAt?: string | null
+  resolvedBy?: string | null
+  resolvedByName?: string | null
   createdAt: string
 }
 
@@ -146,6 +151,10 @@ export function addDocumentRelation(documentId: string, request: { targetType: s
   return apiPost<DocumentDetail>(`/docs/${documentId}/relations`, request)
 }
 
-export function addDocumentComment(documentId: string, content: string) {
-  return apiPost<DocumentDetail>(`/docs/${documentId}/comments`, { content })
+export function addDocumentComment(documentId: string, request: { content: string; blockId?: string }) {
+  return apiPost<DocumentDetail>(`/docs/${documentId}/comments`, request)
+}
+
+export function resolveDocumentComment(documentId: string, commentId: string) {
+  return apiPost<DocumentDetail>(`/docs/${documentId}/comments/${commentId}/resolve`)
 }

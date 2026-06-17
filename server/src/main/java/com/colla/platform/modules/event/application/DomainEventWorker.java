@@ -2,6 +2,8 @@ package com.colla.platform.modules.event.application;
 
 import com.colla.platform.modules.event.domain.DomainEventModels.DomainEvent;
 import com.colla.platform.modules.event.infrastructure.DomainEventRepository;
+import com.colla.platform.modules.notification.application.NotificationService;
+import com.colla.platform.modules.notification.domain.NotificationModels.NotificationItem;
 import com.colla.platform.modules.notification.infrastructure.NotificationRepository;
 import com.colla.platform.modules.search.application.SearchIndexService;
 import java.time.Instant;
@@ -17,15 +19,18 @@ public class DomainEventWorker {
 
     private final DomainEventRepository eventRepository;
     private final NotificationRepository notificationRepository;
+    private final NotificationService notificationService;
     private final SearchIndexService searchIndexService;
 
     public DomainEventWorker(
         DomainEventRepository eventRepository,
         NotificationRepository notificationRepository,
+        NotificationService notificationService,
         SearchIndexService searchIndexService
     ) {
         this.eventRepository = eventRepository;
         this.notificationRepository = notificationRepository;
+        this.notificationService = notificationService;
         this.searchIndexService = searchIndexService;
     }
 
@@ -63,7 +68,7 @@ public class DomainEventWorker {
                 targetId,
                 payload.get("webPath") == null ? null : payload.get("webPath").toString(),
                 payload.getOrDefault("dedupeKey", event.id().toString()).toString()
-            );
+            ).ifPresent(notification -> notificationService.pushCreated(event.workspaceId(), recipientId, notification));
         }
         searchIndexService.handleEvent(event);
     }

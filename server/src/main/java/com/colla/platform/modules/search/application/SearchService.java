@@ -3,6 +3,7 @@ package com.colla.platform.modules.search.application;
 import com.colla.platform.modules.platform.application.PlatformObjectResolverRegistry;
 import com.colla.platform.modules.platform.domain.PlatformModels.ObjectAccessState;
 import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectSummary;
+import com.colla.platform.modules.permission.application.PermissionService;
 import com.colla.platform.modules.search.domain.SearchModels.SearchResponse;
 import com.colla.platform.modules.search.domain.SearchModels.SearchResult;
 import com.colla.platform.modules.search.infrastructure.SearchRepository;
@@ -17,15 +18,18 @@ public class SearchService {
     private final SearchRepository searchRepository;
     private final SearchIndexService searchIndexService;
     private final PlatformObjectResolverRegistry objectResolverRegistry;
+    private final PermissionService permissionService;
 
     public SearchService(
         SearchRepository searchRepository,
         SearchIndexService searchIndexService,
-        PlatformObjectResolverRegistry objectResolverRegistry
+        PlatformObjectResolverRegistry objectResolverRegistry,
+        PermissionService permissionService
     ) {
         this.searchRepository = searchRepository;
         this.searchIndexService = searchIndexService;
         this.objectResolverRegistry = objectResolverRegistry;
+        this.permissionService = permissionService;
     }
 
     public SearchResponse search(CurrentUser currentUser, String query, int limit) {
@@ -40,6 +44,11 @@ public class SearchService {
             .limit(boundedLimit)
             .toList();
         return new SearchResponse(normalizedQuery, items);
+    }
+
+    public void reindex(CurrentUser currentUser) {
+        permissionService.requireManageUsers(currentUser);
+        searchIndexService.refreshWorkspaceIndex(currentUser.workspaceId());
     }
 
     private SearchResult hydrateResult(CurrentUser currentUser, SearchResult result) {

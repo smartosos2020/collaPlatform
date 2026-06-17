@@ -73,11 +73,49 @@ export type IssueActivity = {
   createdAt: string
 }
 
+export type IssueVerification = {
+  id: string
+  issueId: string
+  verifierId: string
+  verifierName: string
+  result: 'passed' | 'failed' | 'blocked'
+  note?: string | null
+  environment?: string | null
+  reproductionSteps?: string | null
+  fixVersion?: string | null
+  createdAt: string
+}
+
+export type PlatformObjectSummary = {
+  objectType: string
+  objectId: string
+  accessState: 'available' | 'forbidden' | 'deleted' | 'not_found' | 'invalid'
+  title?: string | null
+  subtitle?: string | null
+  status?: string | null
+  webPath?: string | null
+  deepLink?: string | null
+  metadata: Record<string, unknown>
+}
+
+export type IssueRelation = {
+  id: string
+  issueId: string
+  targetType: string
+  targetId: string
+  createdBy: string
+  createdByName: string
+  createdAt: string
+  target: PlatformObjectSummary
+}
+
 export type IssueDetail = {
   issue: IssueSummary
   comments: IssueComment[]
   attachments: IssueAttachment[]
   activities: IssueActivity[]
+  verifications: IssueVerification[]
+  relations: IssueRelation[]
 }
 
 export type CountBucket = {
@@ -117,8 +155,23 @@ export function getProjectStats(projectId: string) {
   return apiGet<ProjectStats>(`/projects/${projectId}/stats`)
 }
 
-export function listIssues(projectId: string) {
-  return apiGet<IssueSummary[]>(`/projects/${projectId}/issues`)
+export type IssueFilters = {
+  status?: string
+  issueType?: string
+  priority?: string
+  assigneeId?: string
+  sort?: string
+}
+
+export function listIssues(projectId: string, filters: IssueFilters = {}) {
+  const params = new URLSearchParams()
+  for (const [key, value] of Object.entries(filters)) {
+    if (value) {
+      params.set(key, value)
+    }
+  }
+  const query = params.toString()
+  return apiGet<IssueSummary[]>(`/projects/${projectId}/issues${query ? `?${query}` : ''}`)
 }
 
 export function createIssue(
@@ -162,6 +215,23 @@ export function addIssueComment(issueId: string, content: string) {
 
 export function addIssueAttachment(issueId: string, fileId: string) {
   return apiPost<IssueDetail>(`/issues/${issueId}/attachments`, { fileId })
+}
+
+export function addIssueVerification(
+  issueId: string,
+  request: {
+    result: IssueVerification['result']
+    note?: string
+    environment?: string
+    reproductionSteps?: string
+    fixVersion?: string
+  },
+) {
+  return apiPost<IssueDetail>(`/issues/${issueId}/verifications`, request)
+}
+
+export function addIssueRelation(issueId: string, targetType: string, targetId: string) {
+  return apiPost<IssueDetail>(`/issues/${issueId}/relations`, { targetType, targetId })
 }
 
 export function listDirectoryMembers() {

@@ -47,7 +47,13 @@ public interface ImRepository {
 
     Optional<MessageSummary> findMessageForUser(UUID workspaceId, UUID messageId, UUID userId);
 
+    Optional<MessageSummary> findMessageByClientId(UUID workspaceId, UUID conversationId, UUID senderId, String clientMessageId);
+
     List<MessageSummary> listMessages(UUID workspaceId, UUID conversationId, UUID userId, UUID beforeId, int limit);
+
+    List<MessageSummary> listMessagesAfterSeq(UUID workspaceId, UUID conversationId, UUID userId, long afterSeq, int limit);
+
+    List<MessageSummary> listMessageContext(UUID workspaceId, UUID conversationId, UUID userId, UUID messageId, int limit);
 
     void editMessage(UUID workspaceId, UUID conversationId, UUID messageId, UUID senderId, String content);
 

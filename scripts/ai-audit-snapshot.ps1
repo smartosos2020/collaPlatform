@@ -33,6 +33,7 @@ try {
             -not $_.FullName.Contains("\target\") -and
             -not $_.FullName.Contains("\dist\") -and
             -not $_.FullName.Contains("\.local-reports\") -and
+            -not $_.FullName.Contains("\.local-backups\") -and
             -not $_.FullName.Contains("\.local-logs\")
         }).Count
 
@@ -72,7 +73,7 @@ try {
     $report += ""
     $report += "## Source Inventory"
     $report += '```text'
-    $sourceInventoryCommand = "rg --files -g '!node_modules' -g '!target' -g '!dist' -g '!.local-reports' -g '!.local-logs'"
+    $sourceInventoryCommand = "rg --files -g '!node_modules' -g '!target' -g '!dist' -g '!.local-reports' -g '!.local-backups' -g '!.local-logs'"
     $report += Invoke-Capture $sourceInventoryCommand
     $report += '```'
 

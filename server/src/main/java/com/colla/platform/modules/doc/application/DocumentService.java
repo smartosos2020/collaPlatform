@@ -276,13 +276,16 @@ public class DocumentService {
     }
 
     @Transactional
-    public DocumentDetail addComment(CurrentUser currentUser, UUID documentId, String content) {
+    public DocumentDetail addComment(CurrentUser currentUser, UUID documentId, UUID blockId, String content) {
         DocumentSummary document = requireEdit(currentUser, documentId);
         if (content == null || content.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Comment content is required");
         }
+        if (blockId != null && documentRepository.listBlocks(currentUser.workspaceId(), documentId).stream().noneMatch(block -> block.id().equals(blockId))) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Comment block is not part of this document");
+        }
         String normalizedContent = content.trim();
-        UUID commentId = documentRepository.addComment(currentUser.workspaceId(), documentId, currentUser.id(), normalizedContent);
+        UUID commentId = documentRepository.addComment(currentUser.workspaceId(), documentId, blockId, currentUser.id(), normalizedContent);
         for (UUID mentionedUserId : resolveMentions(currentUser, normalizedContent)) {
             if (mentionedUserId.equals(currentUser.id()) || documentRepository.findPermissionLevel(currentUser.workspaceId(), documentId, mentionedUserId).isEmpty()) {
                 continue;
@@ -300,12 +303,42 @@ public class DocumentService {
                     "body", normalizedContent,
                     "targetType", "document",
                     "targetId", documentId.toString(),
-                    "webPath", "/docs/" + documentId,
+                    "webPath", "/docs/" + documentId + "?commentId=" + commentId,
                     "dedupeKey", "document.comment.mention:" + commentId + ":" + mentionedUserId
                 ),
                 "notification.document.comment.mention:" + commentId + ":" + mentionedUserId
             );
         }
+        auditService.log(
+            currentUser,
+            "document.comment.added",
+            "document",
+            documentId,
+            Map.of("commentId", commentId.toString(), "blockId", blockId == null ? "" : blockId.toString())
+        );
+        return getDocument(currentUser, documentId);
+    }
+
+    @Transactional
+    public DocumentDetail resolveComment(CurrentUser currentUser, UUID documentId, UUID commentId) {
+        requireEdit(currentUser, documentId);
+        documentRepository.resolveComment(currentUser.workspaceId(), documentId, commentId, currentUser.id());
+        eventRepository.append(
+            currentUser.workspaceId(),
+            "document.comment.resolved",
+            "document",
+            documentId,
+            currentUser.id(),
+            Map.of("documentId", documentId.toString(), "commentId", commentId.toString()),
+            "document.comment.resolved:" + commentId
+        );
+        auditService.log(
+            currentUser,
+            "document.comment.resolved",
+            "document",
+            documentId,
+            Map.of("commentId", commentId.toString())
+        );
         return getDocument(currentUser, documentId);
     }
 

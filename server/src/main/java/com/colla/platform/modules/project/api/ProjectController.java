@@ -72,9 +72,12 @@ public class ProjectController {
         @PathVariable UUID projectId,
         @RequestParam(required = false) String status,
         @RequestParam(required = false) String issueType,
+        @RequestParam(required = false) String priority,
+        @RequestParam(required = false) UUID assigneeId,
+        @RequestParam(required = false) String sort,
         Authentication authentication
     ) {
-        return projectService.listIssues(currentUser(authentication), projectId, status, issueType);
+        return projectService.listIssues(currentUser(authentication), projectId, status, issueType, priority, assigneeId, sort);
     }
 
     @PostMapping("/projects/{projectId}/issues")
@@ -149,6 +152,32 @@ public class ProjectController {
         return projectService.addAttachment(currentUser(authentication), issueId, request.fileId());
     }
 
+    @PostMapping("/issues/{issueId}/verifications")
+    public IssueDetail addVerification(
+        @PathVariable UUID issueId,
+        @Valid @RequestBody AddVerificationRequest request,
+        Authentication authentication
+    ) {
+        return projectService.addVerification(
+            currentUser(authentication),
+            issueId,
+            request.result(),
+            request.note(),
+            request.environment(),
+            request.reproductionSteps(),
+            request.fixVersion()
+        );
+    }
+
+    @PostMapping("/issues/{issueId}/relations")
+    public IssueDetail addRelation(
+        @PathVariable UUID issueId,
+        @Valid @RequestBody AddIssueRelationRequest request,
+        Authentication authentication
+    ) {
+        return projectService.addRelation(currentUser(authentication), issueId, request.targetType(), request.targetId());
+    }
+
     private CurrentUser currentUser(Authentication authentication) {
         return (CurrentUser) authentication.getPrincipal();
     }
@@ -190,5 +219,17 @@ public class ProjectController {
     }
 
     public record AddAttachmentRequest(UUID fileId) {
+    }
+
+    public record AddVerificationRequest(
+        @NotBlank String result,
+        String note,
+        String environment,
+        String reproductionSteps,
+        String fixVersion
+    ) {
+    }
+
+    public record AddIssueRelationRequest(@NotBlank String targetType, UUID targetId) {
     }
 }

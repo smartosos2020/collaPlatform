@@ -1,6 +1,7 @@
 package com.colla.platform.modules.project.api;
 
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
+import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.blankOrNullString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -89,6 +90,12 @@ class ProjectControllerIntegrationTests {
             .getContentAsString();
         UUID issueId = UUID.fromString(objectMapper.readTree(issueResponse).get("issue").get("id").asText());
 
+        mockMvc.perform(get("/api/projects/" + projectId + "/issues?status=open&priority=high&assigneeId=" + bobId + "&sort=priority_desc")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$[0].issueKey").value(expectedIssueKey))
+            .andExpect(jsonPath("$[0].priority").value("high"));
+
         mockMvc.perform(get("/api/platform/objects/issue/" + issueId + "/summary")
                 .header("Authorization", "Bearer " + adminToken))
             .andExpect(status().isOk())
@@ -108,6 +115,11 @@ class ProjectControllerIntegrationTests {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.issue.status").value("in_progress"))
             .andExpect(jsonPath("$.activities[0].action").value("transitioned"));
+
+        mockMvc.perform(get("/api/admin/audit-logs?action=issue.transitioned&targetType=issue&limit=5")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$[?(@.targetId == '" + issueId + "')].action").value(hasItem("issue.transitioned")));
 
         mockMvc.perform(post("/api/issues/" + issueId + "/transition")
                 .header("Authorization", "Bearer " + adminToken)
@@ -182,6 +194,109 @@ class ProjectControllerIntegrationTests {
                 .header("Authorization", "Bearer " + outsiderToken))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.accessState").value("forbidden"));
+    }
+
+    @Test
+    void verifiesResolvedBugAndClosesIt() throws Exception {
+        String adminToken = login("admin", "admin123456", "project-verify-device-" + UUID.randomUUID());
+        String projectKey = projectKey("VRF");
+        String projectResponse = mockMvc.perform(post("/api/projects")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                        {
+                          "projectKey": "%s",
+                          "name": "Verification Project",
+                          "memberIds": []
+                        }
+                        """.formatted(projectKey)
+                ))
+            .andExpect(status().isOk())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+        UUID projectId = UUID.fromString(objectMapper.readTree(projectResponse).get("id").asText());
+
+        String bugResponse = mockMvc.perform(post("/api/projects/" + projectId + "/issues")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                        {
+                          "issueType": "bug",
+                          "title": "Verification target",
+                          "priority": "high"
+                        }
+                        """
+                ))
+            .andExpect(status().isOk())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+        UUID bugId = UUID.fromString(objectMapper.readTree(bugResponse).get("issue").get("id").asText());
+
+        mockMvc.perform(post("/api/issues/" + bugId + "/transition")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"status\":\"resolved\"}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.issue.status").value("resolved"));
+
+        mockMvc.perform(post("/api/issues/" + bugId + "/verifications")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                        {
+                          "result": "passed",
+                          "note": "local verification passed",
+                          "environment": "chrome-local",
+                          "reproductionSteps": "open login and submit",
+                          "fixVersion": "m27"
+                        }
+                        """
+                ))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.issue.status").value("closed"))
+            .andExpect(jsonPath("$.verifications[0].result").value("passed"))
+            .andExpect(jsonPath("$.verifications[0].note").value("local verification passed"))
+            .andExpect(jsonPath("$.verifications[0].environment").value("chrome-local"))
+            .andExpect(jsonPath("$.verifications[0].reproductionSteps").value("open login and submit"))
+            .andExpect(jsonPath("$.verifications[0].fixVersion").value("m27"));
+
+        String taskResponse = mockMvc.perform(post("/api/projects/" + projectId + "/issues")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                        {
+                          "issueType": "task",
+                          "title": "Non bug verification target",
+                          "priority": "medium"
+                        }
+                        """
+                ))
+            .andExpect(status().isOk())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+        UUID taskId = UUID.fromString(objectMapper.readTree(taskResponse).get("issue").get("id").asText());
+
+        mockMvc.perform(post("/api/issues/" + bugId + "/relations")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"targetType\":\"issue\",\"targetId\":\"" + taskId + "\"}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.relations[0].target.objectType").value("issue"))
+            .andExpect(jsonPath("$.relations[0].target.objectId").value(taskId.toString()))
+            .andExpect(jsonPath("$.relations[0].target.accessState").value("available"));
+
+        mockMvc.perform(post("/api/issues/" + taskId + "/verifications")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"result\":\"passed\"}"))
+            .andExpect(status().isBadRequest());
     }
 
     private UUID createMember(String token, String username, String displayName) throws Exception {

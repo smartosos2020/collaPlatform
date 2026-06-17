@@ -1,3 +1,8 @@
+---
+title: Ops Security Baseline
+status: active
+---
+
 # Ops Security Baseline
 
 ## Runtime

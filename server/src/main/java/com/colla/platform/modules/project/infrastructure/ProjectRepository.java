@@ -3,6 +3,8 @@ package com.colla.platform.modules.project.infrastructure;
 import com.colla.platform.modules.project.domain.ProjectModels.IssueActivity;
 import com.colla.platform.modules.project.domain.ProjectModels.IssueAttachment;
 import com.colla.platform.modules.project.domain.ProjectModels.IssueComment;
+import com.colla.platform.modules.project.domain.ProjectModels.IssueVerification;
+import com.colla.platform.modules.project.domain.ProjectModels.IssueRelation;
 import com.colla.platform.modules.project.domain.ProjectModels.IssueSummary;
 import com.colla.platform.modules.project.domain.ProjectModels.ProjectStats;
 import com.colla.platform.modules.project.domain.ProjectModels.ProjectDetail;
@@ -52,7 +54,16 @@ public interface ProjectRepository {
         UUID createdBy
     );
 
-    List<IssueSummary> listIssues(UUID workspaceId, UUID projectId, UUID userId, String status, String issueType);
+    List<IssueSummary> listIssues(
+        UUID workspaceId,
+        UUID projectId,
+        UUID userId,
+        String status,
+        String issueType,
+        String priority,
+        UUID assigneeId,
+        String sort
+    );
 
     List<IssueSummary> listMyIssues(UUID workspaceId, UUID userId);
 
@@ -75,4 +86,21 @@ public interface ProjectRepository {
     void addActivity(UUID workspaceId, UUID issueId, UUID actorId, String action, String fromValue, String toValue);
 
     List<IssueActivity> listActivities(UUID workspaceId, UUID issueId);
+
+    UUID addVerification(
+        UUID workspaceId,
+        UUID issueId,
+        UUID verifierId,
+        String result,
+        String note,
+        String environment,
+        String reproductionSteps,
+        String fixVersion
+    );
+
+    List<IssueVerification> listVerifications(UUID workspaceId, UUID issueId);
+
+    UUID addRelation(UUID workspaceId, UUID issueId, String targetType, UUID targetId, UUID createdBy);
+
+    List<IssueRelation> listRelations(UUID workspaceId, UUID issueId);
 }
