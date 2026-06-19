@@ -4,16 +4,6 @@
   "private": true,
   "packageManager": "pnpm@9.4.0",
   "scripts": {
-    "audit:snapshot": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ai-audit-snapshot.ps1",
-    "work:start": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ai-work-cycle.ps1 -Stage start",
-    "work:checkpoint": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ai-work-cycle.ps1 -Stage checkpoint",
-    "work:finish": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ai-work-cycle.ps1 -Stage finish",
-    "verify": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ai-quality-gate.ps1 -Mode quick",
-    "verify:full": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ai-quality-gate.ps1 -Mode full",
-    "smoke:im": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/im-browser-smoke.ps1",
-    "ops:backup": "powershell -NoProfile -ExecutionPolicy Bypass -File deploy/scripts/backup.ps1 -ComposeFile docker-compose.yml -EnvFile .env.example",
-    "ops:health": "powershell -NoProfile -ExecutionPolicy Bypass -File deploy/scripts/health-check.ps1 -ComposeFile docker-compose.yml -EnvFile .env.example -BaseUrl http://localhost:8080 -RequirePrometheus",
-    "ops:release-check": "powershell -NoProfile -ExecutionPolicy Bypass -File deploy/scripts/release-check.ps1",
     "web:dev": "pnpm --dir web dev",
     "web:build": "pnpm --dir web build",
     "web:lint": "pnpm --dir web lint"

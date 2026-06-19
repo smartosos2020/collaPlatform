@@ -18,6 +18,7 @@ logs/
 
 # Local-only documentation, reports, and operational scripts
 *.md
+!/README.md
 docs/
 scripts/
 deploy/scripts/
