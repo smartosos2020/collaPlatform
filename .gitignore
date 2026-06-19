@@ -16,6 +16,20 @@ logs/
 .local-backups/
 .local-connection-info.md
 
+# Local-only documentation, reports, and operational scripts
+*.md
+docs/
+scripts/
+deploy/scripts/
+.github/workflows/
+.github/ISSUE_TEMPLATE/
+*.ps1
+*.psm1
+*.psd1
+*.sh
+*.bat
+*.cmd
+
 # Java
 target/
 *.class
