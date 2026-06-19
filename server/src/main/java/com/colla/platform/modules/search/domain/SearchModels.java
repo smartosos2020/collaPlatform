@@ -17,7 +17,8 @@ public final class SearchModels {
         String deepLink,
         double score,
         Instant updatedAt,
-        String accessState
+        String accessState,
+        String permissionExplanation
     ) {
     }
 

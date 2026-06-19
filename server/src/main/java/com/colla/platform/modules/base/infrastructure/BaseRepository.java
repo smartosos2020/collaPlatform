@@ -5,6 +5,9 @@ import com.colla.platform.modules.base.domain.BaseModels.BaseField;
 import com.colla.platform.modules.base.domain.BaseModels.BaseFilter;
 import com.colla.platform.modules.base.domain.BaseModels.BaseMember;
 import com.colla.platform.modules.base.domain.BaseModels.BaseRecord;
+import com.colla.platform.modules.base.domain.BaseModels.BaseRecordActivity;
+import com.colla.platform.modules.base.domain.BaseModels.BaseRecordComment;
+import com.colla.platform.modules.base.domain.BaseModels.BaseRecordRelationRecord;
 import com.colla.platform.modules.base.domain.BaseModels.BaseSort;
 import com.colla.platform.modules.base.domain.BaseModels.BaseSummary;
 import com.colla.platform.modules.base.domain.BaseModels.BaseTableSummary;
@@ -63,7 +66,21 @@ public interface BaseRepository {
 
     void upsertValue(UUID workspaceId, UUID recordId, UUID fieldId, Object value, String valueText, Number valueNumber, String valueDate, UUID updatedBy);
 
-    UUID createView(UUID workspaceId, UUID tableId, String name, List<BaseFilter> filters, List<BaseSort> sorts, UUID createdBy);
+    UUID createView(UUID workspaceId, UUID tableId, String name, List<BaseFilter> filters, List<BaseSort> sorts, List<UUID> visibleFieldIds, UUID createdBy);
 
     List<BaseView> listViews(UUID workspaceId, UUID tableId);
+
+    UUID createRecordComment(UUID workspaceId, UUID recordId, UUID authorId, String content);
+
+    List<BaseRecordComment> listRecordComments(UUID workspaceId, UUID recordId);
+
+    void upsertRecordRelation(UUID workspaceId, UUID recordId, String targetType, UUID targetId, String relationType, UUID createdBy);
+
+    List<BaseRecordRelationRecord> listRecordRelations(UUID workspaceId, UUID recordId);
+
+    List<BaseRecordRelationRecord> listReverseRecordRelations(UUID workspaceId, String targetType, UUID targetId);
+
+    void appendRecordActivity(UUID workspaceId, UUID recordId, UUID actorId, String action, Map<String, Object> metadata);
+
+    List<BaseRecordActivity> listRecordActivities(UUID workspaceId, UUID recordId);
 }

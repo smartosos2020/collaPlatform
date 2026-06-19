@@ -24,11 +24,12 @@ public class AuditController {
     public List<AuditLogEntry> list(
         @RequestParam(required = false) String action,
         @RequestParam(required = false) String targetType,
+        @RequestParam(required = false) UUID targetId,
         @RequestParam(required = false) UUID actorId,
         @RequestParam(defaultValue = "100") int limit,
         Authentication authentication
     ) {
-        return auditService.list(currentUser(authentication), action, targetType, actorId, limit);
+        return auditService.list(currentUser(authentication), action, targetType, targetId, actorId, limit);
     }
 
     private CurrentUser currentUser(Authentication authentication) {

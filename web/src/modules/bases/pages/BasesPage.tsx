@@ -3,6 +3,7 @@ import {
   AppstoreOutlined,
   CalendarOutlined,
   CommentOutlined,
+  DownloadOutlined,
   EditOutlined,
   FilterOutlined,
   LinkOutlined,
@@ -10,6 +11,7 @@ import {
   SaveOutlined,
   ShareAltOutlined,
   TableOutlined,
+  UploadOutlined,
 } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -34,17 +36,21 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import { listDirectoryMembers } from '../../projects/api/projectsApi'
 import {
+  addBaseRecordComment,
+  addBaseRecordRelation,
   createBase,
   createField,
   createRecord,
   createTable,
   createView,
+  exportBaseCsv,
   getBase,
-  getBaseRecord,
+  getBaseRecordDetail,
   getCalendarView,
   getKanbanView,
   getTable,
   grantBasePermission,
+  importBaseCsv,
   listBases,
   queryRecords,
   updateRecord,
@@ -52,6 +58,7 @@ import {
   type BaseFieldType,
   type BaseFilter,
   type BaseRecord,
+  type BaseRecordDetail as BaseRecordDetailData,
   type BaseSort,
   type BaseView,
 } from '../api/basesApi'
@@ -70,6 +77,7 @@ type CreateFieldForm = {
   fieldType: BaseFieldType
   required?: boolean
   optionsText?: string
+  targetTypesText?: string
 }
 
 type RecordFormValues = Record<string, unknown>
@@ -92,6 +100,10 @@ type PermissionForm = {
   permissionLevel: 'view' | 'edit' | 'manage'
 }
 
+type ImportCsvForm = {
+  csv: string
+}
+
 type BaseViewMode = 'grid' | 'kanban' | 'calendar'
 
 const fieldTypes: Array<{ label: string; value: BaseFieldType }> = [
@@ -102,6 +114,9 @@ const fieldTypes: Array<{ label: string; value: BaseFieldType }> = [
   { label: '附件', value: 'attachment' },
   { label: '单选', value: 'single_select' },
   { label: '多选', value: 'multi_select' },
+  { label: '状态', value: 'status' },
+  { label: '链接', value: 'url' },
+  { label: '对象', value: 'object_link' },
 ]
 
 const emptyFields: BaseField[] = []
@@ -120,7 +135,9 @@ export function BasesPage() {
   const [editingRecord, setEditingRecord] = useState<BaseRecord | null>(null)
   const [permissionOpen, setPermissionOpen] = useState(false)
   const [saveViewOpen, setSaveViewOpen] = useState(false)
+  const [importCsvOpen, setImportCsvOpen] = useState(false)
   const [filterState, setFilterState] = useState<FilterSortState>({ filters: [], sorts: [] })
+  const [visibleFieldIds, setVisibleFieldIds] = useState<string[] | null>(null)
   const [viewMode, setViewMode] = useState<BaseViewMode>('grid')
   const [kanbanFieldId, setKanbanFieldId] = useState<string | null>(null)
   const [calendarFieldId, setCalendarFieldId] = useState<string | null>(null)
@@ -131,6 +148,7 @@ export function BasesPage() {
   const [filterForm] = Form.useForm<FilterFormValues>()
   const [permissionForm] = Form.useForm<PermissionForm>()
   const [viewForm] = Form.useForm<{ name: string }>()
+  const [importForm] = Form.useForm<ImportCsvForm>()
 
   const basesQuery = useQuery({ queryKey: ['bases'], queryFn: listBases })
   const activeBaseId = baseId ?? selectedBaseId ?? basesQuery.data?.[0]?.id ?? null
@@ -157,8 +175,8 @@ export function BasesPage() {
     enabled: Boolean(activeBaseId && activeTableId),
   })
   const recordDetailQuery = useQuery({
-    queryKey: ['base-records', recordId],
-    queryFn: () => getBaseRecord(recordId || ''),
+    queryKey: ['base-records', recordId, 'detail'],
+    queryFn: () => getBaseRecordDetail(recordId || ''),
     enabled: Boolean(recordId),
   })
   const membersQuery = useQuery({ queryKey: ['members', 'directory'], queryFn: listDirectoryMembers })
@@ -169,9 +187,24 @@ export function BasesPage() {
   const kanbanFieldOptions = useMemo(
     () =>
       fields
-        .filter((field) => ['single_select', 'member', 'text'].includes(field.fieldType))
+        .filter((field) => ['single_select', 'status', 'member', 'text'].includes(field.fieldType))
         .map((field) => ({ label: field.name, value: field.id })),
     [fields],
+  )
+  const fieldIds = useMemo(() => fields.map((field) => field.id), [fields])
+  const activeVisibleFieldIds = useMemo(() => {
+    if (!visibleFieldIds) {
+      return fieldIds
+    }
+    const currentIds = visibleFieldIds.filter((fieldId) => fieldIds.includes(fieldId))
+    if (currentIds.length === 0 && visibleFieldIds.length > 0) {
+      return fieldIds
+    }
+    return currentIds
+  }, [fieldIds, visibleFieldIds])
+  const visibleFields = useMemo(
+    () => fields.filter((field) => activeVisibleFieldIds.includes(field.id)),
+    [activeVisibleFieldIds, fields],
   )
   const dateFieldOptions = useMemo(
     () =>
@@ -288,7 +321,12 @@ export function BasesPage() {
   })
 
   const saveViewMutation = useMutation({
-    mutationFn: (values: { name: string }) => createView(activeBaseId || '', activeTableId || '', { name: values.name, ...filterState }),
+    mutationFn: (values: { name: string }) =>
+      createView(activeBaseId || '', activeTableId || '', {
+        name: values.name,
+        ...filterState,
+        visibleFieldIds: activeVisibleFieldIds,
+      }),
     onSuccess: async () => {
       setSaveViewOpen(false)
       viewForm.resetFields()
@@ -296,14 +334,27 @@ export function BasesPage() {
     },
   })
 
+  const importCsvMutation = useMutation({
+    mutationFn: (values: ImportCsvForm) => importBaseCsv(activeBaseId || '', activeTableId || '', values.csv),
+    onSuccess: async (result) => {
+      setImportCsvOpen(false)
+      importForm.resetFields()
+      message.success(result.errors.length > 0 ? `已导入 ${result.created} 行，${result.errors.length} 行失败` : `已导入 ${result.created} 行`)
+      await refreshBase()
+    },
+  })
+
   const rows = recordsQuery.data?.items ?? []
-  const selectedRecord = rows.find((record) => record.id === recordId) ?? recordDetailQuery.data ?? null
+  const selectedRecord = rows.find((record) => record.id === recordId) ?? recordDetailQuery.data?.record ?? null
+  const selectedRecordDetail: BaseRecordDetailData | null =
+    recordDetailQuery.data ??
+    (selectedRecord ? { record: selectedRecord, comments: [], relations: [], activities: [] } : null)
   const memberNameById = useMemo(() => {
     const entries = (membersQuery.data ?? []).map((member) => [member.id, member.displayName] as const)
     return new Map(entries)
   }, [membersQuery.data])
   const tableColumns = useMemo(() => {
-    const dynamicColumns = fields.map((field) => ({
+    const dynamicColumns = visibleFields.map((field) => ({
       title: (
         <Space size={6}>
           <span>{field.name}</span>
@@ -337,7 +388,7 @@ export function BasesPage() {
         render: (value: string) => new Date(value).toLocaleString(),
       },
     ]
-  }, [activeBaseId, activeTableId, fields, memberNameById])
+  }, [activeBaseId, activeTableId, memberNameById, visibleFields])
 
   const openRecordModal = useCallback((record: BaseRecord | null) => {
     setEditingRecord(record)
@@ -359,6 +410,7 @@ export function BasesPage() {
 
   const applyView = (view: BaseView) => {
     setFilterState({ filters: view.filters, sorts: view.sorts })
+    setVisibleFieldIds(view.visibleFieldIds.length > 0 ? view.visibleFieldIds : null)
     filterForm.setFieldsValue({
       filterFieldId: view.filters[0]?.fieldId,
       operator: view.filters[0]?.operator,
@@ -366,6 +418,20 @@ export function BasesPage() {
       sortFieldId: view.sorts[0]?.fieldId,
       direction: view.sorts[0]?.direction,
     })
+  }
+
+  const handleExportCsv = async () => {
+    if (!activeBaseId || !activeTableId) {
+      return
+    }
+    const csv = await exportBaseCsv(activeBaseId, activeTableId)
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }))
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `${tableDetail?.table.name ?? 'base'}-${new Date().toISOString().slice(0, 10)}.csv`
+    link.click()
+    URL.revokeObjectURL(url)
+    message.success('已导出 CSV')
   }
 
   return (
@@ -465,6 +531,12 @@ export function BasesPage() {
                     <Button icon={<PlusOutlined />} disabled={!canEdit} onClick={() => setCreateFieldOpen(true)}>
                       字段
                     </Button>
+                    <Tooltip title="导出 CSV">
+                      <Button icon={<DownloadOutlined />} disabled={!activeTableId} onClick={handleExportCsv} />
+                    </Tooltip>
+                    <Tooltip title="导入 CSV">
+                      <Button icon={<UploadOutlined />} disabled={!canEdit || !activeTableId} onClick={() => setImportCsvOpen(true)} />
+                    </Tooltip>
                   </Space>
                 </div>
 
@@ -478,7 +550,7 @@ export function BasesPage() {
                     loading={recordsQuery.isLoading}
                     pagination={false}
                     rowClassName={(record) => (record.id === recordId ? 'base-record-row-active' : '')}
-                    scroll={{ x: Math.max(720, fields.length * 180 + 260), y: 520 }}
+                    scroll={{ x: Math.max(720, visibleFields.length * 180 + 260), y: 520 }}
                     onRow={(record) => ({
                       onDoubleClick: () => openRecordModal(record),
                     })}
@@ -564,15 +636,15 @@ export function BasesPage() {
       <aside className="bases-panel">
         <Typography.Title level={4}>字段与视图</Typography.Title>
         <Space orientation="vertical" size={12} className="bases-panel-stack">
-          {selectedRecord ? (
+          {selectedRecordDetail ? (
             <BaseRecordDetail
-              record={selectedRecord}
+              detail={selectedRecordDetail}
               fields={fields}
               baseId={activeBaseId}
               tableId={activeTableId}
               memberNameById={memberNameById}
               canEdit={canEdit}
-              onEdit={() => openRecordModal(selectedRecord)}
+              onEdit={() => openRecordModal(selectedRecordDetail.record)}
             />
           ) : null}
 
@@ -587,6 +659,14 @@ export function BasesPage() {
               ))}
               {fields.length === 0 ? <Typography.Text type="secondary">暂无字段</Typography.Text> : null}
             </Space>
+            {fields.length > 0 ? (
+              <Checkbox.Group
+                className="base-field-visibility"
+                value={activeVisibleFieldIds}
+                options={fields.map((field) => ({ label: field.name, value: field.id }))}
+                onChange={(values) => setVisibleFieldIds(values.map(String))}
+              />
+            ) : null}
           </div>
 
           <div className="base-side-section">
@@ -726,13 +806,22 @@ export function BasesPage() {
           </Form.Item>
           <Form.Item noStyle shouldUpdate={(prev, next) => prev.fieldType !== next.fieldType}>
             {({ getFieldValue }) =>
-              ['single_select', 'multi_select'].includes(getFieldValue('fieldType')) ? (
+              ['single_select', 'multi_select', 'status'].includes(getFieldValue('fieldType')) ? (
                 <Form.Item
                   name="optionsText"
                   label="选项"
                   rules={[{ required: true, message: '请输入选项' }]}
                   extra="用英文逗号分隔，例如：未开始,进行中,完成"
                 >
+                  <Input />
+                </Form.Item>
+              ) : null
+            }
+          </Form.Item>
+          <Form.Item noStyle shouldUpdate={(prev, next) => prev.fieldType !== next.fieldType}>
+            {({ getFieldValue }) =>
+              getFieldValue('fieldType') === 'object_link' ? (
+                <Form.Item name="targetTypesText" label="目标类型" extra="可选，用英文逗号分隔，例如：issue,document,file">
                   <Input />
                 </Form.Item>
               ) : null
@@ -802,8 +891,8 @@ export function BasesPage() {
           form={viewForm}
           layout="vertical"
           onFinish={(values) => {
-            if (filterState.filters.length === 0 && filterState.sorts.length === 0) {
-              message.warning('请先应用筛选或排序')
+            if (filterState.filters.length === 0 && filterState.sorts.length === 0 && activeVisibleFieldIds.length === fields.length) {
+              message.warning('请先应用筛选、排序或字段显示')
               return
             }
             saveViewMutation.mutate(values)
@@ -814,12 +903,27 @@ export function BasesPage() {
           </Form.Item>
         </Form>
       </Modal>
+
+      <Modal
+        title="导入 CSV"
+        open={importCsvOpen}
+        onCancel={() => setImportCsvOpen(false)}
+        onOk={() => importForm.submit()}
+        confirmLoading={importCsvMutation.isPending}
+        width={720}
+      >
+        <Form form={importForm} layout="vertical" onFinish={(values) => importCsvMutation.mutate(values)}>
+          <Form.Item name="csv" label="CSV 内容" rules={[{ required: true, message: '请粘贴 CSV 内容' }]}>
+            <Input.TextArea rows={10} />
+          </Form.Item>
+        </Form>
+      </Modal>
     </div>
   )
 }
 
 function BaseRecordDetail({
-  record,
+  detail,
   fields,
   baseId,
   tableId,
@@ -827,7 +931,7 @@ function BaseRecordDetail({
   canEdit,
   onEdit,
 }: {
-  record: BaseRecord
+  detail: BaseRecordDetailData
   fields: BaseField[]
   baseId: string | null
   tableId: string | null
@@ -835,7 +939,31 @@ function BaseRecordDetail({
   canEdit: boolean
   onEdit: () => void
 }) {
+  const record = detail.record
+  const queryClient = useQueryClient()
+  const { message } = AntdApp.useApp()
+  const [commentForm] = Form.useForm<{ content: string }>()
+  const [relationForm] = Form.useForm<{ targetType: string; targetId: string }>()
   const recordPath = baseId && tableId ? `/bases/${baseId}/tables/${tableId}/records/${record.id}` : ''
+  const refreshDetail = async () => {
+    await queryClient.invalidateQueries({ queryKey: ['base-records', record.id, 'detail'] })
+  }
+  const commentMutation = useMutation({
+    mutationFn: (values: { content: string }) => addBaseRecordComment(record.id, values.content),
+    onSuccess: async () => {
+      commentForm.resetFields()
+      message.success('评论已添加')
+      await refreshDetail()
+    },
+  })
+  const relationMutation = useMutation({
+    mutationFn: (values: { targetType: string; targetId: string }) => addBaseRecordRelation(record.id, values),
+    onSuccess: async () => {
+      relationForm.resetFields()
+      message.success('关系已添加')
+      await refreshDetail()
+    },
+  })
   return (
     <div className="base-side-section base-record-detail">
       <Space className="base-side-section-title">
@@ -865,9 +993,59 @@ function BaseRecordDetail({
         <Tag>更新：{record.updatedByName}</Tag>
       </Space>
       <Typography.Text type="secondary">{new Date(record.updatedAt).toLocaleString()}</Typography.Text>
-      <div className="base-record-comments-placeholder">
-        <CommentOutlined />
-        <Typography.Text type="secondary">记录评论预留</Typography.Text>
+      <div className="base-record-detail-block">
+        <Typography.Text strong>关联对象</Typography.Text>
+        <Space wrap>
+          {detail.relations.map((relation) => (
+            <Tag key={relation.id} icon={<LinkOutlined />}>
+              {relation.target.title ?? relation.targetType}: {relation.target.accessState}
+            </Tag>
+          ))}
+          {detail.relations.length === 0 ? <Typography.Text type="secondary">暂无关联</Typography.Text> : null}
+        </Space>
+        <Form form={relationForm} layout="vertical" onFinish={(values) => relationMutation.mutate(values)}>
+          <Space.Compact className="base-relation-form">
+            <Form.Item name="targetType" noStyle rules={[{ required: true, message: '请输入类型' }]}>
+              <Input placeholder="document" disabled={!canEdit} />
+            </Form.Item>
+            <Form.Item name="targetId" noStyle rules={[{ required: true, message: '请输入 ID' }]}>
+              <Input placeholder="UUID" disabled={!canEdit} />
+            </Form.Item>
+            <Button htmlType="submit" icon={<LinkOutlined />} disabled={!canEdit} loading={relationMutation.isPending} />
+          </Space.Compact>
+        </Form>
+      </div>
+      <div className="base-record-detail-block">
+        <Typography.Text strong>评论</Typography.Text>
+        <Space orientation="vertical" size={6} className="base-record-comments">
+          {detail.comments.map((comment) => (
+            <div className="base-record-comment" key={comment.id}>
+              <span>{comment.authorName}</span>
+              <Typography.Text>{comment.content}</Typography.Text>
+              <small>{new Date(comment.createdAt).toLocaleString()}</small>
+            </div>
+          ))}
+          {detail.comments.length === 0 ? <Typography.Text type="secondary">暂无评论</Typography.Text> : null}
+        </Space>
+        <Form form={commentForm} layout="vertical" onFinish={(values) => commentMutation.mutate(values)}>
+          <Form.Item name="content" rules={[{ required: true, message: '请输入评论' }]}>
+            <Input.TextArea rows={2} placeholder="添加评论" />
+          </Form.Item>
+          <Button htmlType="submit" icon={<CommentOutlined />} loading={commentMutation.isPending}>
+            评论
+          </Button>
+        </Form>
+      </div>
+      <div className="base-record-detail-block">
+        <Typography.Text strong>近期变化</Typography.Text>
+        <Space orientation="vertical" size={4} className="base-record-activities">
+          {detail.activities.map((activity) => (
+            <Typography.Text key={activity.id} type="secondary">
+              {activity.actorName} · {activity.action} · {new Date(activity.createdAt).toLocaleString()}
+            </Typography.Text>
+          ))}
+          {detail.activities.length === 0 ? <Typography.Text type="secondary">暂无变化</Typography.Text> : null}
+        </Space>
       </div>
     </div>
   )
@@ -900,6 +1078,13 @@ function RecordFieldInput({ field, members }: { field: BaseField; members: Array
       </Form.Item>
     )
   }
+  if (field.fieldType === 'status') {
+    return (
+      <Form.Item name={field.id} label={field.name} rules={rules}>
+        <Select options={selectOptions(field)} />
+      </Form.Item>
+    )
+  }
   if (field.fieldType === 'multi_select') {
     return (
       <Form.Item name={field.id} label={field.name} rules={rules}>
@@ -918,6 +1103,20 @@ function RecordFieldInput({ field, members }: { field: BaseField; members: Array
     return (
       <Form.Item name={field.id} label={field.name} rules={rules} extra="当前轻量版输入已上传文件 ID">
         <Input placeholder="fileId" />
+      </Form.Item>
+    )
+  }
+  if (field.fieldType === 'url') {
+    return (
+      <Form.Item name={field.id} label={field.name} rules={rules}>
+        <Input placeholder="https://example.com" />
+      </Form.Item>
+    )
+  }
+  if (field.fieldType === 'object_link') {
+    return (
+      <Form.Item name={field.id} label={field.name} rules={rules} extra="格式：document:UUID、issue:UUID、file:UUID">
+        <Input placeholder="document:00000000-0000-0000-0000-000000000000" />
       </Form.Item>
     )
   }
@@ -948,25 +1147,50 @@ function CellValue({
       </Space>
     )
   }
+  if (field.fieldType === 'status') {
+    return <Tag color="blue">{String(value)}</Tag>
+  }
   if (field.fieldType === 'member') {
     return <span>{memberNameById.get(String(value)) ?? String(value)}</span>
   }
   if (field.fieldType === 'attachment') {
     return <Tag>{String(value).slice(0, 8)}</Tag>
   }
+  if (field.fieldType === 'url') {
+    return (
+      <a href={String(value)} target="_blank" rel="noreferrer">
+        {String(value)}
+      </a>
+    )
+  }
+  if (field.fieldType === 'object_link') {
+    if (typeof value === 'object' && value !== null && 'objectType' in value && 'objectId' in value) {
+      const linkValue = value as { objectType?: unknown; objectId?: unknown; title?: unknown }
+      return <Tag icon={<LinkOutlined />}>{String(linkValue.title ?? `${linkValue.objectType}:${linkValue.objectId}`)}</Tag>
+    }
+    return <Tag icon={<LinkOutlined />}>{String(value)}</Tag>
+  }
   return <span>{String(value)}</span>
 }
 
 function selectConfig(values: CreateFieldForm) {
-  if (!['single_select', 'multi_select'].includes(values.fieldType)) {
-    return {}
+  if (['single_select', 'multi_select', 'status'].includes(values.fieldType)) {
+    return {
+      options: (values.optionsText ?? '')
+        .split(',')
+        .map((option) => option.trim())
+        .filter(Boolean),
+    }
   }
-  return {
-    options: (values.optionsText ?? '')
+  if (values.fieldType === 'object_link') {
+    return {
+      targetTypes: (values.targetTypesText ?? '')
       .split(',')
-      .map((option) => option.trim())
+      .map((targetType) => targetType.trim())
       .filter(Boolean),
+    }
   }
+  return {}
 }
 
 function normalizeRecordValues(fields: BaseField[], values: RecordFormValues) {
@@ -984,7 +1208,13 @@ function normalizeRecordValues(fields: BaseField[], values: RecordFormValues) {
 function recordValuesForForm(fields: BaseField[], record: BaseRecord) {
   const values: RecordFormValues = {}
   for (const field of fields) {
-    values[field.id] = record.values[field.id] ?? record.values[field.name]
+    const value = record.values[field.id] ?? record.values[field.name]
+    if (field.fieldType === 'object_link' && typeof value === 'object' && value !== null && 'objectType' in value && 'objectId' in value) {
+      const linkValue = value as { objectType?: unknown; objectId?: unknown }
+      values[field.id] = `${linkValue.objectType}:${linkValue.objectId}`
+    } else {
+      values[field.id] = value
+    }
   }
   return values
 }

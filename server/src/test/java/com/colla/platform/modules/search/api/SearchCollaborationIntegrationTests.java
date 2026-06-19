@@ -112,9 +112,17 @@ class SearchCollaborationIntegrationTests {
             .andExpect(jsonPath("$.items.length()", greaterThanOrEqualTo(4)))
             .andExpect(jsonPath("$.items[*].objectType").value(hasItem("issue")))
             .andExpect(jsonPath("$.items[*].objectType").value(hasItem("document")))
+            .andExpect(jsonPath("$.items[*].objectType").value(hasItem("base")))
+            .andExpect(jsonPath("$.items[*].objectType").value(hasItem("base_table")))
             .andExpect(jsonPath("$.items[*].objectType").value(hasItem("base_record")))
             .andExpect(jsonPath("$.items[*].objectType").value(hasItem("message")))
-            .andExpect(jsonPath("$.items[*].accessState").value(hasItem("available")));
+            .andExpect(jsonPath("$.items[*].accessState").value(hasItem("available")))
+            .andExpect(jsonPath("$.items[*].permissionExplanation").value(hasItem("当前用户具备查看该对象的权限。")));
+
+        mockMvc.perform(get("/api/search?q=进行中&limit=20")
+                .header("Authorization", "Bearer " + memberToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.items[*].objectType").value(hasItem("base_record")));
 
         mockMvc.perform(get("/api/search?q=aurora&limit=20")
                 .header("Authorization", "Bearer " + outsiderToken))

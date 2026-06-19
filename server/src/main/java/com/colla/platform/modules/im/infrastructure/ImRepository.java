@@ -55,6 +55,8 @@ public interface ImRepository {
 
     List<MessageSummary> listMessageContext(UUID workspaceId, UUID conversationId, UUID userId, UUID messageId, int limit);
 
+    List<MessageSummary> searchMessages(UUID workspaceId, UUID conversationId, UUID userId, String query, String targetType, int limit);
+
     void editMessage(UUID workspaceId, UUID conversationId, UUID messageId, UUID senderId, String content);
 
     void revokeMessage(UUID workspaceId, UUID conversationId, UUID messageId, UUID senderId);

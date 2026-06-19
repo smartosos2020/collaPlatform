@@ -38,6 +38,7 @@ public class SecurityConfig {
                     "/api/auth/login",
                     "/api/auth/refresh",
                     "/actuator/health",
+                    "/actuator/prometheus",
                     "/ws/**",
                     "/v3/api-docs/**",
                     "/swagger-ui/**",
@@ -69,7 +70,8 @@ public class SecurityConfig {
             "Content-Type",
             "Accept",
             "X-Colla-Client",
-            "X-Colla-Retry-Attempt"
+            "X-Colla-Retry-Attempt",
+            "X-Colla-Request-Id"
         ));
         configuration.setAllowCredentials(false);
 

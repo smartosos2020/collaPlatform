@@ -1,0 +1,19 @@
+{
+  "name": "Colla Platform",
+  "short_name": "Colla",
+  "description": "Team collaboration workspace for messages, projects, docs, bases, approvals and notifications.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f5f7fb",
+  "theme_color": "#1677ff",
+  "icons": [
+    {
+      "src": "/pwa-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -4,7 +4,9 @@ import com.colla.platform.modules.doc.application.DocumentService;
 import com.colla.platform.modules.doc.domain.DocumentModels.DocumentBlock;
 import com.colla.platform.modules.doc.domain.DocumentModels.DocumentBlockDraft;
 import com.colla.platform.modules.doc.domain.DocumentModels.DocumentDetail;
+import com.colla.platform.modules.doc.domain.DocumentModels.DocumentPathItem;
 import com.colla.platform.modules.doc.domain.DocumentModels.DocumentSummary;
+import com.colla.platform.modules.doc.domain.DocumentModels.DocumentTreeNode;
 import com.colla.platform.modules.doc.domain.DocumentModels.DocumentVersion;
 import com.colla.platform.modules.doc.domain.DocumentModels.DocumentVersionDiff;
 import com.colla.platform.shared.auth.CurrentUser;
@@ -34,18 +36,34 @@ public class DocumentController {
     }
 
     @GetMapping("/docs")
-    public List<DocumentSummary> listDocuments(Authentication authentication) {
-        return documentService.listDocuments(currentUser(authentication));
+    public List<DocumentSummary> listDocuments(
+        @RequestParam(defaultValue = "false") boolean includeArchived,
+        Authentication authentication
+    ) {
+        return documentService.listDocuments(currentUser(authentication), includeArchived);
+    }
+
+    @GetMapping("/docs/tree")
+    public List<DocumentTreeNode> documentTree(
+        @RequestParam(defaultValue = "false") boolean includeArchived,
+        Authentication authentication
+    ) {
+        return documentService.listDocumentTree(currentUser(authentication), includeArchived);
     }
 
     @PostMapping("/docs")
     public DocumentDetail createDocument(@Valid @RequestBody CreateDocumentRequest request, Authentication authentication) {
-        return documentService.createDocument(currentUser(authentication), request.parentId(), request.title(), request.content());
+        return documentService.createDocument(currentUser(authentication), request.parentId(), request.title(), request.docType(), request.content());
     }
 
     @GetMapping("/docs/{documentId}")
     public DocumentDetail document(@PathVariable UUID documentId, Authentication authentication) {
         return documentService.getDocument(currentUser(authentication), documentId);
+    }
+
+    @GetMapping("/docs/{documentId}/path")
+    public List<DocumentPathItem> documentPath(@PathVariable UUID documentId, Authentication authentication) {
+        return documentService.documentPath(currentUser(authentication), documentId);
     }
 
     @PatchMapping("/docs/{documentId}")
@@ -83,7 +101,17 @@ public class DocumentController {
         @RequestBody MoveDocumentRequest request,
         Authentication authentication
     ) {
-        return documentService.moveDocument(currentUser(authentication), documentId, request.parentId());
+        return documentService.moveDocument(currentUser(authentication), documentId, request.parentId(), request.sortOrder());
+    }
+
+    @PostMapping("/docs/{documentId}/archive")
+    public DocumentDetail archiveDocument(@PathVariable UUID documentId, Authentication authentication) {
+        return documentService.archiveDocument(currentUser(authentication), documentId);
+    }
+
+    @PostMapping("/docs/{documentId}/restore")
+    public DocumentDetail restoreDocument(@PathVariable UUID documentId, Authentication authentication) {
+        return documentService.restoreDocument(currentUser(authentication), documentId);
     }
 
     @GetMapping("/docs/{documentId}/versions")
@@ -150,7 +178,7 @@ public class DocumentController {
         return (CurrentUser) authentication.getPrincipal();
     }
 
-    public record CreateDocumentRequest(UUID parentId, @NotBlank @Size(max = 255) String title, String content) {
+    public record CreateDocumentRequest(UUID parentId, @NotBlank @Size(max = 255) String title, String docType, String content) {
     }
 
     public record SaveDocumentRequest(int baseVersionNo, @Size(max = 255) String title, String content) {
@@ -159,7 +187,7 @@ public class DocumentController {
     public record SaveDocumentBlocksRequest(int baseVersionNo, @NotNull List<DocumentBlockDraft> blocks) {
     }
 
-    public record MoveDocumentRequest(UUID parentId) {
+    public record MoveDocumentRequest(UUID parentId, Integer sortOrder) {
     }
 
     public record GrantDocumentPermissionRequest(@NotNull UUID userId, @NotBlank String permissionLevel) {

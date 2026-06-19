@@ -1,8 +1,10 @@
 package com.colla.platform.modules.doc.api;
 
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
+import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.blankOrNullString;
+import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -12,7 +14,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.colla.platform.modules.event.application.DomainEventWorker;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -233,6 +237,101 @@ class DocumentControllerIntegrationTests {
     }
 
     @Test
+    void documentEnhancedBlocksHydratePlatformObjectsAndSurviveRestore() throws Exception {
+        String adminToken = login("admin", "admin123456", "doc-embed-admin-device-" + UUID.randomUUID());
+        String teammateUsername = "dembed" + UUID.randomUUID().toString().substring(0, 8);
+        UUID teammateId = createMember(adminToken, teammateUsername, "Document Embed Teammate");
+        String outsiderUsername = "dembedout" + UUID.randomUUID().toString().substring(0, 6);
+        UUID outsiderId = createMember(adminToken, outsiderUsername, "Document Embed Outsider");
+        String outsiderToken = login(outsiderUsername, "member123456", "doc-embed-outsider-device-" + UUID.randomUUID());
+
+        JsonNode base = createBase(adminToken, "M33 数据看板", "Document embed base");
+        UUID baseId = UUID.fromString(base.get("base").get("id").asText());
+        JsonNode table = createBaseTable(adminToken, baseId, "M33 看板视图");
+        UUID tableId = UUID.fromString(table.get("table").get("id").asText());
+        UUID issueId = createIssue(adminToken, teammateId);
+        UUID conversationId = createConversation(adminToken, teammateId);
+        UUID messageId = createMessage(adminToken, conversationId, "M33 嵌入消息上下文");
+
+        String docResponse = mockMvc.perform(post("/api/docs")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"title\":\"M33 Embed Doc\",\"content\":\"M33\"}"))
+            .andExpect(status().isOk())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+        UUID documentId = UUID.fromString(objectMapper.readTree(docResponse).get("document").get("id").asText());
+
+        mockMvc.perform(post("/api/docs/" + documentId + "/permissions")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"userId\":\"" + outsiderId + "\",\"permissionLevel\":\"view\"}"))
+            .andExpect(status().isOk());
+
+        String tableContent = objectMapper.writeValueAsString(Map.of(
+            "columns", List.of("指标", "状态"),
+            "rows", List.of(List.of("北区漏斗", "进行中"))
+        ));
+        String baseViewContent = objectMapper.writeValueAsString(Map.of("objectId", tableId.toString(), "viewId", "m33-kanban"));
+        String issueContent = objectMapper.writeValueAsString(Map.of("objectId", issueId.toString()));
+        String messageContent = objectMapper.writeValueAsString(Map.of("objectId", messageId.toString()));
+
+        String blocksResponse = mockMvc.perform(patch("/api/docs/" + documentId + "/blocks")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "baseVersionNo", 1,
+                    "blocks", List.of(
+                        Map.of("blockType", "heading", "content", "M33 嵌入块"),
+                        Map.of("blockType", "table", "content", tableContent),
+                        Map.of("blockType", "base_view", "content", baseViewContent),
+                        Map.of("blockType", "issue_embed", "content", issueContent),
+                        Map.of("blockType", "message_embed", "content", messageContent)
+                    )
+                ))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.document.currentVersionNo").value(2))
+            .andExpect(jsonPath("$.blocks[1].blockType").value("table"))
+            .andExpect(jsonPath("$.blocks[1].metadata.columns[0]").value("指标"))
+            .andExpect(jsonPath("$.blocks[2].blockType").value("base_view"))
+            .andExpect(jsonPath("$.blocks[2].metadata.objectType").value("base_table"))
+            .andExpect(jsonPath("$.blocks[2].metadata.viewId").value("m33-kanban"))
+            .andExpect(jsonPath("$.blocks[2].embedSummary.objectType").value("base_table"))
+            .andExpect(jsonPath("$.blocks[2].embedSummary.title").value("M33 看板视图"))
+            .andExpect(jsonPath("$.blocks[3].embedSummary.objectType").value("issue"))
+            .andExpect(jsonPath("$.blocks[3].embedSummary.title", containsString("Document related task")))
+            .andExpect(jsonPath("$.blocks[4].embedSummary.objectType").value("message"))
+            .andExpect(jsonPath("$.blocks[4].embedSummary.subtitle").value("M33 嵌入消息上下文"))
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+
+        UUID tableBlockId = UUID.fromString(objectMapper.readTree(blocksResponse).get("blocks").get(1).get("id").asText());
+        mockMvc.perform(post("/api/docs/" + documentId + "/comments")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of("blockId", tableBlockId.toString(), "content", "表格块口径需要复核"))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.comments[0].blockId").value(tableBlockId.toString()));
+
+        mockMvc.perform(get("/api/docs/" + documentId)
+                .header("Authorization", "Bearer " + outsiderToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.blocks[2].embedSummary.accessState").value("forbidden"))
+            .andExpect(jsonPath("$.blocks[3].embedSummary.accessState").value("forbidden"))
+            .andExpect(jsonPath("$.blocks[4].embedSummary.accessState").value("not_found"));
+
+        mockMvc.perform(post("/api/docs/" + documentId + "/versions/2/restore")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.document.currentVersionNo").value(3))
+            .andExpect(jsonPath("$.blocks[1].blockType").value("table"))
+            .andExpect(jsonPath("$.blocks[2].blockType").value("base_view"))
+            .andExpect(jsonPath("$.blocks[2].embedSummary.title").value("M33 看板视图"));
+    }
+
+    @Test
     void rejectsDocumentAccessForUnauthorizedUser() throws Exception {
         String adminToken = login("admin", "admin123456", "doc-owner-device-" + UUID.randomUUID());
         String outsiderUsername = "dout" + UUID.randomUUID().toString().substring(0, 8);
@@ -257,6 +356,94 @@ class DocumentControllerIntegrationTests {
                 .header("Authorization", "Bearer " + outsiderToken))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.accessState").value("forbidden"));
+    }
+
+    @Test
+    void documentTreeMoveArchiveRestoreAndInheritedVisibilityFlow() throws Exception {
+        String adminToken = login("admin", "admin123456", "doc-tree-admin-device-" + UUID.randomUUID());
+        String viewerUsername = "dtree" + UUID.randomUUID().toString().substring(0, 8);
+        UUID viewerId = createMember(adminToken, viewerUsername, "Document Tree Viewer");
+        String viewerToken = login(viewerUsername, "member123456", "doc-tree-viewer-device-" + UUID.randomUUID());
+
+        String suffix = UUID.randomUUID().toString().substring(0, 8);
+        UUID rootId = createDocument(adminToken, null, "M32 Space " + suffix, "space", "Root space");
+        mockMvc.perform(post("/api/docs/" + rootId + "/permissions")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"userId\":\"" + viewerId + "\",\"permissionLevel\":\"view\"}"))
+            .andExpect(status().isOk());
+
+        UUID folderId = createDocument(adminToken, rootId, "Specs " + suffix, "folder", "");
+        UUID docAId = createDocument(adminToken, folderId, "PRD " + suffix, "markdown", "A");
+        UUID docBId = createDocument(adminToken, folderId, "QA " + suffix, "markdown", "B");
+
+        mockMvc.perform(get("/api/docs/" + docAId + "/path")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$[0].id").value(rootId.toString()))
+            .andExpect(jsonPath("$[1].id").value(folderId.toString()))
+            .andExpect(jsonPath("$[2].id").value(docAId.toString()));
+
+        mockMvc.perform(get("/api/docs/tree?includeArchived=true")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$..document.id", hasItem(rootId.toString())))
+            .andExpect(jsonPath("$..document.id", hasItem(folderId.toString())))
+            .andExpect(jsonPath("$..document.id", hasItem(docAId.toString())))
+            .andExpect(jsonPath("$..path", hasItem("M32 Space " + suffix + " / Specs " + suffix + " / PRD " + suffix)));
+
+        mockMvc.perform(get("/api/docs/tree")
+                .header("Authorization", "Bearer " + viewerToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$..document.id", hasItem(folderId.toString())))
+            .andExpect(jsonPath("$..document.id", hasItem(docAId.toString())));
+
+        mockMvc.perform(post("/api/docs/" + docAId + "/move")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"parentId\":\"" + rootId + "\",\"sortOrder\":-10}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.document.parentId").value(rootId.toString()))
+            .andExpect(jsonPath("$.document.sortOrder").value(-10));
+
+        mockMvc.perform(get("/api/docs/" + docAId + "/path")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$[0].id").value(rootId.toString()))
+            .andExpect(jsonPath("$[1].id").value(docAId.toString()));
+
+        mockMvc.perform(post("/api/docs/" + rootId + "/move")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"parentId\":\"" + docAId + "\"}"))
+            .andExpect(status().isBadRequest());
+
+        mockMvc.perform(post("/api/docs/" + folderId + "/archive")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.document.archived").value(true));
+
+        mockMvc.perform(get("/api/docs/tree")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$..document.id", not(hasItem(folderId.toString()))))
+            .andExpect(jsonPath("$..document.id", not(hasItem(docBId.toString()))));
+
+        mockMvc.perform(get("/api/docs/" + docBId)
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.document.archived").value(true));
+
+        mockMvc.perform(post("/api/docs/" + folderId + "/restore")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.document.archived").value(false));
+
+        mockMvc.perform(get("/api/docs/tree")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$..document.id", hasItem(folderId.toString())))
+            .andExpect(jsonPath("$..document.id", hasItem(docBId.toString())));
     }
 
     private UUID createIssue(String token, UUID assigneeId) throws Exception {
@@ -317,6 +504,70 @@ class DocumentControllerIntegrationTests {
             .getResponse()
             .getContentAsString();
         return UUID.fromString(objectMapper.readTree(response).get("id").asText());
+    }
+
+    private UUID createMessage(String token, UUID conversationId, String content) throws Exception {
+        String response = mockMvc.perform(post("/api/conversations/" + conversationId + "/messages")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "clientMessageId", UUID.randomUUID().toString(),
+                    "messageType", "text",
+                    "content", content
+                ))))
+            .andExpect(status().isOk())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+        return UUID.fromString(objectMapper.readTree(response).get("id").asText());
+    }
+
+    private JsonNode createBase(String token, String name, String description) throws Exception {
+        String response = mockMvc.perform(post("/api/bases")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of("name", name, "description", description))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.base.name").value(name))
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+        return objectMapper.readTree(response);
+    }
+
+    private JsonNode createBaseTable(String token, UUID baseId, String name) throws Exception {
+        String response = mockMvc.perform(post("/api/bases/" + baseId + "/tables")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of("name", name))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.table.name").value(name))
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+        return objectMapper.readTree(response);
+    }
+
+    private UUID createDocument(String token, UUID parentId, String title, String docType, String content) throws Exception {
+        String parentJson = parentId == null ? "null" : "\"" + parentId + "\"";
+        String response = mockMvc.perform(post("/api/docs")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                        {
+                          "parentId": %s,
+                          "title": "%s",
+                          "docType": "%s",
+                          "content": "%s"
+                        }
+                        """.formatted(parentJson, title, docType, content)
+                ))
+            .andExpect(status().isOk())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+        return UUID.fromString(objectMapper.readTree(response).get("document").get("id").asText());
     }
 
     private UUID createMember(String token, String username, String displayName) throws Exception {

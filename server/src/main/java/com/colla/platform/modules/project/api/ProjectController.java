@@ -128,10 +128,18 @@ public class ProjectController {
     @PostMapping("/issues/{issueId}/transition")
     public IssueDetail transitionIssue(
         @PathVariable UUID issueId,
-        @Valid @RequestBody TransitionIssueRequest request,
+        @RequestBody TransitionIssueRequest request,
         Authentication authentication
     ) {
-        return projectService.transitionIssue(currentUser(authentication), issueId, request.status());
+        return projectService.transitionIssue(
+            currentUser(authentication),
+            issueId,
+            request.action(),
+            request.status(),
+            request.reason(),
+            request.targetIssueId(),
+            request.dueAt()
+        );
     }
 
     @PostMapping("/issues/{issueId}/comments")
@@ -212,7 +220,13 @@ public class ProjectController {
     ) {
     }
 
-    public record TransitionIssueRequest(@NotBlank String status) {
+    public record TransitionIssueRequest(
+        String action,
+        String status,
+        String reason,
+        UUID targetIssueId,
+        LocalDate dueAt
+    ) {
     }
 
     public record AddCommentRequest(@NotBlank String content) {

@@ -8,6 +8,7 @@ import com.colla.platform.modules.platform.infrastructure.PlatformObjectReposito
 import com.colla.platform.modules.project.domain.ProjectModels.IssueSummary;
 import com.colla.platform.modules.project.infrastructure.ProjectRepository;
 import com.colla.platform.shared.auth.CurrentUser;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -39,6 +40,16 @@ public class IssuePlatformObjectResolver implements PlatformObjectResolver {
         if (!projectRepository.isProjectMember(currentUser.workspaceId(), value.projectId(), currentUser.id())) {
             return Optional.of(PlatformObjectSummary.unavailable("issue", objectId, ObjectAccessState.forbidden));
         }
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("projectId", value.projectId().toString());
+        metadata.put("issueKey", value.issueKey());
+        metadata.put("priority", value.priority());
+        if (value.workflowReason() != null) {
+            metadata.put("workflowReason", value.workflowReason());
+        }
+        if (value.resolution() != null) {
+            metadata.put("resolution", value.resolution());
+        }
         return Optional.of(new PlatformObjectSummary(
             "issue",
             objectId,
@@ -48,11 +59,7 @@ public class IssuePlatformObjectResolver implements PlatformObjectResolver {
             value.status(),
             "/issues/" + objectId,
             "colla://issue/" + objectId,
-            Map.of(
-                "projectId", value.projectId().toString(),
-                "issueKey", value.issueKey(),
-                "priority", value.priority()
-            )
+            metadata
         ));
     }
 

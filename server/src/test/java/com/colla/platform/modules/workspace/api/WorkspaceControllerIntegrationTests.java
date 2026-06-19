@@ -99,11 +99,16 @@ class WorkspaceControllerIntegrationTests {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$[0].objectId").value(issueId.toString()));
 
-        mockMvc.perform(get("/api/notifications?source=issue&status=unread&targetType=issue")
+        String notificationResponse = mockMvc.perform(get("/api/notifications?source=issue&status=unread&targetType=issue")
                 .header("Authorization", "Bearer " + viewerToken))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.length()", greaterThanOrEqualTo(1)))
-            .andExpect(jsonPath("$[0].targetType").value("issue"));
+            .andExpect(jsonPath("$[0].targetType").value("issue"))
+            .andExpect(jsonPath("$[0].sourceType").value("issue"))
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+        UUID notificationId = UUID.fromString(objectMapper.readTree(notificationResponse).get(0).get("id").asText());
 
         mockMvc.perform(get("/api/workspace/dashboard")
                 .header("Authorization", "Bearer " + viewerToken))
@@ -116,6 +121,13 @@ class WorkspaceControllerIntegrationTests {
             .andExpect(jsonPath("$.recentBases[0].id").value(baseId.toString()))
             .andExpect(jsonPath("$.recentObjects[0].objectType").value("issue"))
             .andExpect(jsonPath("$.favoriteObjects[0].objectId").value(issueId.toString()));
+
+        mockMvc.perform(post("/api/notifications/read-batch")
+                .header("Authorization", "Bearer " + viewerToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"notificationIds\":[\"" + notificationId + "\"]}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.changed").value(1));
     }
 
     private JsonNode createProject(String token, UUID memberId) throws Exception {

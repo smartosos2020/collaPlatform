@@ -2,20 +2,22 @@ import {
   BellOutlined,
   BugOutlined,
   CloseCircleOutlined,
+  CopyOutlined,
   DeleteOutlined,
+  DisconnectOutlined,
   LogoutOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   EditOutlined,
   PlusOutlined,
   PushpinOutlined,
+  SearchOutlined,
   SendOutlined,
   SmileOutlined,
   StopOutlined,
   TeamOutlined,
   UserOutlined,
   WifiOutlined,
-  DisconnectOutlined,
 } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -41,6 +43,7 @@ import { ObjectSummaryCard } from '../../platform/components/InternalLinkCard'
 import {
   addConversationMembers,
   closeConversation,
+  convertMessageToIssue,
   createConversation,
   editMessage,
   getConversation,
@@ -55,6 +58,7 @@ import {
   pinMessage,
   removeConversationMember,
   revokeMessage,
+  searchConversationMessages,
   sendMessage,
   toggleReaction,
   type ConversationSummary,
@@ -63,7 +67,7 @@ import {
 } from '../api/messengerApi'
 import { useWebSocketConnection } from '../../../shared/websocket/useWebSocketConnection'
 import type { PlatformWebSocketEvent } from '../../../shared/websocket/websocketEvents'
-import { createIssue, listProjects } from '../../projects/api/projectsApi'
+import { listProjects } from '../../projects/api/projectsApi'
 
 type CreateConversationForm = {
   conversationType: 'direct' | 'group'
@@ -73,7 +77,7 @@ type CreateConversationForm = {
 
 type ConvertMessageForm = {
   projectId: string
-  issueType: 'task' | 'bug'
+  issueType: 'requirement' | 'task' | 'bug'
   title: string
   description?: string
 }
@@ -90,6 +94,9 @@ const COMPOSER_EMOJIS = ['😀', '😄', '😂', '😊', '👍', '❤️', '🎉
 export function MessengerPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [draft, setDraft] = useState('')
+  const [messageSearchText, setMessageSearchText] = useState('')
+  const [messageSearchQueryText, setMessageSearchQueryText] = useState('')
+  const [messageSearchTargetType, setMessageSearchTargetType] = useState<string>()
   const [createOpen, setCreateOpen] = useState(false)
   const [convertMessage, setConvertMessage] = useState<MessageSummary | null>(null)
   const [editingMessage, setEditingMessage] = useState<MessageSummary | null>(null)
@@ -148,6 +155,17 @@ export function MessengerPage() {
         ? listMessageContext(selectedConversationId, selectedMessageId)
         : listMessages(selectedConversationId || ''),
     enabled: Boolean(selectedConversationId),
+  })
+
+  const messageSearchActive = Boolean(messageSearchQueryText.trim() || messageSearchTargetType)
+  const messageSearchQuery = useQuery({
+    queryKey: ['im', 'message-search', selectedConversationId, messageSearchQueryText, messageSearchTargetType],
+    queryFn: () =>
+      searchConversationMessages(selectedConversationId || '', {
+        q: messageSearchQueryText,
+        targetType: messageSearchTargetType,
+      }),
+    enabled: Boolean(selectedConversationId && messageSearchActive),
   })
 
   const refreshIm = useCallback(async () => {
@@ -235,17 +253,20 @@ export function MessengerPage() {
 
   const convertMutation = useMutation({
     mutationFn: (values: ConvertMessageForm) =>
-      createIssue(values.projectId, {
+      convertMessageToIssue(convertMessage?.conversationId || selectedConversationId || '', convertMessage?.id || '', {
+        projectId: values.projectId,
         issueType: values.issueType,
         title: values.title,
         description: values.description,
         priority: 'medium',
       }),
     onSuccess: async () => {
+      message.success('已从消息创建事项')
       setConvertMessage(null)
       convertForm.resetFields()
       await refreshIm()
     },
+    onError: () => message.error('从消息创建事项失败，请检查项目权限'),
   })
 
   const readMutation = useMutation({
@@ -370,6 +391,13 @@ export function MessengerPage() {
         .sort((left, right) => new Date(right.pinnedAt || '').getTime() - new Date(left.pinnedAt || '').getTime())[0],
     [messages],
   )
+  const conversationGroups = useMemo(() => {
+    const conversations = conversationsQuery.data ?? []
+    return [
+      { key: 'pinned', title: '置顶', items: conversations.filter((item) => Boolean(item.pinnedAt)) },
+      { key: 'recent', title: '最近', items: conversations.filter((item) => !item.pinnedAt) },
+    ].filter((group) => group.items.length > 0)
+  }, [conversationsQuery.data])
   const directMemberOptions = useMemo(
     () =>
       (directoryQuery.data ?? [])
@@ -584,18 +612,23 @@ export function MessengerPage() {
           {(conversationsQuery.data ?? []).length === 0 && !conversationsQuery.isLoading ? (
             <Empty description="暂无会话" />
           ) : null}
-          {(conversationsQuery.data ?? []).map((conversation) => (
-            <ConversationListItem
-              key={conversation.id}
-              conversation={conversation}
-              active={conversation.id === selectedConversationId}
-              collapsed={conversationListCollapsed}
-              onClick={() => setSearchParams({ conversationId: conversation.id })}
-              onPin={() => pinConversationMutation.mutate({ conversationId: conversation.id, pinned: !conversation.pinnedAt })}
-              onMute={() => muteConversationMutation.mutate({ conversationId: conversation.id, muted: !conversation.muted })}
-              onLeave={() => leaveMutation.mutate(conversation.id)}
-              onClose={() => closeConversationMutation.mutate(conversation.id)}
-            />
+          {conversationGroups.map((group) => (
+            <div className="im-conversation-group" key={group.key}>
+              {conversationListCollapsed ? null : <span className="im-conversation-group-title">{group.title}</span>}
+              {group.items.map((conversation) => (
+                <ConversationListItem
+                  key={conversation.id}
+                  conversation={conversation}
+                  active={conversation.id === selectedConversationId}
+                  collapsed={conversationListCollapsed}
+                  onClick={() => setSearchParams({ conversationId: conversation.id })}
+                  onPin={() => pinConversationMutation.mutate({ conversationId: conversation.id, pinned: !conversation.pinnedAt })}
+                  onMute={() => muteConversationMutation.mutate({ conversationId: conversation.id, muted: !conversation.muted })}
+                  onLeave={() => leaveMutation.mutate(conversation.id)}
+                  onClose={() => closeConversationMutation.mutate(conversation.id)}
+                />
+              ))}
+            </div>
           ))}
         </div>
       </aside>
@@ -625,6 +658,66 @@ export function MessengerPage() {
                 </Button>
               </Space>
             </header>
+            <div className="im-message-search">
+              <Input.Search
+                allowClear
+                size="small"
+                prefix={<SearchOutlined />}
+                placeholder="搜索当前会话消息"
+                value={messageSearchText}
+                loading={messageSearchQuery.isFetching}
+                onChange={(event) => {
+                  setMessageSearchText(event.target.value)
+                  if (!event.target.value.trim()) {
+                    setMessageSearchQueryText('')
+                  }
+                }}
+                onSearch={(value) => setMessageSearchQueryText(value.trim())}
+              />
+              <Select
+                allowClear
+                size="small"
+                className="im-message-search-target"
+                placeholder="对象"
+                value={messageSearchTargetType}
+                onChange={(value) => setMessageSearchTargetType(value)}
+                options={[
+                  { value: 'issue', label: '事项' },
+                  { value: 'document', label: '文档' },
+                  { value: 'base', label: '表格' },
+                  { value: 'approval', label: '审批' },
+                  { value: 'message', label: '消息' },
+                ]}
+              />
+            </div>
+            {messageSearchActive ? (
+              <div className="im-message-search-results">
+                {messageSearchQuery.isLoading ? <Typography.Text type="secondary">搜索中...</Typography.Text> : null}
+                {!messageSearchQuery.isLoading && (messageSearchQuery.data?.items ?? []).length === 0 ? (
+                  <Typography.Text type="secondary">没有匹配消息</Typography.Text>
+                ) : null}
+                {(messageSearchQuery.data?.items ?? []).map((item) => {
+                  const linkSummary = item.links
+                    .map((link) => link.summary?.title || link.webPath || link.sourceUrl)
+                    .filter(Boolean)
+                    .join(' · ')
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => setSearchParams({ conversationId: item.conversationId, messageId: item.id })}
+                    >
+                      <span>{item.senderName}</span>
+                      <span className="im-message-search-main">
+                        <strong>{item.content || '消息已撤回'}</strong>
+                        {linkSummary ? <small>{linkSummary}</small> : null}
+                      </span>
+                      <time>{formatMessageTime(item.createdAt)}</time>
+                    </button>
+                  )
+                })}
+              </div>
+            ) : null}
             {pinnedMessage ? (
               <button className="im-pinned-bar" onClick={() => focusMessage(pinnedMessage.id)}>
                 <PushpinOutlined />
@@ -655,6 +748,11 @@ export function MessengerPage() {
                           title: item.content.slice(0, 120),
                           description: item.content,
                         })
+                      }}
+                      onCopyLink={() => {
+                        const link = `/im?conversationId=${item.conversationId}&messageId=${item.id}`
+                        void navigator.clipboard.writeText(link)
+                        message.success('已复制消息链接')
                       }}
                       onEdit={() => {
                         setEditingMessage(item)
@@ -844,6 +942,7 @@ export function MessengerPage() {
           <Form.Item label="类型" name="issueType" rules={[{ required: true }]}>
             <Select
               options={[
+                { value: 'requirement', label: '需求' },
                 { value: 'bug', label: 'Bug' },
                 { value: 'task', label: '任务' },
               ]}
@@ -1010,6 +1109,7 @@ function MessageBubble({
   mine,
   highlighted,
   onCreateIssue,
+  onCopyLink,
   onEdit,
   onRevoke,
   onPin,
@@ -1022,6 +1122,7 @@ function MessageBubble({
   mine: boolean
   highlighted: boolean
   onCreateIssue: () => void
+  onCopyLink: () => void
   onEdit: () => void
   onRevoke: () => void
   onPin: () => void
@@ -1044,6 +1145,13 @@ function MessageBubble({
       label: '转事项',
       disabled: Boolean(item.revokedAt) || isLocal,
       onClick: onCreateIssue,
+    },
+    {
+      key: 'copy-link',
+      icon: <CopyOutlined />,
+      label: '复制链接',
+      disabled: Boolean(item.revokedAt) || isLocal,
+      onClick: onCopyLink,
     },
     mine
       ? {

@@ -7,6 +7,10 @@ import { AppLayout } from './layout/AppLayout'
 import { RequireAuth } from '../modules/auth/components/RequireAuth'
 
 const AdminUsersPage = lazyRoute(() => import('../modules/admin/pages/AdminUsersPage'), 'AdminUsersPage')
+const AdminAuditLogsPage = lazyRoute(
+  () => import('../modules/admin/pages/AdminAuditLogsPage'),
+  'AdminAuditLogsPage',
+)
 const ApprovalsPage = lazyRoute(() => import('../modules/approvals/pages/ApprovalsPage'), 'ApprovalsPage')
 const AuthLoginPage = lazyRoute(() => import('../modules/auth/pages/AuthLoginPage'), 'AuthLoginPage')
 const BasesPage = lazyRoute(() => import('../modules/bases/pages/BasesPage'), 'BasesPage')
@@ -73,6 +77,7 @@ export const router = createBrowserRouter([
       { path: 'search', element: routeElement(<SearchPage />) },
       { path: 'admin/users', element: routeElement(<AdminUsersPage />) },
       { path: 'admin/roles', element: routeElement(<AdminUsersPage />) },
+      { path: 'admin/audit-logs', element: routeElement(<AdminAuditLogsPage />) },
       { path: 'error/:state', element: routeElement(<AppErrorPage />) },
       { path: '*', element: routeElement(<AppErrorPage stateOverride="404" />) },
     ],

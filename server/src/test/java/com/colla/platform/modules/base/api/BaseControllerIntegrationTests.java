@@ -3,8 +3,10 @@ package com.colla.platform.modules.base.api;
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.blankOrNullString;
+import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -57,10 +59,22 @@ class BaseControllerIntegrationTests {
         UUID priorityFieldId = createField(adminToken, baseId, tableId, "优先级", "number", Map.of(), false);
         UUID ownerFieldId = createField(adminToken, baseId, tableId, "负责人", "member", Map.of(), false);
         UUID dueFieldId = createField(adminToken, baseId, tableId, "截止日期", "date", Map.of(), false);
-        UUID statusFieldId = createField(adminToken, baseId, tableId, "状态", "single_select", Map.of("options", List.of("未开始", "进行中", "完成")), false);
+        UUID statusFieldId = createField(adminToken, baseId, tableId, "状态", "status", Map.of("options", List.of("未开始", "进行中", "完成")), false);
         UUID tagsFieldId = createField(adminToken, baseId, tableId, "标签", "multi_select", Map.of("options", List.of("产品", "后端", "前端")), false);
+        UUID urlFieldId = createField(adminToken, baseId, tableId, "官网", "url", Map.of(), false);
+        UUID objectLinkFieldId = createField(adminToken, baseId, tableId, "关联文档", "object_link", Map.of("targetTypes", List.of("document")), false);
         UUID fileId = createFile(adminToken, baseId);
         UUID attachmentFieldId = createField(adminToken, baseId, tableId, "附件", "attachment", Map.of(), false);
+        UUID docId = createDocument(adminToken);
+
+        mockMvc.perform(post("/api/bases/" + baseId + "/tables/" + tableId + "/records")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of("values", Map.of(
+                    titleFieldId.toString(), "Bad Number",
+                    priorityFieldId.toString(), "NaN"
+                )))))
+            .andExpect(status().isBadRequest());
 
         Map<String, Object> values = new LinkedHashMap<>();
         values.put(titleFieldId.toString(), "Login Case");
@@ -69,9 +83,32 @@ class BaseControllerIntegrationTests {
         values.put(dueFieldId.toString(), "2026-06-30");
         values.put(statusFieldId.toString(), "进行中");
         values.put(tagsFieldId.toString(), List.of("产品", "后端"));
+        values.put(urlFieldId.toString(), "https://example.com/login");
+        values.put(objectLinkFieldId.toString(), Map.of("objectType", "document", "objectId", docId.toString()));
         values.put(attachmentFieldId.toString(), fileId.toString());
         JsonNode record = createRecord(adminToken, baseId, tableId, values);
         UUID recordId = UUID.fromString(record.get("id").asText());
+
+        mockMvc.perform(get("/api/base-records/" + recordId + "/detail")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.relations[0].targetType").value("document"))
+            .andExpect(jsonPath("$.activities[0].action").value("base.record.created"));
+
+        mockMvc.perform(post("/api/base-records/" + recordId + "/comments")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"content\":\"请补充回归结果\"}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.comments[0].content").value("请补充回归结果"))
+            .andExpect(jsonPath("$.activities[0].action").value("base.record.commented"));
+
+        mockMvc.perform(post("/api/base-records/" + recordId + "/relations")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"targetType\":\"base\",\"targetId\":\"" + baseId + "\"}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.relations.length()", greaterThanOrEqualTo(2)));
 
         mockMvc.perform(post("/api/bases/" + baseId + "/tables/" + tableId + "/records/query")
                 .header("Authorization", "Bearer " + adminToken)
@@ -93,10 +130,29 @@ class BaseControllerIntegrationTests {
                 .content(objectMapper.writeValueAsString(Map.of(
                     "name", "进行中需求",
                     "filters", List.of(Map.of("fieldId", statusFieldId.toString(), "operator", "eq", "value", "进行中")),
-                    "sorts", List.of(Map.of("fieldId", dueFieldId.toString(), "direction", "asc"))
+                    "sorts", List.of(Map.of("fieldId", dueFieldId.toString(), "direction", "asc")),
+                    "visibleFieldIds", List.of(titleFieldId.toString(), statusFieldId.toString())
                 ))))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.name").value("进行中需求"));
+            .andExpect(jsonPath("$.name").value("进行中需求"))
+            .andExpect(jsonPath("$.visibleFieldIds.length()").value(2));
+
+        mockMvc.perform(get("/api/bases/" + baseId + "/tables/" + tableId + "/export.csv")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(content().string(containsString("官网")))
+            .andExpect(content().string(containsString("https://example.com/login")));
+
+        mockMvc.perform(post("/api/bases/" + baseId + "/tables/" + tableId + "/import.csv")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "csv",
+                    "标题,优先级,状态,官网\nImported Case,5,未开始,https://example.com/import\n"
+                ))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.created").value(1))
+            .andExpect(jsonPath("$.errors.length()").value(0));
 
         mockMvc.perform(get("/api/platform/objects/base/" + baseId + "/summary")
                 .header("Authorization", "Bearer " + viewerToken))
@@ -117,7 +173,6 @@ class BaseControllerIntegrationTests {
             .andExpect(jsonPath("$.title").value("Login Case"))
             .andExpect(jsonPath("$.webPath").value("/bases/" + baseId + "/tables/" + tableId + "/records/" + recordId));
 
-        UUID docId = createDocument(adminToken);
         mockMvc.perform(post("/api/docs/" + docId + "/relations")
                 .header("Authorization", "Bearer " + adminToken)
                 .contentType(MediaType.APPLICATION_JSON)

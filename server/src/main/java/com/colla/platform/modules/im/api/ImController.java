@@ -7,10 +7,13 @@ import com.colla.platform.modules.im.domain.ImModels.ConversationSummary;
 import com.colla.platform.modules.im.domain.ImModels.MessagePage;
 import com.colla.platform.modules.im.domain.ImModels.MessageSummary;
 import com.colla.platform.modules.im.domain.ImModels.UnreadState;
+import com.colla.platform.modules.project.application.ProjectService;
+import com.colla.platform.modules.project.domain.ProjectModels.IssueDetail;
 import com.colla.platform.shared.auth.CurrentUser;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.security.core.Authentication;
@@ -28,9 +31,11 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/conversations")
 public class ImController {
     private final ImService imService;
+    private final ProjectService projectService;
 
-    public ImController(ImService imService) {
+    public ImController(ImService imService, ProjectService projectService) {
         this.imService = imService;
+        this.projectService = projectService;
     }
 
     @GetMapping
@@ -125,6 +130,17 @@ public class ImController {
         return imService.listMessageContext(currentUser(authentication), conversationId, messageId, limit);
     }
 
+    @GetMapping("/{conversationId}/messages/search")
+    public MessagePage searchMessages(
+        @PathVariable UUID conversationId,
+        @RequestParam(required = false) String q,
+        @RequestParam(required = false) String targetType,
+        @RequestParam(defaultValue = "20") int limit,
+        Authentication authentication
+    ) {
+        return imService.searchMessages(currentUser(authentication), conversationId, q, targetType, limit);
+    }
+
     @PostMapping("/{conversationId}/messages")
     public MessageSummary sendMessage(
         @PathVariable UUID conversationId,
@@ -137,6 +153,27 @@ public class ImController {
             request.clientMessageId(),
             request.messageType(),
             request.content()
+        );
+    }
+
+    @PostMapping("/{conversationId}/messages/{messageId}/convert-to-issue")
+    public IssueDetail convertMessageToIssue(
+        @PathVariable UUID conversationId,
+        @PathVariable UUID messageId,
+        @Valid @RequestBody ConvertMessageToIssueRequest request,
+        Authentication authentication
+    ) {
+        return projectService.createIssueFromMessage(
+            currentUser(authentication),
+            request.projectId(),
+            conversationId,
+            messageId,
+            request.issueType(),
+            request.title(),
+            request.description(),
+            request.priority(),
+            request.assigneeId(),
+            request.dueAt()
         );
     }
 
@@ -212,6 +249,17 @@ public class ImController {
         String clientMessageId,
         String messageType,
         @NotBlank String content
+    ) {
+    }
+
+    public record ConvertMessageToIssueRequest(
+        UUID projectId,
+        String issueType,
+        @Size(max = 255) String title,
+        String description,
+        String priority,
+        UUID assigneeId,
+        LocalDate dueAt
     ) {
     }
 

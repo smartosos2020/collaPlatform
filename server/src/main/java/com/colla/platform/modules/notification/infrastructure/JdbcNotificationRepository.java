@@ -119,6 +119,26 @@ public class JdbcNotificationRepository implements NotificationRepository {
     }
 
     @Override
+    public int markReadBatch(UUID workspaceId, UUID recipientId, List<UUID> notificationIds) {
+        if (notificationIds == null || notificationIds.isEmpty()) {
+            return 0;
+        }
+        String placeholders = String.join(",", notificationIds.stream().map(ignored -> "?").toList());
+        List<Object> args = new ArrayList<>();
+        args.add(workspaceId);
+        args.add(recipientId);
+        args.addAll(notificationIds);
+        return jdbcTemplate.update(
+            """
+                update notifications
+                set read_at = coalesce(read_at, now())
+                where workspace_id = ? and recipient_id = ? and id in (%s) and read_at is null
+                """.formatted(placeholders),
+            args.toArray()
+        );
+    }
+
+    @Override
     public int markAllRead(UUID workspaceId, UUID recipientId) {
         return jdbcTemplate.update(
             "update notifications set read_at = coalesce(read_at, now()) where workspace_id = ? and recipient_id = ? and read_at is null",
@@ -131,6 +151,7 @@ public class JdbcNotificationRepository implements NotificationRepository {
         return new NotificationItem(
             rs.getObject("id", UUID.class),
             rs.getString("notification_type"),
+            sourceType(rs.getString("notification_type")),
             rs.getString("title"),
             rs.getString("body"),
             rs.getString("target_type"),
@@ -139,5 +160,16 @@ public class JdbcNotificationRepository implements NotificationRepository {
             rs.getTimestamp("read_at") == null ? null : rs.getTimestamp("read_at").toInstant(),
             rs.getTimestamp("created_at").toInstant()
         );
+    }
+
+    private String sourceType(String notificationType) {
+        if (notificationType == null || notificationType.isBlank()) {
+            return "system";
+        }
+        int separator = notificationType.indexOf('_');
+        if (separator < 0) {
+            separator = notificationType.indexOf('.');
+        }
+        return separator > 0 ? notificationType.substring(0, separator) : notificationType;
     }
 }

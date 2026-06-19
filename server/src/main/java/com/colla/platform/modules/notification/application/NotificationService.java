@@ -1,6 +1,7 @@
 package com.colla.platform.modules.notification.application;
 
 import com.colla.platform.modules.notification.domain.NotificationModels.NotificationItem;
+import com.colla.platform.modules.notification.domain.NotificationModels.NotificationBatchResult;
 import com.colla.platform.modules.notification.domain.NotificationModels.UnreadCount;
 import com.colla.platform.modules.notification.infrastructure.NotificationRepository;
 import com.colla.platform.shared.auth.CurrentUser;
@@ -40,6 +41,14 @@ public class NotificationService {
                 Map.of("notificationId", notificationId)
             );
         }
+    }
+
+    public NotificationBatchResult markReadBatch(CurrentUser currentUser, List<UUID> notificationIds) {
+        int changed = notificationRepository.markReadBatch(currentUser.workspaceId(), currentUser.id(), notificationIds);
+        if (changed > 0) {
+            pushUnreadChanged(currentUser.workspaceId(), currentUser.id());
+        }
+        return new NotificationBatchResult(changed);
     }
 
     public void markAllRead(CurrentUser currentUser) {

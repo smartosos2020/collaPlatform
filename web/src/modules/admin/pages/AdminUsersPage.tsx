@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { App as AntdApp, Button, Form, Input, Modal, Space, Table, Tag, Typography } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 
 import {
   createMember,
@@ -14,6 +15,7 @@ import type { CreateMemberRequest, MemberSummary } from '../api/adminUsersApi'
 
 export function AdminUsersPage() {
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const { message } = AntdApp.useApp()
   const [createOpen, setCreateOpen] = useState(false)
   const [resetUser, setResetUser] = useState<MemberSummary | null>(null)
@@ -123,9 +125,12 @@ export function AdminUsersPage() {
     <Space orientation="vertical" size={16} className="page-stack">
       <Space className="page-toolbar">
         <Typography.Title level={2}>成员管理</Typography.Title>
-        <Button type="primary" onClick={() => setCreateOpen(true)}>
-          新增成员
-        </Button>
+        <Space>
+          <Button onClick={() => navigate('/admin/audit-logs')}>审计日志</Button>
+          <Button type="primary" onClick={() => setCreateOpen(true)}>
+            新增成员
+          </Button>
+        </Space>
       </Space>
 
       <Table

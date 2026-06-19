@@ -21,6 +21,18 @@ export type PlatformObjectNavigation = {
   mobileFallbackPath?: string | null
 }
 
+export type PermissionExplanation = {
+  objectType: string
+  objectId: string
+  action: string
+  allowed: boolean
+  accessState: ObjectAccessState
+  reason: string
+  currentLevel: string
+  requiredLevel: string
+  source: string
+}
+
 export type PlatformObjectTypeRule = {
   objectType: string
   displayName: string
@@ -49,6 +61,13 @@ export function listPlatformObjectTypes() {
 export function getObjectNavigation(objectType: string, objectId: string) {
   return apiGet<PlatformObjectNavigation>(
     `/platform/objects/${encodeURIComponent(objectType)}/${encodeURIComponent(objectId)}/navigation`,
+  )
+}
+
+export function getPermissionExplanation(objectType: string, objectId: string, action = 'view') {
+  const params = new URLSearchParams({ action })
+  return apiGet<PermissionExplanation>(
+    `/platform/objects/${encodeURIComponent(objectType)}/${encodeURIComponent(objectId)}/permission-explanation?${params}`,
   )
 }
 

@@ -17,5 +17,5 @@ public interface AuditRepository {
         Map<String, Object> metadata
     );
 
-    List<AuditLogEntry> list(UUID workspaceId, String action, String targetType, UUID actorId, int limit);
+    List<AuditLogEntry> list(UUID workspaceId, String action, String targetType, UUID targetId, UUID actorId, int limit);
 }

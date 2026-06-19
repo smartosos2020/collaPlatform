@@ -52,7 +52,7 @@ public class JdbcAuditRepository implements AuditRepository {
     }
 
     @Override
-    public List<AuditLogEntry> list(UUID workspaceId, String action, String targetType, UUID actorId, int limit) {
+    public List<AuditLogEntry> list(UUID workspaceId, String action, String targetType, UUID targetId, UUID actorId, int limit) {
         StringBuilder sql = new StringBuilder(
             """
                 select a.id, a.workspace_id, a.actor_id, u.display_name actor_name, a.action, a.target_type,
@@ -71,6 +71,10 @@ public class JdbcAuditRepository implements AuditRepository {
         if (targetType != null && !targetType.isBlank()) {
             sql.append(" and a.target_type = ?");
             args.add(targetType);
+        }
+        if (targetId != null) {
+            sql.append(" and a.target_id = ?");
+            args.add(targetId);
         }
         if (actorId != null) {
             sql.append(" and a.actor_id = ?");

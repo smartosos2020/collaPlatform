@@ -1,5 +1,6 @@
 import { apiDelete, apiGet, apiPatch, apiPost } from '../../../shared/api/httpClient'
 import type { PlatformObjectSummary } from '../../platform/api/platformObjectsApi'
+import type { IssueDetail } from '../../projects/api/projectsApi'
 
 export type ConversationMember = {
   userId: string
@@ -64,6 +65,16 @@ export type ConversationDetail = ConversationSummary & {
 export type MessagePage = {
   items: MessageSummary[]
   nextCursor?: string | null
+}
+
+export type ConvertMessageToIssueRequest = {
+  projectId: string
+  issueType: 'requirement' | 'task' | 'bug'
+  title?: string
+  description?: string
+  priority?: string
+  assigneeId?: string
+  dueAt?: string
 }
 
 export type UnreadState = {
@@ -131,12 +142,34 @@ export function listMessageContext(conversationId: string, messageId: string) {
   return apiGet<MessagePage>(`/conversations/${conversationId}/messages/${messageId}/context?limit=50`)
 }
 
+export function searchConversationMessages(
+  conversationId: string,
+  request: { q?: string; targetType?: string; limit?: number },
+) {
+  const params = new URLSearchParams({ limit: String(request.limit ?? 20) })
+  if (request.q?.trim()) {
+    params.set('q', request.q.trim())
+  }
+  if (request.targetType) {
+    params.set('targetType', request.targetType)
+  }
+  return apiGet<MessagePage>(`/conversations/${conversationId}/messages/search?${params}`)
+}
+
 export function sendMessage(conversationId: string, content: string, clientMessageId: string = crypto.randomUUID()) {
   return apiPost<MessageSummary>(`/conversations/${conversationId}/messages`, {
     clientMessageId,
     messageType: 'text',
     content,
   })
+}
+
+export function convertMessageToIssue(
+  conversationId: string,
+  messageId: string,
+  request: ConvertMessageToIssueRequest,
+) {
+  return apiPost<IssueDetail>(`/conversations/${conversationId}/messages/${messageId}/convert-to-issue`, request)
 }
 
 export function editMessage(conversationId: string, messageId: string, content: string) {

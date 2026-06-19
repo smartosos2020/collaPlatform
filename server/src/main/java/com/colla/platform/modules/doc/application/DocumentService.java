@@ -1,23 +1,33 @@
 package com.colla.platform.modules.doc.application;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.colla.platform.modules.base.application.BaseService;
 import com.colla.platform.modules.audit.application.AuditService;
 import com.colla.platform.modules.doc.domain.DocumentModels.DocumentBlock;
 import com.colla.platform.modules.doc.domain.DocumentModels.DocumentBlockDraft;
 import com.colla.platform.modules.doc.domain.DocumentModels.DocumentDetail;
 import com.colla.platform.modules.doc.domain.DocumentModels.DocumentDiffLine;
+import com.colla.platform.modules.doc.domain.DocumentModels.DocumentPathItem;
 import com.colla.platform.modules.doc.domain.DocumentModels.DocumentSummary;
+import com.colla.platform.modules.doc.domain.DocumentModels.DocumentTreeNode;
 import com.colla.platform.modules.doc.domain.DocumentModels.DocumentVersion;
 import com.colla.platform.modules.doc.domain.DocumentModels.DocumentVersionDiff;
 import com.colla.platform.modules.doc.infrastructure.DocumentRepository;
 import com.colla.platform.modules.event.infrastructure.DomainEventRepository;
 import com.colla.platform.modules.file.infrastructure.FileRepository;
+import com.colla.platform.modules.platform.application.PlatformObjectResolverRegistry;
+import com.colla.platform.modules.platform.domain.PlatformModels.ObjectAccessState;
+import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectSummary;
 import com.colla.platform.modules.platform.infrastructure.PlatformObjectRepository;
 import com.colla.platform.modules.permission.application.PermissionDecisionService;
 import com.colla.platform.modules.project.domain.ProjectModels.IssueSummary;
 import com.colla.platform.modules.project.infrastructure.ProjectRepository;
 import com.colla.platform.shared.auth.CurrentUser;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -26,6 +36,7 @@ import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.springframework.http.HttpStatus;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -33,6 +44,24 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class DocumentService {
     private static final Pattern MENTION_PATTERN = Pattern.compile("(?<!\\w)@([a-zA-Z0-9_.-]{2,64})");
+    private static final Set<String> BLOCK_TYPES = Set.of(
+        "paragraph",
+        "heading",
+        "list",
+        "task",
+        "quote",
+        "code",
+        "table",
+        "embed",
+        "base_view",
+        "issue_embed",
+        "message_embed",
+        "file_embed",
+        "link"
+    );
+    private static final Set<String> EMBED_BLOCK_TYPES = Set.of("embed", "base_view", "issue_embed", "message_embed", "file_embed", "link");
+    private static final TypeReference<Map<String, Object>> STRING_OBJECT_MAP = new TypeReference<>() {
+    };
 
     private final DocumentRepository documentRepository;
     private final PlatformObjectRepository objectRepository;
@@ -42,6 +71,8 @@ public class DocumentService {
     private final BaseService baseService;
     private final AuditService auditService;
     private final PermissionDecisionService permissionDecisionService;
+    private final ObjectMapper objectMapper;
+    private final ObjectProvider<PlatformObjectResolverRegistry> objectResolverRegistryProvider;
 
     public DocumentService(
         DocumentRepository documentRepository,
@@ -51,7 +82,9 @@ public class DocumentService {
         FileRepository fileRepository,
         BaseService baseService,
         AuditService auditService,
-        PermissionDecisionService permissionDecisionService
+        PermissionDecisionService permissionDecisionService,
+        ObjectMapper objectMapper,
+        ObjectProvider<PlatformObjectResolverRegistry> objectResolverRegistryProvider
     ) {
         this.documentRepository = documentRepository;
         this.objectRepository = objectRepository;
@@ -61,20 +94,57 @@ public class DocumentService {
         this.baseService = baseService;
         this.auditService = auditService;
         this.permissionDecisionService = permissionDecisionService;
+        this.objectMapper = objectMapper;
+        this.objectResolverRegistryProvider = objectResolverRegistryProvider;
     }
 
-    public List<DocumentSummary> listDocuments(CurrentUser currentUser) {
-        return documentRepository.listDocuments(currentUser.workspaceId(), currentUser.id());
+    public List<DocumentSummary> listDocuments(CurrentUser currentUser, boolean includeArchived) {
+        return documentRepository.listDocuments(currentUser.workspaceId(), currentUser.id(), includeArchived);
+    }
+
+    public List<DocumentTreeNode> listDocumentTree(CurrentUser currentUser, boolean includeArchived) {
+        List<DocumentSummary> documents = documentRepository.listDocuments(currentUser.workspaceId(), currentUser.id(), includeArchived);
+        return buildTree(documents);
+    }
+
+    public List<DocumentPathItem> documentPath(CurrentUser currentUser, UUID documentId) {
+        requireView(currentUser, documentId);
+        Map<UUID, DocumentSummary> byId = new HashMap<>();
+        for (DocumentSummary document : documentRepository.listDocuments(currentUser.workspaceId(), currentUser.id(), true)) {
+            byId.put(document.id(), document);
+        }
+        List<DocumentPathItem> reversed = new ArrayList<>();
+        DocumentSummary current = byId.get(documentId);
+        while (current != null) {
+            reversed.add(new DocumentPathItem(current.id(), current.title(), current.docType(), current.permissionLevel()));
+            current = current.parentId() == null ? null : byId.get(current.parentId());
+        }
+        List<DocumentPathItem> path = new ArrayList<>();
+        for (int i = reversed.size() - 1; i >= 0; i--) {
+            path.add(reversed.get(i));
+        }
+        return path;
     }
 
     @Transactional
-    public DocumentDetail createDocument(CurrentUser currentUser, UUID parentId, String title, String content) {
+    public DocumentDetail createDocument(CurrentUser currentUser, UUID parentId, String title, String docType, String content) {
         if (parentId != null) {
             requireEdit(currentUser, parentId);
         }
         String normalizedTitle = normalizeTitle(title);
+        String normalizedDocType = normalizeDocType(docType);
         String normalizedContent = content == null ? "" : content;
-        UUID documentId = documentRepository.createDocument(currentUser.workspaceId(), parentId, normalizedTitle, normalizedContent, currentUser.id());
+        int nextSortOrder = nextSortOrder(currentUser, parentId);
+        UUID documentId = documentRepository.createDocument(
+            currentUser.workspaceId(),
+            parentId,
+            normalizedTitle,
+            normalizedDocType,
+            normalizedContent,
+            nextSortOrder,
+            currentUser.id()
+        );
+        documentRepository.copyParentPermissions(currentUser.workspaceId(), documentId, parentId, currentUser.id());
         documentRepository.upsertPermission(currentUser.workspaceId(), documentId, currentUser.id(), "manage", currentUser.id());
         documentRepository.addVersion(currentUser.workspaceId(), documentId, 1, normalizedTitle, normalizedContent, currentUser.id());
         documentRepository.replaceBlocks(currentUser.workspaceId(), documentId, blocksFromContent(normalizedContent), currentUser.id());
@@ -98,7 +168,7 @@ public class DocumentService {
         return new DocumentDetail(
             summary,
             content,
-            documentRepository.listBlocks(currentUser.workspaceId(), documentId),
+            hydrateBlocks(currentUser, documentRepository.listBlocks(currentUser.workspaceId(), documentId)),
             documentRepository.listRelations(currentUser.workspaceId(), documentId),
             documentRepository.listPermissions(currentUser.workspaceId(), documentId),
             documentRepository.listComments(currentUser.workspaceId(), documentId)
@@ -139,15 +209,70 @@ public class DocumentService {
     }
 
     @Transactional
-    public DocumentDetail moveDocument(CurrentUser currentUser, UUID documentId, UUID parentId) {
+    public DocumentDetail moveDocument(CurrentUser currentUser, UUID documentId, UUID parentId, Integer sortOrder) {
         DocumentSummary document = requireManage(currentUser, documentId);
         if (parentId != null) {
             requireEdit(currentUser, parentId);
             if (documentId.equals(parentId)) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Document cannot be moved under itself");
             }
+            if (documentRepository.isDescendant(currentUser.workspaceId(), documentId, parentId)) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Document cannot be moved under its descendant");
+            }
         }
-        documentRepository.moveDocument(currentUser.workspaceId(), document.id(), parentId, currentUser.id());
+        int nextSortOrder = sortOrder == null ? document.sortOrder() : sortOrder;
+        documentRepository.moveDocument(currentUser.workspaceId(), document.id(), parentId, nextSortOrder, currentUser.id());
+        documentRepository.copyParentPermissions(currentUser.workspaceId(), document.id(), parentId, currentUser.id());
+        eventRepository.append(
+            currentUser.workspaceId(),
+            "document.moved",
+            "document",
+            documentId,
+            currentUser.id(),
+            Map.of("documentId", documentId.toString(), "parentId", parentId == null ? "" : parentId.toString(), "sortOrder", Integer.toString(nextSortOrder)),
+            "document.moved:" + documentId + ":" + System.nanoTime()
+        );
+        auditService.log(
+            currentUser,
+            "document.moved",
+            "document",
+            documentId,
+            Map.of("parentId", parentId == null ? "" : parentId.toString(), "sortOrder", Integer.toString(nextSortOrder))
+        );
+        return getDocument(currentUser, documentId);
+    }
+
+    @Transactional
+    public DocumentDetail archiveDocument(CurrentUser currentUser, UUID documentId) {
+        requireManage(currentUser, documentId);
+        documentRepository.archiveDocumentTree(currentUser.workspaceId(), documentId, currentUser.id());
+        eventRepository.append(
+            currentUser.workspaceId(),
+            "document.archived",
+            "document",
+            documentId,
+            currentUser.id(),
+            Map.of("documentId", documentId.toString()),
+            "document.archived:" + documentId + ":" + System.nanoTime()
+        );
+        auditService.log(currentUser, "document.archived", "document", documentId, Map.of("documentId", documentId.toString()));
+        return getDocument(currentUser, documentId);
+    }
+
+    @Transactional
+    public DocumentDetail restoreDocument(CurrentUser currentUser, UUID documentId) {
+        requireManage(currentUser, documentId);
+        documentRepository.restoreDocumentTree(currentUser.workspaceId(), documentId, currentUser.id());
+        eventRepository.append(
+            currentUser.workspaceId(),
+            "document.restored",
+            "document",
+            documentId,
+            currentUser.id(),
+            Map.of("documentId", documentId.toString()),
+            "document.restored:" + documentId + ":" + System.nanoTime()
+        );
+        auditService.log(currentUser, "document.restored", "document", documentId, Map.of("documentId", documentId.toString()));
         return getDocument(currentUser, documentId);
     }
 
@@ -158,7 +283,7 @@ public class DocumentService {
 
     public List<DocumentBlock> listBlocks(CurrentUser currentUser, UUID documentId) {
         requireView(currentUser, documentId);
-        return documentRepository.listBlocks(currentUser.workspaceId(), documentId);
+        return hydrateBlocks(currentUser, documentRepository.listBlocks(currentUser.workspaceId(), documentId));
     }
 
     @Transactional
@@ -392,6 +517,61 @@ public class DocumentService {
         }
     }
 
+    private List<DocumentBlock> hydrateBlocks(CurrentUser currentUser, List<DocumentBlock> blocks) {
+        return blocks.stream()
+            .map(block -> {
+                Map<String, Object> metadata = parseStructuredBlockMetadata(block);
+                PlatformObjectSummary summary = resolveEmbedSummary(currentUser, block.blockType(), metadata);
+                return new DocumentBlock(
+                    block.id(),
+                    block.documentId(),
+                    block.blockType(),
+                    block.content(),
+                    block.sortOrder(),
+                    block.createdAt(),
+                    block.updatedAt(),
+                    summary,
+                    metadata
+                );
+            })
+            .toList();
+    }
+
+    private Map<String, Object> parseStructuredBlockMetadata(DocumentBlock block) {
+        if (!"table".equals(block.blockType()) && !EMBED_BLOCK_TYPES.contains(block.blockType())) {
+            return Map.of();
+        }
+        return parseJsonObject(block.content()).orElseGet(() -> Map.of("parseError", "invalid_json"));
+    }
+
+    private PlatformObjectSummary resolveEmbedSummary(CurrentUser currentUser, String blockType, Map<String, Object> metadata) {
+        if (!EMBED_BLOCK_TYPES.contains(blockType)) {
+            return null;
+        }
+        String objectType = normalizeEmbedObjectType(blockType, asString(metadata.getOrDefault("objectType", metadata.get("targetType"))));
+        UUID objectId = parseUuid(asString(metadata.getOrDefault("objectId", metadata.get("targetId"))));
+        if (objectType.isBlank() || objectId == null) {
+            return PlatformObjectSummary.unavailable(objectType.isBlank() ? "invalid" : objectType, new UUID(0L, 0L), ObjectAccessState.invalid);
+        }
+        return objectResolverRegistryProvider.getObject().resolve(currentUser, objectType, objectId);
+    }
+
+    private String normalizeEmbedObjectType(String blockType, String objectType) {
+        if ("base_view".equals(blockType) && objectType.isBlank()) {
+            return "base_table";
+        }
+        if ("issue_embed".equals(blockType)) {
+            return "issue";
+        }
+        if ("message_embed".equals(blockType)) {
+            return "message";
+        }
+        if ("file_embed".equals(blockType)) {
+            return "file";
+        }
+        return objectType;
+    }
+
     private void registerDocumentObject(UUID workspaceId, UUID documentId, String title) {
         objectRepository.upsertObjectLink(
             workspaceId,
@@ -446,6 +626,61 @@ public class DocumentService {
         return (content == null ? "" : content).split("\\R", -1);
     }
 
+    private List<DocumentTreeNode> buildTree(List<DocumentSummary> documents) {
+        Map<UUID, List<DocumentSummary>> byParent = new HashMap<>();
+        Set<UUID> visibleIds = new LinkedHashSet<>();
+        for (DocumentSummary document : documents) {
+            visibleIds.add(document.id());
+            byParent.computeIfAbsent(document.parentId(), ignored -> new ArrayList<>()).add(document);
+        }
+        for (List<DocumentSummary> siblings : byParent.values()) {
+            siblings.sort(documentOrder());
+        }
+        List<DocumentSummary> roots = documents.stream()
+            .filter(document -> document.parentId() == null || !visibleIds.contains(document.parentId()))
+            .sorted(documentOrder())
+            .toList();
+        Set<UUID> visited = new LinkedHashSet<>();
+        List<DocumentTreeNode> nodes = new ArrayList<>();
+        for (DocumentSummary root : roots) {
+            nodes.add(buildTreeNode(root, "", 0, byParent, visited));
+        }
+        return nodes;
+    }
+
+    private DocumentTreeNode buildTreeNode(
+        DocumentSummary document,
+        String parentPath,
+        int depth,
+        Map<UUID, List<DocumentSummary>> byParent,
+        Set<UUID> visited
+    ) {
+        visited.add(document.id());
+        String path = parentPath.isBlank() ? document.title() : parentPath + " / " + document.title();
+        List<DocumentTreeNode> children = new ArrayList<>();
+        for (DocumentSummary child : byParent.getOrDefault(document.id(), List.of())) {
+            if (!visited.contains(child.id())) {
+                children.add(buildTreeNode(child, path, depth + 1, byParent, visited));
+            }
+        }
+        return new DocumentTreeNode(document, path, depth, children.size(), !children.isEmpty(), children);
+    }
+
+    private Comparator<DocumentSummary> documentOrder() {
+        return Comparator
+            .comparingInt(DocumentSummary::sortOrder)
+            .thenComparing(document -> document.title().toLowerCase())
+            .thenComparing(DocumentSummary::updatedAt, Comparator.reverseOrder());
+    }
+
+    private int nextSortOrder(CurrentUser currentUser, UUID parentId) {
+        return documentRepository.listDocuments(currentUser.workspaceId(), currentUser.id(), true).stream()
+            .filter(document -> parentId == null ? document.parentId() == null : parentId.equals(document.parentId()))
+            .mapToInt(DocumentSummary::sortOrder)
+            .max()
+            .orElse(0) + 10;
+    }
+
     private DocumentSummary withPermission(DocumentSummary document, String permissionLevel) {
         return new DocumentSummary(
             document.id(),
@@ -459,7 +694,9 @@ public class DocumentService {
             document.createdAt(),
             document.updatedBy(),
             document.updatedByName(),
-            document.updatedAt()
+            document.updatedAt(),
+            document.sortOrder(),
+            document.archived()
         );
     }
 
@@ -468,6 +705,14 @@ public class DocumentService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Document title is required");
         }
         return title.trim();
+    }
+
+    private String normalizeDocType(String docType) {
+        String type = docType == null || docType.isBlank() ? "markdown" : docType.toLowerCase();
+        if (!List.of("markdown", "folder", "space").contains(type)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid document type");
+        }
+        return type;
     }
 
     private String normalizePermission(String permissionLevel) {
@@ -509,10 +754,41 @@ public class DocumentService {
         List<DocumentBlockDraft> normalized = new ArrayList<>();
         for (DocumentBlockDraft block : blocks) {
             String blockType = normalizeBlockType(block.blockType());
-            String content = block.content() == null ? "" : block.content();
+            String content = normalizeDraftBlockContent(blockType, block.content());
             normalized.add(new DocumentBlockDraft(blockType, content, normalized.size()));
         }
         return normalized;
+    }
+
+    private String normalizeDraftBlockContent(String blockType, String content) {
+        String value = content == null ? "" : content.trim();
+        if ("table".equals(blockType)) {
+            if (value.isBlank()) {
+                return "{\"columns\":[\"列 1\",\"列 2\"],\"rows\":[[\"\",\"\"]]}";
+            }
+            Map<String, Object> table = parseJsonObject(value)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid table block content"));
+            if (!table.containsKey("columns") || !table.containsKey("rows")) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Table block requires columns and rows");
+            }
+            return writeJson(table);
+        }
+        if (EMBED_BLOCK_TYPES.contains(blockType)) {
+            Map<String, Object> embed = parseJsonObject(value)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid embed block content"));
+            String objectType = normalizeEmbedObjectType(blockType, asString(embed.getOrDefault("objectType", embed.get("targetType"))));
+            UUID objectId = parseUuid(asString(embed.getOrDefault("objectId", embed.get("targetId"))));
+            if (objectType.isBlank() || objectId == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Embed block requires objectType and objectId");
+            }
+            Map<String, Object> normalized = new HashMap<>(embed);
+            normalized.put("objectType", objectType);
+            normalized.put("objectId", objectId.toString());
+            normalized.remove("targetType");
+            normalized.remove("targetId");
+            return writeJson(normalized);
+        }
+        return blockType.equals("code") ? content == null ? "" : content : value;
     }
 
     private String contentFromBlocks(List<DocumentBlockDraft> blocks) {
@@ -523,6 +799,8 @@ public class DocumentService {
                 case "task" -> "- [ ] " + block.content();
                 case "quote" -> "> " + block.content();
                 case "code" -> "```\n" + block.content() + "\n```";
+                case "table" -> "[table] " + block.content();
+                case "embed", "base_view", "issue_embed", "message_embed", "file_embed", "link" -> "[" + block.blockType() + "] " + block.content();
                 default -> block.content();
             })
             .toList()
@@ -548,11 +826,16 @@ public class DocumentService {
         if (line.startsWith("```")) {
             return "code";
         }
+        Matcher enhancedBlock = Pattern.compile("^\\[(table|embed|base_view|issue_embed|message_embed|file_embed|link)]\\s+.*$").matcher(line);
+        if (enhancedBlock.matches()) {
+            return enhancedBlock.group(1);
+        }
         return "paragraph";
     }
 
     private String normalizeBlockContent(String line) {
         return line
+            .replaceFirst("^\\[(table|embed|base_view|issue_embed|message_embed|file_embed|link)]\\s+", "")
             .replaceFirst("^#{1,6}\\s*", "")
             .replaceFirst("^- \\[[ xX]\\]\\s*", "")
             .replaceFirst("^-\\s+", "")
@@ -561,9 +844,44 @@ public class DocumentService {
 
     private String normalizeBlockType(String blockType) {
         String type = blockType == null ? "" : blockType.toLowerCase();
-        if (!List.of("paragraph", "heading", "list", "task", "quote", "code").contains(type)) {
+        if (!BLOCK_TYPES.contains(type)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid document block type");
         }
         return type;
+    }
+
+    private java.util.Optional<Map<String, Object>> parseJsonObject(String content) {
+        if (content == null || content.isBlank()) {
+            return java.util.Optional.empty();
+        }
+        try {
+            Map<String, Object> parsed = objectMapper.readValue(content, STRING_OBJECT_MAP);
+            return java.util.Optional.of(parsed);
+        } catch (JsonProcessingException exception) {
+            return java.util.Optional.empty();
+        }
+    }
+
+    private String writeJson(Map<String, Object> value) {
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (JsonProcessingException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid block content");
+        }
+    }
+
+    private String asString(Object value) {
+        return value == null ? "" : String.valueOf(value).trim();
+    }
+
+    private UUID parseUuid(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return UUID.fromString(value);
+        } catch (IllegalArgumentException exception) {
+            return null;
+        }
     }
 }

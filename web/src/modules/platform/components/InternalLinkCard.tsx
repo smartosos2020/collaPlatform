@@ -4,7 +4,7 @@ import { LinkOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 
 import { resolveNavigationPath } from '../../../shared/client/collaClient'
-import { getObjectNavigation, resolveInternalLink } from '../api/platformObjectsApi'
+import { getObjectNavigation, getPermissionExplanation, resolveInternalLink } from '../api/platformObjectsApi'
 import type { PlatformObjectSummary } from '../api/platformObjectsApi'
 import { objectTypeText } from '../objectTypeLabels'
 
@@ -35,12 +35,12 @@ export function InternalLinkCard({ link }: InternalLinkCardProps) {
   }
 
   if (linkQuery.isError || !linkQuery.data?.summary) {
-    return <Alert type="warning" title="链接解析失败" showIcon />
+    return <Alert type="warning" message="链接解析失败" showIcon />
   }
 
   const summary = linkQuery.data.summary
   if (summary.accessState !== 'available') {
-    return <Alert type="warning" title={accessText[summary.accessState] ?? '对象不可访问'} showIcon />
+    return <UnavailableObjectAlert summary={summary} />
   }
 
   return <ObjectSummaryCard summary={summary} />
@@ -57,6 +57,9 @@ export function ObjectSummaryCard({ summary, onOpen }: { summary: PlatformObject
       }
     },
   })
+  if (summary.accessState !== 'available') {
+    return <UnavailableObjectAlert summary={summary} />
+  }
   const canOpen = summary.accessState === 'available' && Boolean(summary.webPath || summary.objectId)
   const handleOpen = () => {
     if (onOpen) {
@@ -85,5 +88,26 @@ export function ObjectSummaryCard({ summary, onOpen }: { summary: PlatformObject
         ) : null}
       </Space>
     </Card>
+  )
+}
+
+function UnavailableObjectAlert({ summary }: { summary: PlatformObjectSummary }) {
+  const explanationQuery = useQuery({
+    queryKey: ['platform', 'permission-explanation', summary.objectType, summary.objectId, 'view'],
+    queryFn: () => getPermissionExplanation(summary.objectType, summary.objectId, 'view'),
+    enabled: Boolean(summary.objectType && summary.objectId),
+  })
+  const explanation = explanationQuery.data
+  return (
+    <Alert
+      type="warning"
+      showIcon
+      message={accessText[summary.accessState] ?? '对象不可访问'}
+      description={
+        explanation
+          ? `${explanation.reason} 来源：${explanation.source}`
+          : objectTypeText[summary.objectType] ?? summary.objectType
+      }
+    />
   )
 }

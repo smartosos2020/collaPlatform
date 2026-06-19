@@ -29,7 +29,7 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class ImService {
     private static final Pattern MENTION_PATTERN = Pattern.compile("(?<!\\w)@([a-zA-Z0-9_.-]{2,64})");
-    private static final Pattern LINK_PATTERN = Pattern.compile("(colla://\\S+|https?://\\S+|/(?:issues|docs|bases|approvals)/[0-9a-fA-F-]{36}(?:/\\S*)?)");
+    private static final Pattern LINK_PATTERN = Pattern.compile("(colla://\\S+|https?://\\S+|/im\\?\\S*messageId=[0-9a-fA-F-]{36}\\S*|/(?:issues|docs|bases|approvals)/[0-9a-fA-F-]{36}(?:/\\S*)?)");
 
     private final ImRepository imRepository;
     private final InternalLinkService internalLinkService;
@@ -196,6 +196,22 @@ public class ImService {
         UUID nextCursor = messages.size() > boundedLimit ? messages.get(boundedLimit).id() : null;
         List<MessageSummary> items = messages.stream().limit(boundedLimit).toList();
         return new MessagePage(items, nextCursor);
+    }
+
+    public MessagePage searchMessages(CurrentUser currentUser, UUID conversationId, String query, String targetType, int limit) {
+        requireMember(currentUser, conversationId);
+        int boundedLimit = Math.max(1, Math.min(limit, 50));
+        return new MessagePage(
+            imRepository.searchMessages(
+                currentUser.workspaceId(),
+                conversationId,
+                currentUser.id(),
+                query,
+                normalizeSearchTargetType(targetType),
+                boundedLimit
+            ),
+            null
+        );
     }
 
     @Transactional
@@ -585,6 +601,17 @@ public class ImService {
         String type = conversationType.toLowerCase(Locale.ROOT);
         if (!List.of("direct", "group", "project", "system").contains(type)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid conversation type");
+        }
+        return type;
+    }
+
+    private String normalizeSearchTargetType(String targetType) {
+        if (targetType == null || targetType.isBlank()) {
+            return null;
+        }
+        String type = targetType.trim().toLowerCase(Locale.ROOT);
+        if (!List.of("issue", "document", "base", "base_table", "base_record", "message", "approval", "file").contains(type)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid message search target type");
         }
         return type;
     }

@@ -73,7 +73,16 @@ public interface ProjectRepository {
 
     void updateIssue(UUID workspaceId, UUID issueId, String title, String description, String priority, UUID assigneeId, LocalDate dueAt, UUID updatedBy);
 
-    void transitionIssue(UUID workspaceId, UUID issueId, String status, UUID updatedBy);
+    void transitionIssue(
+        UUID workspaceId,
+        UUID issueId,
+        String status,
+        String workflowReason,
+        String workflowNote,
+        String resolution,
+        LocalDate dueAt,
+        UUID updatedBy
+    );
 
     UUID addComment(UUID workspaceId, UUID issueId, UUID authorId, String content);
 

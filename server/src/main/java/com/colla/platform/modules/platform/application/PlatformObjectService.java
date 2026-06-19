@@ -5,6 +5,7 @@ import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectN
 import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectReference;
 import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectSummary;
 import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectTypeRule;
+import com.colla.platform.modules.permission.domain.PermissionModels.PermissionExplanation;
 import com.colla.platform.modules.platform.infrastructure.PlatformObjectRepository;
 import com.colla.platform.shared.auth.CurrentUser;
 import java.util.List;
@@ -41,6 +42,25 @@ public class PlatformObjectService {
             recordAccess(currentUser, summary);
         }
         return summary;
+    }
+
+    public PermissionExplanation explainPermission(CurrentUser currentUser, String objectType, UUID objectId, String action) {
+        String normalizedAction = action == null || action.isBlank() ? "view" : action.trim().toLowerCase();
+        PlatformObjectSummary summary = resolverRegistry.resolve(currentUser, objectType, objectId);
+        String currentLevel = currentLevel(summary);
+        String requiredLevel = requiredLevel(normalizedAction);
+        boolean allowed = summary.accessState() == ObjectAccessState.available && levelRank(currentLevel) >= levelRank(requiredLevel);
+        return new PermissionExplanation(
+            summary.objectType(),
+            summary.objectId(),
+            normalizedAction,
+            allowed,
+            summary.accessState().name(),
+            reason(summary, normalizedAction, currentLevel, requiredLevel, allowed),
+            currentLevel,
+            requiredLevel,
+            source(summary)
+        );
     }
 
     public List<PlatformObjectSummary> recent(CurrentUser currentUser, int limit) {
@@ -86,5 +106,60 @@ public class PlatformObjectService {
             summary.deepLink(),
             summary.title()
         );
+    }
+
+    private String currentLevel(PlatformObjectSummary summary) {
+        if (summary.accessState() != ObjectAccessState.available) {
+            return "none";
+        }
+        Object level = summary.metadata().get("permissionLevel");
+        if (level instanceof String permissionLevel && !permissionLevel.isBlank()) {
+            return permissionLevel;
+        }
+        return "view";
+    }
+
+    private String requiredLevel(String action) {
+        return switch (action) {
+            case "edit", "update", "comment", "transition", "approve", "reject" -> "edit";
+            case "manage", "share", "delete", "permission" -> "manage";
+            default -> "view";
+        };
+    }
+
+    private int levelRank(String level) {
+        return switch (level) {
+            case "manage" -> 3;
+            case "edit" -> 2;
+            case "view" -> 1;
+            default -> 0;
+        };
+    }
+
+    private String reason(PlatformObjectSummary summary, String action, String currentLevel, String requiredLevel, boolean allowed) {
+        if (summary.accessState() == ObjectAccessState.forbidden) {
+            return "当前用户不在该对象的授权范围内。";
+        }
+        if (summary.accessState() == ObjectAccessState.deleted) {
+            return "对象已删除或归档，不能继续操作。";
+        }
+        if (summary.accessState() != ObjectAccessState.available) {
+            return "对象不存在或链接无效。";
+        }
+        if (!allowed) {
+            return "当前权限为 " + currentLevel + "，执行 " + action + " 需要 " + requiredLevel + " 权限。";
+        }
+        return "当前权限为 " + currentLevel + "，满足 " + action + " 操作要求。";
+    }
+
+    private String source(PlatformObjectSummary summary) {
+        return switch (summary.objectType()) {
+            case "issue" -> "project_members";
+            case "document" -> "document_permissions";
+            case "base", "base_table", "base_record" -> "base_members";
+            case "approval" -> "approval_participants";
+            case "message" -> "conversation_members";
+            default -> "platform_object_resolver";
+        };
     }
 }

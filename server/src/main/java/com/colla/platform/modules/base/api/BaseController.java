@@ -4,8 +4,10 @@ import com.colla.platform.modules.base.application.BaseService;
 import com.colla.platform.modules.base.domain.BaseModels.BaseDetail;
 import com.colla.platform.modules.base.domain.BaseModels.BaseFilter;
 import com.colla.platform.modules.base.domain.BaseModels.BaseCalendarView;
+import com.colla.platform.modules.base.domain.BaseModels.BaseImportResult;
 import com.colla.platform.modules.base.domain.BaseModels.BaseKanbanView;
 import com.colla.platform.modules.base.domain.BaseModels.BaseRecord;
+import com.colla.platform.modules.base.domain.BaseModels.BaseRecordDetail;
 import com.colla.platform.modules.base.domain.BaseModels.BaseRecordPage;
 import com.colla.platform.modules.base.domain.BaseModels.BaseSort;
 import com.colla.platform.modules.base.domain.BaseModels.BaseSummary;
@@ -15,9 +17,13 @@ import com.colla.platform.shared.auth.CurrentUser;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -112,6 +118,24 @@ public class BaseController {
         return baseService.listRecords(currentUser(authentication), baseId, tableId, List.of(), List.of(), limit, offset);
     }
 
+    @GetMapping(value = "/bases/{baseId}/tables/{tableId}/export.csv", produces = "text/csv")
+    public ResponseEntity<String> exportCsv(@PathVariable UUID baseId, @PathVariable UUID tableId, Authentication authentication) {
+        return ResponseEntity.ok()
+            .contentType(new MediaType("text", "csv", StandardCharsets.UTF_8))
+            .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=base-export.csv")
+            .body(baseService.exportCsv(currentUser(authentication), baseId, tableId));
+    }
+
+    @PostMapping("/bases/{baseId}/tables/{tableId}/import.csv")
+    public BaseImportResult importCsv(
+        @PathVariable UUID baseId,
+        @PathVariable UUID tableId,
+        @RequestBody ImportCsvRequest request,
+        Authentication authentication
+    ) {
+        return baseService.importCsv(currentUser(authentication), baseId, tableId, request.csv());
+    }
+
     @PostMapping("/bases/{baseId}/tables/{tableId}/records/query")
     public BaseRecordPage queryRecords(
         @PathVariable UUID baseId,
@@ -184,12 +208,35 @@ public class BaseController {
         @Valid @RequestBody CreateViewRequest request,
         Authentication authentication
     ) {
-        return baseService.createView(currentUser(authentication), baseId, tableId, request.name(), request.filters(), request.sorts());
+        return baseService.createView(currentUser(authentication), baseId, tableId, request.name(), request.filters(), request.sorts(), request.visibleFieldIds());
     }
 
     @GetMapping("/base-records/{recordId}")
     public BaseRecord record(@PathVariable UUID recordId, Authentication authentication) {
         return baseService.getRecord(currentUser(authentication), recordId);
+    }
+
+    @GetMapping("/base-records/{recordId}/detail")
+    public BaseRecordDetail recordDetail(@PathVariable UUID recordId, Authentication authentication) {
+        return baseService.getRecordDetail(currentUser(authentication), recordId);
+    }
+
+    @PostMapping("/base-records/{recordId}/comments")
+    public BaseRecordDetail addRecordComment(
+        @PathVariable UUID recordId,
+        @Valid @RequestBody CommentRequest request,
+        Authentication authentication
+    ) {
+        return baseService.addRecordComment(currentUser(authentication), recordId, request.content());
+    }
+
+    @PostMapping("/base-records/{recordId}/relations")
+    public BaseRecordDetail addRecordRelation(
+        @PathVariable UUID recordId,
+        @Valid @RequestBody RecordRelationRequest request,
+        Authentication authentication
+    ) {
+        return baseService.addRecordRelation(currentUser(authentication), recordId, request.targetType(), request.targetId());
     }
 
     private CurrentUser currentUser(Authentication authentication) {
@@ -225,6 +272,15 @@ public class BaseController {
     public record QueryRecordsRequest(List<BaseFilter> filters, List<BaseSort> sorts, Integer limit, Integer offset) {
     }
 
-    public record CreateViewRequest(@NotBlank @Size(max = 128) String name, List<BaseFilter> filters, List<BaseSort> sorts) {
+    public record CreateViewRequest(@NotBlank @Size(max = 128) String name, List<BaseFilter> filters, List<BaseSort> sorts, List<UUID> visibleFieldIds) {
+    }
+
+    public record CommentRequest(@NotBlank @Size(max = 2000) String content) {
+    }
+
+    public record RecordRelationRequest(@NotBlank String targetType, UUID targetId) {
+    }
+
+    public record ImportCsvRequest(@NotBlank String csv) {
     }
 }

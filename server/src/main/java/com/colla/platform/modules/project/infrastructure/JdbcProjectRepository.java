@@ -297,8 +297,9 @@ public class JdbcProjectRepository implements ProjectRepository {
         args.add(projectId);
         StringBuilder sql = new StringBuilder("""
             select i.id, i.project_id, p.project_key, i.issue_key, i.issue_type, i.title, i.description, i.priority,
-                   i.status, i.assignee_id, au.display_name assignee_name, i.reporter_id, ru.display_name reporter_name,
-                   i.due_at, i.created_at, i.updated_at
+                   i.status, i.workflow_reason, i.workflow_note, i.resolution,
+                   i.assignee_id, au.display_name assignee_name, i.reporter_id, ru.display_name reporter_name,
+                   i.due_at, i.created_at, i.updated_at, i.resolved_at, i.closed_at
             from issues i
             join projects p on p.id = i.project_id
             join users ru on ru.id = i.reporter_id
@@ -330,8 +331,9 @@ public class JdbcProjectRepository implements ProjectRepository {
         return jdbcTemplate.query(
             """
                 select i.id, i.project_id, p.project_key, i.issue_key, i.issue_type, i.title, i.description, i.priority,
-                       i.status, i.assignee_id, au.display_name assignee_name, i.reporter_id, ru.display_name reporter_name,
-                       i.due_at, i.created_at, i.updated_at
+                       i.status, i.workflow_reason, i.workflow_note, i.resolution,
+                       i.assignee_id, au.display_name assignee_name, i.reporter_id, ru.display_name reporter_name,
+                       i.due_at, i.created_at, i.updated_at, i.resolved_at, i.closed_at
                 from issues i
                 join projects p on p.id = i.project_id
                 join project_members pm on pm.project_id = p.id and pm.user_id = ?
@@ -411,8 +413,9 @@ public class JdbcProjectRepository implements ProjectRepository {
             return Optional.ofNullable(jdbcTemplate.queryForObject(
                 """
                     select i.id, i.project_id, p.project_key, i.issue_key, i.issue_type, i.title, i.description, i.priority,
-                           i.status, i.assignee_id, au.display_name assignee_name, i.reporter_id, ru.display_name reporter_name,
-                           i.due_at, i.created_at, i.updated_at
+                           i.status, i.workflow_reason, i.workflow_note, i.resolution,
+                           i.assignee_id, au.display_name assignee_name, i.reporter_id, ru.display_name reporter_name,
+                           i.due_at, i.created_at, i.updated_at, i.resolved_at, i.closed_at
                     from issues i
                     join projects p on p.id = i.project_id
                     join users ru on ru.id = i.reporter_id
@@ -448,13 +451,46 @@ public class JdbcProjectRepository implements ProjectRepository {
     }
 
     @Override
-    public void transitionIssue(UUID workspaceId, UUID issueId, String status, UUID updatedBy) {
+    public void transitionIssue(
+        UUID workspaceId,
+        UUID issueId,
+        String status,
+        String workflowReason,
+        String workflowNote,
+        String resolution,
+        LocalDate dueAt,
+        UUID updatedBy
+    ) {
         jdbcTemplate.update(
             """
                 update issues
-                set status = ?, updated_by = ?, updated_at = now()
+                set status = ?,
+                    workflow_reason = ?,
+                    workflow_note = ?,
+                    resolution = ?,
+                    due_at = coalesce(?, due_at),
+                    resolved_at = case
+                        when ? = 'resolved' then coalesce(resolved_at, now())
+                        when ? in ('open', 'in_progress') then null
+                        else resolved_at
+                    end,
+                    closed_at = case
+                        when ? = 'closed' then coalesce(closed_at, now())
+                        when ? in ('open', 'in_progress', 'resolved') then null
+                        else closed_at
+                    end,
+                    updated_by = ?,
+                    updated_at = now()
                 where workspace_id = ? and id = ? and deleted_at is null
                 """,
+            status,
+            workflowReason,
+            workflowNote,
+            resolution,
+            dueAt == null ? null : Date.valueOf(dueAt),
+            status,
+            status,
+            status,
             status,
             updatedBy,
             workspaceId,
@@ -716,13 +752,18 @@ public class JdbcProjectRepository implements ProjectRepository {
             rs.getString("description"),
             rs.getString("priority"),
             rs.getString("status"),
+            rs.getString("workflow_reason"),
+            rs.getString("workflow_note"),
+            rs.getString("resolution"),
             rs.getObject("assignee_id", UUID.class),
             rs.getString("assignee_name"),
             rs.getObject("reporter_id", UUID.class),
             rs.getString("reporter_name"),
             dueAt == null ? null : dueAt.toLocalDate(),
             rs.getTimestamp("created_at").toInstant(),
-            rs.getTimestamp("updated_at").toInstant()
+            rs.getTimestamp("updated_at").toInstant(),
+            toInstant(rs.getTimestamp("resolved_at")),
+            toInstant(rs.getTimestamp("closed_at"))
         );
     }
 
@@ -744,5 +785,9 @@ public class JdbcProjectRepository implements ProjectRepository {
             case "created_desc" -> " order by i.created_at desc";
             default -> " order by i.updated_at desc";
         };
+    }
+
+    private Instant toInstant(Timestamp timestamp) {
+        return timestamp == null ? null : timestamp.toInstant();
     }
 }

@@ -4,6 +4,7 @@ import {
   DatabaseOutlined,
   FileTextOutlined,
   HomeOutlined,
+  MenuOutlined,
   MessageOutlined,
   MobileOutlined,
   ProjectOutlined,
@@ -12,10 +13,10 @@ import {
   LogoutOutlined,
 } from '@ant-design/icons'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Button, Input, Layout, Menu, Space, Typography } from 'antd'
+import { Alert, Button, Drawer, Input, Layout, Menu, Space, Typography } from 'antd'
 import type { MenuProps } from 'antd'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { logout } from '../../modules/auth/api/authApi'
 import { useAuthStore } from '../../modules/auth/authStore'
@@ -36,6 +37,7 @@ const navEntries = [
 ]
 
 const navItems: MenuProps['items'] = navEntries
+const mobileNavEntries = navEntries.filter((item) => ['/im', '/projects', '/docs', '/bases', '/notifications'].includes(item.key))
 
 export function AppLayout() {
   const navigate = useNavigate()
@@ -45,6 +47,19 @@ export function AppLayout() {
   const currentUser = useAuthStore((state) => state.currentUser)
   const clearAuth = useAuthStore((state) => state.clearAuth)
   const [searchDraft, setSearchDraft] = useState('')
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
+  const [online, setOnline] = useState(() => (typeof navigator === 'undefined' ? true : navigator.onLine))
+
+  useEffect(() => {
+    const handleOnline = () => setOnline(true)
+    const handleOffline = () => setOnline(false)
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
+    return () => {
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
+    }
+  }, [])
 
   const logoutMutation = useMutation({
     mutationFn: () => logout(refreshToken),
@@ -56,10 +71,16 @@ export function AppLayout() {
   })
 
   const selectedKey =
+    (location.pathname.startsWith('/admin') ? '/admin/users' : undefined) ??
     navEntries.find((item) => {
       const key = item.key
       return key === '/' ? location.pathname === '/' : location.pathname.startsWith(key)
     })?.key?.toString() ?? '/'
+
+  const goTo = (path: string) => {
+    navigate(path)
+    setMobileNavOpen(false)
+  }
 
   return (
     <Layout className="app-shell">
@@ -69,12 +90,19 @@ export function AppLayout() {
           mode="inline"
           selectedKeys={[selectedKey]}
           items={navItems}
-          onClick={({ key }) => navigate(key)}
+          onClick={({ key }) => goTo(key)}
         />
       </Sider>
       <Layout>
         <Header className="app-header">
+          <Button
+            className="app-mobile-menu-button"
+            type="text"
+            icon={<MenuOutlined />}
+            onClick={() => setMobileNavOpen(true)}
+          />
           <Space className="app-header-content">
+            <Typography.Text className="app-mobile-title">Colla</Typography.Text>
             <Input
               className="app-global-search"
               allowClear
@@ -85,7 +113,7 @@ export function AppLayout() {
               onPressEnter={() => {
                 const query = searchDraft.trim()
                 if (query.length >= 2) {
-                  navigate(`/search?q=${encodeURIComponent(query)}`)
+                  goTo(`/search?q=${encodeURIComponent(query)}`)
                 }
               }}
             />
@@ -102,9 +130,45 @@ export function AppLayout() {
             </Space>
           </Space>
         </Header>
+        <Drawer
+          title="导航"
+          placement="left"
+          open={mobileNavOpen}
+          onClose={() => setMobileNavOpen(false)}
+          className="app-mobile-drawer"
+          size="default"
+        >
+          <Menu
+            mode="inline"
+            selectedKeys={[selectedKey]}
+            items={navItems}
+            onClick={({ key }) => goTo(key)}
+          />
+        </Drawer>
+        {!online ? (
+          <Alert
+            className="app-offline-banner"
+            type="warning"
+            showIcon
+            message="当前处于离线状态，已打开页面可继续查看，新的保存操作会失败。"
+          />
+        ) : null}
         <Content className="app-content">
           <Outlet />
         </Content>
+        <nav className="app-mobile-bottom-nav" aria-label="移动端主导航">
+          {mobileNavEntries.map((item) => (
+            <button
+              className={item.key === selectedKey ? 'active' : ''}
+              key={item.key}
+              type="button"
+              onClick={() => goTo(item.key)}
+            >
+              {item.icon}
+              <span>{item.label}</span>
+            </button>
+          ))}
+        </nav>
       </Layout>
     </Layout>
   )

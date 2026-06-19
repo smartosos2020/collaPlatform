@@ -46,7 +46,7 @@ public class WorkspaceDashboardService {
             .filter(conversation -> conversation.unreadCount() > 0)
             .limit(DASHBOARD_LIMIT)
             .toList();
-        var recentDocuments = documentRepository.listDocuments(currentUser.workspaceId(), currentUser.id()).stream()
+        var recentDocuments = documentRepository.listDocuments(currentUser.workspaceId(), currentUser.id(), false).stream()
             .limit(DASHBOARD_LIMIT)
             .toList();
         var recentBases = baseRepository.listBases(currentUser.workspaceId(), currentUser.id()).stream()

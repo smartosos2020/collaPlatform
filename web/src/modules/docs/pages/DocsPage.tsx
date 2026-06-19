@@ -5,8 +5,12 @@ import {
   CommentOutlined,
   DeleteOutlined,
   FileTextOutlined,
+  FolderOpenOutlined,
+  FolderOutlined,
+  InboxOutlined,
   LinkOutlined,
   PlusOutlined,
+  RollbackOutlined,
   SaveOutlined,
   SearchOutlined,
   ShareAltOutlined,
@@ -14,11 +18,15 @@ import {
   StarOutlined,
 } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { App as AntdApp, Alert, Button, Empty, Form, Input, Modal, Select, Space, Tag, Tooltip, Typography } from 'antd'
+import { App as AntdApp, Alert, Breadcrumb, Button, Empty, Form, Input, Modal, Select, Space, Switch, Tag, Tooltip, Tree, Typography } from 'antd'
+import type { ReactNode } from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 
-import { InternalLinkCard } from '../../platform/components/InternalLinkCard'
+import { InternalLinkCard, ObjectSummaryCard } from '../../platform/components/InternalLinkCard'
+import type { PlatformObjectSummary } from '../../platform/api/platformObjectsApi'
+import { getTable, queryRecords, type BaseField, type BaseRecord } from '../../bases/api/basesApi'
+import { objectTypeText } from '../../platform/objectTypeLabels'
 import {
   addObjectFavorite,
   listFavoriteObjects,
@@ -30,23 +38,32 @@ import { listDirectoryMembers } from '../../projects/api/projectsApi'
 import {
   addDocumentComment,
   addDocumentRelation,
+  archiveDocument,
   createDocument,
   diffDocumentVersions,
   getDocument,
+  getDocumentPath,
   grantDocumentPermission,
+  listDocumentTree,
   listDocumentVersions,
   listDocuments,
+  moveDocument,
+  restoreDocument,
   restoreDocumentVersion,
   resolveDocumentComment,
   saveDocument,
   saveDocumentBlocks,
   type DocumentBlockDraft,
   type DocumentDetail,
+  type DocumentSummary,
+  type DocumentTreeNode,
 } from '../api/docsApi'
 
 type CreateDocForm = {
   title: string
   content?: string
+  docType?: DocumentSummary['docType']
+  parentId?: string
 }
 
 type PermissionForm = {
@@ -57,6 +74,10 @@ type PermissionForm = {
 type RelationForm = {
   targetType: 'issue' | 'base' | 'base_table' | 'base_record' | 'file'
   targetId: string
+}
+
+type MoveDocForm = {
+  parentId?: string
 }
 
 type DraftState = {
@@ -72,6 +93,34 @@ type BlockDraftState = DocumentBlockDraft & {
   id?: string
 }
 
+type TableBlockContent = {
+  columns: string[]
+  rows: string[][]
+}
+
+type EmbedBlockContent = {
+  objectType?: string
+  objectId?: string
+  viewId?: string
+  title?: string
+}
+
+type TreeDataNode = {
+  key: string
+  title: ReactNode
+  children?: TreeDataNode[]
+}
+
+const ROOT_PARENT_VALUE = '__root__'
+const EMBED_BLOCK_TYPES = new Set(['embed', 'base_view', 'issue_embed', 'message_embed', 'file_embed', 'link'])
+
+const blockAccessText: Record<string, string> = {
+  forbidden: '无权限查看嵌入对象',
+  deleted: '嵌入对象已删除',
+  not_found: '嵌入对象不存在或不可见',
+  invalid: '嵌入对象配置无效',
+}
+
 export function DocsPage() {
   const { docId } = useParams()
   const location = useLocation()
@@ -81,6 +130,8 @@ export function DocsPage() {
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null)
   const [draft, setDraft] = useState<DraftState>({ docId: null, title: '', content: '', baseVersionNo: 0 })
   const [createOpen, setCreateOpen] = useState(false)
+  const [createDocType, setCreateDocType] = useState<DocumentSummary['docType']>('markdown')
+  const [moveOpen, setMoveOpen] = useState(false)
   const [permissionOpen, setPermissionOpen] = useState(false)
   const [relationOpen, setRelationOpen] = useState(false)
   const [commentDraft, setCommentDraft] = useState('')
@@ -89,19 +140,33 @@ export function DocsPage() {
   const [diffToVersionNo, setDiffToVersionNo] = useState<number | null>(null)
   const [docSearch, setDocSearch] = useState('')
   const [docListMode, setDocListMode] = useState<DocListMode>('all')
+  const [includeArchived, setIncludeArchived] = useState(false)
   const [blockDraftDocId, setBlockDraftDocId] = useState<string | null>(null)
   const [blockDraftVersionNo, setBlockDraftVersionNo] = useState(0)
   const [blockDrafts, setBlockDrafts] = useState<BlockDraftState[]>([])
   const [createForm] = Form.useForm<CreateDocForm>()
+  const [moveForm] = Form.useForm<MoveDocForm>()
   const [permissionForm] = Form.useForm<PermissionForm>()
   const [relationForm] = Form.useForm<RelationForm>()
 
-  const docsQuery = useQuery({ queryKey: ['docs'], queryFn: listDocuments })
+  const docsQuery = useQuery({
+    queryKey: ['docs', 'list', includeArchived],
+    queryFn: () => listDocuments({ includeArchived }),
+  })
+  const docTreeQuery = useQuery({
+    queryKey: ['docs', 'tree', includeArchived],
+    queryFn: () => listDocumentTree({ includeArchived }),
+  })
   const membersQuery = useQuery({ queryKey: ['members', 'directory'], queryFn: listDirectoryMembers })
   const recentObjectsQuery = useQuery({ queryKey: ['platform', 'recent', 'docs'], queryFn: () => listRecentObjects(30) })
   const favoriteObjectsQuery = useQuery({ queryKey: ['platform', 'favorites', 'docs'], queryFn: () => listFavoriteObjects(50) })
   const activeDocId = docId ?? selectedDocId ?? docsQuery.data?.[0]?.id ?? null
   const activeCommentId = new URLSearchParams(location.search).get('commentId')
+  const activeDocument = docsQuery.data?.find((document) => document.id === activeDocId) ?? null
+  const activeDirectoryId =
+    activeDocument?.docType === 'folder' || activeDocument?.docType === 'space'
+      ? activeDocument.id
+      : activeDocument?.parentId ?? null
   const docQuery = useQuery({
     queryKey: ['docs', activeDocId],
     queryFn: () => getDocument(activeDocId || ''),
@@ -110,6 +175,11 @@ export function DocsPage() {
   const versionsQuery = useQuery({
     queryKey: ['docs', activeDocId, 'versions'],
     queryFn: () => listDocumentVersions(activeDocId || ''),
+    enabled: Boolean(activeDocId),
+  })
+  const pathQuery = useQuery({
+    queryKey: ['docs', activeDocId, 'path'],
+    queryFn: () => getDocumentPath(activeDocId || ''),
     enabled: Boolean(activeDocId),
   })
   const diffQuery = useQuery({
@@ -200,14 +270,96 @@ export function DocsPage() {
     return filtered
   }, [docListMode, docSearch, docsQuery.data, favoriteDocumentIds, favoriteObjectsQuery.data, recentObjectsQuery.data])
 
+  const treeData = useMemo(
+    () => buildDocumentTreeData(docTreeQuery.data ?? [], activeDocId, favoriteDocumentIds),
+    [activeDocId, docTreeQuery.data, favoriteDocumentIds],
+  )
+
+  const folderOptions = useMemo(() => {
+    const docs = docsQuery.data ?? []
+    return docs
+      .filter((document) => ['space', 'folder'].includes(document.docType) && !document.archived)
+      .sort((left, right) => left.title.localeCompare(right.title))
+      .map((document) => ({ label: `${docTypeText(document.docType)} / ${document.title}`, value: document.id }))
+  }, [docsQuery.data])
+
+  const moveFolderOptions = useMemo(() => {
+    const docs = docsQuery.data ?? []
+    return folderOptions.filter((option) => {
+      if (!activeDocId || option.value === activeDocId) {
+        return false
+      }
+      return !isDescendantDocument(docs, activeDocId, option.value)
+    })
+  }, [activeDocId, docsQuery.data, folderOptions])
+
+  const activeSiblings = useMemo(() => {
+    if (!activeDocument) {
+      return []
+    }
+    return (docsQuery.data ?? [])
+      .filter((document) => (document.parentId ?? null) === (activeDocument.parentId ?? null) && !document.archived)
+      .sort(documentSort)
+  }, [activeDocument, docsQuery.data])
+
+  const activeSiblingIndex = activeDocId ? activeSiblings.findIndex((document) => document.id === activeDocId) : -1
+
+  const openCreate = (docType: DocumentSummary['docType']) => {
+    setCreateDocType(docType)
+    createForm.setFieldsValue({
+      docType,
+      parentId: activeDirectoryId ?? ROOT_PARENT_VALUE,
+      content: docType === 'markdown' ? '' : '',
+    })
+    setCreateOpen(true)
+  }
+
   const createMutation = useMutation({
-    mutationFn: createDocument,
+    mutationFn: (values: CreateDocForm) =>
+      createDocument({
+        title: values.title,
+        content: values.content,
+        docType: values.docType ?? createDocType,
+        parentId: values.parentId === ROOT_PARENT_VALUE ? null : values.parentId,
+      }),
     onSuccess: async (detail) => {
       setCreateOpen(false)
       createForm.resetFields()
       setSelectedDocId(detail.document.id)
       navigate(`/docs/${detail.document.id}`)
       await refreshDocs(detail.document.id)
+    },
+  })
+
+  const moveMutation = useMutation({
+    mutationFn: ({ documentId, parentId, sortOrder }: { documentId: string; parentId?: string | null; sortOrder?: number }) =>
+      moveDocument(documentId, { parentId, sortOrder }),
+    onSuccess: async (detail) => {
+      setMoveOpen(false)
+      moveForm.resetFields()
+      message.success('位置已更新')
+      await refreshDocs(detail.document.id)
+    },
+    onError: () => message.error('移动失败'),
+  })
+
+  const archiveMutation = useMutation({
+    mutationFn: (documentId: string) => archiveDocument(documentId),
+    onSuccess: async (detail) => {
+      message.success('已归档')
+      await refreshDocs(detail.document.id)
+      if (!includeArchived) {
+        navigate('/docs')
+      }
+    },
+  })
+
+  const restoreMutationForDocument = useMutation({
+    mutationFn: (documentId: string) => restoreDocument(documentId),
+    onSuccess: async (detail) => {
+      message.success('已恢复')
+      await refreshDocs(detail.document.id)
+      navigate(`/docs/${detail.document.id}`)
     },
   })
 
@@ -360,24 +512,76 @@ export function DocsPage() {
     })
   }
 
+  const openMove = () => {
+    if (!activeDocument) {
+      return
+    }
+    moveForm.setFieldsValue({ parentId: activeDocument.parentId ?? ROOT_PARENT_VALUE })
+    setMoveOpen(true)
+  }
+
+  const submitMove = (values: MoveDocForm) => {
+    if (!activeDocId || !activeDocument) {
+      return
+    }
+    moveMutation.mutate({
+      documentId: activeDocId,
+      parentId: values.parentId === ROOT_PARENT_VALUE ? null : values.parentId,
+      sortOrder: activeDocument.sortOrder,
+    })
+  }
+
+  const reorderActiveDocument = (direction: -1 | 1) => {
+    if (!activeDocId || !activeDocument || activeSiblingIndex < 0) {
+      return
+    }
+    const target = activeSiblings[activeSiblingIndex + direction]
+    if (!target) {
+      return
+    }
+    moveMutation.mutate({
+      documentId: activeDocId,
+      parentId: activeDocument.parentId ?? null,
+      sortOrder: target.sortOrder + direction,
+    })
+  }
+
+  const archiveActiveDocument = () => {
+    if (!activeDocId || !activeDocument) {
+      return
+    }
+    Modal.confirm({
+      title: `归档「${activeDocument.title}」`,
+      content: '归档会同时隐藏其子目录和子文档。需要显示归档后才能查看或恢复。',
+      okText: '归档',
+      okButtonProps: { danger: true },
+      onOk: () => archiveMutation.mutate(activeDocId),
+    })
+  }
+
   return (
     <div className="docs-workspace">
       <aside className="docs-sidebar">
         <div className="section-heading">
           <div>
-            <Typography.Title level={4}>文档</Typography.Title>
-            <Typography.Text type="secondary">{visibleDocs.length} / {docsQuery.data?.length ?? 0} 篇</Typography.Text>
+            <Typography.Title level={4}>团队空间</Typography.Title>
+            <Typography.Text type="secondary">{visibleDocs.length} / {docsQuery.data?.length ?? 0} 个节点</Typography.Text>
           </div>
-          <Tooltip title="新建文档">
-            <Button icon={<PlusOutlined />} type="primary" onClick={() => setCreateOpen(true)} />
-          </Tooltip>
+          <Space>
+            <Tooltip title="新建文件夹">
+              <Button icon={<FolderOutlined />} onClick={() => openCreate('folder')} />
+            </Tooltip>
+            <Tooltip title="新建文档">
+              <Button icon={<PlusOutlined />} type="primary" onClick={() => openCreate('markdown')} />
+            </Tooltip>
+          </Space>
         </div>
 
         <Space orientation="vertical" size={8} className="docs-list-controls">
           <Input
             allowClear
             prefix={<SearchOutlined />}
-            placeholder="搜索文档标题"
+            placeholder="搜索标题"
             value={docSearch}
             onChange={(event) => setDocSearch(event.target.value)}
           />
@@ -390,40 +594,110 @@ export function DocsPage() {
               { value: 'favorites', label: '收藏文档' },
             ]}
           />
+          <div className="docs-archive-toggle">
+            <span>显示归档</span>
+            <Switch size="small" checked={includeArchived} onChange={setIncludeArchived} />
+          </div>
         </Space>
 
-        <Space orientation="vertical" size={8} className="docs-list">
-          {visibleDocs.map((document) => (
-            <div className="doc-list-row" key={document.id}>
-              <button
-                className={`doc-list-item${document.id === activeDocId ? ' active' : ''}`}
-                type="button"
-                onClick={() => {
-                  setSelectedDocId(document.id)
-                  navigate(`/docs/${document.id}`)
-                }}
-              >
-                <FileTextOutlined />
-                <span>
-                  <strong>{document.title}</strong>
-                  <small>v{document.currentVersionNo} · {permissionText(document.permissionLevel)}</small>
-                </span>
-              </button>
-              <Tooltip title={favoriteDocumentIds.has(document.id) ? '取消收藏' : '收藏'}>
+        {activeDocument ? (
+          <Space wrap className="docs-tree-actions">
+            <Tooltip title="上移">
+              <Button
+                icon={<ArrowUpOutlined />}
+                disabled={activeSiblingIndex <= 0 || activeDocument.archived}
+                loading={moveMutation.isPending}
+                onClick={() => reorderActiveDocument(-1)}
+              />
+            </Tooltip>
+            <Tooltip title="下移">
+              <Button
+                icon={<ArrowDownOutlined />}
+                disabled={activeSiblingIndex < 0 || activeSiblingIndex >= activeSiblings.length - 1 || activeDocument.archived}
+                loading={moveMutation.isPending}
+                onClick={() => reorderActiveDocument(1)}
+              />
+            </Tooltip>
+            <Tooltip title="移动到">
+              <Button icon={<FolderOpenOutlined />} disabled={activeDocument.archived} onClick={openMove} />
+            </Tooltip>
+            {activeDocument.archived ? (
+              <Tooltip title="恢复">
                 <Button
-                  className="doc-favorite-button"
-                  icon={favoriteDocumentIds.has(document.id) ? <StarFilled /> : <StarOutlined />}
-                  loading={favoriteMutation.isPending && favoriteMutation.variables?.documentId === document.id}
-                  onClick={() => favoriteMutation.mutate({ documentId: document.id, favorite: favoriteDocumentIds.has(document.id) })}
+                  icon={<RollbackOutlined />}
+                  loading={restoreMutationForDocument.isPending}
+                  onClick={() => restoreMutationForDocument.mutate(activeDocument.id)}
                 />
               </Tooltip>
-            </div>
-          ))}
-          {visibleDocs.length === 0 ? <Empty description="没有匹配文档" /> : null}
-        </Space>
+            ) : (
+              <Tooltip title="归档">
+                <Button danger icon={<InboxOutlined />} loading={archiveMutation.isPending} onClick={archiveActiveDocument} />
+              </Tooltip>
+            )}
+          </Space>
+        ) : null}
+
+        {docListMode === 'all' && !docSearch.trim() ? (
+          <div className="docs-tree-panel">
+            <Tree
+              key={`docs-tree-${includeArchived}-${treeData.length}`}
+              blockNode
+              defaultExpandAll
+              selectedKeys={activeDocId ? [activeDocId] : []}
+              treeData={treeData}
+              onSelect={(keys) => {
+                const key = String(keys[0] ?? '')
+                if (key) {
+                  setSelectedDocId(key)
+                  navigate(`/docs/${key}`)
+                }
+              }}
+            />
+            {treeData.length === 0 ? <Empty description="暂无文档空间" /> : null}
+          </div>
+        ) : (
+          <Space orientation="vertical" size={8} className="docs-list">
+            {visibleDocs.map((document) => (
+              <div className="doc-list-row" key={document.id}>
+                <button
+                  className={`doc-list-item${document.id === activeDocId ? ' active' : ''}${document.archived ? ' archived' : ''}`}
+                  type="button"
+                  onClick={() => {
+                    setSelectedDocId(document.id)
+                    navigate(`/docs/${document.id}`)
+                  }}
+                >
+                  {document.docType === 'markdown' ? <FileTextOutlined /> : <FolderOutlined />}
+                  <span>
+                    <strong>{document.title}</strong>
+                    <small>{docTypeText(document.docType)} · {permissionText(document.permissionLevel)}{document.archived ? ' · 已归档' : ''}</small>
+                  </span>
+                </button>
+                <Tooltip title={favoriteDocumentIds.has(document.id) ? '取消收藏' : '收藏'}>
+                  <Button
+                    className="doc-favorite-button"
+                    icon={favoriteDocumentIds.has(document.id) ? <StarFilled /> : <StarOutlined />}
+                    loading={favoriteMutation.isPending && favoriteMutation.variables?.documentId === document.id}
+                    onClick={() => favoriteMutation.mutate({ documentId: document.id, favorite: favoriteDocumentIds.has(document.id) })}
+                  />
+                </Tooltip>
+              </div>
+            ))}
+            {visibleDocs.length === 0 ? <Empty description="没有匹配文档" /> : null}
+          </Space>
+        )}
       </aside>
 
       <main className="docs-main">
+        {pathQuery.data && pathQuery.data.length > 0 ? (
+          <div className="docs-breadcrumb-bar">
+            <Breadcrumb
+              items={pathQuery.data.map((item) => ({
+                title: item.id === activeDocId ? item.title : <button type="button" onClick={() => navigate(`/docs/${item.id}`)}>{item.title}</button>,
+              }))}
+            />
+          </div>
+        ) : null}
         {docQuery.data ? (
           <DocumentEditor
             detail={docQuery.data}
@@ -463,7 +737,7 @@ export function DocsPage() {
           />
         ) : (
           <Empty description="暂无文档">
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => openCreate('markdown')}>
               新建文档
             </Button>
           </Empty>
@@ -471,18 +745,50 @@ export function DocsPage() {
       </main>
 
       <Modal
-        title="新建文档"
+        title={createDocType === 'folder' ? '新建文件夹' : '新建文档'}
         open={createOpen}
         onCancel={() => setCreateOpen(false)}
         onOk={() => createForm.submit()}
         confirmLoading={createMutation.isPending}
       >
         <Form form={createForm} layout="vertical" onFinish={(values) => createMutation.mutate(values)}>
+          <Form.Item name="docType" hidden initialValue={createDocType}>
+            <Input />
+          </Form.Item>
           <Form.Item name="title" label="标题" rules={[{ required: true, message: '请输入标题' }]}>
             <Input />
           </Form.Item>
+          <Form.Item name="parentId" label="父级目录" initialValue={activeDirectoryId ?? ROOT_PARENT_VALUE}>
+            <Select
+              options={[
+                { label: '团队空间根目录', value: ROOT_PARENT_VALUE },
+                ...folderOptions,
+              ]}
+            />
+          </Form.Item>
+          {createDocType === 'markdown' ? (
           <Form.Item name="content" label="内容">
             <Input.TextArea rows={8} />
+          </Form.Item>
+          ) : null}
+        </Form>
+      </Modal>
+
+      <Modal
+        title="移动文档"
+        open={moveOpen}
+        onCancel={() => setMoveOpen(false)}
+        onOk={() => moveForm.submit()}
+        confirmLoading={moveMutation.isPending}
+      >
+        <Form form={moveForm} layout="vertical" onFinish={submitMove}>
+          <Form.Item name="parentId" label="移动到" initialValue={activeDocument?.parentId ?? ROOT_PARENT_VALUE}>
+            <Select
+              options={[
+                { label: '团队空间根目录', value: ROOT_PARENT_VALUE },
+                ...moveFolderOptions,
+              ]}
+            />
           </Form.Item>
         </Form>
       </Modal>
@@ -716,7 +1022,10 @@ function DocumentEditor({
                     className="doc-block-type"
                     disabled={!canEdit}
                     value={block.blockType}
-                    onChange={(value) => onBlockChange(index, { blockType: value as DocumentBlockDraft['blockType'] })}
+                    onChange={(value) => {
+                      const nextType = value as DocumentBlockDraft['blockType']
+                      onBlockChange(index, { blockType: nextType, content: defaultBlockContent(nextType, block.content) })
+                    }}
                     options={[
                       { value: 'paragraph', label: '段落' },
                       { value: 'heading', label: '标题' },
@@ -724,15 +1033,37 @@ function DocumentEditor({
                       { value: 'task', label: '任务' },
                       { value: 'quote', label: '引用' },
                       { value: 'code', label: '代码' },
+                      { value: 'table', label: '表格' },
+                      { value: 'base_view', label: 'Base 视图' },
+                      { value: 'issue_embed', label: '事项/BUG' },
+                      { value: 'message_embed', label: '消息' },
+                      { value: 'file_embed', label: '文件' },
+                      { value: 'embed', label: '对象卡片' },
                     ]}
                   />
-                  <Input.TextArea
-                    className="doc-block-content"
-                    disabled={!canEdit}
-                    autoSize={{ minRows: 1, maxRows: 6 }}
-                    value={block.content}
-                    onChange={(event) => onBlockChange(index, { content: event.target.value })}
-                  />
+                  {block.blockType === 'table' ? (
+                    <TableBlockEditor
+                      value={block.content}
+                      disabled={!canEdit}
+                      onChange={(content) => onBlockChange(index, { content })}
+                    />
+                  ) : isEmbedBlockType(block.blockType) ? (
+                    <EmbedBlockEditor
+                      blockType={block.blockType}
+                      value={block.content}
+                      disabled={!canEdit}
+                      summary={detail.blocks.find((item) => item.id === block.id)?.embedSummary ?? null}
+                      onChange={(content) => onBlockChange(index, { content })}
+                    />
+                  ) : (
+                    <Input.TextArea
+                      className="doc-block-content"
+                      disabled={!canEdit}
+                      autoSize={{ minRows: 1, maxRows: 6 }}
+                      value={block.content}
+                      onChange={(event) => onBlockChange(index, { content: event.target.value })}
+                    />
+                  )}
                   <Space>
                     <Tooltip title="上移">
                       <Button size="small" icon={<ArrowUpOutlined />} disabled={!canEdit || index === 0} onClick={() => onMoveBlock(index, -1)} />
@@ -859,7 +1190,7 @@ function DocumentEditor({
               onChange={onCommentBlockChange}
               options={detail.blocks.map((block, index) => ({
                 value: block.id,
-                label: `${index + 1}. ${blockTypeText(block.blockType)} ${block.content || '空块'}`,
+                label: `${index + 1}. ${blockTypeText(block.blockType)} ${blockContentLabel(block)}`,
               }))}
             />
             <Input.TextArea
@@ -879,6 +1210,259 @@ function DocumentEditor({
   )
 }
 
+function TableBlockEditor({
+  value,
+  disabled,
+  onChange,
+}: {
+  value: string
+  disabled: boolean
+  onChange: (content: string) => void
+}) {
+  const table = parseTableBlock(value)
+  const emit = (next: TableBlockContent) => onChange(serializeTableBlock(normalizeTableBlock(next)))
+  const updateColumn = (columnIndex: number, nextValue: string) => {
+    emit({ ...table, columns: table.columns.map((column, index) => (index === columnIndex ? nextValue : column)) })
+  }
+  const updateCell = (rowIndex: number, columnIndex: number, nextValue: string) => {
+    emit({
+      ...table,
+      rows: table.rows.map((row, index) =>
+        index === rowIndex ? row.map((cell, cellIndex) => (cellIndex === columnIndex ? nextValue : cell)) : row,
+      ),
+    })
+  }
+  const addColumn = () => {
+    emit({
+      columns: [...table.columns, `列 ${table.columns.length + 1}`],
+      rows: table.rows.map((row) => [...row, '']),
+    })
+  }
+  const removeColumn = () => {
+    if (table.columns.length <= 1) {
+      return
+    }
+    emit({
+      columns: table.columns.slice(0, -1),
+      rows: table.rows.map((row) => row.slice(0, -1)),
+    })
+  }
+  const addRow = () => {
+    emit({ ...table, rows: [...table.rows, table.columns.map(() => '')] })
+  }
+  const removeRow = () => {
+    if (table.rows.length <= 1) {
+      return
+    }
+    emit({ ...table, rows: table.rows.slice(0, -1) })
+  }
+
+  return (
+    <div className="doc-table-block-editor">
+      <div className="doc-table-toolbar">
+        <Space size={4}>
+          <Tooltip title="新增行">
+            <Button size="small" icon={<PlusOutlined />} disabled={disabled} onClick={addRow}>
+              行
+            </Button>
+          </Tooltip>
+          <Tooltip title="删除末行">
+            <Button size="small" icon={<DeleteOutlined />} disabled={disabled || table.rows.length <= 1} onClick={removeRow}>
+              行
+            </Button>
+          </Tooltip>
+          <Tooltip title="新增列">
+            <Button size="small" icon={<PlusOutlined />} disabled={disabled} onClick={addColumn}>
+              列
+            </Button>
+          </Tooltip>
+          <Tooltip title="删除末列">
+            <Button size="small" icon={<DeleteOutlined />} disabled={disabled || table.columns.length <= 1} onClick={removeColumn}>
+              列
+            </Button>
+          </Tooltip>
+        </Space>
+      </div>
+      <div className="doc-table-block-scroll">
+        <table className="doc-table-block">
+          <thead>
+            <tr>
+              {table.columns.map((column, columnIndex) => (
+                <th key={`column-${columnIndex}`}>
+                  <Input
+                    disabled={disabled}
+                    value={column}
+                    onChange={(event) => updateColumn(columnIndex, event.target.value)}
+                  />
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {table.rows.map((row, rowIndex) => (
+              <tr key={`row-${rowIndex}`}>
+                {table.columns.map((_, columnIndex) => (
+                  <td key={`cell-${rowIndex}-${columnIndex}`}>
+                    <Input
+                      disabled={disabled}
+                      value={row[columnIndex] ?? ''}
+                      onChange={(event) => updateCell(rowIndex, columnIndex, event.target.value)}
+                    />
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+function EmbedBlockEditor({
+  blockType,
+  value,
+  disabled,
+  summary,
+  onChange,
+}: {
+  blockType: DocumentBlockDraft['blockType']
+  value: string
+  disabled: boolean
+  summary?: PlatformObjectSummary | null
+  onChange: (content: string) => void
+}) {
+  const embed = parseEmbedBlock(value)
+  const fixedObjectType = fixedEmbedObjectType(blockType)
+  const objectType = fixedObjectType ?? embed.objectType ?? 'issue'
+  const emit = (next: EmbedBlockContent) => onChange(serializeEmbedBlock({ ...embed, ...next }))
+
+  return (
+    <div className="doc-embed-block-editor">
+      <Space wrap className="doc-embed-fields">
+        {fixedObjectType ? (
+          <Tag>{objectTypeText[fixedObjectType] ?? fixedObjectType}</Tag>
+        ) : (
+          <Select
+            className="doc-embed-type"
+            disabled={disabled}
+            value={objectType}
+            onChange={(nextType) => emit({ objectType: nextType })}
+            options={[
+              { value: 'issue', label: '事项/BUG' },
+              { value: 'document', label: '文档' },
+              { value: 'base', label: 'Base' },
+              { value: 'base_table', label: '数据表' },
+              { value: 'base_record', label: '表格记录' },
+              { value: 'message', label: '消息' },
+              { value: 'approval', label: '审批' },
+              { value: 'file', label: '文件' },
+            ]}
+          />
+        )}
+        <Input
+          className="doc-embed-id"
+          disabled={disabled}
+          placeholder="对象 ID"
+          value={embed.objectId ?? ''}
+          onChange={(event) => emit({ objectType, objectId: event.target.value })}
+        />
+        {blockType === 'base_view' ? (
+          <Input
+            className="doc-embed-view-id"
+            disabled={disabled}
+            placeholder="视图 ID"
+            value={embed.viewId ?? ''}
+            onChange={(event) => emit({ objectType, viewId: event.target.value })}
+          />
+        ) : null}
+      </Space>
+      {summary ? (
+        <EmbedSummaryPreview summary={summary} blockType={blockType} embed={embed} />
+      ) : (
+        <Typography.Text type="secondary">保存后解析对象摘要</Typography.Text>
+      )}
+    </div>
+  )
+}
+
+function EmbedSummaryPreview({
+  summary,
+  blockType,
+  embed,
+}: {
+  summary: PlatformObjectSummary
+  blockType: DocumentBlockDraft['blockType']
+  embed: EmbedBlockContent
+}) {
+  const baseId = typeof summary.metadata?.baseId === 'string' ? summary.metadata.baseId : null
+  const tableId = summary.objectId
+  const shouldLoadBaseView = blockType === 'base_view' && summary.accessState === 'available' && Boolean(baseId && tableId)
+  const tableQuery = useQuery({
+    queryKey: ['docs', 'base-view', baseId, tableId, 'table'],
+    queryFn: () => getTable(baseId || '', tableId),
+    enabled: shouldLoadBaseView,
+  })
+  const selectedView = tableQuery.data?.views.find((view) => view.id === embed.viewId)
+  const recordsQuery = useQuery({
+    queryKey: ['docs', 'base-view', baseId, tableId, selectedView?.id ?? 'default', 'records'],
+    queryFn: () =>
+      queryRecords(baseId || '', tableId, {
+        filters: selectedView?.filters ?? [],
+        sorts: selectedView?.sorts ?? [],
+        limit: 5,
+        offset: 0,
+      }),
+    enabled: shouldLoadBaseView && tableQuery.isSuccess,
+  })
+
+  if (summary.accessState !== 'available') {
+    return <Alert type="warning" showIcon message={blockAccessText[summary.accessState] ?? '嵌入对象不可访问'} />
+  }
+  if (!shouldLoadBaseView) {
+    return <ObjectSummaryCard summary={summary} />
+  }
+  const fields = tableQuery.data?.fields ?? []
+  const visibleFieldIds = selectedView?.visibleFieldIds ?? []
+  const visibleFields = visibleFieldIds.length > 0 ? fields.filter((field) => visibleFieldIds.includes(field.id)) : fields.slice(0, 4)
+  return (
+    <div className="doc-base-view-preview">
+      <ObjectSummaryCard summary={summary} />
+      <div className="doc-base-view-grid">
+        <div className="doc-base-view-row header">
+          <span>#</span>
+          {visibleFields.map((field) => <span key={field.id}>{field.name}</span>)}
+        </div>
+        {(recordsQuery.data?.items ?? []).map((record) => (
+          <div className="doc-base-view-row" key={record.id}>
+            <span>{record.recordNo}</span>
+            {visibleFields.map((field) => <span key={field.id}>{baseCellValue(field, record)}</span>)}
+          </div>
+        ))}
+        {recordsQuery.isLoading ? <Typography.Text type="secondary">加载视图中...</Typography.Text> : null}
+        {!recordsQuery.isLoading && (recordsQuery.data?.items.length ?? 0) === 0 ? (
+          <Typography.Text type="secondary">当前视图暂无记录</Typography.Text>
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
+function baseCellValue(field: BaseField, record: BaseRecord) {
+  const value = record.values[field.id] ?? record.values[field.name]
+  if (value === undefined || value === null || value === '') {
+    return '-'
+  }
+  if (Array.isArray(value)) {
+    return value.join(', ')
+  }
+  if (typeof value === 'object' && 'objectType' in value && 'objectId' in value) {
+    const linkValue = value as { objectType?: unknown; objectId?: unknown; title?: unknown }
+    return String(linkValue.title ?? `${linkValue.objectType}:${linkValue.objectId}`)
+  }
+  return String(value)
+}
+
 function hasPermission(current: string | undefined, required: 'view' | 'edit' | 'manage') {
   const rank = { view: 1, edit: 2, manage: 3 }
   return current ? rank[current as keyof typeof rank] >= rank[required] : false
@@ -886,6 +1470,48 @@ function hasPermission(current: string | undefined, required: 'view' | 'edit' | 
 
 function permissionText(permission: string) {
   return { view: '可查看', edit: '可编辑', manage: '可管理' }[permission] ?? permission
+}
+
+function docTypeText(docType: string) {
+  return { space: '空间', folder: '文件夹', markdown: '文档' }[docType] ?? docType
+}
+
+function documentSort(left: DocumentSummary, right: DocumentSummary) {
+  if (left.sortOrder !== right.sortOrder) {
+    return left.sortOrder - right.sortOrder
+  }
+  return left.title.localeCompare(right.title)
+}
+
+function isDescendantDocument(documents: DocumentSummary[], ancestorId: string, candidateId: string) {
+  let current = documents.find((document) => document.id === candidateId)
+  while (current?.parentId) {
+    if (current.parentId === ancestorId) {
+      return true
+    }
+    current = documents.find((document) => document.id === current?.parentId)
+  }
+  return false
+}
+
+function buildDocumentTreeData(
+  nodes: DocumentTreeNode[],
+  activeDocId: string | null,
+  favoriteDocumentIds: Set<string>,
+): TreeDataNode[] {
+  return nodes.map((node) => ({
+    key: node.document.id,
+    title: (
+      <span className={`doc-tree-title${node.document.id === activeDocId ? ' active' : ''}${node.document.archived ? ' archived' : ''}`}>
+        {node.document.docType === 'markdown' ? <FileTextOutlined /> : <FolderOutlined />}
+        <span>{node.document.title}</span>
+        {node.document.docType !== 'markdown' ? <Tag>{docTypeText(node.document.docType)}</Tag> : null}
+        {favoriteDocumentIds.has(node.document.id) ? <StarFilled className="doc-tree-star" /> : null}
+        {node.document.archived ? <Tag color="default">归档</Tag> : null}
+      </span>
+    ),
+    children: buildDocumentTreeData(node.children, activeDocId, favoriteDocumentIds),
+  }))
 }
 
 function blockTypeText(blockType: string) {
@@ -896,6 +1522,13 @@ function blockTypeText(blockType: string) {
     task: '任务',
     quote: '引用',
     code: '代码',
+    table: '表格',
+    embed: '对象卡片',
+    base_view: 'Base 视图',
+    issue_embed: '事项/BUG',
+    message_embed: '消息',
+    file_embed: '文件',
+    link: '内部链接',
   }[blockType] ?? blockType
 }
 
@@ -906,6 +1539,99 @@ function blockLabel(blocks: DocumentDetail['blocks'], blockId: string) {
   }
   const block = blocks[index]
   return `${index + 1}. ${blockTypeText(block.blockType)}`
+}
+
+function blockContentLabel(block: DocumentDetail['blocks'][number]) {
+  if (block.blockType === 'table') {
+    const table = parseTableBlock(block.content)
+    return `${table.columns.length} 列 / ${table.rows.length} 行`
+  }
+  if (isEmbedBlockType(block.blockType)) {
+    return block.embedSummary?.title || blockAccessText[block.embedSummary?.accessState ?? ''] || '对象未解析'
+  }
+  const normalized = block.content.trim()
+  return normalized.length > 32 ? `${normalized.slice(0, 32)}...` : normalized || '空块'
+}
+
+function isEmbedBlockType(blockType: string) {
+  return EMBED_BLOCK_TYPES.has(blockType)
+}
+
+function fixedEmbedObjectType(blockType: string) {
+  if (blockType === 'base_view') {
+    return 'base_table'
+  }
+  if (blockType === 'issue_embed') {
+    return 'issue'
+  }
+  if (blockType === 'message_embed') {
+    return 'message'
+  }
+  if (blockType === 'file_embed') {
+    return 'file'
+  }
+  return null
+}
+
+function defaultBlockContent(blockType: DocumentBlockDraft['blockType'], current: string) {
+  if (blockType === 'table') {
+    return serializeTableBlock(parseTableBlock(current))
+  }
+  if (isEmbedBlockType(blockType)) {
+    const fixedObjectType = fixedEmbedObjectType(blockType)
+    const parsed = parseEmbedBlock(current)
+    return serializeEmbedBlock({
+      objectType: fixedObjectType ?? parsed.objectType ?? 'issue',
+      objectId: parsed.objectId ?? '',
+      viewId: blockType === 'base_view' ? parsed.viewId ?? '' : undefined,
+    })
+  }
+  return current
+}
+
+function parseTableBlock(value: string): TableBlockContent {
+  const fallback = { columns: ['列 1', '列 2'], rows: [['', '']] }
+  const parsed = parseJsonObject<TableBlockContent>(value)
+  return normalizeTableBlock(parsed ?? fallback)
+}
+
+function normalizeTableBlock(table: TableBlockContent): TableBlockContent {
+  const columns = Array.isArray(table.columns) && table.columns.length > 0
+    ? table.columns.map((column, index) => String(column || `列 ${index + 1}`))
+    : ['列 1']
+  const rows = Array.isArray(table.rows) && table.rows.length > 0
+    ? table.rows.map((row) => columns.map((_, index) => String(Array.isArray(row) ? row[index] ?? '' : '')))
+    : [columns.map(() => '')]
+  return { columns, rows }
+}
+
+function serializeTableBlock(table: TableBlockContent) {
+  return JSON.stringify(normalizeTableBlock(table))
+}
+
+function parseEmbedBlock(value: string): EmbedBlockContent {
+  return parseJsonObject<EmbedBlockContent>(value) ?? {}
+}
+
+function serializeEmbedBlock(embed: EmbedBlockContent) {
+  return JSON.stringify({
+    objectType: embed.objectType ?? 'issue',
+    objectId: embed.objectId ?? '',
+    ...(embed.viewId ? { viewId: embed.viewId } : {}),
+    ...(embed.title ? { title: embed.title } : {}),
+  })
+}
+
+function parseJsonObject<T>(value: string): T | null {
+  if (!value.trim()) {
+    return null
+  }
+  try {
+    const parsed = JSON.parse(value) as T
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null
+  } catch {
+    return null
+  }
 }
 
 function renderMarkdownPreview(content: string) {

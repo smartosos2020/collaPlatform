@@ -1,4 +1,4 @@
-import { apiGet, apiPatch, apiPost } from '../../../shared/api/httpClient'
+import { apiGet, apiGetText, apiPatch, apiPost } from '../../../shared/api/httpClient'
 
 export type BaseSummary = {
   id: string
@@ -50,6 +50,9 @@ export type BaseFieldType =
   | 'attachment'
   | 'single_select'
   | 'multi_select'
+  | 'status'
+  | 'url'
+  | 'object_link'
 
 export type BaseField = {
   id: string
@@ -81,6 +84,7 @@ export type BaseView = {
   name: string
   filters: BaseFilter[]
   sorts: BaseSort[]
+  visibleFieldIds: string[]
   createdAt: string
   updatedAt: string
 }
@@ -110,6 +114,61 @@ export type BaseRecordPage = {
   total: number
   limit: number
   offset: number
+}
+
+export type PlatformObjectSummary = {
+  objectType: string
+  objectId: string
+  accessState: 'available' | 'forbidden' | 'deleted' | 'not_found' | 'invalid'
+  title?: string | null
+  subtitle?: string | null
+  status?: string | null
+  webPath?: string | null
+  deepLink?: string | null
+  metadata: Record<string, unknown>
+}
+
+export type BaseRecordComment = {
+  id: string
+  recordId: string
+  authorId: string
+  authorName: string
+  content: string
+  createdAt: string
+}
+
+export type BaseRecordRelation = {
+  id: string
+  recordId: string
+  targetType: string
+  targetId: string
+  relationType: string
+  target: PlatformObjectSummary
+  createdBy: string
+  createdByName: string
+  createdAt: string
+}
+
+export type BaseRecordActivity = {
+  id: string
+  recordId: string
+  actorId: string
+  actorName: string
+  action: string
+  metadata: Record<string, unknown>
+  createdAt: string
+}
+
+export type BaseRecordDetail = {
+  record: BaseRecord
+  comments: BaseRecordComment[]
+  relations: BaseRecordRelation[]
+  activities: BaseRecordActivity[]
+}
+
+export type BaseImportResult = {
+  created: number
+  errors: string[]
 }
 
 export type BaseKanbanView = {
@@ -197,6 +256,30 @@ export function getBaseRecord(recordId: string) {
   return apiGet<BaseRecord>(`/base-records/${recordId}`)
 }
 
-export function createView(baseId: string, tableId: string, request: { name: string; filters: BaseFilter[]; sorts: BaseSort[] }) {
+export function getBaseRecordDetail(recordId: string) {
+  return apiGet<BaseRecordDetail>(`/base-records/${recordId}/detail`)
+}
+
+export function addBaseRecordComment(recordId: string, content: string) {
+  return apiPost<BaseRecordDetail>(`/base-records/${recordId}/comments`, { content })
+}
+
+export function addBaseRecordRelation(recordId: string, request: { targetType: string; targetId: string }) {
+  return apiPost<BaseRecordDetail>(`/base-records/${recordId}/relations`, request)
+}
+
+export function createView(
+  baseId: string,
+  tableId: string,
+  request: { name: string; filters: BaseFilter[]; sorts: BaseSort[]; visibleFieldIds?: string[] },
+) {
   return apiPost<BaseView>(`/bases/${baseId}/tables/${tableId}/views`, request)
+}
+
+export function exportBaseCsv(baseId: string, tableId: string) {
+  return apiGetText(`/bases/${baseId}/tables/${tableId}/export.csv`)
+}
+
+export function importBaseCsv(baseId: string, tableId: string, csv: string) {
+  return apiPost<BaseImportResult>(`/bases/${baseId}/tables/${tableId}/import.csv`, { csv })
 }

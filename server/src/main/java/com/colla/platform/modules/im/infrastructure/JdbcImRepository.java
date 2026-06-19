@@ -15,6 +15,7 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.dao.DuplicateKeyException;
@@ -491,6 +492,59 @@ public class JdbcImRepository implements ImRepository {
             workspaceId,
             conversationId,
             limit
+        );
+        return rows.stream()
+            .map(row -> toMessageSummary(workspaceId, row, userId))
+            .toList();
+    }
+
+    @Override
+    public List<MessageSummary> searchMessages(UUID workspaceId, UUID conversationId, UUID userId, String query, String targetType, int limit) {
+        if (!isMember(workspaceId, conversationId, userId)) {
+            return List.of();
+        }
+        String normalizedQuery = query == null ? "" : query.trim();
+        String normalizedTargetType = targetType == null ? "" : targetType.trim().toLowerCase(Locale.ROOT);
+        if (normalizedQuery.isBlank() && normalizedTargetType.isBlank()) {
+            return List.of();
+        }
+
+        StringBuilder sql = new StringBuilder(
+            """
+                select m.id, m.conversation_id, m.sender_id, u.display_name sender_name,
+                       m.message_type, m.content, m.client_message_id, m.created_at,
+                       m.message_seq, m.edited_at, m.revoked_at, m.pinned_at, m.pinned_by
+                from messages m
+                join users u on u.id = m.sender_id
+                where m.workspace_id = ? and m.conversation_id = ? and m.deleted_at is null and m.revoked_at is null
+                """
+        );
+        List<Object> args = new ArrayList<>();
+        args.add(workspaceId);
+        args.add(conversationId);
+        if (!normalizedQuery.isBlank()) {
+            sql.append(" and lower(m.content) like lower(?)");
+            args.add("%" + normalizedQuery + "%");
+        }
+        if (!normalizedTargetType.isBlank()) {
+            sql.append(
+                """
+                 and exists (
+                    select 1
+                    from message_links ml
+                    where ml.workspace_id = m.workspace_id and ml.message_id = m.id and ml.target_type = ?
+                 )
+                """
+            );
+            args.add(normalizedTargetType);
+        }
+        sql.append(" order by m.message_seq desc limit ?");
+        args.add(limit);
+
+        List<MessageRow> rows = jdbcTemplate.query(
+            sql.toString(),
+            (rs, rowNum) -> mapMessageRow(rs),
+            args.toArray()
         );
         return rows.stream()
             .map(row -> toMessageSummary(workspaceId, row, userId))

@@ -43,8 +43,8 @@ public class AuditService {
         auditRepository.append(workspaceId, actorId, action, targetType, targetId, ipAddress, userAgent, metadata);
     }
 
-    public List<AuditLogEntry> list(CurrentUser currentUser, String action, String targetType, UUID actorId, int limit) {
+    public List<AuditLogEntry> list(CurrentUser currentUser, String action, String targetType, UUID targetId, UUID actorId, int limit) {
         permissionService.requireManageUsers(currentUser);
-        return auditRepository.list(currentUser.workspaceId(), action, targetType, actorId, limit);
+        return auditRepository.list(currentUser.workspaceId(), action, targetType, targetId, actorId, limit);
     }
 }

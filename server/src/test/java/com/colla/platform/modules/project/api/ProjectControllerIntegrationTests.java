@@ -114,12 +114,19 @@ class ProjectControllerIntegrationTests {
                 .content("{\"status\":\"in_progress\"}"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.issue.status").value("in_progress"))
-            .andExpect(jsonPath("$.activities[0].action").value("transitioned"));
+            .andExpect(jsonPath("$.issue.workflowReason").value("started"))
+            .andExpect(jsonPath("$.activities[0].action").value("workflow.start_progress"))
+            .andExpect(jsonPath("$.availableActions[?(@.key == 'mark_fixed')].label").value(hasItem("提交修复")));
 
-        mockMvc.perform(get("/api/admin/audit-logs?action=issue.transitioned&targetType=issue&limit=5")
+        mockMvc.perform(get("/api/admin/audit-logs?action=issue.workflow.start_progress&targetType=issue&limit=5")
                 .header("Authorization", "Bearer " + adminToken))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$[?(@.targetId == '" + issueId + "')].action").value(hasItem("issue.transitioned")));
+            .andExpect(jsonPath("$[?(@.targetId == '" + issueId + "')].action").value(hasItem("issue.workflow.start_progress")));
+
+        mockMvc.perform(get("/api/admin/audit-logs?action=issue.workflow.start_progress&targetType=issue&targetId=" + issueId + "&limit=5")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$[0].targetId").value(issueId.toString()));
 
         mockMvc.perform(post("/api/issues/" + issueId + "/transition")
                 .header("Authorization", "Bearer " + adminToken)
@@ -194,6 +201,13 @@ class ProjectControllerIntegrationTests {
                 .header("Authorization", "Bearer " + outsiderToken))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.accessState").value("forbidden"));
+
+        mockMvc.perform(get("/api/platform/objects/issue/" + issueId + "/permission-explanation?action=view")
+                .header("Authorization", "Bearer " + outsiderToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.allowed").value(false))
+            .andExpect(jsonPath("$.accessState").value("forbidden"))
+            .andExpect(jsonPath("$.source").value("project_members"));
     }
 
     @Test
@@ -259,6 +273,8 @@ class ProjectControllerIntegrationTests {
                 ))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.issue.status").value("closed"))
+            .andExpect(jsonPath("$.issue.workflowReason").value("verified"))
+            .andExpect(jsonPath("$.issue.resolution").value("verified"))
             .andExpect(jsonPath("$.verifications[0].result").value("passed"))
             .andExpect(jsonPath("$.verifications[0].note").value("local verification passed"))
             .andExpect(jsonPath("$.verifications[0].environment").value("chrome-local"))
@@ -297,6 +313,186 @@ class ProjectControllerIntegrationTests {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"result\":\"passed\"}"))
             .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void issueWorkflowActionsCoverRequirementAndBugBranches() throws Exception {
+        String adminToken = login("admin", "admin123456", "project-workflow-device-" + UUID.randomUUID());
+        String projectKey = projectKey("WF");
+        String projectResponse = mockMvc.perform(post("/api/projects")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                        {
+                          "projectKey": "%s",
+                          "name": "Workflow Project",
+                          "memberIds": []
+                        }
+                        """.formatted(projectKey)
+                ))
+            .andExpect(status().isOk())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+        UUID projectId = UUID.fromString(objectMapper.readTree(projectResponse).get("id").asText());
+
+        String requirementResponse = mockMvc.perform(post("/api/projects/" + projectId + "/issues")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                        {
+                          "issueType": "requirement",
+                          "title": "Checkout redesign",
+                          "priority": "high"
+                        }
+                        """
+                ))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.availableActions[?(@.key == 'request_info')].requiresReason").value(hasItem(true)))
+            .andExpect(jsonPath("$.availableActions[?(@.key == 'delay')].requiresDueAt").value(hasItem(true)))
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+        UUID requirementId = UUID.fromString(objectMapper.readTree(requirementResponse).get("issue").get("id").asText());
+
+        mockMvc.perform(post("/api/issues/" + requirementId + "/transition")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                        {
+                          "action": "request_info",
+                          "reason": "business goal is incomplete"
+                        }
+                        """
+                ))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.issue.status").value("open"))
+            .andExpect(jsonPath("$.issue.workflowReason").value("info_required"))
+            .andExpect(jsonPath("$.issue.workflowNote").value("business goal is incomplete"));
+
+        mockMvc.perform(post("/api/issues/" + requirementId + "/transition")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                        {
+                          "action": "delay",
+                          "reason": "waiting for design review",
+                          "dueAt": "2026-07-03"
+                        }
+                        """
+                ))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.issue.status").value("in_progress"))
+            .andExpect(jsonPath("$.issue.workflowReason").value("delayed"))
+            .andExpect(jsonPath("$.issue.resolution").value("delayed"))
+            .andExpect(jsonPath("$.issue.dueAt").value("2026-07-03"));
+
+        mockMvc.perform(post("/api/issues/" + requirementId + "/transition")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                        {
+                          "action": "cancel",
+                          "reason": "campaign was canceled"
+                        }
+                        """
+                ))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.issue.status").value("closed"))
+            .andExpect(jsonPath("$.issue.resolution").value("canceled"));
+
+        String sourceBugResponse = mockMvc.perform(post("/api/projects/" + projectId + "/issues")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                        {
+                          "issueType": "bug",
+                          "title": "Primary login bug",
+                          "priority": "urgent"
+                        }
+                        """
+                ))
+            .andExpect(status().isOk())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+        UUID sourceBugId = UUID.fromString(objectMapper.readTree(sourceBugResponse).get("issue").get("id").asText());
+
+        String duplicateBugResponse = mockMvc.perform(post("/api/projects/" + projectId + "/issues")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                        {
+                          "issueType": "bug",
+                          "title": "Duplicate login bug",
+                          "priority": "medium"
+                        }
+                        """
+                ))
+            .andExpect(status().isOk())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+        UUID duplicateBugId = UUID.fromString(objectMapper.readTree(duplicateBugResponse).get("issue").get("id").asText());
+
+        mockMvc.perform(post("/api/issues/" + duplicateBugId + "/transition")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                        {
+                          "action": "mark_duplicate",
+                          "reason": "same reproduction path",
+                          "targetIssueId": "%s"
+                        }
+                        """.formatted(sourceBugId)
+                ))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.issue.status").value("closed"))
+            .andExpect(jsonPath("$.issue.workflowReason").value("duplicate"))
+            .andExpect(jsonPath("$.issue.resolution").value("duplicate"))
+            .andExpect(jsonPath("$.relations[0].target.objectId").value(sourceBugId.toString()));
+
+        String cannotReproduceBugResponse = mockMvc.perform(post("/api/projects/" + projectId + "/issues")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                        {
+                          "issueType": "bug",
+                          "title": "Cannot reproduce target",
+                          "priority": "low"
+                        }
+                        """
+                ))
+            .andExpect(status().isOk())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+        UUID cannotReproduceBugId = UUID.fromString(objectMapper.readTree(cannotReproduceBugResponse).get("issue").get("id").asText());
+
+        mockMvc.perform(post("/api/issues/" + cannotReproduceBugId + "/transition")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                        {
+                          "action": "cannot_reproduce",
+                          "reason": "not reproducible on Chrome 126"
+                        }
+                        """
+                ))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.issue.status").value("closed"))
+            .andExpect(jsonPath("$.issue.workflowReason").value("cannot_reproduce"))
+            .andExpect(jsonPath("$.issue.resolution").value("cannot_reproduce"));
     }
 
     private UUID createMember(String token, String username, String displayName) throws Exception {

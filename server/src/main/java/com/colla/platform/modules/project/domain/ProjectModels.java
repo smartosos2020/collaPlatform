@@ -57,13 +57,18 @@ public final class ProjectModels {
         String description,
         String priority,
         String status,
+        String workflowReason,
+        String workflowNote,
+        String resolution,
         UUID assigneeId,
         String assigneeName,
         UUID reporterId,
         String reporterName,
         LocalDate dueAt,
         Instant createdAt,
-        Instant updatedAt
+        Instant updatedAt,
+        Instant resolvedAt,
+        Instant closedAt
     ) {
     }
 
@@ -73,7 +78,19 @@ public final class ProjectModels {
         List<IssueAttachment> attachments,
         List<IssueActivity> activities,
         List<IssueVerification> verifications,
-        List<IssueRelation> relations
+        List<IssueRelation> relations,
+        List<IssueWorkflowAction> availableActions
+    ) {
+    }
+
+    public record IssueWorkflowAction(
+        String key,
+        String label,
+        String targetStatus,
+        boolean requiresReason,
+        boolean requiresTargetIssue,
+        boolean requiresDueAt,
+        String description
     ) {
     }
 

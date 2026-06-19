@@ -35,10 +35,15 @@ public class DocumentPlatformObjectResolver implements PlatformObjectResolver {
                 ObjectAccessState.available,
                 document.title(),
                 "文档 / v" + document.currentVersionNo(),
-                "active",
+                document.archived() ? "archived" : "active",
                 "/docs/" + objectId,
                 "colla://document/" + objectId,
-                Map.of("versionNo", document.currentVersionNo(), "permissionLevel", document.permissionLevel())
+                Map.of(
+                    "versionNo", document.currentVersionNo(),
+                    "permissionLevel", document.permissionLevel(),
+                    "docType", document.docType(),
+                    "archived", document.archived()
+                )
             ));
         } catch (ResponseStatusException exception) {
             if (exception.getStatusCode().equals(HttpStatus.FORBIDDEN)) {

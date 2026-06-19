@@ -2,7 +2,10 @@ package com.colla.platform.modules.doc.domain;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+
+import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectSummary;
 
 public final class DocumentModels {
     private DocumentModels() {
@@ -20,7 +23,27 @@ public final class DocumentModels {
         Instant createdAt,
         UUID updatedBy,
         String updatedByName,
-        Instant updatedAt
+        Instant updatedAt,
+        int sortOrder,
+        boolean archived
+    ) {
+    }
+
+    public record DocumentTreeNode(
+        DocumentSummary document,
+        String path,
+        int depth,
+        int childCount,
+        boolean hasChildren,
+        List<DocumentTreeNode> children
+    ) {
+    }
+
+    public record DocumentPathItem(
+        UUID id,
+        String title,
+        String docType,
+        String permissionLevel
     ) {
     }
 
@@ -41,7 +64,9 @@ public final class DocumentModels {
         String content,
         int sortOrder,
         Instant createdAt,
-        Instant updatedAt
+        Instant updatedAt,
+        PlatformObjectSummary embedSummary,
+        Map<String, Object> metadata
     ) {
     }
 

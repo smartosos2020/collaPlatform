@@ -7,6 +7,7 @@ import com.colla.platform.modules.platform.domain.PlatformModels.ParsedInternalL
 import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectNavigation;
 import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectSummary;
 import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectTypeRule;
+import com.colla.platform.modules.permission.domain.PermissionModels.PermissionExplanation;
 import com.colla.platform.shared.auth.CurrentUser;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -51,6 +52,16 @@ public class PlatformObjectController {
     @GetMapping("/objects/{type}/{id}/navigation")
     public PlatformObjectNavigation navigation(@PathVariable String type, @PathVariable UUID id, Authentication authentication) {
         return platformObjectService.navigation(currentUser(authentication), type, id);
+    }
+
+    @GetMapping("/objects/{type}/{id}/permission-explanation")
+    public PermissionExplanation permissionExplanation(
+        @PathVariable String type,
+        @PathVariable UUID id,
+        @RequestParam(defaultValue = "view") String action,
+        Authentication authentication
+    ) {
+        return platformObjectService.explainPermission(currentUser(authentication), type, id, action);
     }
 
     @PostMapping("/objects/{type}/{id}/access")

@@ -20,14 +20,20 @@ public class JdbcSearchRepository implements SearchRepository {
 
     @Override
     public List<SearchResult> search(UUID workspaceId, UUID userId, String query, int limit) {
+        String likeQuery = "%" + query.toLowerCase() + "%";
         return jdbcTemplate.query(
             """
                 select s.object_type, s.object_id, s.title, s.excerpt, s.web_path, s.deep_link,
-                       ts_rank_cd(to_tsvector('simple', s.search_text), plainto_tsquery('simple', ?)) score,
+                       ts_rank_cd(to_tsvector('simple', s.search_text), plainto_tsquery('simple', ?))
+                         + case when lower(s.search_text) like ? or lower(s.title) like ? then 0.25 else 0 end score,
                        s.updated_at
                 from search_index_documents s
                 where s.workspace_id = ?
-                  and to_tsvector('simple', s.search_text) @@ plainto_tsquery('simple', ?)
+                  and (
+                      to_tsvector('simple', s.search_text) @@ plainto_tsquery('simple', ?)
+                      or lower(s.search_text) like ?
+                      or lower(s.title) like ?
+                  )
                   and (
                       (
                           s.object_type = 'issue'
@@ -45,7 +51,27 @@ public class JdbcSearchRepository implements SearchRepository {
                               from documents d
                               left join document_permissions dp on dp.document_id = d.id and dp.user_id = ? and dp.revoked_at is null
                               where d.workspace_id = s.workspace_id and d.id = s.object_id and d.deleted_at is null
+                                and d.archived_at is null
                                 and (d.created_by = ? or dp.user_id is not null)
+                          )
+                      )
+                      or (
+                          s.object_type = 'base'
+                          and exists (
+                              select 1
+                              from bases b
+                              join base_members bm on bm.base_id = b.id and bm.user_id = ? and bm.revoked_at is null
+                              where b.workspace_id = s.workspace_id and b.id = s.object_id and b.archived_at is null
+                          )
+                      )
+                      or (
+                          s.object_type = 'base_table'
+                          and exists (
+                              select 1
+                              from base_tables bt
+                              join bases b on b.id = bt.base_id and b.archived_at is null
+                              join base_members bm on bm.base_id = b.id and bm.user_id = ? and bm.revoked_at is null
+                              where bt.workspace_id = s.workspace_id and bt.id = s.object_id and bt.archived_at is null
                           )
                       )
                       or (
@@ -75,8 +101,14 @@ public class JdbcSearchRepository implements SearchRepository {
                 """,
             this::mapResult,
             query,
+            likeQuery,
+            likeQuery,
             workspaceId,
             query,
+            likeQuery,
+            likeQuery,
+            userId,
+            userId,
             userId,
             userId,
             userId,
@@ -92,6 +124,8 @@ public class JdbcSearchRepository implements SearchRepository {
         jdbcTemplate.update("delete from search_index_documents where workspace_id = ?", workspaceId);
         indexIssues(workspaceId);
         indexDocuments(workspaceId);
+        indexBases(workspaceId);
+        indexBaseTables(workspaceId);
         indexBaseRecords(workspaceId);
         indexMessages(workspaceId);
     }
@@ -142,7 +176,7 @@ public class JdbcSearchRepository implements SearchRepository {
                        d.updated_at,
                        now()
                 from documents d
-                where d.workspace_id = ? and d.deleted_at is null
+                where d.workspace_id = ? and d.deleted_at is null and d.archived_at is null
                 on conflict (workspace_id, object_type, object_id)
                 do update set title = excluded.title,
                               excerpt = excluded.excerpt,
@@ -178,6 +212,67 @@ public class JdbcSearchRepository implements SearchRepository {
                 join base_fields bf on bf.id = brv.field_id and bf.archived_at is null
                 where br.workspace_id = ? and br.deleted_at is null
                 group by br.workspace_id, br.id, br.record_no, b.id, bt.id, br.updated_at
+                on conflict (workspace_id, object_type, object_id)
+                do update set title = excluded.title,
+                              excerpt = excluded.excerpt,
+                              web_path = excluded.web_path,
+                              deep_link = excluded.deep_link,
+                              search_text = excluded.search_text,
+                              updated_at = excluded.updated_at,
+                              indexed_at = now()
+                """,
+            workspaceId
+        );
+    }
+
+    private void indexBases(UUID workspaceId) {
+        jdbcTemplate.update(
+            """
+                insert into search_index_documents
+                    (workspace_id, object_type, object_id, title, excerpt, web_path, deep_link, search_text, updated_at, indexed_at)
+                select b.workspace_id,
+                       'base',
+                       b.id,
+                       b.name,
+                       left(coalesce(b.description, b.name), 240),
+                       '/bases/' || b.id::text,
+                       'colla://base/' || b.id::text,
+                       coalesce(b.name, '') || ' ' || coalesce(b.description, ''),
+                       b.updated_at,
+                       now()
+                from bases b
+                where b.workspace_id = ? and b.archived_at is null
+                on conflict (workspace_id, object_type, object_id)
+                do update set title = excluded.title,
+                              excerpt = excluded.excerpt,
+                              web_path = excluded.web_path,
+                              deep_link = excluded.deep_link,
+                              search_text = excluded.search_text,
+                              updated_at = excluded.updated_at,
+                              indexed_at = now()
+                """,
+            workspaceId
+        );
+    }
+
+    private void indexBaseTables(UUID workspaceId) {
+        jdbcTemplate.update(
+            """
+                insert into search_index_documents
+                    (workspace_id, object_type, object_id, title, excerpt, web_path, deep_link, search_text, updated_at, indexed_at)
+                select bt.workspace_id,
+                       'base_table',
+                       bt.id,
+                       b.name || ' / ' || bt.name,
+                       left(bt.name, 240),
+                       '/bases/' || b.id::text || '/tables/' || bt.id::text,
+                       'colla://base_table/' || bt.id::text,
+                       coalesce(b.name, '') || ' ' || coalesce(bt.name, ''),
+                       bt.updated_at,
+                       now()
+                from base_tables bt
+                join bases b on b.id = bt.base_id and b.archived_at is null
+                where bt.workspace_id = ? and bt.archived_at is null
                 on conflict (workspace_id, object_type, object_id)
                 do update set title = excluded.title,
                               excerpt = excluded.excerpt,
@@ -232,7 +327,8 @@ public class JdbcSearchRepository implements SearchRepository {
             rs.getString("deep_link"),
             rs.getDouble("score"),
             rs.getTimestamp("updated_at").toInstant(),
-            "available"
+            "available",
+            "当前用户具备该对象的查看权限。"
         );
     }
 }

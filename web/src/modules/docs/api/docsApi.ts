@@ -1,10 +1,11 @@
 import { apiGet, apiPatch, apiPost } from '../../../shared/api/httpClient'
+import type { PlatformObjectSummary } from '../../platform/api/platformObjectsApi'
 
 export type DocumentSummary = {
   id: string
   parentId?: string | null
   title: string
-  docType: string
+  docType: 'markdown' | 'folder' | 'space'
   currentVersionNo: number
   permissionLevel: 'view' | 'edit' | 'manage'
   createdBy: string
@@ -13,6 +14,24 @@ export type DocumentSummary = {
   updatedBy: string
   updatedByName: string
   updatedAt: string
+  sortOrder: number
+  archived: boolean
+}
+
+export type DocumentTreeNode = {
+  document: DocumentSummary
+  path: string
+  depth: number
+  childCount: number
+  hasChildren: boolean
+  children: DocumentTreeNode[]
+}
+
+export type DocumentPathItem = {
+  id: string
+  title: string
+  docType: DocumentSummary['docType']
+  permissionLevel: DocumentSummary['permissionLevel']
 }
 
 export type DocumentRelation = {
@@ -52,11 +71,26 @@ export type DocumentComment = {
 export type DocumentBlock = {
   id: string
   documentId: string
-  blockType: 'paragraph' | 'heading' | 'list' | 'task' | 'quote' | 'code'
+  blockType:
+    | 'paragraph'
+    | 'heading'
+    | 'list'
+    | 'task'
+    | 'quote'
+    | 'code'
+    | 'table'
+    | 'embed'
+    | 'base_view'
+    | 'issue_embed'
+    | 'message_embed'
+    | 'file_embed'
+    | 'link'
   content: string
   sortOrder: number
   createdAt: string
   updatedAt: string
+  embedSummary?: PlatformObjectSummary | null
+  metadata?: Record<string, unknown>
 }
 
 export type DocumentBlockDraft = {
@@ -99,16 +133,37 @@ export type DocumentVersionDiff = {
   lines: DocumentDiffLine[]
 }
 
-export function listDocuments() {
-  return apiGet<DocumentSummary[]>('/docs')
+export function listDocuments(options: { includeArchived?: boolean } = {}) {
+  const params = new URLSearchParams()
+  if (options.includeArchived) {
+    params.set('includeArchived', 'true')
+  }
+  return apiGet<DocumentSummary[]>(`/docs${params.size ? `?${params}` : ''}`)
 }
 
-export function createDocument(request: { parentId?: string | null; title: string; content?: string }) {
+export function listDocumentTree(options: { includeArchived?: boolean } = {}) {
+  const params = new URLSearchParams()
+  if (options.includeArchived) {
+    params.set('includeArchived', 'true')
+  }
+  return apiGet<DocumentTreeNode[]>(`/docs/tree${params.size ? `?${params}` : ''}`)
+}
+
+export function createDocument(request: {
+  parentId?: string | null
+  title: string
+  docType?: DocumentSummary['docType']
+  content?: string
+}) {
   return apiPost<DocumentDetail>('/docs', request)
 }
 
 export function getDocument(documentId: string) {
   return apiGet<DocumentDetail>(`/docs/${documentId}`)
+}
+
+export function getDocumentPath(documentId: string) {
+  return apiGet<DocumentPathItem[]>(`/docs/${documentId}/path`)
 }
 
 export function saveDocument(documentId: string, request: { baseVersionNo: number; title: string; content: string }) {
@@ -126,8 +181,16 @@ export function saveDocumentBlocks(
   return apiPatch<DocumentDetail>(`/docs/${documentId}/blocks`, request)
 }
 
-export function moveDocument(documentId: string, parentId?: string | null) {
-  return apiPost<DocumentDetail>(`/docs/${documentId}/move`, { parentId })
+export function moveDocument(documentId: string, request: { parentId?: string | null; sortOrder?: number }) {
+  return apiPost<DocumentDetail>(`/docs/${documentId}/move`, request)
+}
+
+export function archiveDocument(documentId: string) {
+  return apiPost<DocumentDetail>(`/docs/${documentId}/archive`)
+}
+
+export function restoreDocument(documentId: string) {
+  return apiPost<DocumentDetail>(`/docs/${documentId}/restore`)
 }
 
 export function listDocumentVersions(documentId: string) {

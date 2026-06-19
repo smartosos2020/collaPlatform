@@ -35,6 +35,9 @@ export type IssueSummary = {
   description?: string | null
   priority: 'low' | 'medium' | 'high' | 'urgent'
   status: 'open' | 'in_progress' | 'resolved' | 'closed'
+  workflowReason?: string | null
+  workflowNote?: string | null
+  resolution?: string | null
   assigneeId?: string | null
   assigneeName?: string | null
   reporterId: string
@@ -42,6 +45,8 @@ export type IssueSummary = {
   dueAt?: string | null
   createdAt: string
   updatedAt: string
+  resolvedAt?: string | null
+  closedAt?: string | null
 }
 
 export type IssueComment = {
@@ -109,6 +114,16 @@ export type IssueRelation = {
   target: PlatformObjectSummary
 }
 
+export type IssueWorkflowAction = {
+  key: string
+  label: string
+  targetStatus: IssueSummary['status']
+  requiresReason: boolean
+  requiresTargetIssue: boolean
+  requiresDueAt: boolean
+  description: string
+}
+
 export type IssueDetail = {
   issue: IssueSummary
   comments: IssueComment[]
@@ -116,6 +131,7 @@ export type IssueDetail = {
   activities: IssueActivity[]
   verifications: IssueVerification[]
   relations: IssueRelation[]
+  availableActions: IssueWorkflowAction[]
 }
 
 export type CountBucket = {
@@ -205,8 +221,16 @@ export function updateIssue(
   return apiPatch<IssueDetail>(`/issues/${issueId}`, request)
 }
 
-export function transitionIssue(issueId: string, status: string) {
-  return apiPost<IssueDetail>(`/issues/${issueId}/transition`, { status })
+export type TransitionIssueRequest = {
+  action?: string
+  status?: string
+  reason?: string
+  targetIssueId?: string
+  dueAt?: string
+}
+
+export function transitionIssue(issueId: string, request: TransitionIssueRequest) {
+  return apiPost<IssueDetail>(`/issues/${issueId}/transition`, request)
 }
 
 export function addIssueComment(issueId: string, content: string) {

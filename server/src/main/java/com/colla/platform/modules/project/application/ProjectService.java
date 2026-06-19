@@ -4,6 +4,7 @@ import com.colla.platform.modules.audit.application.AuditService;
 import com.colla.platform.modules.event.infrastructure.DomainEventRepository;
 import com.colla.platform.modules.file.infrastructure.FileRepository;
 import com.colla.platform.modules.im.application.ImService;
+import com.colla.platform.modules.im.domain.ImModels.MessageSummary;
 import com.colla.platform.modules.im.infrastructure.ImRepository;
 import com.colla.platform.modules.platform.application.PlatformObjectResolverRegistry;
 import com.colla.platform.modules.platform.domain.PlatformModels.ObjectAccessState;
@@ -15,6 +16,7 @@ import com.colla.platform.modules.project.domain.ProjectModels.IssueComment;
 import com.colla.platform.modules.project.domain.ProjectModels.IssueDetail;
 import com.colla.platform.modules.project.domain.ProjectModels.IssueRelation;
 import com.colla.platform.modules.project.domain.ProjectModels.IssueSummary;
+import com.colla.platform.modules.project.domain.ProjectModels.IssueWorkflowAction;
 import com.colla.platform.modules.project.domain.ProjectModels.ProjectDetail;
 import com.colla.platform.modules.project.domain.ProjectModels.ProjectStats;
 import com.colla.platform.modules.project.domain.ProjectModels.ProjectSummary;
@@ -22,6 +24,7 @@ import com.colla.platform.modules.project.infrastructure.ProjectRepository;
 import com.colla.platform.shared.auth.CurrentUser;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -38,6 +41,208 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class ProjectService {
     private static final Pattern MENTION_PATTERN = Pattern.compile("(?<!\\w)@([a-zA-Z0-9_.-]{2,64})");
+    private static final Set<String> ALL_ISSUE_TYPES = Set.of("requirement", "task", "bug");
+    private static final Set<String> REQUIREMENT_TYPES = Set.of("requirement");
+    private static final Set<String> BUG_TYPES = Set.of("bug");
+    private static final List<WorkflowActionDefinition> WORKFLOW_ACTIONS = List.of(
+        new WorkflowActionDefinition(
+            "start_progress",
+            "开始处理",
+            "in_progress",
+            ALL_ISSUE_TYPES,
+            Set.of("open"),
+            false,
+            false,
+            false,
+            "started",
+            null,
+            "进入处理中"
+        ),
+        new WorkflowActionDefinition(
+            "return_open",
+            "退回待处理",
+            "open",
+            ALL_ISSUE_TYPES,
+            Set.of("in_progress", "resolved", "closed"),
+            false,
+            false,
+            false,
+            "reopened",
+            null,
+            "重新打开或退回待处理"
+        ),
+        new WorkflowActionDefinition(
+            "resolve",
+            "标记已解决",
+            "resolved",
+            ALL_ISSUE_TYPES,
+            Set.of("open", "in_progress"),
+            false,
+            false,
+            false,
+            "resolved",
+            "fixed",
+            "实现或修复完成，等待确认"
+        ),
+        new WorkflowActionDefinition(
+            "close",
+            "关闭",
+            "closed",
+            ALL_ISSUE_TYPES,
+            Set.of("open", "in_progress", "resolved"),
+            false,
+            false,
+            false,
+            "closed",
+            "done",
+            "无需继续处理或已确认完成"
+        ),
+        new WorkflowActionDefinition(
+            "rework",
+            "重新处理",
+            "in_progress",
+            ALL_ISSUE_TYPES,
+            Set.of("resolved"),
+            false,
+            false,
+            false,
+            "rework",
+            null,
+            "从已解决退回继续处理"
+        ),
+        new WorkflowActionDefinition(
+            "request_info",
+            "信息不足",
+            "open",
+            Set.of("requirement", "bug"),
+            Set.of("open", "in_progress"),
+            true,
+            false,
+            false,
+            "info_required",
+            "info_required",
+            "打回补充信息"
+        ),
+        new WorkflowActionDefinition(
+            "scope_change",
+            "需求变更",
+            "in_progress",
+            REQUIREMENT_TYPES,
+            Set.of("open", "in_progress", "resolved"),
+            true,
+            false,
+            false,
+            "scope_changed",
+            "scope_changed",
+            "记录需求变更影响"
+        ),
+        new WorkflowActionDefinition(
+            "delay",
+            "延期",
+            "in_progress",
+            REQUIREMENT_TYPES,
+            Set.of("open", "in_progress", "resolved"),
+            true,
+            false,
+            true,
+            "delayed",
+            "delayed",
+            "记录延期原因并更新截止日期"
+        ),
+        new WorkflowActionDefinition(
+            "cancel",
+            "取消需求",
+            "closed",
+            REQUIREMENT_TYPES,
+            Set.of("open", "in_progress", "resolved"),
+            true,
+            false,
+            false,
+            "canceled",
+            "canceled",
+            "取消需求并关闭"
+        ),
+        new WorkflowActionDefinition(
+            "mark_duplicate",
+            "重复 BUG",
+            "closed",
+            BUG_TYPES,
+            Set.of("open", "in_progress", "resolved"),
+            true,
+            true,
+            false,
+            "duplicate",
+            "duplicate",
+            "关联已有 BUG 后关闭"
+        ),
+        new WorkflowActionDefinition(
+            "cannot_reproduce",
+            "无法复现",
+            "closed",
+            BUG_TYPES,
+            Set.of("open", "in_progress", "resolved"),
+            true,
+            false,
+            false,
+            "cannot_reproduce",
+            "cannot_reproduce",
+            "记录环境和结论后关闭"
+        ),
+        new WorkflowActionDefinition(
+            "mark_fixed",
+            "提交修复",
+            "resolved",
+            BUG_TYPES,
+            Set.of("open", "in_progress"),
+            false,
+            false,
+            false,
+            "fixed",
+            "fixed",
+            "开发提交修复，等待验证"
+        ),
+        new WorkflowActionDefinition(
+            "verify_failed",
+            "验证失败",
+            "in_progress",
+            BUG_TYPES,
+            Set.of("resolved"),
+            true,
+            false,
+            false,
+            "verification_failed",
+            "verification_failed",
+            "验证失败并打回开发"
+        ),
+        new WorkflowActionDefinition(
+            "verify_passed",
+            "验证通过",
+            "closed",
+            BUG_TYPES,
+            Set.of("resolved"),
+            false,
+            false,
+            false,
+            "verified",
+            "verified",
+            "验证通过并关闭"
+        )
+    );
+
+    private record WorkflowActionDefinition(
+        String key,
+        String label,
+        String targetStatus,
+        Set<String> issueTypes,
+        Set<String> fromStatuses,
+        boolean requiresReason,
+        boolean requiresTargetIssue,
+        boolean requiresDueAt,
+        String workflowReason,
+        String resolution,
+        String description
+    ) {
+    }
 
     private final ProjectRepository projectRepository;
     private final ImRepository imRepository;
@@ -228,8 +433,72 @@ public class ProjectService {
             projectRepository.listAttachments(currentUser.workspaceId(), issueId),
             projectRepository.listActivities(currentUser.workspaceId(), issueId),
             projectRepository.listVerifications(currentUser.workspaceId(), issueId),
-            hydrateRelations(currentUser, projectRepository.listRelations(currentUser.workspaceId(), issueId))
+            hydrateRelations(currentUser, projectRepository.listRelations(currentUser.workspaceId(), issueId)),
+            availableWorkflowActions(issue)
         );
+    }
+
+    @Transactional
+    public IssueDetail createIssueFromMessage(
+        CurrentUser currentUser,
+        UUID projectId,
+        UUID conversationId,
+        UUID messageId,
+        String issueType,
+        String title,
+        String description,
+        String priority,
+        UUID assigneeId,
+        LocalDate dueAt
+    ) {
+        if (projectId == null || conversationId == null || messageId == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Project and source message are required");
+        }
+        MessageSummary sourceMessage = imRepository.findMessageForUser(currentUser.workspaceId(), messageId, currentUser.id())
+            .filter(message -> conversationId.equals(message.conversationId()))
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Source message not found"));
+        if (sourceMessage.revokedAt() != null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Revoked message cannot be converted");
+        }
+
+        String normalizedType = normalizeIssueType(issueType);
+        IssueDetail created = createIssue(
+            currentUser,
+            projectId,
+            normalizedType,
+            title == null || title.isBlank() ? defaultIssueTitleFromMessage(sourceMessage) : title.trim(),
+            messageIssueDescription(description, conversationId, sourceMessage),
+            priority,
+            assigneeId,
+            dueAt
+        );
+        UUID issueId = created.issue().id();
+        projectRepository.addRelation(currentUser.workspaceId(), issueId, "message", messageId, currentUser.id());
+        projectRepository.addActivity(currentUser.workspaceId(), issueId, currentUser.id(), "created.from_message", null, messageId.toString());
+        appendIssueEvent(
+            currentUser,
+            "issue.created.from_message",
+            issueId,
+            Map.of(
+                "issueId", issueId.toString(),
+                "projectId", projectId.toString(),
+                "conversationId", conversationId.toString(),
+                "messageId", messageId.toString()
+            )
+        );
+        auditService.log(
+            currentUser,
+            "issue.created.from_message",
+            "issue",
+            issueId,
+            Map.of("projectId", projectId.toString(), "conversationId", conversationId.toString(), "messageId", messageId.toString())
+        );
+        postProjectMessage(
+            currentUser,
+            conversationId,
+            "已将消息转为 " + label(normalizedType) + " " + created.issue().issueKey() + " /issues/" + issueId
+        );
+        return getIssue(currentUser, issueId);
     }
 
     @Transactional
@@ -268,25 +537,90 @@ public class ProjectService {
     }
 
     @Transactional
-    public IssueDetail transitionIssue(CurrentUser currentUser, UUID issueId, String targetStatus) {
+    public IssueDetail transitionIssue(
+        CurrentUser currentUser,
+        UUID issueId,
+        String action,
+        String targetStatus,
+        String reason,
+        UUID targetIssueId,
+        LocalDate dueAt
+    ) {
         IssueSummary issue = requireIssueEditor(currentUser, issueId);
-        String next = normalizeStatus(targetStatus);
-        if (!allowedNextStatuses(issue.status()).contains(next)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Illegal issue transition");
+        WorkflowActionDefinition workflowAction = resolveWorkflowAction(issue, action, targetStatus);
+        String normalizedReason = reason == null ? "" : reason.trim();
+        if (workflowAction.requiresReason() && normalizedReason.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Transition reason is required");
         }
-        projectRepository.transitionIssue(currentUser.workspaceId(), issueId, next, currentUser.id());
-        projectRepository.addActivity(currentUser.workspaceId(), issueId, currentUser.id(), "transitioned", issue.status(), next);
-        appendIssueEvent(currentUser, "issue.transitioned", issueId, Map.of("issueId", issueId.toString(), "from", issue.status(), "to", next));
+        if (workflowAction.requiresDueAt() && dueAt == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Due date is required");
+        }
+        if (workflowAction.requiresTargetIssue()) {
+            if (targetIssueId == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Target issue is required");
+            }
+            if (issueId.equals(targetIssueId)) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Issue cannot relate to itself");
+            }
+            IssueSummary targetIssue = requireIssueAccess(currentUser, targetIssueId);
+            if (!"bug".equals(targetIssue.issueType())) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Duplicate target must be a bug");
+            }
+        }
+        projectRepository.transitionIssue(
+            currentUser.workspaceId(),
+            issueId,
+            workflowAction.targetStatus(),
+            workflowAction.workflowReason(),
+            normalizedReason,
+            workflowAction.resolution(),
+            dueAt,
+            currentUser.id()
+        );
+        if (workflowAction.requiresTargetIssue()) {
+            projectRepository.addRelation(currentUser.workspaceId(), issueId, "issue", targetIssueId, currentUser.id());
+        }
+        projectRepository.addActivity(
+            currentUser.workspaceId(),
+            issueId,
+            currentUser.id(),
+            "workflow." + workflowAction.key(),
+            issue.status(),
+            workflowAction.targetStatus()
+        );
+        Map<String, Object> eventPayload = new LinkedHashMap<>();
+        eventPayload.put("issueId", issueId.toString());
+        eventPayload.put("action", workflowAction.key());
+        eventPayload.put("from", issue.status());
+        eventPayload.put("to", workflowAction.targetStatus());
+        eventPayload.put("reason", normalizedReason);
+        if (targetIssueId != null) {
+            eventPayload.put("targetIssueId", targetIssueId.toString());
+        }
+        if (dueAt != null) {
+            eventPayload.put("dueAt", dueAt.toString());
+        }
+        appendIssueEvent(currentUser, "issue.workflow." + workflowAction.key(), issueId, eventPayload);
         notifyIssueParticipants(
             currentUser,
             issue,
-            "issue.transitioned",
-            issue.issueKey() + " 状态已变更为 " + next,
-            issue.status() + " -> " + next
+            "issue.workflow." + workflowAction.key(),
+            issue.issueKey() + " 执行了流程动作：" + workflowAction.label(),
+            workflowAction.description() + (normalizedReason.isBlank() ? "" : "：" + normalizedReason)
         );
         ProjectSummary project = projectRepository.findProjectById(currentUser.workspaceId(), issue.projectId()).orElseThrow();
-        postProjectMessage(currentUser, project.conversationId(), "流转了 " + issue.issueKey() + "：" + issue.status() + " -> " + next + " /issues/" + issueId);
-        auditService.log(currentUser, "issue.transitioned", "issue", issueId, Map.of("from", issue.status(), "to", next));
+        postProjectMessage(
+            currentUser,
+            project.conversationId(),
+            "更新了 " + issue.issueKey() + "：" + workflowAction.label() + " /issues/" + issueId
+        );
+        Map<String, Object> auditPayload = new LinkedHashMap<>();
+        auditPayload.put("action", workflowAction.key());
+        auditPayload.put("from", issue.status());
+        auditPayload.put("to", workflowAction.targetStatus());
+        auditPayload.put("reason", normalizedReason);
+        auditPayload.put("resolution", workflowAction.resolution());
+        auditService.log(currentUser, "issue.workflow." + workflowAction.key(), "issue", issueId, auditPayload);
         return getIssue(currentUser, issueId);
     }
 
@@ -355,6 +689,9 @@ public class ProjectService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Only bug issues can be verified");
         }
         String normalizedResult = normalizeVerificationResult(result);
+        if (List.of("passed", "failed").contains(normalizedResult) && !"resolved".equals(issue.status())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Bug must be resolved before pass or fail verification");
+        }
         String normalizedNote = note == null ? "" : note.trim();
         String normalizedEnvironment = trimToNull(environment);
         String normalizedSteps = trimToNull(reproductionSteps);
@@ -371,11 +708,20 @@ public class ProjectService {
         );
         projectRepository.addActivity(currentUser.workspaceId(), issueId, currentUser.id(), "verified", null, normalizedResult);
         if ("passed".equals(normalizedResult) && "resolved".equals(issue.status())) {
-            projectRepository.transitionIssue(currentUser.workspaceId(), issueId, "closed", currentUser.id());
-            projectRepository.addActivity(currentUser.workspaceId(), issueId, currentUser.id(), "transitioned", "resolved", "closed");
+            projectRepository.transitionIssue(currentUser.workspaceId(), issueId, "closed", "verified", normalizedNote, "verified", null, currentUser.id());
+            projectRepository.addActivity(currentUser.workspaceId(), issueId, currentUser.id(), "workflow.verify_passed", "resolved", "closed");
         } else if ("failed".equals(normalizedResult) && "resolved".equals(issue.status())) {
-            projectRepository.transitionIssue(currentUser.workspaceId(), issueId, "in_progress", currentUser.id());
-            projectRepository.addActivity(currentUser.workspaceId(), issueId, currentUser.id(), "transitioned", "resolved", "in_progress");
+            projectRepository.transitionIssue(
+                currentUser.workspaceId(),
+                issueId,
+                "in_progress",
+                "verification_failed",
+                normalizedNote,
+                "verification_failed",
+                null,
+                currentUser.id()
+            );
+            projectRepository.addActivity(currentUser.workspaceId(), issueId, currentUser.id(), "workflow.verify_failed", "resolved", "in_progress");
         }
         appendIssueEvent(
             currentUser,
@@ -624,14 +970,80 @@ public class ProjectService {
         return value;
     }
 
-    private List<String> allowedNextStatuses(String current) {
-        return switch (current) {
-            case "open" -> List.of("in_progress", "resolved", "closed");
-            case "in_progress" -> List.of("open", "resolved", "closed");
-            case "resolved" -> List.of("in_progress", "closed");
-            case "closed" -> List.of("open");
-            default -> List.of();
-        };
+    private String defaultIssueTitleFromMessage(MessageSummary message) {
+        String content = message.content() == null ? "" : message.content().replaceAll("\\s+", " ").trim();
+        if (content.isBlank()) {
+            return "来自 IM 的事项";
+        }
+        return content.length() <= 80 ? content : content.substring(0, 80);
+    }
+
+    private String messageIssueDescription(String description, UUID conversationId, MessageSummary message) {
+        String messageLink = "/im?conversationId=" + conversationId + "&messageId=" + message.id();
+        String sourceBlock = "来源消息：" + messageLink + "\n\n" + message.senderName() + "：" + message.content();
+        if (description == null || description.isBlank()) {
+            return sourceBlock;
+        }
+        return description.trim() + "\n\n" + sourceBlock;
+    }
+
+    private List<IssueWorkflowAction> availableWorkflowActions(IssueSummary issue) {
+        return WORKFLOW_ACTIONS.stream()
+            .filter(action -> action.issueTypes().contains(issue.issueType()))
+            .filter(action -> action.fromStatuses().contains(issue.status()))
+            .map(action -> new IssueWorkflowAction(
+                action.key(),
+                action.label(),
+                action.targetStatus(),
+                action.requiresReason(),
+                action.requiresTargetIssue(),
+                action.requiresDueAt(),
+                action.description()
+            ))
+            .toList();
+    }
+
+    private WorkflowActionDefinition resolveWorkflowAction(IssueSummary issue, String action, String targetStatus) {
+        String actionKey = trimToNull(action);
+        if (actionKey == null) {
+            String next = normalizeStatus(targetStatus);
+            actionKey = defaultActionKey(issue, next);
+        }
+        String normalizedActionKey = actionKey.toLowerCase(Locale.ROOT);
+        return WORKFLOW_ACTIONS.stream()
+            .filter(candidate -> candidate.key().equals(normalizedActionKey))
+            .filter(candidate -> candidate.issueTypes().contains(issue.issueType()))
+            .filter(candidate -> candidate.fromStatuses().contains(issue.status()))
+            .findFirst()
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Illegal issue workflow action"));
+    }
+
+    private String defaultActionKey(IssueSummary issue, String targetStatus) {
+        if (issue.status().equals(targetStatus)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Target status must change when action is omitted");
+        }
+        if ("bug".equals(issue.issueType()) && "resolved".equals(targetStatus)) {
+            return "mark_fixed";
+        }
+        if ("bug".equals(issue.issueType()) && "resolved".equals(issue.status()) && "closed".equals(targetStatus)) {
+            return "verify_passed";
+        }
+        if ("in_progress".equals(targetStatus) && "resolved".equals(issue.status())) {
+            return "rework";
+        }
+        if ("in_progress".equals(targetStatus)) {
+            return "start_progress";
+        }
+        if ("resolved".equals(targetStatus)) {
+            return "resolve";
+        }
+        if ("closed".equals(targetStatus)) {
+            return "close";
+        }
+        if ("open".equals(targetStatus)) {
+            return "return_open";
+        }
+        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Illegal issue transition");
     }
 
     private String label(String issueType) {

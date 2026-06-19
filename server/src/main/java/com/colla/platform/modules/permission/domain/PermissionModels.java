@@ -15,4 +15,17 @@ public final class PermissionModels {
         String reason
     ) {
     }
+
+    public record PermissionExplanation(
+        String objectType,
+        UUID objectId,
+        String action,
+        boolean allowed,
+        String accessState,
+        String reason,
+        String currentLevel,
+        String requiredLevel,
+        String source
+    ) {
+    }
 }

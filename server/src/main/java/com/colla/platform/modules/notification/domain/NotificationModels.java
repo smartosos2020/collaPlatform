@@ -10,6 +10,7 @@ public final class NotificationModels {
     public record NotificationItem(
         UUID id,
         String notificationType,
+        String sourceType,
         String title,
         String body,
         String targetType,
@@ -21,5 +22,8 @@ public final class NotificationModels {
     }
 
     public record UnreadCount(long count) {
+    }
+
+    public record NotificationBatchResult(int changed) {
     }
 }

@@ -1,6 +1,6 @@
 import { SearchOutlined } from '@ant-design/icons'
 import { useQuery } from '@tanstack/react-query'
-import { Button, Empty, Input, Space, Tag, Typography } from 'antd'
+import { Alert, Button, Empty, Input, Space, Tag, Typography } from 'antd'
 import { useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
@@ -35,7 +35,7 @@ export function SearchPage() {
       <Space className="page-toolbar">
         <div>
           <Typography.Title level={3}>全局搜索</Typography.Title>
-          <Typography.Text type="secondary">搜索事项、文档、表格记录和消息</Typography.Text>
+          <Typography.Text type="secondary">搜索事项、文档、Base、数据表、表格记录和消息</Typography.Text>
         </div>
         <Input.Search
           className="global-search-page-input"
@@ -64,13 +64,17 @@ export function SearchPage() {
                     <div>
                       <Space>
                         <Tag>{objectTypeText[item.objectType] ?? item.objectType}</Tag>
-                        <Typography.Text strong>{item.title}</Typography.Text>
+                        {item.accessState === 'available' ? <Tag color="green">可访问</Tag> : <Tag color="orange">{item.accessState}</Tag>}
+                        <Typography.Text strong>{item.title || '不可访问对象'}</Typography.Text>
                       </Space>
-                      <Typography.Paragraph type="secondary">{item.excerpt || item.webPath}</Typography.Paragraph>
+                      <Typography.Paragraph type="secondary">{item.excerpt || item.permissionExplanation || item.webPath}</Typography.Paragraph>
+                      {item.permissionExplanation ? <Alert type="info" showIcon message={item.permissionExplanation} /> : null}
                     </div>
-                    <Button type="link" onClick={() => navigate(resolveNavigationPath(item) ?? item.webPath)}>
-                      打开
-                    </Button>
+                    {item.accessState === 'available' && (item.webPath || item.deepLink) ? (
+                      <Button type="link" onClick={() => navigate(resolveNavigationPath(item) ?? item.webPath ?? '/')}>
+                        打开
+                      </Button>
+                    ) : null}
                   </div>
                 ))}
                 {items.length === 0 && !searchQuery.isLoading ? <Empty description="暂无结果" /> : null}

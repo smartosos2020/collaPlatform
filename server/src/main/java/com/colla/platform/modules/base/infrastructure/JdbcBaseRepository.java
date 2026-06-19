@@ -5,6 +5,9 @@ import com.colla.platform.modules.base.domain.BaseModels.BaseField;
 import com.colla.platform.modules.base.domain.BaseModels.BaseFilter;
 import com.colla.platform.modules.base.domain.BaseModels.BaseMember;
 import com.colla.platform.modules.base.domain.BaseModels.BaseRecord;
+import com.colla.platform.modules.base.domain.BaseModels.BaseRecordActivity;
+import com.colla.platform.modules.base.domain.BaseModels.BaseRecordComment;
+import com.colla.platform.modules.base.domain.BaseModels.BaseRecordRelationRecord;
 import com.colla.platform.modules.base.domain.BaseModels.BaseSort;
 import com.colla.platform.modules.base.domain.BaseModels.BaseSummary;
 import com.colla.platform.modules.base.domain.BaseModels.BaseTableSummary;
@@ -31,6 +34,8 @@ public class JdbcBaseRepository implements BaseRepository {
     private static final TypeReference<List<BaseFilter>> FILTER_LIST_TYPE = new TypeReference<>() {
     };
     private static final TypeReference<List<BaseSort>> SORT_LIST_TYPE = new TypeReference<>() {
+    };
+    private static final TypeReference<List<UUID>> UUID_LIST_TYPE = new TypeReference<>() {
     };
 
     private final JdbcTemplate jdbcTemplate;
@@ -468,13 +473,13 @@ public class JdbcBaseRepository implements BaseRepository {
     }
 
     @Override
-    public UUID createView(UUID workspaceId, UUID tableId, String name, List<BaseFilter> filters, List<BaseSort> sorts, UUID createdBy) {
+    public UUID createView(UUID workspaceId, UUID tableId, String name, List<BaseFilter> filters, List<BaseSort> sorts, List<UUID> visibleFieldIds, UUID createdBy) {
         UUID id = UUID.randomUUID();
         jdbcTemplate.update(
             """
                 insert into base_views
-                    (id, workspace_id, table_id, name, filters, sorts, created_by, created_at, updated_by, updated_at)
-                values (?, ?, ?, ?, ?::jsonb, ?::jsonb, ?, now(), ?, now())
+                    (id, workspace_id, table_id, name, filters, sorts, visible_field_ids, created_by, created_at, updated_by, updated_at)
+                values (?, ?, ?, ?, ?::jsonb, ?::jsonb, ?::jsonb, ?, now(), ?, now())
                 """,
             id,
             workspaceId,
@@ -482,6 +487,7 @@ public class JdbcBaseRepository implements BaseRepository {
             name,
             toJson(filters),
             toJson(sorts),
+            toJson(visibleFieldIds == null ? List.of() : visibleFieldIds),
             createdBy,
             createdBy
         );
@@ -492,7 +498,7 @@ public class JdbcBaseRepository implements BaseRepository {
     public List<BaseView> listViews(UUID workspaceId, UUID tableId) {
         return jdbcTemplate.query(
             """
-                select id, table_id, name, filters, sorts, created_at, updated_at
+                select id, table_id, name, filters, sorts, visible_field_ids, created_at, updated_at
                 from base_views
                 where workspace_id = ? and table_id = ? and archived_at is null
                 order by created_at
@@ -503,11 +509,151 @@ public class JdbcBaseRepository implements BaseRepository {
                 rs.getString("name"),
                 readFilters(rs.getString("filters")),
                 readSorts(rs.getString("sorts")),
+                readUuidList(rs.getString("visible_field_ids")),
                 rs.getTimestamp("created_at").toInstant(),
                 rs.getTimestamp("updated_at").toInstant()
             ),
             workspaceId,
             tableId
+        );
+    }
+
+    @Override
+    public UUID createRecordComment(UUID workspaceId, UUID recordId, UUID authorId, String content) {
+        UUID id = UUID.randomUUID();
+        jdbcTemplate.update(
+            """
+                insert into base_record_comments
+                    (id, workspace_id, record_id, author_id, content, created_at)
+                values (?, ?, ?, ?, ?, now())
+                """,
+            id,
+            workspaceId,
+            recordId,
+            authorId,
+            content
+        );
+        return id;
+    }
+
+    @Override
+    public List<BaseRecordComment> listRecordComments(UUID workspaceId, UUID recordId) {
+        return jdbcTemplate.query(
+            """
+                select c.id, c.record_id, c.author_id, u.display_name author_name, c.content, c.created_at
+                from base_record_comments c
+                join users u on u.id = c.author_id
+                where c.workspace_id = ? and c.record_id = ? and c.deleted_at is null
+                order by c.created_at
+                """,
+            (rs, rowNum) -> new BaseRecordComment(
+                rs.getObject("id", UUID.class),
+                rs.getObject("record_id", UUID.class),
+                rs.getObject("author_id", UUID.class),
+                rs.getString("author_name"),
+                rs.getString("content"),
+                rs.getTimestamp("created_at").toInstant()
+            ),
+            workspaceId,
+            recordId
+        );
+    }
+
+    @Override
+    public void upsertRecordRelation(UUID workspaceId, UUID recordId, String targetType, UUID targetId, String relationType, UUID createdBy) {
+        jdbcTemplate.update(
+            """
+                insert into base_record_relations
+                    (id, workspace_id, record_id, target_type, target_id, relation_type, created_by, created_at)
+                values (?, ?, ?, ?, ?, ?, ?, now())
+                on conflict (record_id, target_type, target_id, relation_type)
+                do update set deleted_at = null
+                """,
+            UUID.randomUUID(),
+            workspaceId,
+            recordId,
+            targetType,
+            targetId,
+            relationType,
+            createdBy
+        );
+    }
+
+    @Override
+    public List<BaseRecordRelationRecord> listRecordRelations(UUID workspaceId, UUID recordId) {
+        return jdbcTemplate.query(
+            """
+                select r.id, r.record_id, r.target_type, r.target_id, r.relation_type,
+                       r.created_by, u.display_name created_by_name, r.created_at
+                from base_record_relations r
+                join users u on u.id = r.created_by
+                where r.workspace_id = ? and r.record_id = ? and r.deleted_at is null
+                order by r.created_at
+                """,
+            this::mapRelationRecord,
+            workspaceId,
+            recordId
+        );
+    }
+
+    @Override
+    public List<BaseRecordRelationRecord> listReverseRecordRelations(UUID workspaceId, String targetType, UUID targetId) {
+        return jdbcTemplate.query(
+            """
+                select r.id, r.record_id, r.target_type, r.target_id, r.relation_type,
+                       r.created_by, u.display_name created_by_name, r.created_at
+                from base_record_relations r
+                join users u on u.id = r.created_by
+                where r.workspace_id = ? and r.target_type = ? and r.target_id = ? and r.deleted_at is null
+                order by r.created_at
+                """,
+            this::mapRelationRecord,
+            workspaceId,
+            targetType,
+            targetId
+        );
+    }
+
+    @Override
+    public void appendRecordActivity(UUID workspaceId, UUID recordId, UUID actorId, String action, Map<String, Object> metadata) {
+        jdbcTemplate.update(
+            """
+                insert into base_record_activity_logs
+                    (id, workspace_id, record_id, actor_id, action, metadata, created_at)
+                values (?, ?, ?, ?, ?, ?::jsonb, now())
+                """,
+            UUID.randomUUID(),
+            workspaceId,
+            recordId,
+            actorId,
+            action,
+            toJson(metadata == null ? Map.of() : metadata)
+        );
+    }
+
+    @Override
+    public List<BaseRecordActivity> listRecordActivities(UUID workspaceId, UUID recordId) {
+        return jdbcTemplate.query(
+            """
+                select a.id, a.record_id, a.actor_id, u.display_name actor_name,
+                       a.action, a.metadata, a.created_at
+                from base_record_activity_logs a
+                join users u on u.id = a.actor_id
+                where a.workspace_id = ? and a.record_id = ?
+                order by a.created_at desc
+                limit 30
+                """,
+            (rs, rowNum) -> new BaseRecordActivity(
+                rs.getObject("id", UUID.class),
+                rs.getObject("record_id", UUID.class),
+                rs.getObject("actor_id", UUID.class),
+                rs.getString("actor_name"),
+                rs.getString("action"),
+                readMap(rs.getString("metadata")),
+                rs.getTimestamp("created_at").toInstant()
+            ),
+            workspaceId,
+            recordId
         );
     }
 
@@ -691,6 +837,19 @@ public class JdbcBaseRepository implements BaseRepository {
         );
     }
 
+    private BaseRecordRelationRecord mapRelationRecord(ResultSet rs, int rowNum) throws SQLException {
+        return new BaseRecordRelationRecord(
+            rs.getObject("id", UUID.class),
+            rs.getObject("record_id", UUID.class),
+            rs.getString("target_type"),
+            rs.getObject("target_id", UUID.class),
+            rs.getString("relation_type"),
+            rs.getObject("created_by", UUID.class),
+            rs.getString("created_by_name"),
+            rs.getTimestamp("created_at").toInstant()
+        );
+    }
+
     private BaseSummary withPermission(BaseSummary base, String permissionLevel) {
         return new BaseSummary(
             base.id(),
@@ -744,6 +903,14 @@ public class JdbcBaseRepository implements BaseRepository {
     private List<BaseSort> readSorts(String value) {
         try {
             return objectMapper.readValue(value, SORT_LIST_TYPE);
+        } catch (Exception exception) {
+            return List.of();
+        }
+    }
+
+    private List<UUID> readUuidList(String value) {
+        try {
+            return objectMapper.readValue(value == null ? "[]" : value, UUID_LIST_TYPE);
         } catch (Exception exception) {
             return List.of();
         }

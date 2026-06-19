@@ -43,7 +43,9 @@ import {
   type IssueDetail,
   type IssueFilters,
   type IssueSummary,
+  type IssueWorkflowAction,
   type ProjectSummary,
+  type TransitionIssueRequest,
 } from '../api/projectsApi'
 import { ObjectSummaryCard } from '../../platform/components/InternalLinkCard'
 import { resolveInternalLink } from '../../platform/api/platformObjectsApi'
@@ -64,6 +66,11 @@ type CreateIssueForm = {
   dueAt?: string
 }
 
+type WorkflowActionModalState = {
+  issue: IssueSummary
+  action: IssueWorkflowAction
+}
+
 const statusColumns = [
   { key: 'open', title: '待处理', icon: <ClockCircleOutlined /> },
   { key: 'in_progress', title: '处理中', icon: <ProjectOutlined /> },
@@ -78,6 +85,68 @@ const nextStatuses: Record<string, string[]> = {
   closed: ['open'],
 }
 
+function fallbackWorkflowActions(issue: IssueSummary): IssueWorkflowAction[] {
+  const allTypes = ['requirement', 'task', 'bug']
+  const definitions: Array<IssueWorkflowAction & { issueTypes: string[]; fromStatuses: string[] }> = [
+    {
+      key: 'start_progress',
+      label: '开始处理',
+      targetStatus: 'in_progress',
+      requiresReason: false,
+      requiresTargetIssue: false,
+      requiresDueAt: false,
+      description: '进入处理中',
+      issueTypes: allTypes,
+      fromStatuses: ['open'],
+    },
+    {
+      key: 'return_open',
+      label: '退回待处理',
+      targetStatus: 'open',
+      requiresReason: false,
+      requiresTargetIssue: false,
+      requiresDueAt: false,
+      description: '重新打开或退回待处理',
+      issueTypes: allTypes,
+      fromStatuses: ['in_progress', 'resolved', 'closed'],
+    },
+    {
+      key: issue.issueType === 'bug' ? 'mark_fixed' : 'resolve',
+      label: issue.issueType === 'bug' ? '提交修复' : '标记已解决',
+      targetStatus: 'resolved',
+      requiresReason: false,
+      requiresTargetIssue: false,
+      requiresDueAt: false,
+      description: issue.issueType === 'bug' ? '开发提交修复，等待验证' : '实现完成，等待确认',
+      issueTypes: allTypes,
+      fromStatuses: ['open', 'in_progress'],
+    },
+    {
+      key: 'close',
+      label: '关闭',
+      targetStatus: 'closed',
+      requiresReason: false,
+      requiresTargetIssue: false,
+      requiresDueAt: false,
+      description: '无需继续处理或已确认完成',
+      issueTypes: allTypes,
+      fromStatuses: ['open', 'in_progress', 'resolved'],
+    },
+  ]
+  return definitions
+    .filter((action) => action.issueTypes.includes(issue.issueType))
+    .filter((action) => action.fromStatuses.includes(issue.status))
+    .map((action) => ({
+      key: action.key,
+      label: action.label,
+      targetStatus: action.targetStatus,
+      requiresReason: action.requiresReason,
+      requiresTargetIssue: action.requiresTargetIssue,
+      requiresDueAt: action.requiresDueAt,
+      description: action.description,
+    }))
+}
+
 export function ProjectsPage() {
   const { projectId, issueId } = useParams()
   const navigate = useNavigate()
@@ -87,6 +156,10 @@ export function ProjectsPage() {
   const [selectedIssueId, setSelectedIssueId] = useState<string | null>(null)
   const [projectModalOpen, setProjectModalOpen] = useState(false)
   const [issueModalOpen, setIssueModalOpen] = useState(false)
+  const [workflowAction, setWorkflowAction] = useState<WorkflowActionModalState | null>(null)
+  const [workflowReason, setWorkflowReason] = useState('')
+  const [workflowTargetIssueId, setWorkflowTargetIssueId] = useState<string | undefined>()
+  const [workflowDueAt, setWorkflowDueAt] = useState('')
   const [commentDraft, setCommentDraft] = useState('')
   const [verificationResult, setVerificationResult] = useState<'passed' | 'failed' | 'blocked'>('passed')
   const [verificationNote, setVerificationNote] = useState('')
@@ -164,8 +237,12 @@ export function ProjectsPage() {
   })
 
   const transitionMutation = useMutation({
-    mutationFn: ({ issue, status }: { issue: IssueSummary; status: string }) => transitionIssue(issue.id, status),
+    mutationFn: ({ issue, request }: { issue: IssueSummary; request: TransitionIssueRequest }) => transitionIssue(issue.id, request),
     onSuccess: async (detail) => {
+      setWorkflowAction(null)
+      setWorkflowReason('')
+      setWorkflowTargetIssueId(undefined)
+      setWorkflowDueAt('')
       setSelectedIssueId(detail.issue.id)
       await refreshProject()
     },
@@ -225,6 +302,9 @@ export function ProjectsPage() {
   const selectedIssue = issueQuery.data
   const stats = statsQuery.data
   const issueById = useMemo(() => new Map(issues.map((issue) => [issue.id, issue])), [issues])
+  const duplicateTargetOptions = issues
+    .filter((issue) => issue.issueType === 'bug' && issue.id !== workflowAction?.issue.id)
+    .map((issue) => ({ value: issue.id, label: `${issue.issueKey} ${issue.title}` }))
 
   const openIssue = useCallback((issue: IssueSummary) => {
     setSelectedIssueId(issue.id)
@@ -235,13 +315,51 @@ export function ProjectsPage() {
     setIssueFilters((current) => ({ ...current, [key]: value || undefined }))
   }
 
+  const runWorkflowAction = (issue: IssueSummary, action: IssueWorkflowAction) => {
+    if (action.requiresReason || action.requiresTargetIssue || action.requiresDueAt) {
+      setWorkflowAction({ issue, action })
+      setWorkflowReason('')
+      setWorkflowTargetIssueId(undefined)
+      setWorkflowDueAt('')
+      return
+    }
+    transitionMutation.mutate({ issue, request: { action: action.key } })
+  }
+
+  const submitWorkflowAction = () => {
+    if (!workflowAction) {
+      return
+    }
+    if (workflowAction.action.requiresReason && !workflowReason.trim()) {
+      message.warning('请输入处理原因')
+      return
+    }
+    if (workflowAction.action.requiresTargetIssue && !workflowTargetIssueId) {
+      message.warning('请选择关联的已有 BUG')
+      return
+    }
+    if (workflowAction.action.requiresDueAt && !workflowDueAt) {
+      message.warning('请选择新的截止日期')
+      return
+    }
+    transitionMutation.mutate({
+      issue: workflowAction.issue,
+      request: {
+        action: workflowAction.action.key,
+        reason: workflowReason,
+        targetIssueId: workflowTargetIssueId,
+        dueAt: workflowDueAt || undefined,
+      },
+    })
+  }
+
   const dropIssueToStatus = (status: string) => {
     const issue = draggingIssueId ? issueById.get(draggingIssueId) : undefined
     setDraggingIssueId(null)
     if (!issue || issue.status === status || !(nextStatuses[issue.status] ?? []).includes(status)) {
       return
     }
-    transitionMutation.mutate({ issue, status })
+    transitionMutation.mutate({ issue, request: { status } })
   }
 
   const tableColumns: ColumnsType<IssueSummary> = useMemo(
@@ -393,7 +511,7 @@ export function ProjectsPage() {
                   { value: 'updated_desc', label: '最近更新' },
                   { value: 'created_desc', label: '最近创建' },
                   { value: 'priority_desc', label: '优先级高到低' },
-                  { value: 'due_at_asc', label: '截止日期近到远' },
+                  { value: 'due_asc', label: '截止日期近到远' },
                 ]}
               />
             </section>
@@ -419,7 +537,7 @@ export function ProjectsPage() {
                           key={issue.id}
                           issue={issue}
                           onOpen={() => openIssue(issue)}
-                          onTransition={(status) => transitionMutation.mutate({ issue, status })}
+                          onRunAction={(action) => runWorkflowAction(issue, action)}
                           onDragStart={() => setDraggingIssueId(issue.id)}
                           onDragEnd={() => setDraggingIssueId(null)}
                         />
@@ -475,9 +593,44 @@ export function ProjectsPage() {
         verifying={verificationMutation.isPending}
         onAddRelation={() => relationMutation.mutate()}
         relating={relationMutation.isPending}
-        onTransition={(issue, status) => transitionMutation.mutate({ issue, status })}
+        onRunAction={runWorkflowAction}
         transitioning={transitionMutation.isPending}
       />
+
+      <Modal
+        title={workflowAction ? workflowAction.action.label : '流程动作'}
+        open={Boolean(workflowAction)}
+        confirmLoading={transitionMutation.isPending}
+        onCancel={() => setWorkflowAction(null)}
+        onOk={submitWorkflowAction}
+      >
+        {workflowAction ? (
+          <Space orientation="vertical" className="issue-drawer-stack">
+            <Typography.Text type="secondary">{workflowAction.action.description}</Typography.Text>
+            {workflowAction.action.requiresReason ? (
+              <Input.TextArea
+                value={workflowReason}
+                placeholder="填写处理原因，便于通知、审计和后续复盘"
+                autoSize={{ minRows: 3, maxRows: 6 }}
+                onChange={(event) => setWorkflowReason(event.target.value)}
+              />
+            ) : null}
+            {workflowAction.action.requiresTargetIssue ? (
+              <Select
+                showSearch
+                optionFilterProp="label"
+                value={workflowTargetIssueId}
+                placeholder="选择已有 BUG"
+                options={duplicateTargetOptions}
+                onChange={setWorkflowTargetIssueId}
+              />
+            ) : null}
+            {workflowAction.action.requiresDueAt ? (
+              <Input type="date" value={workflowDueAt} onChange={(event) => setWorkflowDueAt(event.target.value)} />
+            ) : null}
+          </Space>
+        ) : null}
+      </Modal>
 
       <Modal
         title="新建项目"
@@ -565,16 +718,17 @@ function ProjectListItem({ project, active, onClick }: { project: ProjectSummary
 function IssueBoardCard({
   issue,
   onOpen,
-  onTransition,
+  onRunAction,
   onDragStart,
   onDragEnd,
 }: {
   issue: IssueSummary
   onOpen: () => void
-  onTransition: (status: string) => void
+  onRunAction: (action: IssueWorkflowAction) => void
   onDragStart: () => void
   onDragEnd: () => void
 }) {
+  const actions = fallbackWorkflowActions(issue)
   return (
     <article className="issue-card" draggable onDragStart={onDragStart} onDragEnd={onDragEnd}>
       <Space className="issue-card-header">
@@ -589,9 +743,9 @@ function IssueBoardCard({
         <Typography.Text type="secondary">{issue.assigneeName || '未指派'}</Typography.Text>
       </Space>
       <Space wrap className="issue-card-actions">
-        {(nextStatuses[issue.status] ?? []).map((status) => (
-          <Button key={status} size="small" onClick={() => onTransition(status)}>
-            {statusText(status)}
+        {actions.slice(0, 3).map((action) => (
+          <Button key={action.key} size="small" onClick={() => onRunAction(action)}>
+            {action.label}
           </Button>
         ))}
       </Space>
@@ -623,7 +777,7 @@ function IssueDrawer({
   verifying,
   onAddRelation,
   relating,
-  onTransition,
+  onRunAction,
   transitioning,
 }: {
   detail?: IssueDetail
@@ -649,7 +803,7 @@ function IssueDrawer({
   verifying: boolean
   onAddRelation: () => void
   relating: boolean
-  onTransition: (issue: IssueSummary, status: string) => void
+  onRunAction: (issue: IssueSummary, action: IssueWorkflowAction) => void
   transitioning: boolean
 }) {
   const issue = detail?.issue
@@ -673,16 +827,24 @@ function IssueDrawer({
               <Typography.Text>{issue.dueAt || '未设置'}</Typography.Text>
               <span>最近更新</span>
               <Typography.Text>{new Date(issue.updatedAt).toLocaleString()}</Typography.Text>
+              <span>流程原因</span>
+              <Typography.Text>{workflowReasonText(issue.workflowReason) || '未设置'}</Typography.Text>
+              <span>处理结论</span>
+              <Typography.Text>{resolutionText(issue.resolution) || '未设置'}</Typography.Text>
             </div>
           </Card>
+          {issue.workflowNote ? <Typography.Paragraph className="issue-workflow-note">{issue.workflowNote}</Typography.Paragraph> : null}
           <Typography.Paragraph>{issue.description || '暂无描述'}</Typography.Paragraph>
-          <Space wrap>
-            {(nextStatuses[issue.status] ?? []).map((status) => (
-              <Button key={status} loading={transitioning} onClick={() => onTransition(issue, status)}>
-                流转到{statusText(status)}
-              </Button>
-            ))}
-          </Space>
+          <Card size="small" title="流程动作">
+            <Space wrap>
+              {detail.availableActions.map((action) => (
+                <Button key={action.key} loading={transitioning} onClick={() => onRunAction(issue, action)}>
+                  {action.label}
+                </Button>
+              ))}
+            </Space>
+            {detail.availableActions.length === 0 ? <Empty description="暂无可执行动作" /> : null}
+          </Card>
           <Card title="评论">
             <Space orientation="vertical" className="issue-drawer-stack">
               {detail.comments.length === 0 ? <Empty description="暂无评论" /> : null}
@@ -809,7 +971,7 @@ function IssueDrawer({
             <Space orientation="vertical" className="issue-drawer-stack">
               {detail.activities.map((activity) => (
                 <Typography.Text key={activity.id}>
-                  {activity.actorName || '系统'} {activity.action}
+                  {activity.actorName || '系统'} {activityText(activity.action)}
                   {activity.fromValue || activity.toValue ? `：${activity.fromValue || '-'} -> ${activity.toValue || '-'}` : ''}
                 </Typography.Text>
               ))}
@@ -851,4 +1013,68 @@ function verificationText(result: string) {
     failed: '验证失败',
     blocked: '验证阻塞',
   }[result] ?? result
+}
+
+function workflowReasonText(reason?: string | null) {
+  if (!reason) {
+    return ''
+  }
+  return {
+    started: '开始处理',
+    reopened: '重新打开',
+    resolved: '已解决',
+    closed: '已关闭',
+    rework: '重新处理',
+    info_required: '信息不足',
+    scope_changed: '需求变更',
+    delayed: '延期',
+    canceled: '取消',
+    duplicate: '重复',
+    cannot_reproduce: '无法复现',
+    fixed: '提交修复',
+    verification_failed: '验证失败',
+    verified: '验证通过',
+    start_progress: '开始处理',
+    return_open: '退回待处理',
+    request_info: '信息不足',
+    scope_change: '需求变更',
+    delay: '延期',
+    cancel: '取消需求',
+    mark_duplicate: '重复 BUG',
+    mark_fixed: '提交修复',
+    verify_failed: '验证失败',
+    verify_passed: '验证通过',
+  }[reason] ?? reason
+}
+
+function resolutionText(resolution?: string | null) {
+  if (!resolution) {
+    return ''
+  }
+  return {
+    done: '完成',
+    fixed: '已修复',
+    info_required: '需补充信息',
+    scope_changed: '需求变更',
+    delayed: '延期',
+    canceled: '已取消',
+    duplicate: '重复',
+    cannot_reproduce: '无法复现',
+    verification_failed: '验证失败打回',
+    verified: '验证通过',
+  }[resolution] ?? resolution
+}
+
+function activityText(action: string) {
+  if (action.startsWith('workflow.')) {
+    return workflowReasonText(action.replace('workflow.', '')) || action
+  }
+  return {
+    created: '创建',
+    updated: '更新',
+    commented: '评论',
+    verified: '提交验证',
+    'relation.added': '关联对象',
+    'attachment.added': '添加附件',
+  }[action] ?? action
 }

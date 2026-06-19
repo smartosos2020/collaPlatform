@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Badge, Button, Empty, Select, Space, Tag, Typography } from 'antd'
+import { Badge, Button, Checkbox, Empty, Select, Space, Tag, Typography } from 'antd'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
@@ -11,6 +11,7 @@ import {
   listNotifications,
   markAllNotificationsRead,
   markNotificationRead,
+  markNotificationsRead,
 } from '../api/notificationsApi'
 
 type StatusFilter = 'all' | 'unread' | 'read'
@@ -19,6 +20,7 @@ export function NotificationsPage() {
   const [status, setStatus] = useState<StatusFilter>('all')
   const [source, setSource] = useState('all')
   const [targetType, setTargetType] = useState('all')
+  const [selectedIds, setSelectedIds] = useState<string[]>([])
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const notificationFilters = {
@@ -58,8 +60,22 @@ export function NotificationsPage() {
     mutationFn: markAllNotificationsRead,
     onSuccess: refreshNotifications,
   })
+  const markSelectedReadMutation = useMutation({
+    mutationFn: markNotificationsRead,
+    onSuccess: async () => {
+      setSelectedIds([])
+      await refreshNotifications()
+    },
+  })
 
   const notifications = notificationsQuery.data ?? []
+  const unreadSelectedIds = selectedIds.filter((id) => notifications.find((item) => item.id === id && !item.readAt))
+  const allVisibleSelected = notifications.length > 0 && notifications.every((item) => selectedIds.includes(item.id))
+  const toggleSelected = (notificationId: string, checked: boolean) => {
+    setSelectedIds((current) =>
+      checked ? [...new Set([...current, notificationId])] : current.filter((id) => id !== notificationId),
+    )
+  }
 
   return (
     <Space orientation="vertical" size={16} className="page-stack">
@@ -69,6 +85,13 @@ export function NotificationsPage() {
           <Badge count={unreadCountQuery.data?.count ?? 0} />
         </Space>
         <Space>
+          <Button
+            disabled={unreadSelectedIds.length === 0}
+            loading={markSelectedReadMutation.isPending}
+            onClick={() => markSelectedReadMutation.mutate(unreadSelectedIds)}
+          >
+            批量已读
+          </Button>
           <Button loading={markAllReadMutation.isPending} onClick={() => markAllReadMutation.mutate()}>
             全部已读
           </Button>
@@ -76,6 +99,15 @@ export function NotificationsPage() {
       </Space>
 
       <Space wrap className="notification-filters">
+        <Checkbox
+          checked={allVisibleSelected}
+          indeterminate={selectedIds.length > 0 && !allVisibleSelected}
+          onChange={(event) => {
+            setSelectedIds(event.target.checked ? notifications.map((item) => item.id) : [])
+          }}
+        >
+          选择当前页
+        </Checkbox>
         <Select
           value={status}
           onChange={setStatus}
@@ -94,6 +126,7 @@ export function NotificationsPage() {
             { label: '文档', value: 'document' },
             { label: 'IM', value: 'mention' },
             { label: '表格', value: 'base' },
+            { label: '审批', value: 'approval' },
           ]}
         />
         <Select
@@ -105,6 +138,7 @@ export function NotificationsPage() {
             { label: '文档', value: 'document' },
             { label: '多维表格', value: 'base' },
             { label: '表格记录', value: 'base_record' },
+            { label: '审批', value: 'approval' },
           ]}
         />
       </Space>
@@ -114,10 +148,12 @@ export function NotificationsPage() {
         {notifications.length === 0 && !notificationsQuery.isLoading ? <Empty description="暂无通知" /> : null}
         {notifications.map((item) => (
           <div className="notification-card-item" key={item.id}>
+            <Checkbox checked={selectedIds.includes(item.id)} onChange={(event) => toggleSelected(item.id, event.target.checked)} />
             <div>
               <Space wrap>
                 <Typography.Text strong={!item.readAt}>{item.title}</Typography.Text>
                 <Tag>{item.notificationType}</Tag>
+                <Tag>{item.sourceType}</Tag>
                 {item.readAt ? <Tag>已读</Tag> : <Tag color="blue">未读</Tag>}
               </Space>
               <Space orientation="vertical" size={4} className="notification-card-body">

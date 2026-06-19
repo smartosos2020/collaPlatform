@@ -3,6 +3,7 @@ import { apiGet, apiPost } from '../../../shared/api/httpClient'
 export type NotificationItem = {
   id: string
   notificationType: string
+  sourceType: string
   title: string
   body?: string | null
   targetType?: string | null
@@ -14,6 +15,10 @@ export type NotificationItem = {
 
 export type UnreadCount = {
   count: number
+}
+
+export type NotificationBatchResult = {
+  changed: number
 }
 
 export type NotificationFilters = {
@@ -51,6 +56,10 @@ export function getUnreadCount() {
 
 export function markNotificationRead(notificationId: string) {
   return apiPost<void>(`/notifications/${notificationId}/read`)
+}
+
+export function markNotificationsRead(notificationIds: string[]) {
+  return apiPost<NotificationBatchResult>('/notifications/read-batch', { notificationIds })
 }
 
 export function markAllNotificationsRead() {

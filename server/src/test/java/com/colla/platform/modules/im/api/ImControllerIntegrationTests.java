@@ -582,6 +582,96 @@ class ImControllerIntegrationTests {
             .andExpect(status().isNotFound());
     }
 
+    @Test
+    void convertsMessageToIssueAndSearchesMessageWorkItems() throws Exception {
+        String adminToken = login("admin", "admin123456", "im-work-entry-admin-" + UUID.randomUUID());
+        UUID aliceId = createMember(adminToken, "workalice" + UUID.randomUUID().toString().substring(0, 8), "Work Alice");
+        UUID conversationId = createConversation(adminToken, "IM Work Entry", aliceId);
+        UUID sourceMessageId = sendText(adminToken, conversationId, "login freeze after clicking captcha");
+
+        String projectResponse = mockMvc.perform(post("/api/projects")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                        {
+                          "projectKey": "IMW%s",
+                          "name": "IM Work Entry Project",
+                          "description": "IM conversion test",
+                          "memberIds": []
+                        }
+                        """.formatted(UUID.randomUUID().toString().substring(0, 6).replace("-", ""))
+                ))
+            .andExpect(status().isOk())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+        UUID projectId = UUID.fromString(objectMapper.readTree(projectResponse).get("id").asText());
+
+        String issueResponse = mockMvc.perform(post("/api/conversations/" + conversationId + "/messages/" + sourceMessageId + "/convert-to-issue")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                        {
+                          "projectId": "%s",
+                          "issueType": "bug",
+                          "title": "Captcha login freeze",
+                          "description": "Created from IM triage",
+                          "priority": "high"
+                        }
+                        """.formatted(projectId)
+                ))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.issue.issueType").value("bug"))
+            .andExpect(jsonPath("$.issue.title").value("Captcha login freeze"))
+            .andExpect(jsonPath("$.issue.description").value(org.hamcrest.Matchers.containsString("/im?conversationId=" + conversationId + "&messageId=" + sourceMessageId)))
+            .andExpect(jsonPath("$.relations[0].targetType").value("message"))
+            .andExpect(jsonPath("$.relations[0].target.objectType").value("message"))
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+        UUID issueId = UUID.fromString(objectMapper.readTree(issueResponse).get("issue").get("id").asText());
+
+        mockMvc.perform(get("/api/conversations/" + conversationId + "/messages/search")
+                .param("q", "login freeze")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.items[0].id").value(sourceMessageId.toString()));
+
+        mockMvc.perform(get("/api/conversations/" + conversationId + "/messages/search")
+                .param("targetType", "issue")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.items[0].links[0].targetType").value("issue"))
+            .andExpect(jsonPath("$.items[0].links[0].targetId").value(issueId.toString()));
+
+        String linkedMessageResponse = mockMvc.perform(post("/api/conversations/" + conversationId + "/messages")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                        {
+                          "clientMessageId": "%s",
+                          "messageType": "text",
+                          "content": "source reference /im?conversationId=%s&messageId=%s"
+                        }
+                        """.formatted(UUID.randomUUID(), conversationId, sourceMessageId)
+                ))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.links[0].targetType").value("message"))
+            .andExpect(jsonPath("$.links[0].summary.objectType").value("message"))
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+        UUID linkedMessageId = UUID.fromString(objectMapper.readTree(linkedMessageResponse).get("id").asText());
+
+        mockMvc.perform(get("/api/conversations/" + conversationId + "/messages/" + linkedMessageId + "/context?limit=10")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.items[0].id").value(linkedMessageId.toString()));
+    }
+
     private UUID createMember(String token, String username, String displayName) throws Exception {
         String response = mockMvc.perform(post("/api/admin/users")
                 .header("Authorization", "Bearer " + token)

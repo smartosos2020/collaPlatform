@@ -12,11 +12,19 @@ import java.util.Optional;
 import java.util.UUID;
 
 public interface DocumentRepository {
-    UUID createDocument(UUID workspaceId, UUID parentId, String title, String content, UUID createdBy);
+    UUID createDocument(UUID workspaceId, UUID parentId, String title, String docType, String content, int sortOrder, UUID createdBy);
 
     void updateDocument(UUID workspaceId, UUID documentId, UUID parentId, String title, String content, int nextVersionNo, UUID updatedBy);
 
-    void moveDocument(UUID workspaceId, UUID documentId, UUID parentId, UUID updatedBy);
+    void moveDocument(UUID workspaceId, UUID documentId, UUID parentId, int sortOrder, UUID updatedBy);
+
+    void archiveDocumentTree(UUID workspaceId, UUID documentId, UUID updatedBy);
+
+    void restoreDocumentTree(UUID workspaceId, UUID documentId, UUID updatedBy);
+
+    boolean isDescendant(UUID workspaceId, UUID documentId, UUID candidateParentId);
+
+    void copyParentPermissions(UUID workspaceId, UUID documentId, UUID parentId, UUID actorId);
 
     void addVersion(UUID workspaceId, UUID documentId, int versionNo, String title, String content, UUID createdBy);
 
@@ -24,7 +32,7 @@ public interface DocumentRepository {
 
     List<DocumentBlock> listBlocks(UUID workspaceId, UUID documentId);
 
-    List<DocumentSummary> listDocuments(UUID workspaceId, UUID userId);
+    List<DocumentSummary> listDocuments(UUID workspaceId, UUID userId, boolean includeArchived);
 
     Optional<DocumentSummary> findDocument(UUID workspaceId, UUID documentId);
 

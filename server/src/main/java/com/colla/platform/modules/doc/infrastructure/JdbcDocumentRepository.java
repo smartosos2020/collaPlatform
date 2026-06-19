@@ -11,6 +11,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.dao.EmptyResultDataAccessException;
@@ -26,20 +27,22 @@ public class JdbcDocumentRepository implements DocumentRepository {
     }
 
     @Override
-    public UUID createDocument(UUID workspaceId, UUID parentId, String title, String content, UUID createdBy) {
+    public UUID createDocument(UUID workspaceId, UUID parentId, String title, String docType, String content, int sortOrder, UUID createdBy) {
         UUID id = UUID.randomUUID();
         jdbcTemplate.update(
             """
                 insert into documents
                     (id, workspace_id, parent_id, title, doc_type, content, current_version_no,
-                     status, created_by, created_at, updated_by, updated_at)
-                values (?, ?, ?, ?, 'markdown', ?, 1, 'active', ?, now(), ?, now())
+                     status, sort_order, created_by, created_at, updated_by, updated_at)
+                values (?, ?, ?, ?, ?, ?, 1, 'active', ?, ?, now(), ?, now())
                 """,
             id,
             workspaceId,
             parentId,
             title,
+            docType,
             content,
+            sortOrder,
             createdBy,
             createdBy
         );
@@ -65,18 +68,138 @@ public class JdbcDocumentRepository implements DocumentRepository {
     }
 
     @Override
-    public void moveDocument(UUID workspaceId, UUID documentId, UUID parentId, UUID updatedBy) {
+    public void moveDocument(UUID workspaceId, UUID documentId, UUID parentId, int sortOrder, UUID updatedBy) {
         jdbcTemplate.update(
             """
                 update documents
-                set parent_id = ?, updated_by = ?, updated_at = now()
+                set parent_id = ?, sort_order = ?, updated_by = ?, updated_at = now()
                 where workspace_id = ? and id = ? and deleted_at is null
                 """,
             parentId,
+            sortOrder,
             updatedBy,
             workspaceId,
             documentId
         );
+    }
+
+    @Override
+    public void archiveDocumentTree(UUID workspaceId, UUID documentId, UUID updatedBy) {
+        jdbcTemplate.update(
+            """
+                with recursive subtree as (
+                    select id
+                    from documents
+                    where workspace_id = ? and id = ? and deleted_at is null
+                    union all
+                    select child.id
+                    from documents child
+                    join subtree parent on child.parent_id = parent.id
+                    where child.workspace_id = ? and child.deleted_at is null
+                )
+                update documents d
+                set archived_at = coalesce(d.archived_at, now()),
+                    status = 'archived',
+                    updated_by = ?,
+                    updated_at = now()
+                from subtree
+                where d.id = subtree.id
+                """,
+            workspaceId,
+            documentId,
+            workspaceId,
+            updatedBy
+        );
+    }
+
+    @Override
+    public void restoreDocumentTree(UUID workspaceId, UUID documentId, UUID updatedBy) {
+        jdbcTemplate.update(
+            """
+                with recursive subtree as (
+                    select id
+                    from documents
+                    where workspace_id = ? and id = ? and deleted_at is null
+                    union all
+                    select child.id
+                    from documents child
+                    join subtree parent on child.parent_id = parent.id
+                    where child.workspace_id = ? and child.deleted_at is null
+                )
+                update documents d
+                set archived_at = null,
+                    status = 'active',
+                    updated_by = ?,
+                    updated_at = now()
+                from subtree
+                where d.id = subtree.id
+                """,
+            workspaceId,
+            documentId,
+            workspaceId,
+            updatedBy
+        );
+    }
+
+    @Override
+    public boolean isDescendant(UUID workspaceId, UUID documentId, UUID candidateParentId) {
+        if (candidateParentId == null) {
+            return false;
+        }
+        Boolean result = jdbcTemplate.queryForObject(
+            """
+                with recursive subtree as (
+                    select id
+                    from documents
+                    where workspace_id = ? and id = ? and deleted_at is null
+                    union all
+                    select child.id
+                    from documents child
+                    join subtree parent on child.parent_id = parent.id
+                    where child.workspace_id = ? and child.deleted_at is null
+                )
+                select exists(select 1 from subtree where id = ?)
+                """,
+            Boolean.class,
+            workspaceId,
+            documentId,
+            workspaceId,
+            candidateParentId
+        );
+        return Boolean.TRUE.equals(result);
+    }
+
+    @Override
+    public void copyParentPermissions(UUID workspaceId, UUID documentId, UUID parentId, UUID actorId) {
+        if (parentId == null) {
+            return;
+        }
+        List<Map<String, Object>> parentPermissions = jdbcTemplate.queryForList(
+            """
+                select user_id, permission_level
+                from document_permissions
+                where workspace_id = ? and document_id = ? and revoked_at is null
+                """,
+            workspaceId,
+            parentId
+        );
+        for (Map<String, Object> permission : parentPermissions) {
+            jdbcTemplate.update(
+            """
+                insert into document_permissions
+                    (id, workspace_id, document_id, user_id, permission_level, created_by, created_at, updated_by, updated_at)
+                values (?, ?, ?, ?, ?, ?, now(), ?, now())
+                on conflict (document_id, user_id) do nothing
+                """,
+            UUID.randomUUID(),
+            workspaceId,
+            documentId,
+            permission.get("user_id"),
+            permission.get("permission_level"),
+            actorId,
+            actorId
+            );
+        }
     }
 
     @Override
@@ -145,7 +268,9 @@ public class JdbcDocumentRepository implements DocumentRepository {
                 rs.getString("content"),
                 rs.getInt("sort_order"),
                 rs.getTimestamp("created_at").toInstant(),
-                rs.getTimestamp("updated_at").toInstant()
+                rs.getTimestamp("updated_at").toInstant(),
+                null,
+                Map.of()
             ),
             workspaceId,
             documentId
@@ -153,26 +278,30 @@ public class JdbcDocumentRepository implements DocumentRepository {
     }
 
     @Override
-    public List<DocumentSummary> listDocuments(UUID workspaceId, UUID userId) {
+    public List<DocumentSummary> listDocuments(UUID workspaceId, UUID userId, boolean includeArchived) {
         return jdbcTemplate.query(
             """
                 select d.id, d.parent_id, d.title, d.doc_type, d.current_version_no,
                        coalesce(dp.permission_level, case when d.created_by = ? then 'manage' end) permission_level,
                        d.created_by, cu.display_name created_by_name, d.created_at,
-                       d.updated_by, uu.display_name updated_by_name, d.updated_at
+                       d.updated_by, uu.display_name updated_by_name, d.updated_at,
+                       d.sort_order,
+                       d.archived_at is not null archived
                 from documents d
                 join users cu on cu.id = d.created_by
                 join users uu on uu.id = d.updated_by
                 left join document_permissions dp on dp.document_id = d.id and dp.user_id = ? and dp.revoked_at is null
                 where d.workspace_id = ? and d.deleted_at is null
                   and (d.created_by = ? or dp.user_id is not null)
-                order by d.updated_at desc
+                  and (? or d.archived_at is null)
+                order by d.parent_id nulls first, d.sort_order, lower(d.title), d.updated_at desc
                 """,
             this::mapDocumentSummary,
             userId,
             userId,
             workspaceId,
-            userId
+            userId,
+            includeArchived
         );
     }
 
@@ -184,7 +313,9 @@ public class JdbcDocumentRepository implements DocumentRepository {
                     select d.id, d.parent_id, d.title, d.doc_type, d.current_version_no,
                            'manage' permission_level,
                            d.created_by, cu.display_name created_by_name, d.created_at,
-                           d.updated_by, uu.display_name updated_by_name, d.updated_at
+                           d.updated_by, uu.display_name updated_by_name, d.updated_at,
+                           d.sort_order,
+                           d.archived_at is not null archived
                     from documents d
                     join users cu on cu.id = d.created_by
                     join users uu on uu.id = d.updated_by
@@ -459,7 +590,9 @@ public class JdbcDocumentRepository implements DocumentRepository {
             rs.getTimestamp("created_at").toInstant(),
             rs.getObject("updated_by", UUID.class),
             rs.getString("updated_by_name"),
-            rs.getTimestamp("updated_at").toInstant()
+            rs.getTimestamp("updated_at").toInstant(),
+            rs.getInt("sort_order"),
+            rs.getBoolean("archived")
         );
     }
 

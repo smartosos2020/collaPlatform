@@ -25,5 +25,7 @@ public interface NotificationRepository {
 
     boolean markRead(UUID workspaceId, UUID recipientId, UUID notificationId);
 
+    int markReadBatch(UUID workspaceId, UUID recipientId, List<UUID> notificationIds);
+
     int markAllRead(UUID workspaceId, UUID recipientId);
 }

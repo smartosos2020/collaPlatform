@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title id="title">Colla Platform</title>
+  <rect width="512" height="512" rx="96" fill="#1677ff"/>
+  <path fill="#fff" d="M150 156h212c22 0 40 18 40 40v120c0 22-18 40-40 40H232l-70 58c-10 8-26 1-26-12v-46h-26c-22 0-40-18-40-40V196c0-22 18-40 40-40h40Zm-40 46v108c0 6 5 12 12 12h48v38l50-38h142c7 0 12-6 12-12V202c0-7-5-12-12-12H122c-7 0-12 5-12 12Zm64 36h164v28H174v-28Zm0 54h110v28H174v-28Z"/>
+</svg>

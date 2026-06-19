@@ -9,6 +9,32 @@ export async function apiGet<T>(path: string): Promise<T> {
   return apiRequest<T>('GET', path)
 }
 
+export async function apiGetText(path: string): Promise<string> {
+  const accessToken = localStorage.getItem('colla.accessToken')
+  const headers = new Headers({
+    Accept: 'text/plain, text/csv, */*',
+    'X-Colla-Client': 'web',
+    'X-Colla-Retry-Attempt': '0',
+  })
+
+  if (accessToken) {
+    headers.set('Authorization', `Bearer ${accessToken}`)
+  }
+
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: 'GET',
+    headers: {
+      ...Object.fromEntries(headers.entries()),
+    },
+  })
+
+  if (!response.ok) {
+    throw new ApiRequestError(response.status)
+  }
+
+  return response.text()
+}
+
 export async function apiPost<T>(path: string, body?: unknown, options?: RequestOptions): Promise<T> {
   return apiRequest<T>('POST', path, body, options)
 }

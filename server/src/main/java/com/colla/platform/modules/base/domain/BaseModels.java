@@ -5,6 +5,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectSummary;
+
 public final class BaseModels {
     private BaseModels() {
     }
@@ -90,6 +92,60 @@ public final class BaseModels {
     public record BaseRecordPage(List<BaseRecord> items, int total, int limit, int offset) {
     }
 
+    public record BaseRecordDetail(
+        BaseRecord record,
+        List<BaseRecordComment> comments,
+        List<BaseRecordRelation> relations,
+        List<BaseRecordActivity> activities
+    ) {
+    }
+
+    public record BaseRecordComment(
+        UUID id,
+        UUID recordId,
+        UUID authorId,
+        String authorName,
+        String content,
+        Instant createdAt
+    ) {
+    }
+
+    public record BaseRecordRelation(
+        UUID id,
+        UUID recordId,
+        String targetType,
+        UUID targetId,
+        String relationType,
+        PlatformObjectSummary target,
+        UUID createdBy,
+        String createdByName,
+        Instant createdAt
+    ) {
+    }
+
+    public record BaseRecordRelationRecord(
+        UUID id,
+        UUID recordId,
+        String targetType,
+        UUID targetId,
+        String relationType,
+        UUID createdBy,
+        String createdByName,
+        Instant createdAt
+    ) {
+    }
+
+    public record BaseRecordActivity(
+        UUID id,
+        UUID recordId,
+        UUID actorId,
+        String actorName,
+        String action,
+        Map<String, Object> metadata,
+        Instant createdAt
+    ) {
+    }
+
     public record BaseKanbanView(UUID tableId, UUID groupFieldId, List<BaseKanbanColumn> columns) {
     }
 
@@ -108,6 +164,7 @@ public final class BaseModels {
         String name,
         List<BaseFilter> filters,
         List<BaseSort> sorts,
+        List<UUID> visibleFieldIds,
         Instant createdAt,
         Instant updatedAt
     ) {
@@ -117,5 +174,8 @@ public final class BaseModels {
     }
 
     public record BaseSort(UUID fieldId, String direction) {
+    }
+
+    public record BaseImportResult(int created, List<String> errors) {
     }
 }
