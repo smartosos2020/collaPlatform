@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Button, Form, Input, Select, Space, Table, Tag, Typography } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 
 import { objectTypeText } from '../../platform/objectTypeLabels'
 import { listAuditLogs, type AuditLogEntry, type AuditLogFilters } from '../api/auditLogsApi'
@@ -19,8 +20,12 @@ const targetTypeOptions = [
 ]
 
 export function AdminAuditLogsPage() {
+  const [searchParams] = useSearchParams()
+  const initialFilters = searchParams.get('permissionOnly') === 'true'
+    ? { limit: 100, action: 'resource.permission.granted' }
+    : { limit: 100 }
   const [form] = Form.useForm<AuditLogFilters>()
-  const [filters, setFilters] = useState<AuditLogFilters>({ limit: 100 })
+  const [filters, setFilters] = useState<AuditLogFilters>(initialFilters)
   const auditLogsQuery = useQuery({
     queryKey: ['admin', 'audit-logs', filters],
     queryFn: () => listAuditLogs(filters),
@@ -74,6 +79,11 @@ export function AdminAuditLogsPage() {
     <Space orientation="vertical" size={16} className="page-stack">
       <Space className="page-toolbar">
         <Typography.Title level={2}>审计日志</Typography.Title>
+        <Space>
+          <Button onClick={() => applyActionFilter('resource.permission.granted')}>权限授予</Button>
+          <Button onClick={() => applyActionFilter('resource.permission.revoked')}>权限撤销</Button>
+          <Button onClick={() => applyActionFilter('role.permissions.updated')}>角色权限</Button>
+        </Space>
       </Space>
 
       <Form
@@ -112,4 +122,10 @@ export function AdminAuditLogsPage() {
       />
     </Space>
   )
+
+  function applyActionFilter(action: string) {
+    const nextFilters = { ...filters, action, limit: filters.limit ?? 100 }
+    form.setFieldsValue(nextFilters)
+    setFilters(nextFilters)
+  }
 }

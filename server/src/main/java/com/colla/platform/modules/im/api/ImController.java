@@ -1,5 +1,7 @@
 package com.colla.platform.modules.im.api;
 
+import com.colla.platform.modules.doc.application.DocumentService;
+import com.colla.platform.modules.doc.domain.DocumentModels.DocumentDetail;
 import com.colla.platform.modules.im.application.ImService;
 import com.colla.platform.modules.im.domain.ImModels.ConversationDetail;
 import com.colla.platform.modules.im.domain.ImModels.ConversationMember;
@@ -32,10 +34,12 @@ import org.springframework.web.bind.annotation.RestController;
 public class ImController {
     private final ImService imService;
     private final ProjectService projectService;
+    private final DocumentService documentService;
 
-    public ImController(ImService imService, ProjectService projectService) {
+    public ImController(ImService imService, ProjectService projectService, DocumentService documentService) {
         this.imService = imService;
         this.projectService = projectService;
+        this.documentService = documentService;
     }
 
     @GetMapping
@@ -177,6 +181,29 @@ public class ImController {
         );
     }
 
+    @PostMapping("/{conversationId}/messages/{messageId}/convert-to-document")
+    public DocumentDetail convertMessageToDocument(
+        @PathVariable UUID conversationId,
+        @PathVariable UUID messageId,
+        @Valid @RequestBody ConvertMessageToDocumentRequest request,
+        Authentication authentication
+    ) {
+        CurrentUser currentUser = currentUser(authentication);
+        MessageSummary message = imService.getMessage(currentUser, conversationId, messageId);
+        DocumentDetail document = documentService.createDocument(
+            currentUser,
+            request.parentId(),
+            request.title() == null || request.title().isBlank() ? defaultDocumentTitleFromMessage(message) : request.title(),
+            "markdown",
+            documentContentFromMessage(message),
+            null,
+            null,
+            "view",
+            false
+        );
+        return documentService.addRelation(currentUser, document.document().id(), "message", messageId);
+    }
+
     @PatchMapping("/{conversationId}/messages/{messageId}")
     public MessageSummary editMessage(
         @PathVariable UUID conversationId,
@@ -261,6 +288,29 @@ public class ImController {
         UUID assigneeId,
         LocalDate dueAt
     ) {
+    }
+
+    public record ConvertMessageToDocumentRequest(UUID parentId, @Size(max = 255) String title) {
+    }
+
+    private String defaultDocumentTitleFromMessage(MessageSummary message) {
+        String normalized = message.content() == null ? "" : message.content().replaceAll("\\s+", " ").trim();
+        if (normalized.isBlank()) {
+            return message.senderName() + " 的消息记录";
+        }
+        return normalized.length() <= 80 ? normalized : normalized.substring(0, 80);
+    }
+
+    private String documentContentFromMessage(MessageSummary message) {
+        String content = message.content() == null ? "" : message.content().trim();
+        String quoted = content.isBlank() ? "> 空消息" : "> " + content.replace("\n", "\n> ");
+        return String.join(
+            "\n\n",
+            "# " + defaultDocumentTitleFromMessage(message),
+            "来源消息：" + message.senderName() + " · " + message.createdAt() + " /im?conversationId=" + message.conversationId() + "&messageId=" + message.id(),
+            quoted,
+            "::object-card{\"objectType\":\"message\",\"objectId\":\"" + message.id() + "\"}"
+        );
     }
 
     public record EditMessageRequest(@NotBlank String content) {

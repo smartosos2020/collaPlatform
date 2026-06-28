@@ -35,6 +35,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import { listDirectoryMembers } from '../../projects/api/projectsApi'
+import { ObjectSummaryCard } from '../../platform/components/InternalLinkCard'
+import { ResourcePermissionsModal } from '../../permissions/components/ResourcePermissionsModal'
 import {
   addBaseRecordComment,
   addBaseRecordRelation,
@@ -134,6 +136,7 @@ export function BasesPage() {
   const [recordModalOpen, setRecordModalOpen] = useState(false)
   const [editingRecord, setEditingRecord] = useState<BaseRecord | null>(null)
   const [permissionOpen, setPermissionOpen] = useState(false)
+  const [resourcePermissionOpen, setResourcePermissionOpen] = useState(false)
   const [saveViewOpen, setSaveViewOpen] = useState(false)
   const [importCsvOpen, setImportCsvOpen] = useState(false)
   const [filterState, setFilterState] = useState<FilterSortState>({ filters: [], sorts: [] })
@@ -482,7 +485,12 @@ export function BasesPage() {
               </div>
               <Space wrap>
                 <Tooltip title="授权">
-                  <Button icon={<ShareAltOutlined />} disabled={!canManage} onClick={() => setPermissionOpen(true)} />
+                  <Button
+                    aria-label="资源权限"
+                    icon={<ShareAltOutlined />}
+                    disabled={!canManage}
+                    onClick={() => setResourcePermissionOpen(true)}
+                  />
                 </Tooltip>
                 <Button icon={<PlusOutlined />} disabled={!canEdit} onClick={() => setCreateTableOpen(true)}>
                   数据表
@@ -853,6 +861,14 @@ export function BasesPage() {
         </Form>
       </Modal>
 
+      <ResourcePermissionsModal
+        open={resourcePermissionOpen}
+        resourceType="base"
+        resourceId={activeBaseId ?? undefined}
+        resourceName={activeBase?.name}
+        onClose={() => setResourcePermissionOpen(false)}
+      />
+
       <Modal
         title="授权表格空间"
         open={permissionOpen}
@@ -995,11 +1011,9 @@ function BaseRecordDetail({
       <Typography.Text type="secondary">{new Date(record.updatedAt).toLocaleString()}</Typography.Text>
       <div className="base-record-detail-block">
         <Typography.Text strong>关联对象</Typography.Text>
-        <Space wrap>
+        <Space orientation="vertical" size={8} className="base-record-relations">
           {detail.relations.map((relation) => (
-            <Tag key={relation.id} icon={<LinkOutlined />}>
-              {relation.target.title ?? relation.targetType}: {relation.target.accessState}
-            </Tag>
+            <ObjectSummaryCard key={relation.id} summary={relation.target} />
           ))}
           {detail.relations.length === 0 ? <Typography.Text type="secondary">暂无关联</Typography.Text> : null}
         </Space>

@@ -5,6 +5,7 @@ import {
   LinkOutlined,
   PlusOutlined,
   ProjectOutlined,
+  ShareAltOutlined,
 } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -49,6 +50,7 @@ import {
 } from '../api/projectsApi'
 import { ObjectSummaryCard } from '../../platform/components/InternalLinkCard'
 import { resolveInternalLink } from '../../platform/api/platformObjectsApi'
+import { ResourcePermissionsModal } from '../../permissions/components/ResourcePermissionsModal'
 
 type CreateProjectForm = {
   projectKey?: string
@@ -156,6 +158,7 @@ export function ProjectsPage() {
   const [selectedIssueId, setSelectedIssueId] = useState<string | null>(null)
   const [projectModalOpen, setProjectModalOpen] = useState(false)
   const [issueModalOpen, setIssueModalOpen] = useState(false)
+  const [resourcePermissionOpen, setResourcePermissionOpen] = useState(false)
   const [workflowAction, setWorkflowAction] = useState<WorkflowActionModalState | null>(null)
   const [workflowReason, setWorkflowReason] = useState('')
   const [workflowTargetIssueId, setWorkflowTargetIssueId] = useState<string | undefined>()
@@ -422,9 +425,14 @@ export function ProjectsPage() {
                 </Space>
                 <Typography.Text type="secondary">{activeProject.description || '暂无项目描述'}</Typography.Text>
               </Space>
-              <Button type="primary" icon={<PlusOutlined />} onClick={() => setIssueModalOpen(true)}>
-                新建事项
-              </Button>
+              <Space>
+                <Button icon={<ShareAltOutlined />} onClick={() => setResourcePermissionOpen(true)}>
+                  权限
+                </Button>
+                <Button type="primary" icon={<PlusOutlined />} onClick={() => setIssueModalOpen(true)}>
+                  新建事项
+                </Button>
+              </Space>
             </Space>
 
             <section className="project-stats">
@@ -655,6 +663,14 @@ export function ProjectsPage() {
         </Form>
       </Modal>
 
+      <ResourcePermissionsModal
+        open={resourcePermissionOpen}
+        resourceType="project"
+        resourceId={activeProjectId ?? undefined}
+        resourceName={activeProject?.name}
+        onClose={() => setResourcePermissionOpen(false)}
+      />
+
       <Modal
         title="新建事项"
         open={issueModalOpen}
@@ -807,6 +823,8 @@ function IssueDrawer({
   transitioning: boolean
 }) {
   const issue = detail?.issue
+  const documentSnippet = issue ? extractDocumentSnippet(issue.description) : ''
+  const hasDocumentRelation = Boolean(detail?.relations.some((relation) => relation.targetType === 'document'))
   return (
     <Drawer title={issue ? `${issue.issueKey} ${issue.title}` : '事项详情'} open={Boolean(detail) || loading} onClose={onClose} size="large">
       {issue ? (
@@ -835,6 +853,11 @@ function IssueDrawer({
           </Card>
           {issue.workflowNote ? <Typography.Paragraph className="issue-workflow-note">{issue.workflowNote}</Typography.Paragraph> : null}
           <Typography.Paragraph>{issue.description || '暂无描述'}</Typography.Paragraph>
+          {hasDocumentRelation && documentSnippet ? (
+            <Card size="small" title="关联文档片段">
+              <Typography.Paragraph>{documentSnippet}</Typography.Paragraph>
+            </Card>
+          ) : null}
           <Card size="small" title="流程动作">
             <Space wrap>
               {detail.availableActions.map((action) => (
@@ -1063,6 +1086,18 @@ function resolutionText(resolution?: string | null) {
     verification_failed: '验证失败打回',
     verified: '验证通过',
   }[resolution] ?? resolution
+}
+
+function extractDocumentSnippet(description?: string | null) {
+  if (!description) {
+    return ''
+  }
+  return description
+    .split('\n')
+    .filter((line) => line.trim().startsWith('>'))
+    .map((line) => line.replace(/^>\s?/, '').trim())
+    .join('\n')
+    .slice(0, 1000)
 }
 
 function activityText(action: string) {

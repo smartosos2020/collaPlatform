@@ -36,7 +36,11 @@ public interface IdentityRepository {
 
     void assignRole(UUID workspaceId, UUID userId, String roleCode, UUID createdBy);
 
-    List<MemberSummary> listMembers(UUID workspaceId);
+    default List<MemberSummary> listMembers(UUID workspaceId) {
+        return listMembers(workspaceId, null);
+    }
+
+    List<MemberSummary> listMembers(UUID workspaceId, UUID departmentId);
 
     void updateUserStatus(UUID workspaceId, UUID userId, String status, UUID updatedBy);
 

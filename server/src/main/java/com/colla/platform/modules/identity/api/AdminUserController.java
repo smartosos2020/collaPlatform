@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -28,8 +29,8 @@ public class AdminUserController {
     }
 
     @GetMapping
-    public List<MemberSummary> list(Authentication authentication) {
-        return memberService.listMembers(currentUser(authentication));
+    public List<MemberSummary> list(@RequestParam(required = false) UUID departmentId, Authentication authentication) {
+        return memberService.listMembers(currentUser(authentication), departmentId);
     }
 
     @PostMapping
@@ -40,7 +41,8 @@ public class AdminUserController {
             request.password(),
             request.displayName(),
             request.email(),
-            request.roleCode()
+            request.roleCode(),
+            request.primaryDepartmentId()
         );
     }
 
@@ -72,7 +74,8 @@ public class AdminUserController {
         @NotBlank @Size(min = 8) String password,
         @NotBlank String displayName,
         @Email String email,
-        String roleCode
+        String roleCode,
+        UUID primaryDepartmentId
     ) {
     }
 

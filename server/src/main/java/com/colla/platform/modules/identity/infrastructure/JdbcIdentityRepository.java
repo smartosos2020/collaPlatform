@@ -1,6 +1,7 @@
 package com.colla.platform.modules.identity.infrastructure;
 
 import com.colla.platform.modules.identity.domain.AuthModels.UserAccount;
+import com.colla.platform.modules.identity.domain.AuthModels.MemberDepartment;
 import com.colla.platform.modules.identity.domain.AuthModels.MemberSummary;
 import com.colla.platform.modules.identity.domain.AuthModels.DeviceSummary;
 import com.colla.platform.modules.identity.domain.AuthModels.PushTokenSummary;
@@ -72,8 +73,8 @@ public class JdbcIdentityRepository implements IdentityRepository {
                 deviceId,
                 user.username(),
                 user.displayName(),
-                findRoleCodes(user.id()),
-                findPermissionCodes(user.id())
+                findRoleCodes(user.workspaceId(), user.id()),
+                findPermissionCodes(user.workspaceId(), user.id())
             ));
     }
 
@@ -251,25 +252,37 @@ public class JdbcIdentityRepository implements IdentityRepository {
     }
 
     @Override
-    public List<MemberSummary> listMembers(UUID workspaceId) {
+    public List<MemberSummary> listMembers(UUID workspaceId, UUID departmentId) {
+        if (departmentId == null) {
+            return jdbcTemplate.query(
+                """
+                    select id, username, display_name, email, status, last_login_at, created_at
+                    from users
+                    where workspace_id = ? and deleted_at is null
+                    order by created_at desc
+                    """,
+                (rs, rowNum) -> mapMemberSummary(workspaceId, rs),
+                workspaceId
+            );
+        }
         return jdbcTemplate.query(
             """
                 select id, username, display_name, email, status, last_login_at, created_at
                 from users
                 where workspace_id = ? and deleted_at is null
+                  and exists (
+                      select 1
+                      from department_members dm
+                      where dm.workspace_id = users.workspace_id
+                        and dm.user_id = users.id
+                        and dm.department_id = ?
+                        and dm.ended_at is null
+                  )
                 order by created_at desc
                 """,
-            (rs, rowNum) -> new MemberSummary(
-                rs.getObject("id", UUID.class),
-                rs.getString("username"),
-                rs.getString("display_name"),
-                rs.getString("email"),
-                rs.getString("status"),
-                rs.getTimestamp("last_login_at") == null ? null : rs.getTimestamp("last_login_at").toInstant(),
-                rs.getTimestamp("created_at").toInstant(),
-                findRoleCodes(rs.getObject("id", UUID.class))
-            ),
-            workspaceId
+            (rs, rowNum) -> mapMemberSummary(workspaceId, rs),
+            workspaceId,
+            departmentId
         );
     }
 
@@ -497,6 +510,21 @@ public class JdbcIdentityRepository implements IdentityRepository {
         );
     }
 
+    private MemberSummary mapMemberSummary(UUID workspaceId, ResultSet rs) throws SQLException {
+        UUID userId = rs.getObject("id", UUID.class);
+        return new MemberSummary(
+            userId,
+            rs.getString("username"),
+            rs.getString("display_name"),
+            rs.getString("email"),
+            rs.getString("status"),
+            rs.getTimestamp("last_login_at") == null ? null : rs.getTimestamp("last_login_at").toInstant(),
+            rs.getTimestamp("created_at").toInstant(),
+            findRoleCodes(workspaceId, userId),
+            findMemberDepartments(workspaceId, userId)
+        );
+    }
+
     private Optional<PushTokenSummary> findPushToken(UUID workspaceId, UUID deviceId, String provider, String tokenHash) {
         try {
             return Optional.ofNullable(jdbcTemplate.queryForObject(
@@ -550,30 +578,172 @@ public class JdbcIdentityRepository implements IdentityRepository {
         }
     }
 
-    private Set<String> findRoleCodes(UUID userId) {
+    private Set<String> findRoleCodes(UUID workspaceId, UUID userId) {
         return new HashSet<>(jdbcTemplate.queryForList(
             """
-                select r.code
-                from user_roles ur
-                join roles r on r.id = ur.role_id
-                where ur.user_id = ?
+                with effective_roles as (
+                    select ur.role_id
+                    from user_roles ur
+                    where ur.workspace_id = ? and ur.user_id = ?
+                    union
+                    select ra.role_id
+                    from role_assignments ra
+                    where ra.workspace_id = ?
+                      and ra.subject_type = 'user'
+                      and ra.subject_id = ?
+                      and ra.status = 'active'
+                      and ra.effective_at <= now()
+                      and (ra.expires_at is null or ra.expires_at > now())
+                    union
+                    select ra.role_id
+                    from role_assignments ra
+                    join departments d on d.id = ra.subject_id and d.deleted_at is null and d.status = 'active'
+                    join department_members dm on dm.department_id = d.id and dm.ended_at is null
+                    where ra.workspace_id = ?
+                      and ra.subject_type = 'department'
+                      and dm.user_id = ?
+                      and ra.status = 'active'
+                      and ra.effective_at <= now()
+                      and (ra.expires_at is null or ra.expires_at > now())
+                    union
+                    select ra.role_id
+                    from role_assignments ra
+                    join user_groups ug on ug.id = ra.subject_id and ug.deleted_at is null and ug.status = 'active'
+                    join user_group_members ugm on ugm.group_id = ug.id and ugm.subject_type = 'user' and ugm.removed_at is null
+                    where ra.workspace_id = ?
+                      and ra.subject_type = 'user_group'
+                      and ugm.subject_id = ?
+                      and ra.status = 'active'
+                      and ra.effective_at <= now()
+                      and (ra.expires_at is null or ra.expires_at > now())
+                    union
+                    select ra.role_id
+                    from role_assignments ra
+                    join user_groups ug on ug.id = ra.subject_id and ug.deleted_at is null and ug.status = 'active'
+                    join user_group_members ugm on ugm.group_id = ug.id and ugm.subject_type = 'department' and ugm.removed_at is null
+                    join departments d on d.id = ugm.subject_id and d.deleted_at is null and d.status = 'active'
+                    join department_members dm on dm.department_id = d.id and dm.ended_at is null
+                    where ra.workspace_id = ?
+                      and ra.subject_type = 'user_group'
+                      and dm.user_id = ?
+                      and ra.status = 'active'
+                      and ra.effective_at <= now()
+                      and (ra.expires_at is null or ra.expires_at > now())
+                )
+                select distinct r.code
+                from effective_roles er
+                join roles r on r.id = er.role_id
+                where r.workspace_id = ? and r.status = 'active'
                 """,
             String.class,
-            userId
+            workspaceId,
+            userId,
+            workspaceId,
+            userId,
+            workspaceId,
+            userId,
+            workspaceId,
+            userId,
+            workspaceId,
+            userId,
+            workspaceId
         ));
     }
 
-    private Set<String> findPermissionCodes(UUID userId) {
+    private Set<String> findPermissionCodes(UUID workspaceId, UUID userId) {
         return new HashSet<>(jdbcTemplate.queryForList(
             """
-                select p.code
-                from user_roles ur
-                join role_permissions rp on rp.role_id = ur.role_id
+                with effective_roles as (
+                    select ur.role_id
+                    from user_roles ur
+                    where ur.workspace_id = ? and ur.user_id = ?
+                    union
+                    select ra.role_id
+                    from role_assignments ra
+                    where ra.workspace_id = ?
+                      and ra.subject_type = 'user'
+                      and ra.subject_id = ?
+                      and ra.status = 'active'
+                      and ra.effective_at <= now()
+                      and (ra.expires_at is null or ra.expires_at > now())
+                    union
+                    select ra.role_id
+                    from role_assignments ra
+                    join departments d on d.id = ra.subject_id and d.deleted_at is null and d.status = 'active'
+                    join department_members dm on dm.department_id = d.id and dm.ended_at is null
+                    where ra.workspace_id = ?
+                      and ra.subject_type = 'department'
+                      and dm.user_id = ?
+                      and ra.status = 'active'
+                      and ra.effective_at <= now()
+                      and (ra.expires_at is null or ra.expires_at > now())
+                    union
+                    select ra.role_id
+                    from role_assignments ra
+                    join user_groups ug on ug.id = ra.subject_id and ug.deleted_at is null and ug.status = 'active'
+                    join user_group_members ugm on ugm.group_id = ug.id and ugm.subject_type = 'user' and ugm.removed_at is null
+                    where ra.workspace_id = ?
+                      and ra.subject_type = 'user_group'
+                      and ugm.subject_id = ?
+                      and ra.status = 'active'
+                      and ra.effective_at <= now()
+                      and (ra.expires_at is null or ra.expires_at > now())
+                    union
+                    select ra.role_id
+                    from role_assignments ra
+                    join user_groups ug on ug.id = ra.subject_id and ug.deleted_at is null and ug.status = 'active'
+                    join user_group_members ugm on ugm.group_id = ug.id and ugm.subject_type = 'department' and ugm.removed_at is null
+                    join departments d on d.id = ugm.subject_id and d.deleted_at is null and d.status = 'active'
+                    join department_members dm on dm.department_id = d.id and dm.ended_at is null
+                    where ra.workspace_id = ?
+                      and ra.subject_type = 'user_group'
+                      and dm.user_id = ?
+                      and ra.status = 'active'
+                      and ra.effective_at <= now()
+                      and (ra.expires_at is null or ra.expires_at > now())
+                )
+                select distinct p.code
+                from effective_roles er
+                join roles r on r.id = er.role_id and r.workspace_id = ? and r.status = 'active'
+                join role_permissions rp on rp.role_id = er.role_id
                 join permissions p on p.id = rp.permission_id
-                where ur.user_id = ?
                 """,
             String.class,
+            workspaceId,
+            userId,
+            workspaceId,
+            userId,
+            workspaceId,
+            userId,
+            workspaceId,
+            userId,
+            workspaceId,
             userId
+            ,
+            workspaceId
         ));
+    }
+
+    private List<MemberDepartment> findMemberDepartments(UUID workspaceId, UUID userId) {
+        return jdbcTemplate.query(
+            """
+                select d.id department_id, d.code department_code, d.name department_name, dm.relation_type
+                from department_members dm
+                join departments d on d.id = dm.department_id
+                where dm.workspace_id = ?
+                  and dm.user_id = ?
+                  and dm.ended_at is null
+                  and d.deleted_at is null
+                order by case dm.relation_type when 'primary' then 0 else 1 end, d.depth, d.sort_order, d.name
+                """,
+            (rs, rowNum) -> new MemberDepartment(
+                rs.getObject("department_id", UUID.class),
+                rs.getString("department_code"),
+                rs.getString("department_name"),
+                rs.getString("relation_type")
+            ),
+            workspaceId,
+            userId
+        );
     }
 }

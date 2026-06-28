@@ -1,5 +1,6 @@
 import { apiDelete, apiGet, apiPatch, apiPost } from '../../../shared/api/httpClient'
 import type { PlatformObjectSummary } from '../../platform/api/platformObjectsApi'
+import type { DocumentDetail } from '../../docs/api/docsApi'
 import type { IssueDetail } from '../../projects/api/projectsApi'
 
 export type ConversationMember = {
@@ -170,6 +171,14 @@ export function convertMessageToIssue(
   request: ConvertMessageToIssueRequest,
 ) {
   return apiPost<IssueDetail>(`/conversations/${conversationId}/messages/${messageId}/convert-to-issue`, request)
+}
+
+export function convertMessageToDocument(
+  conversationId: string,
+  messageId: string,
+  request: { parentId?: string | null; title?: string },
+) {
+  return apiPost<DocumentDetail>(`/conversations/${conversationId}/messages/${messageId}/convert-to-document`, request)
 }
 
 export function editMessage(conversationId: string, messageId: string, content: string) {

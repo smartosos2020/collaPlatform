@@ -20,13 +20,15 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { App as AntdApp, Alert, Breadcrumb, Button, Empty, Form, Input, Modal, Select, Space, Switch, Tag, Tooltip, Tree, Typography } from 'antd'
 import type { ReactNode } from 'react'
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 
 import { InternalLinkCard, ObjectSummaryCard } from '../../platform/components/InternalLinkCard'
 import type { PlatformObjectSummary } from '../../platform/api/platformObjectsApi'
 import { getTable, queryRecords, type BaseField, type BaseRecord } from '../../bases/api/basesApi'
 import { objectTypeText } from '../../platform/objectTypeLabels'
+import { DocEditor, type DocEditorSelectionAnchor } from '../components/DocEditor'
+import { useDocumentCollaboration } from '../hooks/useDocumentCollaboration'
 import {
   addObjectFavorite,
   listFavoriteObjects,
@@ -34,29 +36,49 @@ import {
   markObjectAccessed,
   removeObjectFavorite,
 } from '../../platform/api/platformObjectsApi'
-import { listDirectoryMembers } from '../../projects/api/projectsApi'
+import { listDirectoryMembers, listProjects } from '../../projects/api/projectsApi'
+import { listUserGroups } from '../../admin/api/userGroupsApi'
+import { ResourcePermissionsModal } from '../../permissions/components/ResourcePermissionsModal'
 import {
   addDocumentComment,
+  addDocumentCommentReply,
   addDocumentRelation,
   archiveDocument,
+  createDocumentCheckpoint,
   createDocument,
+  createDocumentFromTemplate,
+  createIssueFromDocumentSelection,
+  createNamedDocumentVersion,
   diffDocumentVersions,
   getDocument,
+  getDocumentAcceptanceReport,
   getDocumentPath,
+  importDocumentMarkdown,
   grantDocumentPermission,
+  listDocumentTemplates,
   listDocumentTree,
   listDocumentVersions,
   listDocuments,
   moveDocument,
+  requestDocumentPermission,
   restoreDocument,
   restoreDocumentVersion,
+  reopenDocumentComment,
   resolveDocumentComment,
   saveDocument,
   saveDocumentBlocks,
+  setDocumentShareLinkEnabled,
+  updateDocumentKnowledgeBase,
+  updateDocumentShareLink,
+  type DocumentAcceptanceReport,
   type DocumentBlockDraft,
+  type DocumentComment,
   type DocumentDetail,
+  type DocumentShareLink,
   type DocumentSummary,
+  type DocumentTemplate,
   type DocumentTreeNode,
+  type DocumentVersion,
 } from '../api/docsApi'
 
 type CreateDocForm = {
@@ -64,15 +86,64 @@ type CreateDocForm = {
   content?: string
   docType?: DocumentSummary['docType']
   parentId?: string
+  description?: string
+  coverUrl?: string
+  defaultPermissionLevel?: DocumentSummary['defaultPermissionLevel']
+  knowledgeBase?: boolean
 }
 
 type PermissionForm = {
-  userId: string
-  permissionLevel: 'view' | 'edit' | 'manage'
+  subjectType: 'user' | 'user_group'
+  subjectId: string
+  permissionLevel: DocumentSummary['permissionLevel']
+}
+
+type ShareLinkForm = {
+  permissionLevel: 'view' | 'comment' | 'edit'
+  enabled?: boolean
+  expiresAt?: string
+}
+
+type KnowledgeBaseForm = {
+  description?: string
+  coverUrl?: string
+  defaultPermissionLevel?: DocumentSummary['defaultPermissionLevel']
+  knowledgeBase?: boolean
+}
+
+type PermissionRequestForm = {
+  permissionLevel: 'view' | 'comment' | 'edit'
+  reason?: string
+}
+
+type NamedVersionForm = {
+  versionName: string
+  summary?: string
+}
+
+type ImportMarkdownForm = {
+  title?: string
+  content: string
+}
+
+type TemplateForm = {
+  templateId: string
+  parentId?: string
+  title?: string
+}
+
+type SelectionIssueForm = {
+  projectId: string
+  issueType: 'requirement' | 'task' | 'bug'
+  title?: string
+  description?: string
+  priority?: 'low' | 'medium' | 'high' | 'urgent'
+  assigneeId?: string
+  dueAt?: string
 }
 
 type RelationForm = {
-  targetType: 'issue' | 'base' | 'base_table' | 'base_record' | 'file'
+  targetType: 'issue' | 'base' | 'base_table' | 'base_record' | 'file' | 'message' | 'approval' | 'document'
   targetId: string
 }
 
@@ -133,9 +204,16 @@ export function DocsPage() {
   const [createDocType, setCreateDocType] = useState<DocumentSummary['docType']>('markdown')
   const [moveOpen, setMoveOpen] = useState(false)
   const [permissionOpen, setPermissionOpen] = useState(false)
+  const [resourcePermissionOpen, setResourcePermissionOpen] = useState(false)
   const [relationOpen, setRelationOpen] = useState(false)
+  const [namedVersionOpen, setNamedVersionOpen] = useState(false)
+  const [importMarkdownOpen, setImportMarkdownOpen] = useState(false)
+  const [templateOpen, setTemplateOpen] = useState(false)
+  const [selectionIssueOpen, setSelectionIssueOpen] = useState(false)
   const [commentDraft, setCommentDraft] = useState('')
   const [commentBlockId, setCommentBlockId] = useState<string | undefined>()
+  const [commentAnchor, setCommentAnchor] = useState<DocEditorSelectionAnchor | undefined>()
+  const [commentReplyDrafts, setCommentReplyDrafts] = useState<Record<string, string>>({})
   const [conflictDocId, setConflictDocId] = useState<string | null>(null)
   const [diffToVersionNo, setDiffToVersionNo] = useState<number | null>(null)
   const [docSearch, setDocSearch] = useState('')
@@ -147,6 +225,13 @@ export function DocsPage() {
   const [createForm] = Form.useForm<CreateDocForm>()
   const [moveForm] = Form.useForm<MoveDocForm>()
   const [permissionForm] = Form.useForm<PermissionForm>()
+  const [shareLinkForm] = Form.useForm<ShareLinkForm>()
+  const [knowledgeBaseForm] = Form.useForm<KnowledgeBaseForm>()
+  const [permissionRequestForm] = Form.useForm<PermissionRequestForm>()
+  const [namedVersionForm] = Form.useForm<NamedVersionForm>()
+  const [importMarkdownForm] = Form.useForm<ImportMarkdownForm>()
+  const [templateForm] = Form.useForm<TemplateForm>()
+  const [selectionIssueForm] = Form.useForm<SelectionIssueForm>()
   const [relationForm] = Form.useForm<RelationForm>()
 
   const docsQuery = useQuery({
@@ -158,6 +243,13 @@ export function DocsPage() {
     queryFn: () => listDocumentTree({ includeArchived }),
   })
   const membersQuery = useQuery({ queryKey: ['members', 'directory'], queryFn: listDirectoryMembers })
+  const userGroupsQuery = useQuery({
+    queryKey: ['admin', 'user-groups', 'active'],
+    queryFn: () => listUserGroups({ activeOnly: true }),
+  })
+  const projectsQuery = useQuery({ queryKey: ['projects'], queryFn: listProjects })
+  const templatesQuery = useQuery({ queryKey: ['docs', 'templates'], queryFn: listDocumentTemplates })
+  const acceptanceQuery = useQuery({ queryKey: ['docs', 'acceptance', 'v1'], queryFn: getDocumentAcceptanceReport })
   const recentObjectsQuery = useQuery({ queryKey: ['platform', 'recent', 'docs'], queryFn: () => listRecentObjects(30) })
   const favoriteObjectsQuery = useQuery({ queryKey: ['platform', 'favorites', 'docs'], queryFn: () => listFavoriteObjects(50) })
   const activeDocId = docId ?? selectedDocId ?? docsQuery.data?.[0]?.id ?? null
@@ -188,8 +280,10 @@ export function DocsPage() {
     enabled: Boolean(activeDocId && diffToVersionNo && diffToVersionNo > 1),
   })
 
+  const canComment = hasPermission(docQuery.data?.document.permissionLevel, 'comment')
   const canEdit = hasPermission(docQuery.data?.document.permissionLevel, 'edit')
   const canManage = hasPermission(docQuery.data?.document.permissionLevel, 'manage')
+  const activeShareLink = docQuery.data?.shareLinks?.[0] ?? null
   const titleDraft = draft.docId === activeDocId ? draft.title : docQuery.data?.document.title ?? ''
   const contentDraft = draft.docId === activeDocId ? draft.content : docQuery.data?.content ?? ''
   const baseVersionNo =
@@ -310,8 +404,15 @@ export function DocsPage() {
       docType,
       parentId: activeDirectoryId ?? ROOT_PARENT_VALUE,
       content: docType === 'markdown' ? '' : '',
+      knowledgeBase: docType === 'space',
+      defaultPermissionLevel: 'view',
     })
     setCreateOpen(true)
+  }
+
+  const openTemplateCreate = () => {
+    templateForm.setFieldsValue({ parentId: activeDirectoryId ?? ROOT_PARENT_VALUE })
+    setTemplateOpen(true)
   }
 
   const createMutation = useMutation({
@@ -321,6 +422,10 @@ export function DocsPage() {
         content: values.content,
         docType: values.docType ?? createDocType,
         parentId: values.parentId === ROOT_PARENT_VALUE ? null : values.parentId,
+        description: values.description,
+        coverUrl: values.coverUrl,
+        defaultPermissionLevel: values.defaultPermissionLevel,
+        knowledgeBase: values.knowledgeBase,
       }),
     onSuccess: async (detail) => {
       setCreateOpen(false)
@@ -391,6 +496,62 @@ export function DocsPage() {
     },
   })
 
+  const checkpointMutation = useMutation({
+    mutationFn: () => createDocumentCheckpoint(activeDocId || ''),
+    onSuccess: async (detail) => {
+      setDraft({
+        docId: detail.document.id,
+        title: detail.document.title,
+        content: detail.content,
+        baseVersionNo: detail.document.currentVersionNo,
+      })
+      setConflictDocId(null)
+      message.success('已生成版本')
+      await refreshDocs(detail.document.id)
+    },
+    onError: () => message.error('生成版本失败'),
+  })
+
+  const namedVersionMutation = useMutation({
+    mutationFn: (values: NamedVersionForm) => createNamedDocumentVersion(activeDocId || '', values),
+    onSuccess: async (detail) => {
+      setNamedVersionOpen(false)
+      namedVersionForm.resetFields()
+      message.success('命名版本已保存')
+      await refreshDocs(detail.document.id)
+    },
+    onError: () => message.error('命名版本保存失败'),
+  })
+
+  const importMarkdownMutation = useMutation({
+    mutationFn: (values: ImportMarkdownForm) => importDocumentMarkdown(activeDocId || '', values),
+    onSuccess: async (detail) => {
+      setImportMarkdownOpen(false)
+      importMarkdownForm.resetFields()
+      message.success('Markdown 已导入')
+      await refreshDocs(detail.document.id)
+    },
+    onError: () => message.error('Markdown 导入失败'),
+  })
+
+  const templateMutation = useMutation({
+    mutationFn: (values: TemplateForm) =>
+      createDocumentFromTemplate({
+        templateId: values.templateId,
+        title: values.title,
+        parentId: values.parentId === ROOT_PARENT_VALUE ? null : values.parentId,
+      }),
+    onSuccess: async (detail) => {
+      setTemplateOpen(false)
+      templateForm.resetFields()
+      setSelectedDocId(detail.document.id)
+      navigate(`/docs/${detail.document.id}`)
+      message.success('已从模板创建文档')
+      await refreshDocs(detail.document.id)
+    },
+    onError: () => message.error('从模板创建失败'),
+  })
+
   const restoreMutation = useMutation({
     mutationFn: (versionNo: number) => restoreDocumentVersion(activeDocId || '', versionNo),
     onSuccess: async (detail) => {
@@ -400,12 +561,60 @@ export function DocsPage() {
   })
 
   const permissionMutation = useMutation({
-    mutationFn: (values: PermissionForm) => grantDocumentPermission(activeDocId || '', values),
+    mutationFn: (values: PermissionForm) =>
+      grantDocumentPermission(activeDocId || '', {
+        subjectType: values.subjectType,
+        subjectId: values.subjectId,
+        userId: values.subjectType === 'user' ? values.subjectId : undefined,
+        permissionLevel: values.permissionLevel,
+      }),
     onSuccess: async () => {
-      setPermissionOpen(false)
       permissionForm.resetFields()
+      message.success('权限主体已更新')
       await refreshDocs()
     },
+  })
+
+  const shareLinkMutation = useMutation({
+    mutationFn: (values: ShareLinkForm) =>
+      updateDocumentShareLink(activeDocId || '', {
+        scope: 'workspace',
+        permissionLevel: values.permissionLevel,
+        enabled: values.enabled ?? true,
+        expiresAt: values.expiresAt?.trim() || null,
+      }),
+    onSuccess: async () => {
+      message.success('分享链接已更新')
+      await refreshDocs()
+    },
+    onError: () => message.error('分享链接更新失败'),
+  })
+
+  const shareLinkToggleMutation = useMutation({
+    mutationFn: (enabled: boolean) => setDocumentShareLinkEnabled(activeDocId || '', enabled),
+    onSuccess: async (shareLink) => {
+      message.success(shareLink.enabled ? '分享链接已启用' : '分享链接已停用')
+      await refreshDocs()
+    },
+    onError: () => message.error('分享链接状态更新失败'),
+  })
+
+  const knowledgeBaseMutation = useMutation({
+    mutationFn: (values: KnowledgeBaseForm) => updateDocumentKnowledgeBase(activeDocId || '', values),
+    onSuccess: async () => {
+      message.success('知识库设置已更新')
+      await refreshDocs()
+    },
+    onError: () => message.error('知识库设置更新失败'),
+  })
+
+  const permissionRequestMutation = useMutation({
+    mutationFn: (values: PermissionRequestForm) => requestDocumentPermission(activeDocId || '', values),
+    onSuccess: (result) => {
+      permissionRequestForm.resetFields()
+      message.success(result.notifiedCount > 0 ? '权限申请已发送' : '已记录申请，当前没有可通知的管理员')
+    },
+    onError: () => message.error('权限申请失败'),
   })
 
   const relationMutation = useMutation({
@@ -415,6 +624,30 @@ export function DocsPage() {
       relationForm.resetFields()
       await refreshDocs()
     },
+  })
+
+  const selectionIssueMutation = useMutation({
+    mutationFn: (values: SelectionIssueForm) =>
+      createIssueFromDocumentSelection(activeDocId || '', {
+        projectId: values.projectId,
+        issueType: values.issueType,
+        title: values.title,
+        description: values.description,
+        priority: values.priority ?? 'medium',
+        assigneeId: values.assigneeId,
+        dueAt: values.dueAt,
+        anchorStart: commentAnchor?.anchorStart,
+        anchorEnd: commentAnchor?.anchorEnd,
+        anchorText: commentAnchor?.anchorText,
+      }),
+    onSuccess: async (detail) => {
+      setSelectionIssueOpen(false)
+      selectionIssueForm.resetFields()
+      message.success('已从选区创建事项')
+      await refreshDocs()
+      navigate(`/issues/${detail.issue.id}`)
+    },
+    onError: () => message.error('从选区创建事项失败'),
   })
 
   const blockMutation = useMutation({
@@ -442,16 +675,41 @@ export function DocsPage() {
   })
 
   const commentMutation = useMutation({
-    mutationFn: () => addDocumentComment(activeDocId || '', { content: commentDraft, blockId: commentBlockId }),
+    mutationFn: () =>
+      addDocumentComment(activeDocId || '', {
+        content: commentDraft,
+        ...(commentBlockId
+          ? { blockId: commentBlockId, anchorType: 'block' as const }
+          : commentAnchor
+            ? commentAnchor
+            : { anchorType: 'document' as const }),
+      }),
     onSuccess: async () => {
       setCommentDraft('')
       setCommentBlockId(undefined)
+      setCommentAnchor(undefined)
+      await refreshDocs()
+    },
+  })
+
+  const replyCommentMutation = useMutation({
+    mutationFn: ({ commentId, content }: { commentId: string; content: string }) =>
+      addDocumentCommentReply(activeDocId || '', commentId, { content }),
+    onSuccess: async (_detail, variables) => {
+      setCommentReplyDrafts((current) => ({ ...current, [variables.commentId]: '' }))
       await refreshDocs()
     },
   })
 
   const resolveCommentMutation = useMutation({
     mutationFn: (commentId: string) => resolveDocumentComment(activeDocId || '', commentId),
+    onSuccess: async () => {
+      await refreshDocs()
+    },
+  })
+
+  const reopenCommentMutation = useMutation({
+    mutationFn: (commentId: string) => reopenDocumentComment(activeDocId || '', commentId),
     onSuccess: async () => {
       await refreshDocs()
     },
@@ -470,18 +728,16 @@ export function DocsPage() {
     },
   })
 
-  const markdownPreview = useMemo(() => renderMarkdownPreview(contentDraft), [contentDraft])
-
   const updateDraft = (next: Partial<Pick<DraftState, 'title' | 'content'>>) => {
     if (!activeDocId) {
       return
     }
-    setDraft({
+    setDraft((current) => ({
       docId: activeDocId,
-      title: next.title ?? titleDraft,
-      content: next.content ?? contentDraft,
+      title: next.title ?? (current.docId === activeDocId ? current.title : titleDraft),
+      content: next.content ?? (current.docId === activeDocId ? current.content : contentDraft),
       baseVersionNo,
-    })
+    }))
   }
 
   const updateBlockDraft = (index: number, next: Partial<BlockDraftState>) => {
@@ -559,6 +815,39 @@ export function DocsPage() {
     })
   }
 
+  const openPermissionSettings = () => {
+    setResourcePermissionOpen(true)
+  }
+
+  const copyShareLink = async (shareLink: DocumentShareLink | null) => {
+    if (!activeDocId || !shareLink) {
+      message.warning('请先创建分享链接')
+      return
+    }
+    const url = `${window.location.origin}/docs/${activeDocId}?share=${shareLink.token}`
+    try {
+      await window.navigator.clipboard.writeText(url)
+      message.success('链接已复制')
+    } catch {
+      message.error('复制失败')
+    }
+  }
+
+  const openSelectionIssue = () => {
+    if (!commentAnchor) {
+      message.warning('请先选择文档正文')
+      return
+    }
+    selectionIssueForm.setFieldsValue({
+      projectId: projectsQuery.data?.[0]?.id,
+      issueType: 'task',
+      priority: 'medium',
+      title: commentAnchor.anchorText.replace(/\s+/g, ' ').trim().slice(0, 120),
+      description: '',
+    })
+    setSelectionIssueOpen(true)
+  }
+
   return (
     <div className="docs-workspace">
       <aside className="docs-sidebar">
@@ -570,6 +859,12 @@ export function DocsPage() {
           <Space>
             <Tooltip title="新建文件夹">
               <Button icon={<FolderOutlined />} onClick={() => openCreate('folder')} />
+            </Tooltip>
+            <Tooltip title="新建知识库">
+              <Button icon={<FolderOpenOutlined />} onClick={() => openCreate('space')} />
+            </Tooltip>
+            <Tooltip title="从模板创建">
+              <Button icon={<FileTextOutlined />} onClick={openTemplateCreate} />
             </Tooltip>
             <Tooltip title="新建文档">
               <Button icon={<PlusOutlined />} type="primary" onClick={() => openCreate('markdown')} />
@@ -703,17 +998,20 @@ export function DocsPage() {
             detail={docQuery.data}
             titleDraft={titleDraft}
             contentDraft={contentDraft}
-            markdownPreview={markdownPreview}
+            canComment={canComment}
             canEdit={canEdit}
             canManage={canManage}
             conflictVisible={conflictDocId === activeDocId}
+            acceptanceReport={acceptanceQuery.data}
             versions={versionsQuery.data ?? []}
             blockDrafts={blockDraftDocId === activeDocId ? blockDrafts : []}
-            saving={saveMutation.isPending}
+            saving={docQuery.data.document.docType === 'markdown' ? checkpointMutation.isPending : saveMutation.isPending}
             savingBlocks={blockMutation.isPending}
             restoringVersionNo={restoreMutation.variables}
             commentDraft={commentDraft}
             commentBlockId={commentBlockId}
+            commentAnchor={commentAnchor}
+            commentReplyDrafts={commentReplyDrafts}
             activeCommentId={activeCommentId}
             onTitleChange={(value) => updateDraft({ title: value })}
             onContentChange={(value) => updateDraft({ content: value })}
@@ -721,20 +1019,70 @@ export function DocsPage() {
             onAddBlock={addBlockDraft}
             onRemoveBlock={removeBlockDraft}
             onMoveBlock={moveBlockDraft}
-            onSave={() => saveMutation.mutate()}
+            onSave={() => {
+              if (docQuery.data.document.docType === 'markdown') {
+                checkpointMutation.mutate()
+                return
+              }
+              saveMutation.mutate()
+            }}
             onSaveBlocks={() => blockMutation.mutate()}
             onRefresh={() => refreshDocs()}
-            onOpenPermission={() => setPermissionOpen(true)}
+            onOpenPermission={openPermissionSettings}
             onOpenRelation={() => setRelationOpen(true)}
+            onOpenNamedVersion={() => setNamedVersionOpen(true)}
+            onOpenImportMarkdown={() => {
+              importMarkdownForm.setFieldsValue({ title: titleDraft, content: contentDraft })
+              setImportMarkdownOpen(true)
+            }}
+            onOpenSelectionIssue={openSelectionIssue}
             onRestore={(versionNo) => restoreMutation.mutate(versionNo)}
             onDiff={(versionNo) => setDiffToVersionNo(versionNo)}
             onCommentDraftChange={setCommentDraft}
             onCommentBlockChange={setCommentBlockId}
+            onCommentAnchorChange={setCommentAnchor}
             onComment={() => commentMutation.mutate()}
             commenting={commentMutation.isPending}
+            onReplyDraftChange={(commentId, value) => setCommentReplyDrafts((current) => ({ ...current, [commentId]: value }))}
+            onReplyComment={(commentId) => replyCommentMutation.mutate({ commentId, content: commentReplyDrafts[commentId] ?? '' })}
+            replyingCommentId={replyCommentMutation.variables?.commentId}
             onResolveComment={(commentId) => resolveCommentMutation.mutate(commentId)}
             resolvingCommentId={resolveCommentMutation.variables}
+            onReopenComment={(commentId) => reopenCommentMutation.mutate(commentId)}
+            reopeningCommentId={reopenCommentMutation.variables}
+            onActivateComment={(commentId) => navigate(`/docs/${docQuery.data.document.id}?commentId=${commentId}`)}
           />
+        ) : docQuery.isError && activeDocId ? (
+          <div className="doc-access-request">
+            <Alert
+              type="warning"
+              showIcon
+              message="无法访问该文档"
+              description="你可以向文档管理员申请查看、评论或编辑权限。"
+            />
+            <Form
+              form={permissionRequestForm}
+              layout="vertical"
+              onFinish={(values) => permissionRequestMutation.mutate(values)}
+              initialValues={{ permissionLevel: 'view' }}
+            >
+              <Form.Item name="permissionLevel" label="申请权限" rules={[{ required: true }]}>
+                <Select
+                  options={[
+                    { label: '可查看', value: 'view' },
+                    { label: '可评论', value: 'comment' },
+                    { label: '可编辑', value: 'edit' },
+                  ]}
+                />
+              </Form.Item>
+              <Form.Item name="reason" label="原因">
+                <Input.TextArea rows={3} />
+              </Form.Item>
+              <Button type="primary" loading={permissionRequestMutation.isPending} onClick={() => permissionRequestForm.submit()}>
+                提交申请
+              </Button>
+            </Form>
+          </div>
         ) : (
           <Empty description="暂无文档">
             <Button type="primary" icon={<PlusOutlined />} onClick={() => openCreate('markdown')}>
@@ -745,7 +1093,7 @@ export function DocsPage() {
       </main>
 
       <Modal
-        title={createDocType === 'folder' ? '新建文件夹' : '新建文档'}
+        title={createDocType === 'space' ? '新建知识库' : createDocType === 'folder' ? '新建文件夹' : '新建文档'}
         open={createOpen}
         onCancel={() => setCreateOpen(false)}
         onOk={() => createForm.submit()}
@@ -771,6 +1119,155 @@ export function DocsPage() {
             <Input.TextArea rows={8} />
           </Form.Item>
           ) : null}
+          {createDocType === 'space' ? (
+            <>
+              <Form.Item name="knowledgeBase" label="知识库入口" valuePropName="checked" initialValue>
+                <Switch />
+              </Form.Item>
+              <Form.Item name="description" label="描述">
+                <Input.TextArea rows={3} />
+              </Form.Item>
+              <Form.Item name="coverUrl" label="封面 URL">
+                <Input />
+              </Form.Item>
+              <Form.Item name="defaultPermissionLevel" label="默认权限" initialValue="view">
+                <Select
+                  options={[
+                    { label: '可查看', value: 'view' },
+                    { label: '可评论', value: 'comment' },
+                    { label: '可编辑', value: 'edit' },
+                  ]}
+                />
+              </Form.Item>
+            </>
+          ) : null}
+        </Form>
+      </Modal>
+
+      <Modal
+        title="从模板创建"
+        open={templateOpen}
+        onCancel={() => setTemplateOpen(false)}
+        onOk={() => templateForm.submit()}
+        confirmLoading={templateMutation.isPending}
+      >
+        <Form form={templateForm} layout="vertical" onFinish={(values) => templateMutation.mutate(values)}>
+          <Form.Item name="templateId" label="模板" rules={[{ required: true, message: '请选择模板' }]}>
+            <Select
+              showSearch
+              optionFilterProp="label"
+              options={(templatesQuery.data ?? []).map((template) => ({
+                label: `${templateCategoryText(template.category)} / ${template.title}`,
+                value: template.id,
+              }))}
+            />
+          </Form.Item>
+          <Form.Item name="title" label="标题">
+            <Input />
+          </Form.Item>
+          <Form.Item name="parentId" label="父级目录" initialValue={activeDirectoryId ?? ROOT_PARENT_VALUE}>
+            <Select
+              options={[
+                { label: '团队空间根目录', value: ROOT_PARENT_VALUE },
+                ...folderOptions,
+              ]}
+            />
+          </Form.Item>
+          {templateForm.getFieldValue('templateId') ? (
+            <TemplatePreview template={templatesQuery.data?.find((template) => template.id === templateForm.getFieldValue('templateId')) ?? null} />
+          ) : null}
+        </Form>
+      </Modal>
+
+      <Modal
+        title="保存命名版本"
+        open={namedVersionOpen}
+        onCancel={() => setNamedVersionOpen(false)}
+        onOk={() => namedVersionForm.submit()}
+        confirmLoading={namedVersionMutation.isPending}
+      >
+        <Form form={namedVersionForm} layout="vertical" onFinish={(values) => namedVersionMutation.mutate(values)}>
+          <Form.Item name="versionName" label="版本名称" rules={[{ required: true, message: '请输入版本名称' }]}>
+            <Input />
+          </Form.Item>
+          <Form.Item name="summary" label="摘要">
+            <Input.TextArea rows={3} />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title="导入 Markdown"
+        open={importMarkdownOpen}
+        onCancel={() => setImportMarkdownOpen(false)}
+        onOk={() => importMarkdownForm.submit()}
+        confirmLoading={importMarkdownMutation.isPending}
+        width={720}
+      >
+        <Form form={importMarkdownForm} layout="vertical" onFinish={(values) => importMarkdownMutation.mutate(values)}>
+          <Form.Item name="title" label="标题">
+            <Input />
+          </Form.Item>
+          <Form.Item name="content" label="Markdown 内容" rules={[{ required: true, message: '请输入 Markdown 内容' }]}>
+            <Input.TextArea rows={14} />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title="从选区创建事项"
+        open={selectionIssueOpen}
+        onCancel={() => setSelectionIssueOpen(false)}
+        onOk={() => selectionIssueForm.submit()}
+        confirmLoading={selectionIssueMutation.isPending}
+      >
+        <Form form={selectionIssueForm} layout="vertical" onFinish={(values) => selectionIssueMutation.mutate(values)}>
+          <Form.Item name="projectId" label="项目" rules={[{ required: true, message: '请选择项目' }]}>
+            <Select
+              showSearch
+              optionFilterProp="label"
+              options={(projectsQuery.data ?? []).map((project) => ({
+                value: project.id,
+                label: `${project.name} (${project.projectKey})`,
+              }))}
+            />
+          </Form.Item>
+          <Form.Item name="issueType" label="类型" initialValue="task">
+            <Select
+              options={[
+                { value: 'requirement', label: '需求' },
+                { value: 'task', label: '任务' },
+                { value: 'bug', label: 'Bug' },
+              ]}
+            />
+          </Form.Item>
+          <Form.Item name="title" label="标题">
+            <Input />
+          </Form.Item>
+          <Form.Item name="priority" label="优先级" initialValue="medium">
+            <Select
+              options={[
+                { value: 'low', label: '低' },
+                { value: 'medium', label: '中' },
+                { value: 'high', label: '高' },
+                { value: 'urgent', label: '紧急' },
+              ]}
+            />
+          </Form.Item>
+          <Form.Item name="assigneeId" label="负责人">
+            <Select
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              options={(membersQuery.data ?? []).map((member) => ({
+                value: member.id,
+                label: `${member.displayName} @${member.username}`,
+              }))}
+            />
+          </Form.Item>
+          <Form.Item name="description" label="补充描述">
+            <Input.TextArea rows={3} />
+          </Form.Item>
         </Form>
       </Modal>
 
@@ -793,31 +1290,138 @@ export function DocsPage() {
         </Form>
       </Modal>
 
+      <ResourcePermissionsModal
+        open={resourcePermissionOpen}
+        resourceType="document"
+        resourceId={activeDocId ?? undefined}
+        resourceName={activeDocument?.title}
+        onClose={() => setResourcePermissionOpen(false)}
+      />
+
       <Modal
-        title="授权"
+        title="分享与权限"
         open={permissionOpen}
         onCancel={() => setPermissionOpen(false)}
-        onOk={() => permissionForm.submit()}
-        confirmLoading={permissionMutation.isPending}
+        footer={null}
       >
-        <Form form={permissionForm} layout="vertical" onFinish={(values) => permissionMutation.mutate(values)}>
-          <Form.Item name="userId" label="成员" rules={[{ required: true, message: '请选择成员' }]}>
-            <Select
-              showSearch
-              optionFilterProp="label"
-              options={(membersQuery.data ?? []).map((member) => ({ label: member.displayName, value: member.id }))}
-            />
-          </Form.Item>
-          <Form.Item name="permissionLevel" label="权限" initialValue="view" rules={[{ required: true }]}>
-            <Select
-              options={[
-                { label: '查看', value: 'view' },
-                { label: '编辑', value: 'edit' },
-                { label: '管理', value: 'manage' },
-              ]}
-            />
-          </Form.Item>
-        </Form>
+        <Space orientation="vertical" size={16} className="doc-share-modal">
+          <section>
+            <Typography.Title level={5}>授权主体</Typography.Title>
+            <Form form={permissionForm} layout="vertical" onFinish={(values) => permissionMutation.mutate(values)}>
+              <Form.Item name="subjectType" label="主体类型" initialValue="user" rules={[{ required: true }]}>
+                <Select
+                  options={[
+                    { label: '成员', value: 'user' },
+                    { label: '用户组', value: 'user_group' },
+                  ]}
+                  onChange={() => permissionForm.setFieldValue('subjectId', undefined)}
+                />
+              </Form.Item>
+              <Form.Item shouldUpdate noStyle>
+                {({ getFieldValue }) => {
+                  const subjectType = getFieldValue('subjectType') as PermissionForm['subjectType']
+                  return (
+                    <Form.Item name="subjectId" label={subjectType === 'user_group' ? '用户组' : '成员'} rules={[{ required: true, message: '请选择授权主体' }]}>
+                      <Select
+                        showSearch
+                        optionFilterProp="label"
+                        loading={subjectType === 'user_group' ? userGroupsQuery.isLoading : membersQuery.isLoading}
+                        options={
+                          subjectType === 'user_group'
+                            ? (userGroupsQuery.data ?? []).map((group) => ({
+                                label: `${group.name} (${group.code})`,
+                                value: group.id,
+                              }))
+                            : (membersQuery.data ?? []).map((member) => ({ label: member.displayName, value: member.id }))
+                        }
+                      />
+                    </Form.Item>
+                  )
+                }}
+              </Form.Item>
+              <Form.Item name="permissionLevel" label="权限" initialValue="view" rules={[{ required: true }]}>
+                <Select
+                  options={[
+                    { label: '可查看', value: 'view' },
+                    { label: '可评论', value: 'comment' },
+                    { label: '可编辑', value: 'edit' },
+                    { label: '可管理', value: 'manage' },
+                    { label: '所有者', value: 'owner' },
+                  ]}
+                />
+              </Form.Item>
+              <Button type="primary" loading={permissionMutation.isPending} onClick={() => permissionForm.submit()}>
+                邀请
+              </Button>
+            </Form>
+          </section>
+
+          <section>
+            <Typography.Title level={5}>组织内链接</Typography.Title>
+            <Form form={shareLinkForm} layout="vertical" onFinish={(values) => shareLinkMutation.mutate(values)}>
+              <Form.Item name="enabled" label="启用链接" valuePropName="checked" initialValue>
+                <Switch />
+              </Form.Item>
+              <Form.Item name="permissionLevel" label="链接权限" initialValue="view" rules={[{ required: true }]}>
+                <Select
+                  options={[
+                    { label: '可查看', value: 'view' },
+                    { label: '可评论', value: 'comment' },
+                    { label: '可编辑', value: 'edit' },
+                  ]}
+                />
+              </Form.Item>
+              <Form.Item name="expiresAt" label="过期时间">
+                <Input placeholder="2026-12-31T23:59:59Z" />
+              </Form.Item>
+              <Space wrap>
+                <Button icon={<ShareAltOutlined />} type="primary" loading={shareLinkMutation.isPending} onClick={() => shareLinkForm.submit()}>
+                  保存链接
+                </Button>
+                <Button icon={<LinkOutlined />} disabled={!activeShareLink} onClick={() => copyShareLink(activeShareLink)}>
+                  复制链接
+                </Button>
+                {activeShareLink ? (
+                  <Button
+                    loading={shareLinkToggleMutation.isPending}
+                    onClick={() => shareLinkToggleMutation.mutate(!activeShareLink.enabled)}
+                  >
+                    {activeShareLink.enabled ? '停用' : '启用'}
+                  </Button>
+                ) : null}
+              </Space>
+            </Form>
+          </section>
+
+          {docQuery.data?.document.docType === 'space' ? (
+            <section>
+              <Typography.Title level={5}>知识库设置</Typography.Title>
+              <Form form={knowledgeBaseForm} layout="vertical" onFinish={(values) => knowledgeBaseMutation.mutate(values)}>
+                <Form.Item name="knowledgeBase" label="知识库入口" valuePropName="checked" initialValue>
+                  <Switch />
+                </Form.Item>
+                <Form.Item name="description" label="描述">
+                  <Input.TextArea rows={3} />
+                </Form.Item>
+                <Form.Item name="coverUrl" label="封面 URL">
+                  <Input />
+                </Form.Item>
+                <Form.Item name="defaultPermissionLevel" label="默认权限" initialValue="view">
+                  <Select
+                    options={[
+                      { label: '可查看', value: 'view' },
+                      { label: '可评论', value: 'comment' },
+                      { label: '可编辑', value: 'edit' },
+                    ]}
+                  />
+                </Form.Item>
+                <Button loading={knowledgeBaseMutation.isPending} onClick={() => knowledgeBaseForm.submit()}>
+                  保存知识库设置
+                </Button>
+              </Form>
+            </section>
+          ) : null}
+        </Space>
       </Modal>
 
       <Modal
@@ -836,6 +1440,9 @@ export function DocsPage() {
                 { label: '数据表', value: 'base_table' },
                 { label: '表格记录', value: 'base_record' },
                 { label: '文件', value: 'file' },
+                { label: '消息', value: 'message' },
+                { label: '审批', value: 'approval' },
+                { label: '文档', value: 'document' },
               ]}
             />
           </Form.Item>
@@ -870,10 +1477,11 @@ function DocumentEditor({
   detail,
   titleDraft,
   contentDraft,
-  markdownPreview,
+  canComment,
   canEdit,
   canManage,
   conflictVisible,
+  acceptanceReport,
   versions,
   blockDrafts,
   saving,
@@ -881,6 +1489,8 @@ function DocumentEditor({
   restoringVersionNo,
   commentDraft,
   commentBlockId,
+  commentAnchor,
+  commentReplyDrafts,
   activeCommentId,
   onTitleChange,
   onContentChange,
@@ -893,29 +1503,42 @@ function DocumentEditor({
   onRefresh,
   onOpenPermission,
   onOpenRelation,
+  onOpenNamedVersion,
+  onOpenImportMarkdown,
+  onOpenSelectionIssue,
   onRestore,
   onDiff,
   onCommentDraftChange,
   onCommentBlockChange,
+  onCommentAnchorChange,
   onComment,
   commenting,
+  onReplyDraftChange,
+  onReplyComment,
+  replyingCommentId,
   onResolveComment,
   resolvingCommentId,
+  onReopenComment,
+  reopeningCommentId,
+  onActivateComment,
 }: {
   detail: DocumentDetail
   titleDraft: string
   contentDraft: string
-  markdownPreview: string[]
+  canComment: boolean
   canEdit: boolean
   canManage: boolean
   conflictVisible: boolean
-  versions: Array<{ versionNo: number; createdByName: string; createdAt: string }>
+  acceptanceReport?: DocumentAcceptanceReport
+  versions: DocumentVersion[]
   blockDrafts: BlockDraftState[]
   saving: boolean
   savingBlocks: boolean
   restoringVersionNo?: number
   commentDraft: string
   commentBlockId?: string
+  commentAnchor?: DocEditorSelectionAnchor
+  commentReplyDrafts: Record<string, string>
   activeCommentId: string | null
   onTitleChange: (value: string) => void
   onContentChange: (value: string) => void
@@ -928,15 +1551,72 @@ function DocumentEditor({
   onRefresh: () => void
   onOpenPermission: () => void
   onOpenRelation: () => void
+  onOpenNamedVersion: () => void
+  onOpenImportMarkdown: () => void
+  onOpenSelectionIssue: () => void
   onRestore: (versionNo: number) => void
   onDiff: (versionNo: number) => void
   onCommentDraftChange: (value: string) => void
   onCommentBlockChange: (value?: string) => void
+  onCommentAnchorChange: (anchor?: DocEditorSelectionAnchor) => void
   onComment: () => void
   commenting: boolean
+  onReplyDraftChange: (commentId: string, value: string) => void
+  onReplyComment: (commentId: string) => void
+  replyingCommentId?: string
   onResolveComment: (commentId: string) => void
   resolvingCommentId?: string
+  onReopenComment: (commentId: string) => void
+  reopeningCommentId?: string
+  onActivateComment: (commentId: string) => void
 }) {
+  const handleRemoteSnapshot = useCallback((snapshot: { title: string; content: string }) => {
+    onTitleChange(snapshot.title)
+    onContentChange(snapshot.content)
+  }, [onContentChange, onTitleChange])
+  const collaboration = useDocumentCollaboration({
+    documentId: detail.document.id,
+    title: titleDraft,
+    content: contentDraft,
+    versionNo: detail.document.currentVersionNo,
+    canEdit,
+    enabled: detail.document.docType === 'markdown',
+    onRemoteSnapshot: handleRemoteSnapshot,
+  })
+  const checkpointMode = detail.document.docType === 'markdown'
+  const checkpointReady = ['joined', 'synced'].includes(collaboration.status)
+  const checkpointWaiting = checkpointMode && !checkpointReady
+  const saveActionLabel = checkpointMode ? '生成版本' : '保存'
+  const saveActionHint = checkpointWaiting ? '等待自动保存完成后生成版本' : saveActionLabel
+  const commentAnchors = useMemo(
+    () =>
+      detail.comments
+        .filter((comment) => comment.anchorType === 'selection')
+        .map((comment) => ({
+          id: comment.id,
+          anchorStart: comment.anchorStart,
+          anchorEnd: comment.anchorEnd,
+          anchorText: comment.anchorText,
+          resolved: comment.resolved,
+        })),
+    [detail.comments],
+  )
+  const focusedCommentIds = useMemo(
+    () => new Set(detail.comments.filter((comment) => commentAnchor && commentMatchesAnchor(comment, commentAnchor)).map((comment) => comment.id)),
+    [commentAnchor, detail.comments],
+  )
+  const orderedComments = useMemo(
+    () =>
+      [...detail.comments].sort((left, right) => {
+        const focusDelta = Number(focusedCommentIds.has(right.id)) - Number(focusedCommentIds.has(left.id))
+        if (focusDelta !== 0) {
+          return focusDelta
+        }
+        return new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime()
+      }),
+    [detail.comments, focusedCommentIds],
+  )
+
   useEffect(() => {
     if (!activeCommentId) {
       return
@@ -948,63 +1628,47 @@ function DocumentEditor({
 
   return (
     <div className="doc-editor">
-      <div className="doc-editor-header">
-        <div>
-          <Input
-            className="doc-title-input"
-            disabled={!canEdit}
-            value={titleDraft}
-            onChange={(event) => onTitleChange(event.target.value)}
-          />
-          <Space wrap>
-            <Tag>v{detail.document.currentVersionNo}</Tag>
-            <Tag>{permissionText(detail.document.permissionLevel)}</Tag>
-            <Typography.Text type="secondary">更新于 {new Date(detail.document.updatedAt).toLocaleString()}</Typography.Text>
-          </Space>
-        </div>
-        <Space wrap>
-          <Tooltip title="保存">
-            <Button type="primary" icon={<SaveOutlined />} disabled={!canEdit} loading={saving} onClick={onSave} />
-          </Tooltip>
-          <Tooltip title="授权">
-            <Button icon={<ShareAltOutlined />} disabled={!canManage} onClick={onOpenPermission} />
-          </Tooltip>
-          <Tooltip title="关联对象">
-            <Button icon={<LinkOutlined />} disabled={!canEdit} onClick={onOpenRelation} />
-          </Tooltip>
-        </Space>
-      </div>
-
-      {conflictVisible ? (
-        <Alert
-          showIcon
-          type="warning"
-          message="版本冲突"
-          description="当前草稿基于旧版本。请刷新文档查看最新内容，再手动合并后保存。"
-          action={<Button onClick={onRefresh}>刷新</Button>}
-        />
-      ) : null}
-
-      <section className="doc-editor-grid">
-        <Input.TextArea
-          className="doc-markdown-input"
-          disabled={!canEdit}
-          value={contentDraft}
-          onChange={(event) => onContentChange(event.target.value)}
-        />
-        <div className="doc-preview">
-          {markdownPreview.length > 0 ? (
-            markdownPreview.map((line, index) => <p key={`${line}-${index}`}>{line}</p>)
-          ) : (
-            <Typography.Text type="secondary">空文档</Typography.Text>
-          )}
-        </div>
-      </section>
+      <DocEditor
+        documentId={detail.document.id}
+        title={titleDraft}
+        content={contentDraft}
+        versionNo={detail.document.currentVersionNo}
+        permissionLevel={detail.document.permissionLevel}
+        updatedAt={detail.document.updatedAt}
+        canEdit={canEdit}
+        canManage={canManage}
+        dirty={titleDraft !== detail.document.title || contentDraft !== detail.content}
+        saving={saving}
+        conflictVisible={conflictVisible}
+        saveActionLabel={saveActionLabel}
+        saveActionHint={saveActionHint}
+        saveActionDisabled={checkpointWaiting}
+        collaboration={{
+          status: collaboration.status,
+          onlineUsers: collaboration.onlineUsers,
+          remoteCursors: collaboration.remoteCursors,
+          lastSavedAt: collaboration.lastSavedAt,
+          error: collaboration.error,
+        }}
+        commentAnchors={commentAnchors}
+        activeCommentId={activeCommentId}
+        onTitleChange={onTitleChange}
+        onContentChange={onContentChange}
+        onSelectionChange={collaboration.sendAwareness}
+        onCommentAnchorChange={onCommentAnchorChange}
+        onSave={onSave}
+        onRefresh={onRefresh}
+        onOpenPermission={onOpenPermission}
+        onOpenRelation={onOpenRelation}
+      />
 
       <section className="doc-meta-grid">
-        <div className="doc-panel">
+        <DocumentAcceptancePanel report={acceptanceReport} />
+
+        <details className="doc-panel doc-legacy-block-panel">
+          <summary>兼容结构化块</summary>
           <Space className="doc-panel-title">
-            <Typography.Title level={5}>结构化块</Typography.Title>
+            <Typography.Title level={5}>兼容结构化块</Typography.Title>
             <Space>
               <Tooltip title="新增块">
                 <Button size="small" icon={<PlusOutlined />} disabled={!canEdit} onClick={onAddBlock} />
@@ -1086,16 +1750,32 @@ function DocumentEditor({
               <Typography.Text type="secondary">暂无块</Typography.Text>
             )}
           </Space>
-        </div>
+        </details>
 
         <div className="doc-panel">
-          <Typography.Title level={5}>版本</Typography.Title>
+          <Space className="doc-panel-title">
+            <Typography.Title level={5}>版本</Typography.Title>
+            <Space size={4}>
+              <Button size="small" disabled={!canEdit} onClick={onOpenNamedVersion}>
+                命名
+              </Button>
+              <Button size="small" disabled={!canEdit} onClick={onOpenImportMarkdown}>
+                导入
+              </Button>
+            </Space>
+          </Space>
           <Space orientation="vertical" size={8} className="doc-panel-list">
             {versions.map((version) => (
               <div className="doc-version-item" key={version.versionNo}>
                 <span>
-                  <strong>v{version.versionNo}</strong>
-                  <small>{version.createdByName} · {new Date(version.createdAt).toLocaleString()}</small>
+                  <strong>v{version.versionNo}{version.versionName ? ` · ${version.versionName}` : ''}</strong>
+                  <small>
+                    {versionTypeText(version.versionType)}
+                    {version.sourceVersionNo ? ` · 来自 v${version.sourceVersionNo}` : ''}
+                    {' · '}
+                    {version.createdByName} · {new Date(version.createdAt).toLocaleString()}
+                  </small>
+                  {version.summary ? <small>{version.summary}</small> : null}
                 </span>
                 <Button
                   size="small"
@@ -1135,12 +1815,53 @@ function DocumentEditor({
           </Space>
         </div>
 
+        {detail.document.docType === 'space' ? (
+          <div className="doc-panel">
+            <Typography.Title level={5}>知识库</Typography.Title>
+            <Space orientation="vertical" size={8} className="doc-panel-list">
+              <Space wrap>
+                <Tag color={detail.document.knowledgeBase ? 'green' : 'default'}>
+                  {detail.document.knowledgeBase ? '知识库入口' : '普通空间'}
+                </Tag>
+                <Tag>默认 {permissionText(detail.document.defaultPermissionLevel)}</Tag>
+              </Space>
+              {detail.document.description ? <Typography.Paragraph>{detail.document.description}</Typography.Paragraph> : null}
+              {detail.document.coverUrl ? <Typography.Text type="secondary">{detail.document.coverUrl}</Typography.Text> : null}
+            </Space>
+          </div>
+        ) : null}
+
         <div className="doc-panel">
           <Typography.Title level={5}>权限</Typography.Title>
-          <Space wrap>
+          <Space orientation="vertical" size={8} className="doc-panel-list">
             {detail.permissions.map((permission) => (
-              <Tag key={permission.id}>{permission.displayName}: {permissionText(permission.permissionLevel)}</Tag>
+              <div className="doc-permission-row" key={permission.id}>
+                <span>
+                  <strong>{permission.subjectName ?? permission.displayName}</strong>
+                  <small>
+                    {permission.subjectType === 'user_group' ? '用户组 · ' : ''}
+                    {permissionText(permission.permissionLevel)}
+                    {permission.sourceType === 'inherited' && permission.sourceTitle ? ` · 继承自 ${permission.sourceTitle}` : ''}
+                  </small>
+                </span>
+                <Tag color={permission.sourceType === 'inherited' ? 'blue' : 'default'}>
+                  {permission.sourceType === 'inherited' ? '继承' : '直授'}
+                </Tag>
+              </div>
             ))}
+            {detail.shareLinks.length > 0 ? (
+              detail.shareLinks.map((shareLink) => (
+                <div className="doc-share-row" key={shareLink.id}>
+                  <Tag icon={<LinkOutlined />} color={shareLink.enabled ? 'green' : 'default'}>
+                    {shareLink.enabled ? '组织内链接已启用' : '组织内链接已停用'}
+                  </Tag>
+                  <span>{permissionText(shareLink.permissionLevel)}</span>
+                  {shareLink.expiresAt ? <small>{new Date(shareLink.expiresAt).toLocaleString()} 过期</small> : null}
+                </div>
+              ))
+            ) : canManage ? (
+              <Typography.Text type="secondary">尚未创建组织内分享链接</Typography.Text>
+            ) : null}
           </Space>
         </div>
 
@@ -1149,43 +1870,97 @@ function DocumentEditor({
             <CommentOutlined /> 评论
           </Typography.Title>
           <Space orientation="vertical" size={8} className="doc-panel-list">
-            {detail.comments.map((comment) => (
+            {orderedComments.map((comment) => (
               <div className={`doc-comment-item${comment.id === activeCommentId ? ' active' : ''}${comment.resolved ? ' resolved' : ''}`} key={comment.id} id={`doc-comment-${comment.id}`}>
                 <Space wrap>
                   <strong>{comment.authorName}</strong>
-                  {comment.blockId ? <Tag>{blockLabel(detail.blocks, comment.blockId)}</Tag> : <Tag>全文</Tag>}
+                  {focusedCommentIds.has(comment.id) ? <Tag color="blue">当前位置</Tag> : null}
+                  <Tag>{commentAnchorLabel(detail.blocks, comment)}</Tag>
                   {comment.resolved ? <Tag color="green">已解决</Tag> : <Tag color="orange">未解决</Tag>}
                 </Space>
+                {comment.anchorText ? <Typography.Text className="doc-comment-anchor-text" type="secondary">"{comment.anchorText}"</Typography.Text> : null}
                 <span>{comment.content}</span>
+                {comment.replies.length > 0 ? (
+                  <div className="doc-comment-replies">
+                    {comment.replies.map((reply) => (
+                      <div className="doc-comment-reply" key={reply.id}>
+                        <strong>{reply.authorName}</strong>
+                        <span>{reply.content}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
                 <Space wrap>
-                  {comment.blockId ? (
-                    <Button size="small" href={`#doc-block-${comment.blockId}`}>
+                  {comment.anchorType === 'selection' || comment.blockId ? (
+                    <Button
+                      size="small"
+                      href={comment.blockId ? `#doc-block-${comment.blockId}` : undefined}
+                      onClick={() => onActivateComment(comment.id)}
+                    >
                       定位
                     </Button>
                   ) : null}
                   {!comment.resolved ? (
+                    <>
+                      <Button
+                        size="small"
+                        icon={<CheckCircleOutlined />}
+                        loading={resolvingCommentId === comment.id}
+                        disabled={!canComment}
+                        onClick={() => onResolveComment(comment.id)}
+                      >
+                        解决
+                      </Button>
+                    </>
+                  ) : (
                     <Button
                       size="small"
-                      icon={<CheckCircleOutlined />}
-                      loading={resolvingCommentId === comment.id}
-                      disabled={!canEdit}
-                      onClick={() => onResolveComment(comment.id)}
+                      icon={<RollbackOutlined />}
+                      loading={reopeningCommentId === comment.id}
+                      disabled={!canComment}
+                      onClick={() => onReopenComment(comment.id)}
                     >
-                      解决
+                      重新打开
                     </Button>
-                  ) : (
-                    <Typography.Text type="secondary">
-                      {comment.resolvedByName ? `${comment.resolvedByName} 解决` : '已解决'}
-                    </Typography.Text>
                   )}
                 </Space>
+                {!comment.resolved ? (
+                  <Space.Compact className="doc-comment-reply-composer">
+                    <Input
+                      disabled={!canComment}
+                      value={commentReplyDrafts[comment.id] ?? ''}
+                      placeholder="回复线程"
+                      onChange={(event) => onReplyDraftChange(comment.id, event.target.value)}
+                    />
+                    <Button
+                      disabled={!canComment || !(commentReplyDrafts[comment.id] ?? '').trim()}
+                      loading={replyingCommentId === comment.id}
+                      onClick={() => onReplyComment(comment.id)}
+                    >
+                      回复
+                    </Button>
+                  </Space.Compact>
+                ) : (
+                  <Typography.Text type="secondary">
+                    {comment.resolvedByName ? `${comment.resolvedByName} 解决` : '已解决'}
+                  </Typography.Text>
+                )}
               </div>
             ))}
             {detail.comments.length === 0 ? <Typography.Text type="secondary">暂无评论</Typography.Text> : null}
+            {commentAnchor && !commentBlockId ? (
+              <div className="doc-comment-anchor-preview">
+                <Tag color="blue">选区</Tag>
+                <Typography.Text type="secondary">{commentAnchor.anchorText}</Typography.Text>
+                <Button size="small" disabled={!canEdit} onClick={onOpenSelectionIssue}>
+                  转事项
+                </Button>
+              </div>
+            ) : null}
             <Select
               allowClear
-              disabled={!canEdit}
-              placeholder="关联到文档块"
+              disabled={!canComment}
+              placeholder="全文评论；选择块可改为块评论"
               value={commentBlockId}
               onChange={onCommentBlockChange}
               options={detail.blocks.map((block, index) => ({
@@ -1194,18 +1969,71 @@ function DocumentEditor({
               }))}
             />
             <Input.TextArea
+              className="doc-comment-composer"
               rows={3}
-              disabled={!canEdit}
+              disabled={!canComment}
               value={commentDraft}
               placeholder="评论支持 @username 提醒成员"
               onChange={(event) => onCommentDraftChange(event.target.value)}
             />
-            <Button disabled={!canEdit || !commentDraft.trim()} loading={commenting} onClick={onComment}>
+            <Button disabled={!canComment || !commentDraft.trim()} loading={commenting} onClick={onComment}>
               发送评论
             </Button>
           </Space>
         </div>
       </section>
+    </div>
+  )
+}
+
+function DocumentAcceptancePanel({ report }: { report?: DocumentAcceptanceReport }) {
+  if (!report) {
+    return null
+  }
+  const readyGates = report.gates.filter((gate) => gate.status !== 'blocked').length
+  return (
+    <div className="doc-panel doc-acceptance-panel">
+      <Space className="doc-panel-title">
+        <Typography.Title level={5}>
+          <CheckCircleOutlined /> v1 验收
+        </Typography.Title>
+        <Tag color={report.frozen ? 'green' : 'blue'}>{report.frozen ? '已冻结' : report.status}</Tag>
+      </Space>
+      <Space wrap size={6}>
+        <Tag>场景 {report.scenarios.length}</Tag>
+        <Tag>验收门 {readyGates}/{report.gates.length}</Tag>
+        <Tag color={report.openP0 === 0 ? 'green' : 'red'}>P0 {report.openP0}</Tag>
+        <Tag color={report.openP1 === 0 ? 'green' : 'orange'}>P1 {report.openP1}</Tag>
+      </Space>
+      <Typography.Paragraph className="doc-acceptance-criteria" type="secondary">
+        {report.frozenCriteria}
+      </Typography.Paragraph>
+      <Space orientation="vertical" size={6} className="doc-panel-list">
+        {report.gates.map((gate) => (
+          <div className="doc-acceptance-row" key={gate.key}>
+            <span>
+              <strong>{gate.label}</strong>
+              <small>{gate.evidence}</small>
+            </span>
+            <Tag color={acceptanceStatusColor(gate.status)}>{acceptanceStatusText(gate.status)}</Tag>
+          </div>
+        ))}
+      </Space>
+      <details className="doc-acceptance-scenarios">
+        <summary>10 个真实场景</summary>
+        <Space orientation="vertical" size={6} className="doc-panel-list">
+          {report.scenarios.map((scenario) => (
+            <div className="doc-acceptance-row" key={scenario.key}>
+              <span>
+                <strong>{scenario.title}</strong>
+                <small>{scenario.workflow}</small>
+                <small>{scenario.evidence}</small>
+              </span>
+              <Tag color={acceptanceStatusColor(scenario.status)}>{acceptanceStatusText(scenario.status)}</Tag>
+            </div>
+          ))}
+        </Space>
+      </details>
     </div>
   )
 }
@@ -1428,6 +2256,12 @@ function EmbedSummaryPreview({
   return (
     <div className="doc-base-view-preview">
       <ObjectSummaryCard summary={summary} />
+      <Space wrap size={4}>
+        <Tag color="blue">{selectedView ? selectedView.name : '默认视图'}</Tag>
+        <Tag>{summary.accessState === 'available' ? '权限可见' : '权限受限'}</Tag>
+        {selectedView?.filters.length ? <Tag>筛选 {selectedView.filters.length}</Tag> : null}
+        {selectedView?.sorts.length ? <Tag>排序 {selectedView.sorts.length}</Tag> : null}
+      </Space>
       <div className="doc-base-view-grid">
         <div className="doc-base-view-row header">
           <span>#</span>
@@ -1448,6 +2282,27 @@ function EmbedSummaryPreview({
   )
 }
 
+function TemplatePreview({ template }: { template: DocumentTemplate | null }) {
+  if (!template) {
+    return null
+  }
+  const previewLines = template.content.split('\n').filter((line) => line.trim()).slice(0, 5)
+  return (
+    <div className="doc-template-preview">
+      <Space wrap>
+        <Tag>{templateCategoryText(template.category)}</Tag>
+        {template.builtIn ? <Tag color="blue">内置</Tag> : null}
+      </Space>
+      {template.description ? <Typography.Paragraph type="secondary">{template.description}</Typography.Paragraph> : null}
+      <div className="doc-template-preview-content">
+        {previewLines.map((line, index) => (
+          <Typography.Text key={`${template.id}-${index}`}>{line}</Typography.Text>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function baseCellValue(field: BaseField, record: BaseRecord) {
   const value = record.values[field.id] ?? record.values[field.name]
   if (value === undefined || value === null || value === '') {
@@ -1463,17 +2318,72 @@ function baseCellValue(field: BaseField, record: BaseRecord) {
   return String(value)
 }
 
-function hasPermission(current: string | undefined, required: 'view' | 'edit' | 'manage') {
-  const rank = { view: 1, edit: 2, manage: 3 }
+function commentMatchesAnchor(comment: DocumentComment, anchor: DocEditorSelectionAnchor) {
+  if (comment.anchorType !== 'selection' || comment.anchorStart == null || comment.anchorEnd == null) {
+    return false
+  }
+  return comment.anchorStart <= anchor.anchorEnd && comment.anchorEnd >= anchor.anchorStart
+}
+
+function commentAnchorLabel(blocks: DocumentDetail['blocks'], comment: DocumentComment) {
+  if (comment.anchorType === 'selection') {
+    return '选区'
+  }
+  if (comment.blockId) {
+    return blockLabel(blocks, comment.blockId)
+  }
+  return '全文'
+}
+
+function hasPermission(current: string | undefined, required: 'view' | 'comment' | 'edit' | 'manage') {
+  const rank = { view: 1, comment: 2, edit: 3, manage: 4, owner: 5 }
   return current ? rank[current as keyof typeof rank] >= rank[required] : false
 }
 
 function permissionText(permission: string) {
-  return { view: '可查看', edit: '可编辑', manage: '可管理' }[permission] ?? permission
+  return { view: '可查看', comment: '可评论', edit: '可编辑', manage: '可管理', owner: '所有者' }[permission] ?? permission
 }
 
 function docTypeText(docType: string) {
   return { space: '空间', folder: '文件夹', markdown: '文档' }[docType] ?? docType
+}
+
+function versionTypeText(versionType: string) {
+  return {
+    auto_snapshot: '自动快照',
+    manual_checkpoint: '手动检查点',
+    named: '命名版本',
+    restore: '恢复版本',
+    import: '导入版本',
+  }[versionType] ?? versionType
+}
+
+function acceptanceStatusText(status: string) {
+  return {
+    ready: '可试运行',
+    'trial-ready': '待真人试运行',
+    frozen: '已冻结',
+    blocked: '阻塞',
+  }[status] ?? status
+}
+
+function acceptanceStatusColor(status: string) {
+  return {
+    ready: 'green',
+    'trial-ready': 'blue',
+    frozen: 'purple',
+    blocked: 'red',
+  }[status] ?? 'default'
+}
+
+function templateCategoryText(category: string) {
+  return {
+    meeting: '会议纪要',
+    requirement: '需求文档',
+    project: '项目计划',
+    review: '复盘',
+    knowledge: '知识条目',
+  }[category] ?? category
 }
 
 function documentSort(left: DocumentSummary, right: DocumentSummary) {
@@ -1505,7 +2415,7 @@ function buildDocumentTreeData(
       <span className={`doc-tree-title${node.document.id === activeDocId ? ' active' : ''}${node.document.archived ? ' archived' : ''}`}>
         {node.document.docType === 'markdown' ? <FileTextOutlined /> : <FolderOutlined />}
         <span>{node.document.title}</span>
-        {node.document.docType !== 'markdown' ? <Tag>{docTypeText(node.document.docType)}</Tag> : null}
+        {node.document.knowledgeBase ? <Tag color="green">知识库</Tag> : node.document.docType !== 'markdown' ? <Tag>{docTypeText(node.document.docType)}</Tag> : null}
         {favoriteDocumentIds.has(node.document.id) ? <StarFilled className="doc-tree-star" /> : null}
         {node.document.archived ? <Tag color="default">归档</Tag> : null}
       </span>
@@ -1632,11 +2542,4 @@ function parseJsonObject<T>(value: string): T | null {
   } catch {
     return null
   }
-}
-
-function renderMarkdownPreview(content: string) {
-  return content
-    .split('\n')
-    .map((line) => line.replace(/^#{1,6}\s*/, '').trim())
-    .filter(Boolean)
 }

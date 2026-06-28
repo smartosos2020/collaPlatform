@@ -32,6 +32,8 @@ public interface BaseRepository {
 
     Optional<BaseDetail> findBaseDetail(UUID workspaceId, UUID baseId, UUID userId);
 
+    Optional<BaseDetail> findBaseDetailWithPermission(UUID workspaceId, UUID baseId, String permissionLevel);
+
     List<BaseMember> listMembers(UUID workspaceId, UUID baseId);
 
     UUID createTable(UUID workspaceId, UUID baseId, String name, UUID createdBy);

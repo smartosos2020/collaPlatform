@@ -1,5 +1,9 @@
 package com.colla.platform.shared.websocket;
 
+import com.colla.platform.modules.doc.application.DocumentCollaborationService;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.colla.platform.shared.auth.CurrentUser;
 import java.util.Map;
 import org.springframework.stereotype.Component;
@@ -10,10 +14,21 @@ import org.springframework.web.socket.handler.TextWebSocketHandler;
 
 @Component
 public class PlatformWebSocketHandler extends TextWebSocketHandler {
-    private final WebSocketSessionRegistry registry;
+    private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
+    };
 
-    public PlatformWebSocketHandler(WebSocketSessionRegistry registry) {
+    private final WebSocketSessionRegistry registry;
+    private final DocumentCollaborationService documentCollaborationService;
+    private final ObjectMapper objectMapper;
+
+    public PlatformWebSocketHandler(
+        WebSocketSessionRegistry registry,
+        DocumentCollaborationService documentCollaborationService,
+        ObjectMapper objectMapper
+    ) {
         this.registry = registry;
+        this.documentCollaborationService = documentCollaborationService;
+        this.objectMapper = objectMapper;
     }
 
     @Override
@@ -24,13 +39,24 @@ public class PlatformWebSocketHandler extends TextWebSocketHandler {
     }
 
     @Override
-    protected void handleTextMessage(WebSocketSession session, TextMessage message) {
-        // Client commands are intentionally handled through REST in the MVP.
+    protected void handleTextMessage(WebSocketSession session, TextMessage message) throws Exception {
+        Map<String, Object> command;
+        try {
+            command = objectMapper.readValue(message.getPayload(), MAP_TYPE);
+        } catch (JsonProcessingException exception) {
+            return;
+        }
+        String type = command.get("type") == null ? "" : String.valueOf(command.get("type"));
+        if (documentCollaborationService.supports(type)) {
+            documentCollaborationService.handle(currentUser(session), session, message.getPayload());
+        }
     }
 
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
-        registry.unregister(currentUser(session).id(), session);
+        CurrentUser currentUser = currentUser(session);
+        documentCollaborationService.disconnect(session, currentUser);
+        registry.unregister(currentUser.id(), session);
     }
 
     private CurrentUser currentUser(WebSocketSession session) {

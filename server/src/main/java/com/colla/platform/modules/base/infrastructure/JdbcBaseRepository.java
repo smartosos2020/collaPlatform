@@ -181,9 +181,14 @@ public class JdbcBaseRepository implements BaseRepository {
         if (permission.isEmpty()) {
             return Optional.empty();
         }
+        return findBaseDetailWithPermission(workspaceId, baseId, permission.get());
+    }
+
+    @Override
+    public Optional<BaseDetail> findBaseDetailWithPermission(UUID workspaceId, UUID baseId, String permissionLevel) {
         return findBase(workspaceId, baseId)
             .map(base -> new BaseDetail(
-                withPermission(base, permission.get()),
+                withPermission(base, permissionLevel),
                 listTables(workspaceId, baseId),
                 listMembers(workspaceId, baseId)
             ));

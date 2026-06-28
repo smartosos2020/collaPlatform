@@ -39,6 +39,10 @@ export async function apiPost<T>(path: string, body?: unknown, options?: Request
   return apiRequest<T>('POST', path, body, options)
 }
 
+export async function apiPut<T>(path: string, body?: unknown, options?: RequestOptions): Promise<T> {
+  return apiRequest<T>('PUT', path, body, options)
+}
+
 export async function apiDelete<T>(path: string, options?: RequestOptions): Promise<T> {
   return apiRequest<T>('DELETE', path, undefined, options)
 }
@@ -100,7 +104,7 @@ async function sendRequest<T>(
   })
 
   if (!response.ok) {
-    throw new ApiRequestError(response.status)
+    throw new ApiRequestError(response.status, await readErrorMessage(response))
   }
 
   if (response.status === 204) {
@@ -111,12 +115,31 @@ async function sendRequest<T>(
   return text ? (JSON.parse(text) as T) : (undefined as T)
 }
 
-class ApiRequestError extends Error {
+export class ApiRequestError extends Error {
   readonly status: number
 
-  constructor(status: number) {
-    super(`API request failed: ${status}`)
+  constructor(status: number, message?: string) {
+    super(message ? `${message} (${status})` : `API request failed: ${status}`)
     this.status = status
+  }
+}
+
+async function readErrorMessage(response: Response) {
+  const fallback = `API request failed: ${response.status}`
+  const text = await response.text().catch(() => '')
+  if (!text) {
+    return fallback
+  }
+  try {
+    const payload = JSON.parse(text) as {
+      error?: { message?: string }
+      message?: string
+      detail?: string
+      title?: string
+    }
+    return payload.error?.message ?? payload.message ?? payload.detail ?? payload.title ?? fallback
+  } catch {
+    return text
   }
 }
 

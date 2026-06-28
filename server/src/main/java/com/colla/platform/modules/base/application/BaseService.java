@@ -29,6 +29,8 @@ import com.colla.platform.modules.platform.application.PlatformObjectResolverReg
 import com.colla.platform.modules.platform.domain.PlatformModels.ObjectAccessState;
 import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectSummary;
 import com.colla.platform.modules.platform.infrastructure.PlatformObjectRepository;
+import com.colla.platform.modules.permission.application.PermissionDecisionService;
+import com.colla.platform.modules.permission.domain.PermissionModels.PermissionDecision;
 import com.colla.platform.shared.auth.CurrentUser;
 import java.math.BigDecimal;
 import java.net.URI;
@@ -80,6 +82,7 @@ public class BaseService {
     private final ObjectProvider<PlatformObjectResolverRegistry> objectResolverRegistryProvider;
     private final DomainEventRepository eventRepository;
     private final AuditService auditService;
+    private final PermissionDecisionService permissionDecisionService;
 
     public BaseService(
         BaseRepository baseRepository,
@@ -88,7 +91,8 @@ public class BaseService {
         PlatformObjectRepository objectRepository,
         ObjectProvider<PlatformObjectResolverRegistry> objectResolverRegistryProvider,
         DomainEventRepository eventRepository,
-        AuditService auditService
+        AuditService auditService,
+        PermissionDecisionService permissionDecisionService
     ) {
         this.baseRepository = baseRepository;
         this.identityRepository = identityRepository;
@@ -97,6 +101,7 @@ public class BaseService {
         this.objectResolverRegistryProvider = objectResolverRegistryProvider;
         this.eventRepository = eventRepository;
         this.auditService = auditService;
+        this.permissionDecisionService = permissionDecisionService;
     }
 
     public List<BaseSummary> listBases(CurrentUser currentUser) {
@@ -108,6 +113,18 @@ public class BaseService {
         String normalizedName = required(name, "Base name is required");
         UUID baseId = baseRepository.createBase(currentUser.workspaceId(), normalizedName, description, currentUser.id());
         baseRepository.upsertMember(currentUser.workspaceId(), baseId, currentUser.id(), "manage", currentUser.id());
+        permissionDecisionService.grantResource(
+            currentUser.workspaceId(),
+            "base",
+            baseId,
+            "user",
+            currentUser.id(),
+            "manage",
+            "owner",
+            null,
+            null,
+            currentUser.id()
+        );
         registerBaseObject(currentUser.workspaceId(), baseId, normalizedName);
         eventRepository.append(
             currentUser.workspaceId(),
@@ -122,8 +139,8 @@ public class BaseService {
     }
 
     public BaseDetail getBase(CurrentUser currentUser, UUID baseId) {
-        requireView(currentUser, baseId);
-        return baseRepository.findBaseDetail(currentUser.workspaceId(), baseId, currentUser.id())
+        BaseSummary base = requireView(currentUser, baseId);
+        return baseRepository.findBaseDetailWithPermission(currentUser.workspaceId(), baseId, base.permissionLevel())
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Base not found"));
     }
 
@@ -143,6 +160,18 @@ public class BaseService {
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
         String normalizedPermission = normalizePermission(permissionLevel);
         baseRepository.upsertMember(currentUser.workspaceId(), baseId, userId, normalizedPermission, currentUser.id());
+        permissionDecisionService.grantResource(
+            currentUser.workspaceId(),
+            "base",
+            baseId,
+            "user",
+            userId,
+            normalizedPermission,
+            "direct",
+            null,
+            null,
+            currentUser.id()
+        );
         auditService.log(
             currentUser,
             "permission.granted",
@@ -543,11 +572,19 @@ public class BaseService {
     private BaseSummary requirePermission(CurrentUser currentUser, UUID baseId, String requiredLevel) {
         BaseSummary base = baseRepository.findBase(currentUser.workspaceId(), baseId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Base not found"));
+        PermissionDecision decision = permissionDecisionService.decide(currentUser, "base", baseId, requiredLevel);
+        if (decision.allowed()) {
+            return withPermission(base, decision.currentLevel());
+        }
         String permission = baseRepository.findPermissionLevel(currentUser.workspaceId(), baseId, currentUser.id())
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "Base access denied"));
         if (permissionRank(permission) < permissionRank(requiredLevel)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Base access denied");
         }
+        return withPermission(base, permission);
+    }
+
+    private BaseSummary withPermission(BaseSummary base, String permission) {
         return new BaseSummary(
             base.id(),
             base.name(),

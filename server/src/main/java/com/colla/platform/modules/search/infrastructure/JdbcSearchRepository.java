@@ -23,11 +23,43 @@ public class JdbcSearchRepository implements SearchRepository {
         String likeQuery = "%" + query.toLowerCase() + "%";
         return jdbcTemplate.query(
             """
-                select s.object_type, s.object_id, s.title, s.excerpt, s.web_path, s.deep_link,
+                select s.object_type, s.object_id, s.title, s.excerpt,
+                       coalesce(
+                           '/docs/' || s.object_id::text || '?commentId=' || document_comment.thread_id::text,
+                           '/docs/' || s.object_id::text || '#doc-block-' || document_block.id::text,
+                           s.web_path
+                       ) web_path,
+                       s.deep_link,
                        ts_rank_cd(to_tsvector('simple', s.search_text), plainto_tsquery('simple', ?))
                          + case when lower(s.search_text) like ? or lower(s.title) like ? then 0.25 else 0 end score,
                        s.updated_at
                 from search_index_documents s
+                left join lateral (
+                    select c.thread_id
+                    from document_comments c
+                    where s.object_type = 'document'
+                      and c.workspace_id = s.workspace_id
+                      and c.document_id = s.object_id
+                      and c.deleted_at is null
+                      and (
+                          lower(c.content) like ?
+                          or lower(coalesce(c.anchor_text, '')) like ?
+                      )
+                    order by c.created_at
+                    limit 1
+                ) document_comment on true
+                left join lateral (
+                    select db.id
+                    from document_blocks db
+                    where s.object_type = 'document'
+                      and document_comment.thread_id is null
+                      and db.workspace_id = s.workspace_id
+                      and db.document_id = s.object_id
+                      and db.deleted_at is null
+                      and lower(coalesce(db.content, '')) like ?
+                    order by db.sort_order
+                    limit 1
+                ) document_block on true
                 where s.workspace_id = ?
                   and (
                       to_tsvector('simple', s.search_text) @@ plainto_tsquery('simple', ?)
@@ -49,10 +81,82 @@ public class JdbcSearchRepository implements SearchRepository {
                           and exists (
                               select 1
                               from documents d
-                              left join document_permissions dp on dp.document_id = d.id and dp.user_id = ? and dp.revoked_at is null
                               where d.workspace_id = s.workspace_id and d.id = s.object_id and d.deleted_at is null
                                 and d.archived_at is null
-                                and (d.created_by = ? or dp.user_id is not null)
+                                and (
+                                    d.created_by = ?
+                                    or exists (
+                                        select 1
+                                        from resource_permissions rp
+                                        where rp.workspace_id = d.workspace_id
+                                          and rp.resource_type = 'document'
+                                          and rp.resource_id = d.id
+                                          and rp.status = 'active'
+                                          and (rp.expires_at is null or rp.expires_at > now())
+                                          and (
+                                              (rp.subject_type = 'user' and rp.subject_id = ?)
+                                              or (
+                                                  rp.subject_type = 'department'
+                                                  and exists (
+                                                      select 1
+                                                      from department_members dm
+                                                      join departments dep on dep.id = dm.department_id
+                                                          and dep.workspace_id = dm.workspace_id
+                                                          and dep.status = 'active'
+                                                          and dep.deleted_at is null
+                                                      where dm.workspace_id = rp.workspace_id
+                                                        and dm.department_id = rp.subject_id
+                                                        and dm.user_id = ?
+                                                        and dm.ended_at is null
+                                                  )
+                                              )
+                                              or (
+                                                  rp.subject_type = 'user_group'
+                                                  and exists (
+                                                      select 1
+                                                      from user_groups ug
+                                                      where ug.id = rp.subject_id
+                                                        and ug.workspace_id = rp.workspace_id
+                                                        and ug.status = 'active'
+                                                        and ug.deleted_at is null
+                                                        and exists (
+                                                            select 1
+                                                            from user_group_members ugm
+                                                            where ugm.workspace_id = rp.workspace_id
+                                                              and ugm.group_id = ug.id
+                                                              and ugm.subject_type = 'user'
+                                                              and ugm.subject_id = ?
+                                                              and ugm.removed_at is null
+                                                            union all
+                                                            select 1
+                                                            from user_group_members ugm
+                                                            join department_members dm on dm.department_id = ugm.subject_id
+                                                                and dm.user_id = ?
+                                                                and dm.ended_at is null
+                                                            join departments dep on dep.id = ugm.subject_id
+                                                                and dep.workspace_id = ugm.workspace_id
+                                                                and dep.status = 'active'
+                                                                and dep.deleted_at is null
+                                                            where ugm.workspace_id = rp.workspace_id
+                                                              and ugm.group_id = ug.id
+                                                              and ugm.subject_type = 'department'
+                                                              and ugm.removed_at is null
+                                                        )
+                                                  )
+                                              )
+                                              or (
+                                                  rp.subject_type = 'role'
+                                                  and exists (
+                                                      select 1
+                                                      from user_roles ur
+                                                      where ur.workspace_id = rp.workspace_id
+                                                        and ur.role_id = rp.subject_id
+                                                        and ur.user_id = ?
+                                                  )
+                                              )
+                                          )
+                                    )
+                                )
                           )
                       )
                       or (
@@ -103,10 +207,17 @@ public class JdbcSearchRepository implements SearchRepository {
             query,
             likeQuery,
             likeQuery,
+            likeQuery,
+            likeQuery,
+            likeQuery,
             workspaceId,
             query,
             likeQuery,
             likeQuery,
+            userId,
+            userId,
+            userId,
+            userId,
             userId,
             userId,
             userId,
@@ -169,13 +280,38 @@ public class JdbcSearchRepository implements SearchRepository {
                        'document',
                        d.id,
                        d.title,
-                       left(coalesce(d.content, d.title), 240),
+                       left(coalesce(nullif(blocks.block_text, ''), d.content, d.title), 240),
                        '/docs/' || d.id::text,
                        'colla://document/' || d.id::text,
-                       coalesce(d.title, '') || ' ' || coalesce(d.content, ''),
+                       coalesce(d.title, '') || ' ' ||
+                           coalesce(d.description, '') || ' ' ||
+                           coalesce(d.content, '') || ' ' ||
+                           coalesce(blocks.block_text, '') || ' ' ||
+                           coalesce(comments.comment_text, ''),
                        d.updated_at,
                        now()
                 from documents d
+                left join lateral (
+                    select string_agg(
+                        case
+                            when db.block_type in ('table', 'embed', 'base_view', 'issue_embed', 'message_embed', 'file_embed', 'link')
+                                then translate(coalesce(db.content, ''), '{}[]":,', '       ')
+                            else coalesce(db.content, '')
+                        end,
+                        ' ' order by db.sort_order
+                    ) block_text
+                    from document_blocks db
+                    where db.workspace_id = d.workspace_id
+                      and db.document_id = d.id
+                      and db.deleted_at is null
+                ) blocks on true
+                left join lateral (
+                    select string_agg(coalesce(c.content, '') || ' ' || coalesce(c.anchor_text, ''), ' ' order by c.created_at) comment_text
+                    from document_comments c
+                    where c.workspace_id = d.workspace_id
+                      and c.document_id = d.id
+                      and c.deleted_at is null
+                ) comments on true
                 where d.workspace_id = ? and d.deleted_at is null and d.archived_at is null
                 on conflict (workspace_id, object_type, object_id)
                 do update set title = excluded.title,

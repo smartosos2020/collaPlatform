@@ -72,7 +72,7 @@ public class SearchService {
             result.objectId(),
             summary.title() == null ? result.title() : summary.title(),
             result.excerpt(),
-            summary.webPath() == null ? result.webPath() : summary.webPath(),
+            result.webPath() == null ? summary.webPath() : result.webPath(),
             summary.deepLink() == null ? result.deepLink() : summary.deepLink(),
             result.score(),
             result.updatedAt(),

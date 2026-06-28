@@ -19,11 +19,11 @@ logs/
 # Local-only documentation, reports, and operational scripts
 *.md
 !/README.md
-docs/
-scripts/
-deploy/scripts/
-.github/workflows/
-.github/ISSUE_TEMPLATE/
+/docs/
+/scripts/
+/deploy/scripts/
+/.github/workflows/
+/.github/ISSUE_TEMPLATE/
 *.ps1
 *.psm1
 *.psd1

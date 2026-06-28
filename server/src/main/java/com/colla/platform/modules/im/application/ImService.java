@@ -198,6 +198,11 @@ public class ImService {
         return new MessagePage(items, nextCursor);
     }
 
+    public MessageSummary getMessage(CurrentUser currentUser, UUID conversationId, UUID messageId) {
+        requireMember(currentUser, conversationId);
+        return requireExistingMessage(currentUser, conversationId, messageId);
+    }
+
     public MessagePage searchMessages(CurrentUser currentUser, UUID conversationId, String query, String targetType, int limit) {
         requireMember(currentUser, conversationId);
         int boundedLimit = Math.max(1, Math.min(limit, 50));

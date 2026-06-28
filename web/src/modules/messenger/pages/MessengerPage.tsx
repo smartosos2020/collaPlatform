@@ -6,6 +6,7 @@ import {
   DeleteOutlined,
   DisconnectOutlined,
   LogoutOutlined,
+  FileTextOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   EditOutlined,
@@ -36,13 +37,14 @@ import {
   Typography,
 } from 'antd'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 
 import { useAuthStore, type CurrentUser } from '../../auth/authStore'
 import { ObjectSummaryCard } from '../../platform/components/InternalLinkCard'
 import {
   addConversationMembers,
   closeConversation,
+  convertMessageToDocument,
   convertMessageToIssue,
   createConversation,
   editMessage,
@@ -82,6 +84,10 @@ type ConvertMessageForm = {
   description?: string
 }
 
+type ConvertMessageToDocumentForm = {
+  title?: string
+}
+
 type MessageDeliveryStatus = 'sending' | 'failed'
 
 type ChatMessage = MessageSummary & {
@@ -93,12 +99,14 @@ const COMPOSER_EMOJIS = ['😀', '😄', '😂', '😊', '👍', '❤️', '🎉
 
 export function MessengerPage() {
   const [searchParams, setSearchParams] = useSearchParams()
+  const navigate = useNavigate()
   const [draft, setDraft] = useState('')
   const [messageSearchText, setMessageSearchText] = useState('')
   const [messageSearchQueryText, setMessageSearchQueryText] = useState('')
   const [messageSearchTargetType, setMessageSearchTargetType] = useState<string>()
   const [createOpen, setCreateOpen] = useState(false)
   const [convertMessage, setConvertMessage] = useState<MessageSummary | null>(null)
+  const [convertDocumentMessage, setConvertDocumentMessage] = useState<MessageSummary | null>(null)
   const [editingMessage, setEditingMessage] = useState<MessageSummary | null>(null)
   const [editDraft, setEditDraft] = useState('')
   const [conversationListCollapsed, setConversationListCollapsed] = useState(false)
@@ -111,6 +119,7 @@ export function MessengerPage() {
   const [syncingAfterReconnect, setSyncingAfterReconnect] = useState(false)
   const [form] = Form.useForm<CreateConversationForm>()
   const [convertForm] = Form.useForm<ConvertMessageForm>()
+  const [convertDocumentForm] = Form.useForm<ConvertMessageToDocumentForm>()
   const messageListRef = useRef<HTMLElement | null>(null)
   const messageRefs = useRef<Record<string, HTMLElement | null>>({})
   const autoReadMessageIdRef = useRef<string | null>(null)
@@ -267,6 +276,23 @@ export function MessengerPage() {
       await refreshIm()
     },
     onError: () => message.error('从消息创建事项失败，请检查项目权限'),
+  })
+
+  const convertDocumentMutation = useMutation({
+    mutationFn: (values: ConvertMessageToDocumentForm) =>
+      convertMessageToDocument(
+        convertDocumentMessage?.conversationId || selectedConversationId || '',
+        convertDocumentMessage?.id || '',
+        { title: values.title },
+      ),
+    onSuccess: async (detail) => {
+      message.success('已从消息创建文档')
+      setConvertDocumentMessage(null)
+      convertDocumentForm.resetFields()
+      await refreshIm()
+      navigate(`/docs/${detail.document.id}`)
+    },
+    onError: () => message.error('从消息创建文档失败'),
   })
 
   const readMutation = useMutation({
@@ -749,6 +775,10 @@ export function MessengerPage() {
                           description: item.content,
                         })
                       }}
+                      onCreateDocument={() => {
+                        setConvertDocumentMessage(item)
+                        convertDocumentForm.setFieldsValue({ title: item.content.replace(/\s+/g, ' ').trim().slice(0, 80) })
+                      }}
                       onCopyLink={() => {
                         const link = `/im?conversationId=${item.conversationId}&messageId=${item.id}`
                         void navigator.clipboard.writeText(link)
@@ -958,6 +988,20 @@ export function MessengerPage() {
       </Modal>
 
       <Modal
+        title="从消息创建文档"
+        open={Boolean(convertDocumentMessage)}
+        confirmLoading={convertDocumentMutation.isPending}
+        onCancel={() => setConvertDocumentMessage(null)}
+        onOk={() => convertDocumentForm.validateFields().then((values) => convertDocumentMutation.mutate(values))}
+      >
+        <Form form={convertDocumentForm} layout="vertical">
+          <Form.Item label="标题" name="title">
+            <Input placeholder="默认使用消息内容生成标题" />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
         title="编辑消息"
         open={Boolean(editingMessage)}
         confirmLoading={editMutation.isPending}
@@ -1109,6 +1153,7 @@ function MessageBubble({
   mine,
   highlighted,
   onCreateIssue,
+  onCreateDocument,
   onCopyLink,
   onEdit,
   onRevoke,
@@ -1122,6 +1167,7 @@ function MessageBubble({
   mine: boolean
   highlighted: boolean
   onCreateIssue: () => void
+  onCreateDocument: () => void
   onCopyLink: () => void
   onEdit: () => void
   onRevoke: () => void
@@ -1145,6 +1191,13 @@ function MessageBubble({
       label: '转事项',
       disabled: Boolean(item.revokedAt) || isLocal,
       onClick: onCreateIssue,
+    },
+    {
+      key: 'document',
+      icon: <FileTextOutlined />,
+      label: '转文档',
+      disabled: Boolean(item.revokedAt) || isLocal,
+      onClick: onCreateDocument,
     },
     {
       key: 'copy-link',

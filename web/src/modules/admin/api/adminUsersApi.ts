@@ -9,6 +9,14 @@ export type MemberSummary = {
   lastLoginAt?: string
   createdAt: string
   roles: string[]
+  departments: MemberDepartment[]
+}
+
+export type MemberDepartment = {
+  departmentId: string
+  departmentCode: string
+  departmentName: string
+  relationType: 'primary' | 'member'
 }
 
 export type CreateMemberRequest = {
@@ -17,10 +25,20 @@ export type CreateMemberRequest = {
   displayName: string
   email?: string
   roleCode?: string
+  primaryDepartmentId?: string
 }
 
-export async function listMembers(): Promise<MemberSummary[]> {
-  return apiGet<MemberSummary[]>('/admin/users')
+export type ListMembersFilters = {
+  departmentId?: string
+}
+
+export async function listMembers(filters: ListMembersFilters = {}): Promise<MemberSummary[]> {
+  const params = new URLSearchParams()
+  if (filters.departmentId) {
+    params.set('departmentId', filters.departmentId)
+  }
+  const query = params.toString()
+  return apiGet<MemberSummary[]>(`/admin/users${query ? `?${query}` : ''}`)
 }
 
 export async function createMember(request: CreateMemberRequest): Promise<MemberSummary> {

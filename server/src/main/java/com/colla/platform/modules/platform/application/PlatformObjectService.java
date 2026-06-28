@@ -5,6 +5,8 @@ import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectN
 import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectReference;
 import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectSummary;
 import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectTypeRule;
+import com.colla.platform.modules.permission.application.PermissionDecisionService;
+import com.colla.platform.modules.permission.domain.PermissionModels.PermissionDecision;
 import com.colla.platform.modules.permission.domain.PermissionModels.PermissionExplanation;
 import com.colla.platform.modules.platform.infrastructure.PlatformObjectRepository;
 import com.colla.platform.shared.auth.CurrentUser;
@@ -16,10 +18,16 @@ import org.springframework.stereotype.Service;
 public class PlatformObjectService {
     private final PlatformObjectResolverRegistry resolverRegistry;
     private final PlatformObjectRepository objectRepository;
+    private final PermissionDecisionService permissionDecisionService;
 
-    public PlatformObjectService(PlatformObjectResolverRegistry resolverRegistry, PlatformObjectRepository objectRepository) {
+    public PlatformObjectService(
+        PlatformObjectResolverRegistry resolverRegistry,
+        PlatformObjectRepository objectRepository,
+        PermissionDecisionService permissionDecisionService
+    ) {
         this.resolverRegistry = resolverRegistry;
         this.objectRepository = objectRepository;
+        this.permissionDecisionService = permissionDecisionService;
     }
 
     public PlatformObjectNavigation navigation(CurrentUser currentUser, String objectType, UUID objectId) {
@@ -47,6 +55,10 @@ public class PlatformObjectService {
     public PermissionExplanation explainPermission(CurrentUser currentUser, String objectType, UUID objectId, String action) {
         String normalizedAction = action == null || action.isBlank() ? "view" : action.trim().toLowerCase();
         PlatformObjectSummary summary = resolverRegistry.resolve(currentUser, objectType, objectId);
+        PermissionDecision resourceDecision = permissionDecisionService.decide(currentUser, objectType, objectId, normalizedAction);
+        if (resourceDecision.permissionId() != null) {
+            return permissionDecisionService.explain(currentUser, objectType, objectId, normalizedAction, summary.accessState().name());
+        }
         String currentLevel = currentLevel(summary);
         String requiredLevel = requiredLevel(normalizedAction);
         boolean allowed = summary.accessState() == ObjectAccessState.available && levelRank(currentLevel) >= levelRank(requiredLevel);
@@ -129,8 +141,10 @@ public class PlatformObjectService {
 
     private int levelRank(String level) {
         return switch (level) {
+            case "owner" -> 5;
             case "manage" -> 3;
             case "edit" -> 2;
+            case "comment" -> 2;
             case "view" -> 1;
             default -> 0;
         };

@@ -8,6 +8,7 @@ import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -36,6 +37,68 @@ class DocumentControllerIntegrationTests {
 
     @Autowired
     private DomainEventWorker domainEventWorker;
+
+    @Test
+    void documentAcceptanceReportExposesFrozenV1Criteria() throws Exception {
+        String adminToken = login("admin", "admin123456", "doc-m50-device-" + UUID.randomUUID());
+
+        mockMvc.perform(get("/api/docs/acceptance/v1")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.version").value("document-v1"))
+            .andExpect(jsonPath("$.status").value("frozen"))
+            .andExpect(jsonPath("$.frozen").value(true))
+            .andExpect(jsonPath("$.openP0").value(0))
+            .andExpect(jsonPath("$.openP1").value(0))
+            .andExpect(jsonPath("$.scenarios.length()").value(10))
+            .andExpect(jsonPath("$.gates.length()").value(8))
+            .andExpect(jsonPath("$.scenarios[*].key", hasItem("meeting-notes")))
+            .andExpect(jsonPath("$.scenarios[*].key", hasItem("workbench")))
+            .andExpect(jsonPath("$.gates[*].key", hasItem("concurrent-editing")))
+            .andExpect(jsonPath("$.gates[*].key", hasItem("v1-freeze")));
+    }
+
+    @Test
+    void documentPerformanceMigrationAndCollaborationHealthFlow() throws Exception {
+        String adminToken = login("admin", "admin123456", "doc-m49-device-" + UUID.randomUUID());
+        StringBuilder content = new StringBuilder("# M49 baseline");
+        for (int i = 0; i < 1000; i++) {
+            content.append("\n").append("M49 performance block ").append(i);
+        }
+        String docResponse = mockMvc.perform(post("/api/docs")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "title", "M49 Performance Baseline",
+                    "content", content.toString()
+                ))))
+            .andExpect(status().isOk())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+        UUID documentId = UUID.fromString(objectMapper.readTree(docResponse).get("document").get("id").asText());
+
+        mockMvc.perform(get("/api/docs/" + documentId + "/performance")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.blockCount").value(1001))
+            .andExpect(jsonPath("$.largeDocument").value(true))
+            .andExpect(jsonPath("$.recommendedMode").value("lazy-preview"));
+
+        mockMvc.perform(get("/api/docs/" + documentId + "/migration-preview")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.contentBlockCount").value(1001))
+            .andExpect(jsonPath("$.storedBlockCount").value(1001))
+            .andExpect(jsonPath("$.blockProjectionCurrent").value(true))
+            .andExpect(jsonPath("$.migrationMode").value("verify-existing-blocks"));
+
+        mockMvc.perform(get("/api/docs/" + documentId + "/collaboration/health")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.activeUsers").value(0))
+            .andExpect(jsonPath("$.dirty").value(false));
+    }
 
     @Test
     void documentVersionPermissionRelationAndShareCardFlow() throws Exception {
@@ -144,18 +207,39 @@ class DocumentControllerIntegrationTests {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.links[0].summary.title").value("M5 Design Note"));
 
-        mockMvc.perform(post("/api/docs/" + documentId + "/comments")
+        String mentionCommentResponse = mockMvc.perform(post("/api/docs/" + documentId + "/comments")
                 .header("Authorization", "Bearer " + adminToken)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"content\":\"please review @" + editorUsername + "\"}"))
+                .content(
+                    """
+                        {
+                          "anchorType": "selection",
+                          "anchorStart": 3,
+                          "anchorEnd": 5,
+                          "anchorText": "M5",
+                          "anchorPrefix": "# ",
+                          "anchorSuffix": "\\nUpdated",
+                          "content": "please review @%s"
+                        }
+                        """.formatted(editorUsername)
+                ))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.comments[0].content").value("please review @" + editorUsername));
+            .andExpect(jsonPath("$.comments[0].content").value("please review @" + editorUsername))
+            .andExpect(jsonPath("$.comments[0].anchorType").value("selection"))
+            .andExpect(jsonPath("$.comments[0].anchorText").value("M5"))
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+        UUID mentionCommentId = UUID.fromString(objectMapper.readTree(mentionCommentResponse).get("comments").get(0).get("id").asText());
 
-        domainEventWorker.processPendingEvents();
+        for (int index = 0; index < 4; index++) {
+            domainEventWorker.processPendingEvents();
+        }
         mockMvc.perform(get("/api/notifications?unreadOnly=true")
                 .header("Authorization", "Bearer " + editorToken))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.length()", greaterThanOrEqualTo(1)));
+            .andExpect(jsonPath("$.length()", greaterThanOrEqualTo(1)))
+            .andExpect(jsonPath("$[*].webPath", hasItem("/docs/" + documentId + "?commentId=" + mentionCommentId)));
 
         mockMvc.perform(post("/api/docs/" + documentId + "/versions/1/restore")
                 .header("Authorization", "Bearer " + editorToken))
@@ -229,11 +313,150 @@ class DocumentControllerIntegrationTests {
             .getContentAsString();
         UUID commentId = UUID.fromString(objectMapper.readTree(commentResponse).get("comments").get(0).get("id").asText());
 
+        mockMvc.perform(post("/api/docs/" + documentId + "/comments/" + commentId + "/replies")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"content\":\"Owner added in the table\"}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.comments[0].threadId").value(commentId.toString()))
+            .andExpect(jsonPath("$.comments[0].root").value(true))
+            .andExpect(jsonPath("$.comments[0].replies[0].content").value("Owner added in the table"))
+            .andExpect(jsonPath("$.comments[0].replies[0].root").value(false));
+
         mockMvc.perform(post("/api/docs/" + documentId + "/comments/" + commentId + "/resolve")
                 .header("Authorization", "Bearer " + adminToken))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.comments[0].resolved").value(true))
+            .andExpect(jsonPath("$.comments[0].replies[0].resolved").value(true))
             .andExpect(jsonPath("$.comments[0].resolvedByName").value("Administrator"));
+
+        mockMvc.perform(post("/api/docs/" + documentId + "/comments/" + commentId + "/reopen")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.comments[0].resolved").value(false))
+            .andExpect(jsonPath("$.comments[0].reopenedByName").value("Administrator"));
+    }
+
+    @Test
+    void selectionCommentAnchorRebasesAcrossEditsAndKeepsThreadDeepLink() throws Exception {
+        String adminToken = login("admin", "admin123456", "doc-m45-admin-device-" + UUID.randomUUID());
+        String reviewerUsername = "dm45" + UUID.randomUUID().toString().substring(0, 8);
+        UUID reviewerId = createMember(adminToken, reviewerUsername, "Document M45 Reviewer");
+        String reviewerToken = login(reviewerUsername, "member123456", "doc-m45-reviewer-device-" + UUID.randomUUID());
+
+        String docResponse = mockMvc.perform(post("/api/docs")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"title\":\"M45 Anchor Doc\",\"content\":\"Alpha target Beta\"}"))
+            .andExpect(status().isOk())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+        UUID documentId = UUID.fromString(objectMapper.readTree(docResponse).get("document").get("id").asText());
+
+        mockMvc.perform(post("/api/docs/" + documentId + "/permissions")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"userId\":\"" + reviewerId + "\",\"permissionLevel\":\"comment\"}"))
+            .andExpect(status().isOk());
+
+        String commentResponse = mockMvc.perform(post("/api/docs/" + documentId + "/comments")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                        {
+                          "anchorType": "selection",
+                          "anchorStart": 6,
+                          "anchorEnd": 12,
+                          "anchorText": "target",
+                          "anchorPrefix": "Alpha ",
+                          "anchorSuffix": " Beta",
+                          "content": "请复核 @%s"
+                        }
+                        """.formatted(reviewerUsername)
+                ))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.comments[0].anchorType").value("selection"))
+            .andExpect(jsonPath("$.comments[0].anchorStart").value(6))
+            .andExpect(jsonPath("$.comments[0].anchorEnd").value(12))
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+        UUID commentId = UUID.fromString(objectMapper.readTree(commentResponse).get("comments").get(0).get("id").asText());
+
+        mockMvc.perform(post("/api/docs/" + documentId + "/comments/" + commentId + "/replies")
+                .header("Authorization", "Bearer " + reviewerToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"content\":\"已看到选区评论\"}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.comments[0].replies[0].content").value("已看到选区评论"));
+
+        mockMvc.perform(post("/api/docs/" + documentId + "/comments/" + commentId + "/resolve")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.comments[0].resolved").value(true));
+
+        mockMvc.perform(post("/api/docs/" + documentId + "/comments/" + commentId + "/reopen")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.comments[0].resolved").value(false));
+
+        for (int index = 0; index < 4; index++) {
+            domainEventWorker.processPendingEvents();
+        }
+        mockMvc.perform(get("/api/notifications?unreadOnly=true")
+                .header("Authorization", "Bearer " + reviewerToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$[*].webPath", hasItem("/docs/" + documentId + "?commentId=" + commentId)));
+
+        mockMvc.perform(patch("/api/docs/" + documentId)
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                        {
+                          "baseVersionNo": 1,
+                          "title": "M45 Anchor Doc",
+                          "content": "Inserted context\\nAlpha target Beta"
+                        }
+                        """
+                ))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.comments[0].anchorStart").value(23))
+            .andExpect(jsonPath("$.comments[0].anchorEnd").value(29))
+            .andExpect(jsonPath("$.comments[0].replies[0].anchorStart").value(23))
+            .andExpect(jsonPath("$.comments[0].replies[0].anchorEnd").value(29));
+    }
+
+    @Test
+    void documentCheckpointCreatesVersionWithoutBaseVersionNo() throws Exception {
+        String adminToken = login("admin", "admin123456", "doc-checkpoint-admin-device-" + UUID.randomUUID());
+
+        String docResponse = mockMvc.perform(post("/api/docs")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"title\":\"Checkpoint Doc\",\"content\":\"checkpoint source\"}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.document.currentVersionNo").value(1))
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+        UUID documentId = UUID.fromString(objectMapper.readTree(docResponse).get("document").get("id").asText());
+
+        mockMvc.perform(post("/api/docs/" + documentId + "/versions/checkpoint")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.document.currentVersionNo").value(2))
+            .andExpect(jsonPath("$.content").value("checkpoint source"))
+            .andExpect(jsonPath("$.blocks[0].content").value("checkpoint source"));
+
+        mockMvc.perform(get("/api/docs/" + documentId + "/versions")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$[0].versionNo").value(2))
+            .andExpect(jsonPath("$[0].content").value("checkpoint source"))
+            .andExpect(jsonPath("$[1].versionNo").value(1));
     }
 
     @Test
@@ -356,6 +579,347 @@ class DocumentControllerIntegrationTests {
                 .header("Authorization", "Bearer " + outsiderToken))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.accessState").value("forbidden"));
+    }
+
+    @Test
+    void documentSharingPermissionRequestAndKnowledgeBaseFlow() throws Exception {
+        String adminToken = login("admin", "admin123456", "doc-m46-admin-device-" + UUID.randomUUID());
+        String commenterUsername = "dcomment" + UUID.randomUUID().toString().substring(0, 8);
+        UUID commenterId = createMember(adminToken, commenterUsername, "Document Commenter");
+        String commenterToken = login(commenterUsername, "member123456", "doc-m46-commenter-device-" + UUID.randomUUID());
+        String linkUserUsername = "dlink" + UUID.randomUUID().toString().substring(0, 8);
+        createMember(adminToken, linkUserUsername, "Document Link User");
+        String linkUserToken = login(linkUserUsername, "member123456", "doc-m46-link-device-" + UUID.randomUUID());
+
+        String suffix = UUID.randomUUID().toString().substring(0, 8);
+        UUID spaceId = createDocument(adminToken, null, "M46 KB " + suffix, "space", "Knowledge base");
+        mockMvc.perform(post("/api/docs/" + spaceId + "/knowledge-base")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                        {
+                          "description": "M46 knowledge base entry",
+                          "coverUrl": "https://example.test/cover.png",
+                          "defaultPermissionLevel": "comment",
+                          "knowledgeBase": true
+                        }
+                        """
+                ))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.document.knowledgeBase").value(true))
+            .andExpect(jsonPath("$.document.defaultPermissionLevel").value("comment"))
+            .andExpect(jsonPath("$.document.description").value("M46 knowledge base entry"));
+
+        mockMvc.perform(post("/api/docs/" + spaceId + "/permissions")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"userId\":\"" + commenterId + "\",\"permissionLevel\":\"comment\"}"))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/admin/audit-logs?action=permission.granted&targetType=document&targetId=" + spaceId + "&limit=5")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$[*].action", hasItem("permission.granted")));
+
+        UUID documentId = createDocument(adminToken, spaceId, "M46 Shared Doc " + suffix, "markdown", "M46 draft");
+        mockMvc.perform(get("/api/docs/" + documentId)
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.document.permissionLevel").value("owner"))
+            .andExpect(jsonPath("$.permissions[*].sourceType", hasItem("inherited")))
+            .andExpect(jsonPath("$.permissions[*].sourceTitle", hasItem("M46 KB " + suffix)));
+
+        mockMvc.perform(post("/api/docs/" + documentId + "/comments")
+                .header("Authorization", "Bearer " + commenterToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"content\":\"Comment-only users can review\"}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.comments[0].content").value("Comment-only users can review"));
+
+        mockMvc.perform(patch("/api/docs/" + documentId)
+                .header("Authorization", "Bearer " + commenterToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"baseVersionNo\":1,\"title\":\"Denied\",\"content\":\"Denied\"}"))
+            .andExpect(status().isForbidden());
+
+        mockMvc.perform(get("/api/docs/" + documentId)
+                .header("Authorization", "Bearer " + linkUserToken))
+            .andExpect(status().isForbidden());
+
+        mockMvc.perform(post("/api/docs/" + documentId + "/share-link")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"scope\":\"workspace\",\"permissionLevel\":\"edit\",\"enabled\":true}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.enabled").value(true))
+            .andExpect(jsonPath("$.permissionLevel").value("edit"))
+            .andExpect(jsonPath("$.token", not(blankOrNullString())));
+
+        mockMvc.perform(get("/api/admin/audit-logs?action=document.share_link.updated&targetType=document&targetId=" + documentId + "&limit=5")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$[*].action", hasItem("document.share_link.updated")));
+
+        mockMvc.perform(get("/api/docs/" + documentId)
+                .header("Authorization", "Bearer " + linkUserToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.document.permissionLevel").value("edit"));
+
+        mockMvc.perform(get("/api/admin/audit-logs?action=document.share_link.accessed&targetType=document&targetId=" + documentId + "&limit=5")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$[*].action", hasItem("document.share_link.accessed")));
+
+        mockMvc.perform(patch("/api/docs/" + documentId)
+                .header("Authorization", "Bearer " + linkUserToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"baseVersionNo\":1,\"title\":\"M46 Shared Doc Edited\",\"content\":\"Edited through org link\"}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.document.currentVersionNo").value(2))
+            .andExpect(jsonPath("$.content").value("Edited through org link"));
+
+        mockMvc.perform(post("/api/docs/" + documentId + "/share-link/disable")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.enabled").value(false));
+
+        mockMvc.perform(get("/api/admin/audit-logs?action=document.share_link.disabled&targetType=document&targetId=" + documentId + "&limit=5")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$[*].action", hasItem("document.share_link.disabled")));
+
+        mockMvc.perform(get("/api/docs/" + documentId)
+                .header("Authorization", "Bearer " + linkUserToken))
+            .andExpect(status().isForbidden());
+
+        mockMvc.perform(post("/api/docs/" + documentId + "/permission-requests")
+                .header("Authorization", "Bearer " + linkUserToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"permissionLevel\":\"view\",\"reason\":\"Need to review M46\"}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.status").value("submitted"))
+            .andExpect(jsonPath("$.notifiedCount", greaterThanOrEqualTo(1)));
+
+        mockMvc.perform(get("/api/admin/audit-logs?action=document.permission.requested&targetType=document&targetId=" + documentId + "&limit=5")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$[*].action", hasItem("document.permission.requested")));
+
+        for (int index = 0; index < 3; index++) {
+            domainEventWorker.processPendingEvents();
+        }
+        mockMvc.perform(get("/api/notifications?unreadOnly=true")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$[*].notificationType", hasItem("document_permission_request")))
+            .andExpect(jsonPath("$[*].webPath", hasItem("/docs/" + documentId)));
+    }
+
+    @Test
+    void documentTemplatesNamedVersionsImportAndBlockSearchFlow() throws Exception {
+        String adminToken = login("admin", "admin123456", "doc-m47-admin-device-" + UUID.randomUUID());
+        String suffix = UUID.randomUUID().toString().substring(0, 8);
+
+        mockMvc.perform(get("/api/docs/templates")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$[*].title", hasItem("会议纪要")))
+            .andExpect(jsonPath("$[*].category", hasItem("meeting")));
+
+        String createdResponse = mockMvc.perform(post("/api/docs/from-template")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                        {
+                          "templateId": "00000000-0000-0000-0000-000000004701",
+                          "title": "M47 Template Doc %s"
+                        }
+                        """.formatted(suffix)
+                ))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.document.title").value("M47 Template Doc " + suffix))
+            .andExpect(jsonPath("$.content", containsString("会议纪要")))
+            .andExpect(jsonPath("$.blocks[*].blockType", hasItem("heading")))
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+        UUID documentId = UUID.fromString(objectMapper.readTree(createdResponse).get("document").get("id").asText());
+
+        mockMvc.perform(post("/api/docs/" + documentId + "/versions/named")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"versionName\":\"M47 Baseline\",\"summary\":\"Template baseline\"}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.document.currentVersionNo").value(2));
+
+        String uniqueSearchTerm = "UniqueM47Search" + suffix;
+        mockMvc.perform(post("/api/docs/" + documentId + "/import/markdown")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "title", "M47 Imported " + suffix,
+                    "content", "# Imported\n" + uniqueSearchTerm + "\n- [ ] Verify imported task"
+                ))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.document.currentVersionNo").value(3))
+            .andExpect(jsonPath("$.document.title").value("M47 Imported " + suffix))
+            .andExpect(jsonPath("$.blocks[*].content", hasItem(uniqueSearchTerm)));
+
+        mockMvc.perform(get("/api/docs/" + documentId + "/versions")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$[0].versionType").value("import"))
+            .andExpect(jsonPath("$[0].versionName").value("Markdown 导入"))
+            .andExpect(jsonPath("$[1].versionType").value("named"))
+            .andExpect(jsonPath("$[1].versionName").value("M47 Baseline"));
+
+        mockMvc.perform(get("/api/docs/" + documentId + "/versions/diff?fromVersionNo=2&toVersionNo=3")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.lines[*].scope", hasItem("block")))
+            .andExpect(jsonPath("$.lines[*].blockType", hasItem("heading")))
+            .andExpect(jsonPath("$.lines[*].content", hasItem(uniqueSearchTerm)));
+
+        mockMvc.perform(post("/api/docs/" + documentId + "/versions/2/restore")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.document.currentVersionNo").value(4))
+            .andExpect(jsonPath("$.content", containsString("会议纪要")));
+
+        mockMvc.perform(get("/api/docs/" + documentId + "/versions")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$[0].versionType").value("restore"))
+            .andExpect(jsonPath("$[0].sourceVersionNo").value(2));
+
+        mockMvc.perform(post("/api/docs/" + documentId + "/import/markdown")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of("content", "# Searchable\n" + uniqueSearchTerm))))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/docs/" + documentId + "/export/markdown")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(content().string(containsString("# Searchable")))
+            .andExpect(content().string(containsString(uniqueSearchTerm)));
+
+        mockMvc.perform(get("/api/docs/" + documentId + "/export/html")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(content().string(containsString("<h1>Searchable</h1>")))
+            .andExpect(content().string(containsString(uniqueSearchTerm)));
+
+        mockMvc.perform(post("/api/search/reindex")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk());
+        mockMvc.perform(get("/api/search?q=" + uniqueSearchTerm)
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.items[*].webPath", hasItem(containsString("/docs/" + documentId))));
+    }
+
+    @Test
+    void crossModuleMessageDocumentIssueAndReverseReferenceFlow() throws Exception {
+        String adminToken = login("admin", "admin123456", "doc-m48-admin-device-" + UUID.randomUUID());
+        String teammateUsername = "dm48" + UUID.randomUUID().toString().substring(0, 8);
+        UUID teammateId = createMember(adminToken, teammateUsername, "Document M48 Teammate");
+        UUID conversationId = createConversation(adminToken, teammateId);
+        UUID messageId = createMessage(adminToken, conversationId, "M48 customer escalation needs a project plan");
+
+        String convertedDocumentResponse = mockMvc.perform(post("/api/conversations/" + conversationId + "/messages/" + messageId + "/convert-to-document")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"title\":\"M48 Message Note\"}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.document.title").value("M48 Message Note"))
+            .andExpect(jsonPath("$.content", containsString("/im?conversationId=" + conversationId + "&messageId=" + messageId)))
+            .andExpect(jsonPath("$.relations[*].targetType", hasItem("message")))
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+        UUID documentId = UUID.fromString(objectMapper.readTree(convertedDocumentResponse).get("document").get("id").asText());
+
+        UUID projectId = createProject(adminToken, teammateId, "M48 Cross Module " + UUID.randomUUID().toString().substring(0, 6));
+        String issueResponse = mockMvc.perform(post("/api/docs/" + documentId + "/issues/from-selection")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "projectId", projectId.toString(),
+                    "issueType", "task",
+                    "title", "Follow up M48 escalation",
+                    "priority", "medium",
+                    "anchorStart", 1,
+                    "anchorEnd", 24,
+                    "anchorText", "customer escalation"
+                ))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.issue.title").value("Follow up M48 escalation"))
+            .andExpect(jsonPath("$.issue.description", containsString("customer escalation")))
+            .andExpect(jsonPath("$.relations[*].targetType", hasItem("document")))
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+        UUID issueId = UUID.fromString(objectMapper.readTree(issueResponse).get("issue").get("id").asText());
+
+        mockMvc.perform(get("/api/docs/" + documentId)
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.relations[*].targetType", hasItem("issue")))
+            .andExpect(jsonPath("$.relations[*].targetId", hasItem(issueId.toString())));
+
+        JsonNode base = createBase(adminToken, "M48 Base " + UUID.randomUUID().toString().substring(0, 6), "M48 search closure base");
+        UUID baseId = UUID.fromString(base.get("base").get("id").asText());
+        JsonNode table = createBaseTable(adminToken, baseId, "M48 Search Table");
+        UUID tableId = UUID.fromString(table.get("table").get("id").asText());
+        mockMvc.perform(post("/api/docs/" + documentId + "/relations")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"targetType\":\"base_table\",\"targetId\":\"" + tableId + "\"}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.relations[*].targetType", hasItem("base_table")));
+
+        String blockSearchTerm = "M48BlockSearch" + UUID.randomUUID().toString().substring(0, 8);
+        String blockResponse = mockMvc.perform(patch("/api/docs/" + documentId + "/blocks")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "baseVersionNo", 1,
+                    "blocks", List.of(
+                        Map.of("blockType", "heading", "content", "M48 Search Closure"),
+                        Map.of("blockType", "paragraph", "content", blockSearchTerm)
+                    )
+                ))))
+            .andExpect(status().isOk())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+        UUID blockId = UUID.fromString(objectMapper.readTree(blockResponse).get("blocks").get(1).get("id").asText());
+
+        String commentSearchTerm = "M48CommentSearch" + UUID.randomUUID().toString().substring(0, 8);
+        String commentResponse = mockMvc.perform(post("/api/docs/" + documentId + "/comments")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of("content", "Searchable comment " + commentSearchTerm))))
+            .andExpect(status().isOk())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+        UUID commentId = UUID.fromString(objectMapper.readTree(commentResponse).get("comments").get(0).get("id").asText());
+
+        mockMvc.perform(post("/api/search/reindex")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk());
+        mockMvc.perform(get("/api/search?q=" + blockSearchTerm)
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.items[*].webPath", hasItem("/docs/" + documentId + "#doc-block-" + blockId)));
+        mockMvc.perform(get("/api/search?q=" + commentSearchTerm)
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.items[*].webPath", hasItem("/docs/" + documentId + "?commentId=" + commentId)));
     }
 
     @Test
@@ -484,6 +1048,26 @@ class DocumentControllerIntegrationTests {
             .getResponse()
             .getContentAsString();
         return UUID.fromString(objectMapper.readTree(issueResponse).get("issue").get("id").asText());
+    }
+
+    private UUID createProject(String token, UUID memberId, String name) throws Exception {
+        String projectResponse = mockMvc.perform(post("/api/projects")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                        {
+                          "projectKey": "%s",
+                          "name": "%s",
+                          "memberIds": ["%s"]
+                        }
+                        """.formatted(projectKey("M48"), name, memberId)
+                ))
+            .andExpect(status().isOk())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+        return UUID.fromString(objectMapper.readTree(projectResponse).get("id").asText());
     }
 
     private UUID createConversation(String token, UUID memberId) throws Exception {

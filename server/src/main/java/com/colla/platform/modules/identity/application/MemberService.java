@@ -22,24 +22,27 @@ public class MemberService {
     private final PasswordHasher passwordHasher;
     private final PasswordPolicy passwordPolicy;
     private final AuditService auditService;
+    private final OrganizationService organizationService;
 
     public MemberService(
         IdentityRepository identityRepository,
         PermissionService permissionService,
         PasswordHasher passwordHasher,
         PasswordPolicy passwordPolicy,
-        AuditService auditService
+        AuditService auditService,
+        OrganizationService organizationService
     ) {
         this.identityRepository = identityRepository;
         this.permissionService = permissionService;
         this.passwordHasher = passwordHasher;
         this.passwordPolicy = passwordPolicy;
         this.auditService = auditService;
+        this.organizationService = organizationService;
     }
 
-    public List<MemberSummary> listMembers(CurrentUser operator) {
+    public List<MemberSummary> listMembers(CurrentUser operator, UUID departmentId) {
         permissionService.requireManageUsers(operator);
-        return identityRepository.listMembers(operator.workspaceId());
+        return identityRepository.listMembers(operator.workspaceId(), departmentId);
     }
 
     public List<MemberSummary> listWorkspaceMembers(CurrentUser operator) {
@@ -55,7 +58,8 @@ public class MemberService {
         String password,
         String displayName,
         String email,
-        String roleCode
+        String roleCode,
+        UUID primaryDepartmentId
     ) {
         permissionService.requireManageUsers(operator);
         passwordPolicy.validate(password);
@@ -72,6 +76,9 @@ public class MemberService {
         );
         identityRepository.assignRole(operator.workspaceId(), userId, roleCode == null || roleCode.isBlank() ? "member" : roleCode, operator.id());
         auditService.log(operator, "user.created", "user", userId, Map.of("username", username, "roleCode", roleCode == null ? "member" : roleCode));
+        if (primaryDepartmentId != null) {
+            organizationService.addMember(operator, primaryDepartmentId, userId, "primary");
+        }
         return identityRepository.listMembers(operator.workspaceId()).stream()
             .filter(member -> member.id().equals(userId))
             .findFirst()

@@ -2,6 +2,7 @@ package com.colla.platform.modules.identity.domain;
 
 import com.colla.platform.shared.auth.ClientType;
 import java.time.Instant;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
@@ -57,7 +58,16 @@ public final class AuthModels {
         String status,
         Instant lastLoginAt,
         Instant createdAt,
-        Set<String> roles
+        Set<String> roles,
+        List<MemberDepartment> departments
+    ) {
+    }
+
+    public record MemberDepartment(
+        UUID departmentId,
+        String departmentCode,
+        String departmentName,
+        String relationType
     ) {
     }
 
