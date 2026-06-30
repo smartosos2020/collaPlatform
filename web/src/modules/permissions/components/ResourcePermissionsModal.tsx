@@ -6,10 +6,16 @@ import { useMemo, useState } from 'react'
 
 import { listMembers } from '../../admin/api/adminUsersApi'
 import { flattenDepartmentTree, listDepartmentTree } from '../../admin/api/departmentsApi'
+import { listRoles } from '../../admin/api/rolesApi'
 import { listUserGroups } from '../../admin/api/userGroupsApi'
 import {
+  approveResourcePermissionRequest,
+  breakResourcePermissionInheritance,
   grantResourcePermission,
+  listResourcePermissionRequests,
   listResourcePermissions,
+  rejectResourcePermissionRequest,
+  restoreResourcePermissionInheritance,
   revokeResourcePermission,
 } from '../api/resourcePermissionsApi'
 import type {
@@ -17,6 +23,7 @@ import type {
   ManagedResourceType,
   ResourcePermissionEntry,
   ResourcePermissionLevel,
+  ResourcePermissionRequest as ResourceAccessRequest,
 } from '../api/resourcePermissionsApi'
 
 type Props = {
@@ -51,6 +58,12 @@ export function ResourcePermissionsModal({ open, resourceType, resourceId, resou
     queryFn: () => listUserGroups({ activeOnly: true }),
     enabled: open,
   })
+  const rolesQuery = useQuery({ queryKey: ['admin', 'roles'], queryFn: listRoles, enabled: open })
+  const requestsQuery = useQuery({
+    queryKey: ['resource-permission-requests', resourceType, resourceId, 'submitted'],
+    queryFn: () => listResourcePermissionRequests(resourceType, resourceId!, 'submitted'),
+    enabled: open && Boolean(resourceId),
+  })
   const departments = useMemo(() => flattenDepartmentTree(departmentsQuery.data ?? []), [departmentsQuery.data])
   const subjectOptions = useMemo(() => {
     if (subjectType === 'department') {
@@ -59,11 +72,14 @@ export function ResourcePermissionsModal({ open, resourceType, resourceId, resou
     if (subjectType === 'user_group') {
       return (groupsQuery.data ?? []).map((group) => ({ label: `${group.name} (${group.code})`, value: group.id }))
     }
+    if (subjectType === 'role') {
+      return (rolesQuery.data ?? []).map((role) => ({ label: `${role.name} (${role.code})`, value: role.id }))
+    }
     return (membersQuery.data ?? []).map((member) => ({
       label: `${member.displayName} (${member.username})`,
       value: member.id,
     }))
-  }, [departments, groupsQuery.data, membersQuery.data, subjectType])
+  }, [departments, groupsQuery.data, membersQuery.data, rolesQuery.data, subjectType])
 
   const highRisk = isHighRisk(permissionLevel)
 
@@ -73,6 +89,8 @@ export function ResourcePermissionsModal({ open, resourceType, resourceId, resou
       queryClient.invalidateQueries({ queryKey: ['docs'] }),
       queryClient.invalidateQueries({ queryKey: ['bases'] }),
       queryClient.invalidateQueries({ queryKey: ['projects'] }),
+      queryClient.invalidateQueries({ queryKey: ['knowledge-bases'] }),
+      queryClient.invalidateQueries({ queryKey: ['resource-permission-requests', resourceType, resourceId] }),
     ])
   }
 
@@ -99,6 +117,38 @@ export function ResourcePermissionsModal({ open, resourceType, resourceId, resou
     },
   })
 
+  const approveRequestMutation = useMutation({
+    mutationFn: (requestId: string) => approveResourcePermissionRequest(requestId),
+    onSuccess: async () => {
+      message.success('访问申请已通过')
+      await refresh()
+    },
+  })
+
+  const rejectRequestMutation = useMutation({
+    mutationFn: (requestId: string) => rejectResourcePermissionRequest(requestId),
+    onSuccess: async () => {
+      message.success('访问申请已拒绝')
+      await refresh()
+    },
+  })
+
+  const breakInheritanceMutation = useMutation({
+    mutationFn: () => breakResourcePermissionInheritance(resourceType, resourceId!, true),
+    onSuccess: async () => {
+      message.success('已断开继承权限')
+      await refresh()
+    },
+  })
+
+  const restoreInheritanceMutation = useMutation({
+    mutationFn: () => restoreResourcePermissionInheritance(resourceType, resourceId!),
+    onSuccess: async () => {
+      message.success('已恢复继承权限')
+      await refresh()
+    },
+  })
+
   const columns: ColumnsType<ResourcePermissionEntry> = [
     {
       title: '授权主体',
@@ -109,6 +159,7 @@ export function ResourcePermissionsModal({ open, resourceType, resourceId, resou
           <Typography.Text type="secondary">
             {subjectTypeLabel(record.subjectType)} · {record.subjectDetail ?? record.subjectId}
           </Typography.Text>
+          <Typography.Text type="secondary">展开成员 {record.expandedMemberCount} 人</Typography.Text>
         </Space>
       ),
     },
@@ -151,6 +202,48 @@ export function ResourcePermissionsModal({ open, resourceType, resourceId, resou
     },
   ]
 
+  const requestColumns: ColumnsType<ResourceAccessRequest> = [
+    {
+      title: '申请人',
+      dataIndex: 'requesterName',
+      render: (name, record) => (
+        <Space orientation="vertical" size={0}>
+          <Typography.Text>{name}</Typography.Text>
+          {record.reason ? <Typography.Text type="secondary">{record.reason}</Typography.Text> : null}
+        </Space>
+      ),
+    },
+    {
+      title: '申请权限',
+      dataIndex: 'permissionLevel',
+      render: (level: ResourcePermissionLevel) => <Tag color={isHighRisk(level) ? 'orange' : 'blue'}>{level}</Tag>,
+    },
+    {
+      title: '状态',
+      dataIndex: 'status',
+      render: (status) => <Tag color={status === 'submitted' ? 'gold' : 'default'}>{status}</Tag>,
+    },
+    {
+      title: '操作',
+      key: 'actions',
+      render: (_, record) => (
+        <Space>
+          <Button
+            size="small"
+            type="primary"
+            loading={approveRequestMutation.isPending}
+            onClick={() => approveRequestMutation.mutate(record.id)}
+          >
+            通过
+          </Button>
+          <Button danger size="small" loading={rejectRequestMutation.isPending} onClick={() => rejectRequestMutation.mutate(record.id)}>
+            拒绝
+          </Button>
+        </Space>
+      ),
+    },
+  ]
+
   function confirmRevoke(record: ResourcePermissionEntry) {
     const highRiskRevoke = isHighRisk(record.permissionLevel)
     modal.confirm({
@@ -172,6 +265,17 @@ export function ResourcePermissionsModal({ open, resourceType, resourceId, resou
       footer={null}
     >
       <Space orientation="vertical" size={16} className="page-stack">
+        {resourceType === 'document' ? (
+          <Space wrap>
+            <Button danger loading={breakInheritanceMutation.isPending} onClick={confirmBreakInheritance}>
+              断开继承
+            </Button>
+            <Button loading={restoreInheritanceMutation.isPending} onClick={() => restoreInheritanceMutation.mutate()}>
+              恢复继承
+            </Button>
+          </Space>
+        ) : null}
+
         <Form
           form={form}
           layout="inline"
@@ -185,6 +289,7 @@ export function ResourcePermissionsModal({ open, resourceType, resourceId, resou
                 { label: '成员', value: 'user' },
                 { label: '部门', value: 'department' },
                 { label: '用户组', value: 'user_group' },
+                { label: '角色', value: 'role' },
               ]}
               onChange={() => form.setFieldValue('subjectId', undefined)}
             />
@@ -193,7 +298,7 @@ export function ResourcePermissionsModal({ open, resourceType, resourceId, resou
             <Select
               showSearch
               className="resource-permission-subject"
-              loading={membersQuery.isLoading || departmentsQuery.isLoading || groupsQuery.isLoading}
+              loading={membersQuery.isLoading || departmentsQuery.isLoading || groupsQuery.isLoading || rolesQuery.isLoading}
               options={subjectOptions}
               optionFilterProp="label"
               placeholder="选择主体"
@@ -236,9 +341,32 @@ export function ResourcePermissionsModal({ open, resourceType, resourceId, resou
           dataSource={permissionsQuery.data ?? []}
           pagination={{ pageSize: 6 }}
         />
+
+        <div>
+          <Typography.Title level={5}>访问申请</Typography.Title>
+          <Table
+            rowKey="id"
+            loading={requestsQuery.isLoading}
+            columns={requestColumns}
+            dataSource={requestsQuery.data ?? []}
+            pagination={false}
+            locale={{ emptyText: '暂无待处理申请' }}
+          />
+        </div>
       </Space>
     </Modal>
   )
+
+  function confirmBreakInheritance() {
+    modal.confirm({
+      title: '断开继承权限',
+      content: '断开后当前节点会移除从上级继承的授权，直接授权仍会保留。',
+      okText: '断开',
+      okButtonProps: { danger: true },
+      cancelText: '取消',
+      onOk: () => breakInheritanceMutation.mutateAsync(),
+    })
+  }
 }
 
 function isHighRisk(level: string) {

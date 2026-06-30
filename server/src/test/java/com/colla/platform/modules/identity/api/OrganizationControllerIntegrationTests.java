@@ -129,6 +129,28 @@ class OrganizationControllerIntegrationTests {
             .andExpect(status().isOk());
     }
 
+    @Test
+    void adminCanEnableDisabledDepartment() throws Exception {
+        String adminToken = login("admin", "admin123456", "org-admin-" + UUID.randomUUID());
+        String suffix = UUID.randomUUID().toString().replace("-", "").substring(0, 10);
+        JsonNode department = createDepartment(adminToken, null, "toggle_dept_" + suffix, "Toggle Department", 0);
+        UUID departmentId = UUID.fromString(department.get("id").asText());
+
+        mockMvc.perform(post("/api/admin/departments/" + departmentId + "/disable")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk());
+
+        JsonNode disabledNode = departmentNode(adminToken, departmentId);
+        assertThat(disabledNode.get("department").get("status").asText()).isEqualTo("disabled");
+
+        mockMvc.perform(post("/api/admin/departments/" + departmentId + "/enable")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk());
+
+        JsonNode enabledNode = departmentNode(adminToken, departmentId);
+        assertThat(enabledNode.get("department").get("status").asText()).isEqualTo("active");
+    }
+
     private JsonNode createDepartment(String token, UUID parentId, String code, String name, int sortOrder) throws Exception {
         String parentProperty = parentId == null ? "" : "\"parentId\":\"" + parentId + "\",";
         String response = mockMvc.perform(post("/api/admin/departments")
@@ -151,6 +173,16 @@ class OrganizationControllerIntegrationTests {
             .getResponse()
             .getContentAsString();
         return objectMapper.readTree(response);
+    }
+
+    private JsonNode departmentNode(String token, UUID departmentId) throws Exception {
+        String treeResponse = mockMvc.perform(get("/api/admin/departments/tree")
+                .header("Authorization", "Bearer " + token))
+            .andExpect(status().isOk())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+        return findDepartmentNode(objectMapper.readTree(treeResponse), departmentId);
     }
 
     private JsonNode createMember(String token, UUID primaryDepartmentId, String username) throws Exception {

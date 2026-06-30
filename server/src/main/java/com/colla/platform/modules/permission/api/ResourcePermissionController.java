@@ -2,6 +2,7 @@ package com.colla.platform.modules.permission.api;
 
 import com.colla.platform.modules.permission.application.ResourcePermissionManagementService;
 import com.colla.platform.modules.permission.domain.PermissionModels.ResourcePermissionEntry;
+import com.colla.platform.modules.permission.domain.PermissionModels.ResourcePermissionRequest;
 import com.colla.platform.shared.auth.CurrentUser;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -55,6 +56,69 @@ public class ResourcePermissionController {
         );
     }
 
+    @PostMapping("/{resourceType}/{resourceId}/requests")
+    public ResourcePermissionRequest requestPermission(
+        @PathVariable String resourceType,
+        @PathVariable UUID resourceId,
+        @Valid @RequestBody RequestResourcePermissionRequest request,
+        Authentication authentication
+    ) {
+        return resourcePermissionManagementService.requestPermission(
+            currentUser(authentication),
+            resourceType,
+            resourceId,
+            request.permissionLevel(),
+            request.reason()
+        );
+    }
+
+    @GetMapping("/{resourceType}/{resourceId}/requests")
+    public List<ResourcePermissionRequest> listRequests(
+        @PathVariable String resourceType,
+        @PathVariable UUID resourceId,
+        String status,
+        Authentication authentication
+    ) {
+        return resourcePermissionManagementService.listRequests(currentUser(authentication), resourceType, resourceId, status);
+    }
+
+    @PostMapping("/requests/{requestId}/approve")
+    public ResourcePermissionRequest approveRequest(
+        @PathVariable UUID requestId,
+        @RequestBody DecideResourcePermissionRequest request,
+        Authentication authentication
+    ) {
+        return resourcePermissionManagementService.approveRequest(currentUser(authentication), requestId, request.note());
+    }
+
+    @PostMapping("/requests/{requestId}/reject")
+    public ResourcePermissionRequest rejectRequest(
+        @PathVariable UUID requestId,
+        @RequestBody DecideResourcePermissionRequest request,
+        Authentication authentication
+    ) {
+        return resourcePermissionManagementService.rejectRequest(currentUser(authentication), requestId, request.note());
+    }
+
+    @PostMapping("/{resourceType}/{resourceId}/inheritance/break")
+    public void breakInheritance(
+        @PathVariable String resourceType,
+        @PathVariable UUID resourceId,
+        @Valid @RequestBody RevokeResourcePermissionRequest request,
+        Authentication authentication
+    ) {
+        resourcePermissionManagementService.breakInheritance(currentUser(authentication), resourceType, resourceId, request.confirmHighRisk());
+    }
+
+    @PostMapping("/{resourceType}/{resourceId}/inheritance/restore")
+    public void restoreInheritance(
+        @PathVariable String resourceType,
+        @PathVariable UUID resourceId,
+        Authentication authentication
+    ) {
+        resourcePermissionManagementService.restoreInheritance(currentUser(authentication), resourceType, resourceId);
+    }
+
     @DeleteMapping("/{permissionId}")
     public void revoke(
         @PathVariable UUID permissionId,
@@ -87,5 +151,14 @@ public class ResourcePermissionController {
     }
 
     public record RevokeResourcePermissionRequest(boolean confirmHighRisk) {
+    }
+
+    public record RequestResourcePermissionRequest(
+        @NotBlank String permissionLevel,
+        String reason
+    ) {
+    }
+
+    public record DecideResourcePermissionRequest(String note) {
     }
 }

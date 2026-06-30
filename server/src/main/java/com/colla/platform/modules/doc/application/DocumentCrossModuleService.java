@@ -3,6 +3,7 @@ package com.colla.platform.modules.doc.application;
 import com.colla.platform.modules.audit.application.AuditService;
 import com.colla.platform.modules.doc.domain.DocumentModels.DocumentDetail;
 import com.colla.platform.modules.doc.domain.DocumentModels.DocumentSummary;
+import com.colla.platform.modules.doc.domain.DocumentModels.KnowledgeContext;
 import com.colla.platform.modules.event.infrastructure.DomainEventRepository;
 import com.colla.platform.modules.project.application.ProjectService;
 import com.colla.platform.modules.project.domain.ProjectModels.IssueDetail;
@@ -55,18 +56,20 @@ public class DocumentCrossModuleService {
         String normalizedTitle = title == null || title.isBlank()
             ? defaultIssueTitleFromSelection(document, selectedText)
             : title.trim();
+        KnowledgeContext knowledgeContext = documentService.knowledgeContext(currentUser, documentId);
         IssueDetail created = projectService.createIssue(
             currentUser,
             projectId,
             issueType == null || issueType.isBlank() ? "task" : issueType,
             normalizedTitle,
-            documentIssueDescription(document, selectedText, description, anchorStart, anchorEnd),
+            documentIssueDescription(document, knowledgeContext, selectedText, description, anchorStart, anchorEnd),
             priority,
             assigneeId,
             dueAt
         );
         UUID issueId = created.issue().id();
         documentService.addRelation(currentUser, documentId, "issue", issueId);
+        projectService.addRelation(currentUser, issueId, "document", documentId);
         eventRepository.append(
             currentUser.workspaceId(),
             "document.issue.created_from_selection",
@@ -94,6 +97,7 @@ public class DocumentCrossModuleService {
 
     private String documentIssueDescription(
         DocumentSummary document,
+        KnowledgeContext knowledgeContext,
         String selectedText,
         String description,
         Integer anchorStart,
@@ -105,7 +109,13 @@ public class DocumentCrossModuleService {
             lines.add(normalizedDescription);
             lines.add("");
         }
-        lines.add("来源文档：" + document.title() + " /docs/" + document.id());
+        if (knowledgeContext != null) {
+            lines.add("来源知识库：" + knowledgeContext.spaceName());
+            lines.add("知识路径：" + knowledgeContext.pathText());
+            lines.add("反向引用：" + knowledgeContext.webPath());
+        } else {
+            lines.add("来源文档：" + document.title() + " /docs/" + document.id());
+        }
         if (anchorStart != null && anchorEnd != null) {
             lines.add("选区范围：" + anchorStart + "-" + anchorEnd);
         }

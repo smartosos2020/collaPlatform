@@ -121,6 +121,14 @@ public class UserGroupService {
     }
 
     @Transactional
+    public void enableGroup(CurrentUser operator, UUID groupId) {
+        permissionService.requireManageUserGroups(operator);
+        requireGroup(operator.workspaceId(), groupId);
+        userGroupRepository.enableGroup(operator.workspaceId(), groupId, operator.id());
+        auditService.log(operator, "usergroup.enabled", "user_group", groupId, Map.of());
+    }
+
+    @Transactional
     public void deleteGroup(CurrentUser operator, UUID groupId) {
         permissionService.requireManageUserGroups(operator);
         requireGroup(operator.workspaceId(), groupId);

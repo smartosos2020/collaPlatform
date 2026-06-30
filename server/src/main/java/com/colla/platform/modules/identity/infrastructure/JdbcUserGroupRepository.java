@@ -167,6 +167,20 @@ public class JdbcUserGroupRepository implements UserGroupRepository {
     }
 
     @Override
+    public void enableGroup(UUID workspaceId, UUID groupId, UUID actorId) {
+        jdbcTemplate.update(
+            """
+                update user_groups
+                set status = 'active', updated_by = ?, updated_at = now()
+                where workspace_id = ? and id = ? and deleted_at is null
+                """,
+            actorId,
+            workspaceId,
+            groupId
+        );
+    }
+
+    @Override
     public void deleteGroup(UUID workspaceId, UUID groupId) {
         jdbcTemplate.update(
             """

@@ -199,6 +199,20 @@ public class JdbcOrganizationRepository implements OrganizationRepository {
     }
 
     @Override
+    public void enableDepartment(UUID workspaceId, UUID departmentId, UUID actorId) {
+        jdbcTemplate.update(
+            """
+                update departments
+                set status = 'active', updated_by = ?, updated_at = now()
+                where workspace_id = ? and id = ? and deleted_at is null
+                """,
+            actorId,
+            workspaceId,
+            departmentId
+        );
+    }
+
+    @Override
     public void deleteDepartment(UUID workspaceId, UUID departmentId) {
         jdbcTemplate.update(
             """

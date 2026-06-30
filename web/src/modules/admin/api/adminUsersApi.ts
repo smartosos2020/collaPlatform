@@ -4,6 +4,7 @@ export type MemberSummary = {
   id: string
   username: string
   displayName: string
+  avatarFileId?: string | null
   email?: string
   status: 'active' | 'disabled'
   lastLoginAt?: string
@@ -55,4 +56,8 @@ export async function enableMember(userId: string): Promise<void> {
 
 export async function resetMemberPassword(userId: string, newPassword: string): Promise<void> {
   return apiPatch<void>(`/admin/users/${userId}/password`, { newPassword })
+}
+
+export async function updateMemberAvatar(userId: string, avatarFileId?: string | null): Promise<void> {
+  return apiPatch<void>(`/admin/users/${userId}/avatar`, { avatarFileId })
 }

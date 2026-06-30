@@ -78,12 +78,14 @@ public class PlatformObjectService {
     public List<PlatformObjectSummary> recent(CurrentUser currentUser, int limit) {
         return objectRepository.listRecentAccesses(currentUser.workspaceId(), currentUser.id(), limit).stream()
             .map(reference -> resolveReference(currentUser, reference))
+            .filter(summary -> summary.accessState() == ObjectAccessState.available)
             .toList();
     }
 
     public List<PlatformObjectSummary> favorites(CurrentUser currentUser, int limit) {
         return objectRepository.listFavorites(currentUser.workspaceId(), currentUser.id(), limit).stream()
             .map(reference -> resolveReference(currentUser, reference))
+            .filter(summary -> summary.accessState() == ObjectAccessState.available)
             .toList();
     }
 

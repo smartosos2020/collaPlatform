@@ -30,6 +30,14 @@ const BasesPage = lazyRoute(() => import('../modules/bases/pages/BasesPage'), 'B
 const DashboardPage = lazyRoute(() => import('../modules/dashboard/pages/DashboardPage'), 'DashboardPage')
 const DevicesPage = lazyRoute(() => import('../modules/devices/pages/DevicesPage'), 'DevicesPage')
 const DocsPage = lazyRoute(() => import('../modules/docs/pages/DocsPage'), 'DocsPage')
+const KnowledgeBasesPage = lazyRoute(
+  () => import('../modules/knowledgeBases/pages/KnowledgeBasesPage'),
+  'KnowledgeBasesPage',
+)
+const KnowledgeBaseDetailPage = lazyRoute(
+  () => import('../modules/knowledgeBases/pages/KnowledgeBaseDetailPage'),
+  'KnowledgeBaseDetailPage',
+)
 const MessengerPage = lazyRoute(() => import('../modules/messenger/pages/MessengerPage'), 'MessengerPage')
 const NotificationsPage = lazyRoute(
   () => import('../modules/notifications/pages/NotificationsPage'),
@@ -79,6 +87,8 @@ export const router = createBrowserRouter([
       { path: 'issues/:issueId', element: routeElement(<ProjectsPage />) },
       { path: 'docs', element: routeElement(<DocsPage />) },
       { path: 'docs/:docId', element: routeElement(<DocsPage />) },
+      { path: 'knowledge-bases', element: routeElement(<KnowledgeBasesPage />) },
+      { path: 'knowledge-bases/:spaceId', element: routeElement(<KnowledgeBaseDetailPage />) },
       { path: 'bases', element: routeElement(<BasesPage />) },
       { path: 'bases/:baseId', element: routeElement(<BasesPage />) },
       { path: 'bases/:baseId/tables/:tableId', element: routeElement(<BasesPage />) },

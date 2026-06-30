@@ -59,6 +59,10 @@ public class PermissionGovernanceService {
     }
 
     public PermissionRiskSummary risks(CurrentUser currentUser) {
+        return risks(currentUser, null);
+    }
+
+    public PermissionRiskSummary risks(CurrentUser currentUser, UUID knowledgeBaseId) {
         permissionService.requireInspectPermissions(currentUser);
         List<PermissionRiskItem> items = new ArrayList<>();
         items.addAll(disabledUserRisks(currentUser.workspaceId()));
@@ -66,12 +70,23 @@ public class PermissionGovernanceService {
         items.addAll(disabledUserGroupRisks(currentUser.workspaceId()));
         items.addAll(resourcesWithoutOwner(currentUser.workspaceId()));
         items.addAll(highRiskBroadGrants(currentUser.workspaceId()));
-        excessiveAdmins(currentUser.workspaceId()).ifPresent(items::add);
+        if (knowledgeBaseId == null) {
+            excessiveAdmins(currentUser.workspaceId()).ifPresent(items::add);
+        }
+        if (knowledgeBaseId != null) {
+            items = items.stream()
+                .filter(item -> inKnowledgeBase(currentUser.workspaceId(), knowledgeBaseId, item.resourceType(), item.resourceId()))
+                .toList();
+        }
         return new PermissionRiskSummary(items.size(), items);
     }
 
     public String exportRisksCsv(CurrentUser currentUser) {
-        PermissionRiskSummary summary = risks(currentUser);
+        return exportRisksCsv(currentUser, null);
+    }
+
+    public String exportRisksCsv(CurrentUser currentUser, UUID knowledgeBaseId) {
+        PermissionRiskSummary summary = risks(currentUser, knowledgeBaseId);
         StringBuilder csv = new StringBuilder("ruleCode,severity,resourceType,resourceId,subjectType,subjectId,subjectName,permissionLevel,reason\n");
         for (PermissionRiskItem item : summary.items()) {
             csv.append(csv(item.ruleCode())).append(',')
@@ -85,6 +100,40 @@ public class PermissionGovernanceService {
                 .append(csv(item.reason())).append('\n');
         }
         return csv.toString();
+    }
+
+    private boolean inKnowledgeBase(UUID workspaceId, UUID knowledgeBaseId, String resourceType, UUID resourceId) {
+        if (resourceType == null || resourceId == null) {
+            return false;
+        }
+        if ("knowledge_base".equals(resourceType)) {
+            return resourceId.equals(knowledgeBaseId);
+        }
+        if (!"document".equals(resourceType)) {
+            return false;
+        }
+        Boolean exists = jdbcTemplate.queryForObject(
+            """
+                with recursive subtree as (
+                    select d.id
+                    from knowledge_base_spaces k
+                    join documents d on d.workspace_id = k.workspace_id and d.id = k.root_document_id and d.deleted_at is null
+                    where k.workspace_id = ? and k.id = ? and k.deleted_at is null
+                    union all
+                    select child.id
+                    from documents child
+                    join subtree parent on parent.id = child.parent_id
+                    where child.workspace_id = ? and child.deleted_at is null
+                )
+                select exists(select 1 from subtree where id = ?)
+                """,
+            Boolean.class,
+            workspaceId,
+            knowledgeBaseId,
+            workspaceId,
+            resourceId
+        );
+        return Boolean.TRUE.equals(exists);
     }
 
     private PermissionInspectionResult toInspection(

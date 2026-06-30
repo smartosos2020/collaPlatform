@@ -256,7 +256,7 @@ public class JdbcIdentityRepository implements IdentityRepository {
         if (departmentId == null) {
             return jdbcTemplate.query(
                 """
-                    select id, username, display_name, email, status, last_login_at, created_at
+                    select id, username, display_name, avatar_file_id, email, status, last_login_at, created_at
                     from users
                     where workspace_id = ? and deleted_at is null
                     order by created_at desc
@@ -267,7 +267,7 @@ public class JdbcIdentityRepository implements IdentityRepository {
         }
         return jdbcTemplate.query(
             """
-                select id, username, display_name, email, status, last_login_at, created_at
+                select id, username, display_name, avatar_file_id, email, status, last_login_at, created_at
                 from users
                 where workspace_id = ? and deleted_at is null
                   and exists (
@@ -310,6 +310,21 @@ public class JdbcIdentityRepository implements IdentityRepository {
                 where workspace_id = ? and id = ? and deleted_at is null
                 """,
             passwordHash,
+            updatedBy,
+            workspaceId,
+            userId
+        );
+    }
+
+    @Override
+    public void updateAvatarFileId(UUID workspaceId, UUID userId, UUID avatarFileId, UUID updatedBy) {
+        jdbcTemplate.update(
+            """
+                update users
+                set avatar_file_id = ?, updated_by = ?, updated_at = now()
+                where workspace_id = ? and id = ? and deleted_at is null
+                """,
+            avatarFileId,
             updatedBy,
             workspaceId,
             userId
@@ -516,6 +531,7 @@ public class JdbcIdentityRepository implements IdentityRepository {
             userId,
             rs.getString("username"),
             rs.getString("display_name"),
+            rs.getObject("avatar_file_id", UUID.class),
             rs.getString("email"),
             rs.getString("status"),
             rs.getTimestamp("last_login_at") == null ? null : rs.getTimestamp("last_login_at").toInstant(),

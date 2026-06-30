@@ -1,6 +1,7 @@
 package com.colla.platform.modules.doc.domain;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -29,7 +30,14 @@ public final class DocumentModels {
         String coverUrl,
         String defaultPermissionLevel,
         boolean knowledgeBase,
-        boolean archived
+        boolean archived,
+        UUID maintainerId,
+        String maintainerName,
+        List<String> tags,
+        String category,
+        String knowledgeStatus,
+        LocalDate reviewDueAt,
+        Instant verifiedAt
     ) {
     }
 
@@ -58,7 +66,20 @@ public final class DocumentModels {
         List<DocumentRelation> relations,
         List<DocumentPermission> permissions,
         List<DocumentShareLink> shareLinks,
-        List<DocumentComment> comments
+        List<DocumentComment> comments,
+        KnowledgeContext knowledgeContext
+    ) {
+    }
+
+    public record KnowledgeContext(
+        UUID spaceId,
+        String spaceName,
+        String spaceCode,
+        UUID rootDocumentId,
+        UUID homeDocumentId,
+        List<DocumentPathItem> path,
+        String pathText,
+        String webPath
     ) {
     }
 
@@ -113,7 +134,41 @@ public final class DocumentModels {
         String category,
         String content,
         boolean builtIn,
+        String scopeType,
+        UUID knowledgeBaseId,
+        String knowledgeBaseName,
         Instant createdAt
+    ) {
+    }
+
+    public record KnowledgeMetadataUpdate(
+        UUID maintainerId,
+        List<String> tags,
+        String category,
+        String knowledgeStatus,
+        LocalDate reviewDueAt,
+        Instant verifiedAt
+    ) {
+    }
+
+    public record KnowledgeReviewReminderResult(
+        int scannedCount,
+        int notifiedCount
+    ) {
+    }
+
+    public record KnowledgeBaseMarkdownImportItem(
+        String title,
+        String content,
+        String category,
+        List<String> tags
+    ) {
+    }
+
+    public record KnowledgeBaseMarkdownImportResult(
+        UUID spaceId,
+        int importedCount,
+        List<DocumentSummary> documents
     ) {
     }
 
@@ -159,7 +214,10 @@ public final class DocumentModels {
         Instant createdAt,
         UUID updatedBy,
         String updatedByName,
-        Instant updatedAt
+        Instant updatedAt,
+        UUID knowledgeBaseId,
+        String knowledgeBaseName,
+        String knowledgeBaseCode
     ) {
     }
 
@@ -287,6 +345,118 @@ public final class DocumentModels {
         int openP1,
         boolean frozen,
         String frozenCriteria
+    ) {
+    }
+
+    public record KnowledgeBaseSpaceSummary(
+        UUID id,
+        String name,
+        String code,
+        String description,
+        String icon,
+        String coverUrl,
+        String status,
+        String visibility,
+        UUID rootDocumentId,
+        UUID homeDocumentId,
+        UUID ownerId,
+        String ownerName,
+        String defaultPermissionLevel,
+        Instant createdAt,
+        Instant updatedAt,
+        long documentCount
+    ) {
+    }
+
+    public record KnowledgeBaseSpaceDetail(
+        KnowledgeBaseSpaceSummary space,
+        DocumentSummary rootDocument,
+        DocumentSummary homeDocument
+    ) {
+    }
+
+    public record KnowledgeBaseSubscription(
+        String targetType,
+        UUID targetId,
+        boolean subscribed
+    ) {
+    }
+
+    public record KnowledgeBaseDiscovery(
+        UUID spaceId,
+        List<DocumentSummary> recentAccessed,
+        List<DocumentSummary> favorites,
+        List<DocumentSummary> maintainedByMe,
+        List<DocumentSummary> dueForReview,
+        List<DocumentSummary> popular,
+        List<DocumentSummary> recommended,
+        List<DocumentSummary> subscribedDocuments,
+        boolean spaceSubscribed
+    ) {
+    }
+
+    public record KnowledgeBaseHealthMetrics(
+        long documentCount,
+        long activeDocumentCount,
+        long outdatedDocumentCount,
+        long unmaintainedDocumentCount,
+        long ownerlessDocumentCount,
+        long highRiskPermissionCount
+    ) {
+    }
+
+    public record KnowledgeBaseGovernanceRisk(
+        String id,
+        String ruleCode,
+        String severity,
+        String resourceType,
+        UUID resourceId,
+        String title,
+        String subjectType,
+        UUID subjectId,
+        String subjectName,
+        String permissionLevel,
+        String reason,
+        String actionPath
+    ) {
+    }
+
+    public record KnowledgeBaseAccessDocumentStat(
+        DocumentSummary document,
+        long visitorCount,
+        long accessCount,
+        Instant lastAccessedAt
+    ) {
+    }
+
+    public record KnowledgeBaseSearchTermStat(
+        String query,
+        long count,
+        Instant lastSearchedAt
+    ) {
+    }
+
+    public record KnowledgeBaseAccessStats(
+        long visitorCount,
+        long accessCount,
+        List<KnowledgeBaseAccessDocumentStat> popularDocuments,
+        List<KnowledgeBaseAccessDocumentStat> lowAccessDocuments,
+        List<KnowledgeBaseSearchTermStat> noResultTerms
+    ) {
+    }
+
+    public record KnowledgeBaseGovernanceDashboard(
+        UUID spaceId,
+        KnowledgeBaseHealthMetrics health,
+        List<KnowledgeBaseGovernanceRisk> risks,
+        KnowledgeBaseAccessStats accessStats
+    ) {
+    }
+
+    public record KnowledgeBaseBulkGovernanceResult(
+        int updatedCount,
+        int archivedCount,
+        int reviewRequestedCount
     ) {
     }
 }

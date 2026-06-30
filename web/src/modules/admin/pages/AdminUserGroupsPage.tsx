@@ -1,27 +1,26 @@
 import {
-  ApartmentOutlined,
-  AuditOutlined,
+  CheckCircleOutlined,
   DeleteOutlined,
   EditOutlined,
   PlusOutlined,
   SearchOutlined,
   StopOutlined,
   TeamOutlined,
-  UserOutlined,
 } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { App as AntdApp, Button, Form, Input, Modal, Radio, Select, Space, Table, Typography } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 
 import { listMembers } from '../api/adminUsersApi'
+import { AdminModuleNav } from '../components/AdminModuleNav'
 import { flattenDepartmentTree, listDepartmentTree } from '../api/departmentsApi'
 import {
   addUserGroupMember,
   createUserGroup,
   deleteUserGroup,
   disableUserGroup,
+  enableUserGroup,
   listExpandedUserGroupMembers,
   listUserGroupMembers,
   listUserGroups,
@@ -42,7 +41,6 @@ type MemberForm = {
 
 export function AdminUserGroupsPage() {
   const queryClient = useQueryClient()
-  const navigate = useNavigate()
   const { message, modal } = AntdApp.useApp()
   const [selectedGroupId, setSelectedGroupId] = useState<string>()
   const [groupSearch, setGroupSearch] = useState('')
@@ -112,6 +110,17 @@ export function AdminUserGroupsPage() {
     onSuccess: async () => {
       message.success('用户组已停用')
       await refreshGroups()
+    },
+  })
+
+  const enableMutation = useMutation({
+    mutationFn: enableUserGroup,
+    onSuccess: async () => {
+      message.success('用户组已启用')
+      await refreshGroups()
+    },
+    onError: (error) => {
+      message.error(error instanceof Error ? error.message : '用户组启用失败')
     },
   })
 
@@ -231,24 +240,14 @@ export function AdminUserGroupsPage() {
           </span>
           <Typography.Title level={2}>用户组</Typography.Title>
         </Space>
-        <Space wrap>
-          <Button icon={<UserOutlined />} onClick={() => navigate('/admin/users')}>
-            成员管理
-          </Button>
-          <Button icon={<ApartmentOutlined />} onClick={() => navigate('/admin/departments')}>
-            组织架构
-          </Button>
-          <Button icon={<AuditOutlined />} onClick={() => navigate('/admin/audit-logs')}>
-            审计日志
-          </Button>
-          <Button type="primary" icon={<PlusOutlined />} onClick={openCreateGroup}>
-            新建用户组
-          </Button>
-        </Space>
+        <AdminModuleNav />
       </Space>
 
       <div className="admin-org-grid admin-user-groups-layout">
         <div className="admin-org-panel admin-user-groups-sidebar">
+          <Button block type="primary" className="admin-sidebar-create admin-sidebar-create-top" icon={<PlusOutlined />} onClick={openCreateGroup}>
+            新建用户组
+          </Button>
           <Input
             allowClear
             className="admin-user-group-search"
@@ -271,11 +270,13 @@ export function AdminUserGroupsPage() {
                 <span className="admin-group-card-copy">
                   <span className="admin-group-card-title">
                     <strong>{group.name}</strong>
-                    <span className={`admin-status-pill ${group.status === 'active' ? 'active' : 'disabled'}`}>{group.status}</span>
+                    <span className="admin-group-card-side">
+                      <span className={`admin-status-pill ${group.status === 'active' ? 'active' : 'disabled'}`}>{group.status}</span>
+                      <small className="admin-group-card-count">{group.expandedMemberCount}</small>
+                    </span>
                   </span>
                   <small>{group.code}</small>
                 </span>
-                <span className="admin-group-card-count">{group.expandedMemberCount}</span>
               </button>
             ))}
             {!groupsQuery.isLoading && visibleGroups.length === 0 ? (
@@ -284,9 +285,6 @@ export function AdminUserGroupsPage() {
               </div>
             ) : null}
           </div>
-          <Button block className="admin-sidebar-create" icon={<PlusOutlined />} onClick={openCreateGroup}>
-            新建用户组
-          </Button>
         </div>
 
         <div className="admin-user-groups-main">
@@ -298,11 +296,11 @@ export function AdminUserGroupsPage() {
                     <TeamOutlined />
                   </span>
                   <div className="admin-group-hero-copy">
-                    <Space size={10} wrap>
+                    <Space className="admin-group-hero-title-row" size={10} align="center" wrap>
                       <Typography.Title level={3}>{selectedGroup.name}</Typography.Title>
                       <span className={`admin-status-pill ${selectedGroup.status === 'active' ? 'active' : 'disabled'}`}>{selectedGroup.status}</span>
+                      <Typography.Text type="secondary">{selectedGroup.code}</Typography.Text>
                     </Space>
-                    <Typography.Text type="secondary">{selectedGroup.code}</Typography.Text>
                     <div className="admin-group-meta-grid">
                       <span className="admin-meta-chip">直接成员 {selectedGroup.directMemberCount}</span>
                       <span className="admin-meta-chip">展开成员 {selectedGroup.expandedMemberCount}</span>
@@ -315,56 +313,68 @@ export function AdminUserGroupsPage() {
                   <Button icon={<EditOutlined />} className="admin-action-button" onClick={() => openEditGroup(selectedGroup)}>
                     编辑
                   </Button>
-                  <Button
-                    icon={<StopOutlined />}
-                    className="admin-action-button"
-                    disabled={selectedGroup.status === 'disabled'}
-                    loading={disableMutation.isPending}
-                    onClick={() => disableMutation.mutate(selectedGroup.id)}
-                  >
-                    停用
-                  </Button>
+                  {selectedGroup.status === 'active' ? (
+                    <Button
+                      icon={<StopOutlined />}
+                      className="admin-danger-outline"
+                      loading={disableMutation.isPending}
+                      onClick={() => disableMutation.mutate(selectedGroup.id)}
+                    >
+                      停用
+                    </Button>
+                  ) : (
+                    <Button
+                      icon={<CheckCircleOutlined />}
+                      className="admin-success-outline"
+                      loading={enableMutation.isPending}
+                      onClick={() => enableMutation.mutate(selectedGroup.id)}
+                    >
+                      启用
+                    </Button>
+                  )}
                   <Button danger icon={<DeleteOutlined />} className="admin-danger-outline" loading={deleteMutation.isPending} onClick={() => confirmDelete(selectedGroup)}>
                     删除
                   </Button>
                 </Space>
               </div>
 
-              <div className="admin-data-card">
-                <Space className="admin-org-section-toolbar" wrap>
-                  <Typography.Title level={4}>直接成员主体 <span>({selectedGroup.directMemberCount})</span></Typography.Title>
-                  <Button
-                    icon={<PlusOutlined />}
-                    disabled={selectedGroup.status === 'disabled'}
-                    className="admin-action-button"
-                    onClick={() => {
-                      setMemberModalOpen(true)
-                      memberForm.setFieldsValue({ subjectType: 'user' })
-                    }}
-                  >
-                    加入主体
-                  </Button>
-                </Space>
-                <Table
-                  rowKey="id"
-                  size="middle"
-                  loading={membersQuery.isLoading}
-                  columns={memberColumns}
-                  dataSource={membersQuery.data ?? []}
-                  pagination={{ pageSize: 8, placement: ['bottomEnd'] }}
-                />
-              </div>
+              <div className="admin-detail-card-grid admin-user-group-card-grid">
+                <div className="admin-data-card">
+                  <Space className="admin-org-section-toolbar" wrap>
+                    <Typography.Title level={4}>直接成员主体 <span>({selectedGroup.directMemberCount})</span></Typography.Title>
+                    <Button
+                      icon={<PlusOutlined />}
+                      disabled={selectedGroup.status === 'disabled'}
+                      className="admin-action-button"
+                      onClick={() => {
+                        setMemberModalOpen(true)
+                        memberForm.setFieldsValue({ subjectType: 'user' })
+                      }}
+                    >
+                      加入主体
+                    </Button>
+                  </Space>
+                  <Table
+                    rowKey="id"
+                    size="middle"
+                    loading={membersQuery.isLoading}
+                    columns={memberColumns}
+                    dataSource={membersQuery.data ?? []}
+                    pagination={{ pageSize: 8, placement: ['bottomEnd'] }}
+                  />
+                </div>
 
-              <div className="admin-data-card">
-                <Typography.Title level={4}>展开成员 <span>({selectedGroup.expandedMemberCount})</span></Typography.Title>
-                <Table
-                  rowKey={(record) => record.userId}
-                  size="middle"
-                  loading={expandedMembersQuery.isLoading}
-                  columns={expandedColumns}
-                  dataSource={expandedMembersQuery.data ?? []}
-                  pagination={{ pageSize: 8, placement: ['bottomEnd'] }}
-                />
+                <div className="admin-data-card">
+                  <Typography.Title level={4}>展开成员 <span>({selectedGroup.expandedMemberCount})</span></Typography.Title>
+                  <Table
+                    rowKey={(record) => record.userId}
+                    size="middle"
+                    loading={expandedMembersQuery.isLoading}
+                    columns={expandedColumns}
+                    dataSource={expandedMembersQuery.data ?? []}
+                    pagination={{ pageSize: 8, placement: ['bottomEnd'] }}
+                  />
+                </div>
               </div>
             </Space>
           ) : (

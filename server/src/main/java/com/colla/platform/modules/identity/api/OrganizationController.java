@@ -75,6 +75,11 @@ public class OrganizationController {
         organizationService.disableDepartment(currentUser(authentication), departmentId);
     }
 
+    @PostMapping("/{departmentId}/enable")
+    public void enable(@PathVariable UUID departmentId, Authentication authentication) {
+        organizationService.enableDepartment(currentUser(authentication), departmentId);
+    }
+
     @DeleteMapping("/{departmentId}")
     public void delete(@PathVariable UUID departmentId, Authentication authentication) {
         organizationService.deleteDepartment(currentUser(authentication), departmentId);

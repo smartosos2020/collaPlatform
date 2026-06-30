@@ -11,10 +11,15 @@ import com.colla.platform.modules.doc.domain.DocumentModels.DocumentShareLink;
 import com.colla.platform.modules.doc.domain.DocumentModels.DocumentSummary;
 import com.colla.platform.modules.doc.domain.DocumentModels.DocumentTemplate;
 import com.colla.platform.modules.doc.domain.DocumentModels.DocumentVersion;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Timestamp;
+import java.sql.Types;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -477,10 +482,13 @@ public class JdbcDocumentRepository implements DocumentRepository {
                        d.created_by, cu.display_name created_by_name, d.created_at,
                        d.updated_by, uu.display_name updated_by_name, d.updated_at,
                        d.sort_order, d.description, d.cover_url, d.default_permission_level, d.knowledge_base,
-                       d.archived_at is not null archived
+                       d.archived_at is not null archived,
+                       d.maintainer_id, coalesce(mu.display_name, mu.username) maintainer_name,
+                       d.tags, d.category, d.knowledge_status, d.review_due_at, d.verified_at
                 from documents d
                 join users cu on cu.id = d.created_by
                 join users uu on uu.id = d.updated_by
+                left join users mu on mu.id = d.maintainer_id and mu.workspace_id = d.workspace_id and mu.deleted_at is null
                 left join best_permissions bp on bp.document_id = d.id
                 where d.workspace_id = ? and d.deleted_at is null
                   and (d.created_by = ? or bp.document_id is not null)
@@ -510,10 +518,13 @@ public class JdbcDocumentRepository implements DocumentRepository {
                            d.created_by, cu.display_name created_by_name, d.created_at,
                            d.updated_by, uu.display_name updated_by_name, d.updated_at,
                            d.sort_order, d.description, d.cover_url, d.default_permission_level, d.knowledge_base,
-                           d.archived_at is not null archived
+                           d.archived_at is not null archived,
+                           d.maintainer_id, coalesce(mu.display_name, mu.username) maintainer_name,
+                           d.tags, d.category, d.knowledge_status, d.review_due_at, d.verified_at
                     from documents d
                     join users cu on cu.id = d.created_by
                     join users uu on uu.id = d.updated_by
+                    left join users mu on mu.id = d.maintainer_id and mu.workspace_id = d.workspace_id and mu.deleted_at is null
                     where d.workspace_id = ? and d.id = ? and d.deleted_at is null
                     """,
                 this::mapDocumentSummary,
@@ -661,16 +672,29 @@ public class JdbcDocumentRepository implements DocumentRepository {
     }
 
     @Override
-    public List<DocumentTemplate> listTemplates(UUID workspaceId) {
+    public List<DocumentTemplate> listTemplates(UUID workspaceId, UUID knowledgeBaseId) {
         return jdbcTemplate.query(
             """
-                select id, title, description, category, content, built_in, created_at
-                from document_templates
-                where status = 'active' and (workspace_id is null or workspace_id = ?)
-                order by built_in desc, category, title
+                select dt.id, dt.title, dt.description, dt.category, dt.content, dt.built_in,
+                       dt.scope_type, dt.knowledge_base_id, kb.name knowledge_base_name, dt.created_at
+                from document_templates dt
+                left join knowledge_base_spaces kb on kb.id = dt.knowledge_base_id and kb.workspace_id = dt.workspace_id
+                where dt.status = 'active'
+                  and (
+                      dt.workspace_id is null
+                      or (dt.workspace_id = ? and dt.scope_type = 'workspace')
+                      or (dt.workspace_id = ? and dt.scope_type = 'knowledge_base' and (?::uuid is null or dt.knowledge_base_id = ?))
+                  )
+                order by dt.built_in desc,
+                         case dt.scope_type when 'knowledge_base' then 0 when 'workspace' then 1 else 2 end,
+                         dt.category,
+                         dt.title
                 """,
             this::mapTemplate,
-            workspaceId
+            workspaceId,
+            workspaceId,
+            knowledgeBaseId,
+            knowledgeBaseId
         );
     }
 
@@ -679,9 +703,13 @@ public class JdbcDocumentRepository implements DocumentRepository {
         try {
             return Optional.ofNullable(jdbcTemplate.queryForObject(
                 """
-                    select id, title, description, category, content, built_in, created_at
-                    from document_templates
-                    where id = ? and status = 'active' and (workspace_id is null or workspace_id = ?)
+                    select dt.id, dt.title, dt.description, dt.category, dt.content, dt.built_in,
+                           dt.scope_type, dt.knowledge_base_id, kb.name knowledge_base_name, dt.created_at
+                    from document_templates dt
+                    left join knowledge_base_spaces kb on kb.id = dt.knowledge_base_id and kb.workspace_id = dt.workspace_id
+                    where dt.id = ?
+                      and dt.status = 'active'
+                      and (dt.workspace_id is null or dt.workspace_id = ?)
                     """,
                 this::mapTemplate,
                 templateId,
@@ -690,6 +718,38 @@ public class JdbcDocumentRepository implements DocumentRepository {
         } catch (EmptyResultDataAccessException exception) {
             return Optional.empty();
         }
+    }
+
+    @Override
+    public UUID createTemplate(
+        UUID workspaceId,
+        UUID knowledgeBaseId,
+        String title,
+        String description,
+        String category,
+        String content,
+        UUID actorId
+    ) {
+        UUID id = UUID.randomUUID();
+        jdbcTemplate.update(
+            """
+                insert into document_templates
+                    (id, workspace_id, title, description, category, content, built_in, status,
+                     scope_type, knowledge_base_id, created_by, created_at, updated_by, updated_at)
+                values (?, ?, ?, ?, ?, ?, false, 'active', ?, ?, ?, now(), ?, now())
+                """,
+            id,
+            workspaceId,
+            title,
+            description,
+            category,
+            content,
+            knowledgeBaseId == null ? "workspace" : "knowledge_base",
+            knowledgeBaseId,
+            actorId,
+            actorId
+        );
+        return id;
     }
 
     @Override
@@ -956,10 +1016,29 @@ public class JdbcDocumentRepository implements DocumentRepository {
             """
                 select dsl.id, dsl.document_id, dsl.token, dsl.scope, dsl.permission_level, dsl.enabled,
                        dsl.expires_at, dsl.created_by, cu.display_name created_by_name, dsl.created_at,
-                       dsl.updated_by, uu.display_name updated_by_name, dsl.updated_at
+                       dsl.updated_by, uu.display_name updated_by_name, dsl.updated_at,
+                       kb.id knowledge_base_id, kb.name knowledge_base_name, kb.code knowledge_base_code
                 from document_share_links dsl
                 join users cu on cu.id = dsl.created_by
                 left join users uu on uu.id = dsl.updated_by
+                left join lateral (
+                    with recursive ancestors as (
+                        select d.id, d.parent_id
+                        from documents d
+                        where d.workspace_id = dsl.workspace_id and d.id = dsl.document_id and d.deleted_at is null
+                        union all
+                        select parent.id, parent.parent_id
+                        from documents parent
+                        join ancestors child on child.parent_id = parent.id
+                        where parent.workspace_id = dsl.workspace_id and parent.deleted_at is null
+                    )
+                    select k.id, k.name, k.code
+                    from ancestors a
+                    join knowledge_base_spaces k on k.workspace_id = dsl.workspace_id
+                        and k.root_document_id = a.id
+                        and k.deleted_at is null
+                    limit 1
+                ) kb on true
                 where dsl.workspace_id = ? and dsl.document_id = ?
                 order by dsl.created_at desc
                 """,
@@ -1342,6 +1421,151 @@ public class JdbcDocumentRepository implements DocumentRepository {
         );
     }
 
+    @Override
+    public void updateKnowledgeMetadata(
+        UUID workspaceId,
+        UUID documentId,
+        UUID maintainerId,
+        List<String> tags,
+        String category,
+        String knowledgeStatus,
+        LocalDate reviewDueAt,
+        Instant verifiedAt,
+        UUID actorId
+    ) {
+        jdbcTemplate.update(connection -> {
+            PreparedStatement ps = connection.prepareStatement(
+                """
+                    update documents
+                    set maintainer_id = ?,
+                        tags = ?,
+                        category = ?,
+                        knowledge_status = ?,
+                        review_due_at = ?,
+                        verified_at = ?,
+                        review_notified_at = case
+                            when review_due_at is distinct from ?::date then null
+                            else review_notified_at
+                        end,
+                        updated_by = ?,
+                        updated_at = now()
+                    where workspace_id = ? and id = ? and deleted_at is null
+                    """
+            );
+            if (maintainerId == null) {
+                ps.setNull(1, Types.OTHER);
+            } else {
+                ps.setObject(1, maintainerId);
+            }
+            ps.setArray(2, connection.createArrayOf("text", tags == null ? new String[0] : tags.toArray(String[]::new)));
+            ps.setString(3, category);
+            ps.setString(4, knowledgeStatus);
+            if (reviewDueAt == null) {
+                ps.setNull(5, Types.DATE);
+                ps.setNull(7, Types.DATE);
+            } else {
+                ps.setObject(5, reviewDueAt);
+                ps.setObject(7, reviewDueAt);
+            }
+            if (verifiedAt == null) {
+                ps.setNull(6, Types.TIMESTAMP_WITH_TIMEZONE);
+            } else {
+                ps.setTimestamp(6, Timestamp.from(verifiedAt));
+            }
+            ps.setObject(8, actorId);
+            ps.setObject(9, workspaceId);
+            ps.setObject(10, documentId);
+            return ps;
+        });
+    }
+
+    @Override
+    public List<DocumentSummary> listKnowledgeBaseDocuments(UUID workspaceId, UUID rootDocumentId) {
+        return jdbcTemplate.query(
+            """
+                with recursive subtree as (
+                    select d.id
+                    from documents d
+                    where d.workspace_id = ? and d.id = ? and d.deleted_at is null
+                    union all
+                    select child.id
+                    from documents child
+                    join subtree parent on child.parent_id = parent.id
+                    where child.workspace_id = ? and child.deleted_at is null
+                )
+                select d.id, d.parent_id, d.title, d.doc_type, d.current_version_no,
+                       'owner' permission_level,
+                       d.created_by, cu.display_name created_by_name, d.created_at,
+                       d.updated_by, uu.display_name updated_by_name, d.updated_at,
+                       d.sort_order, d.description, d.cover_url, d.default_permission_level, d.knowledge_base,
+                       d.archived_at is not null archived,
+                       d.maintainer_id, coalesce(mu.display_name, mu.username) maintainer_name,
+                       d.tags, d.category, d.knowledge_status, d.review_due_at, d.verified_at
+                from documents d
+                join subtree on subtree.id = d.id
+                join users cu on cu.id = d.created_by
+                join users uu on uu.id = d.updated_by
+                left join users mu on mu.id = d.maintainer_id and mu.workspace_id = d.workspace_id and mu.deleted_at is null
+                order by d.parent_id nulls first, d.sort_order, lower(d.title)
+                """,
+            this::mapDocumentSummary,
+            workspaceId,
+            rootDocumentId,
+            workspaceId
+        );
+    }
+
+    @Override
+    public List<DocumentSummary> listDueForReview(UUID workspaceId, LocalDate beforeDate, int limit) {
+        return jdbcTemplate.query(
+            """
+                select d.id, d.parent_id, d.title, d.doc_type, d.current_version_no,
+                       'owner' permission_level,
+                       d.created_by, cu.display_name created_by_name, d.created_at,
+                       d.updated_by, uu.display_name updated_by_name, d.updated_at,
+                       d.sort_order, d.description, d.cover_url, d.default_permission_level, d.knowledge_base,
+                       d.archived_at is not null archived,
+                       d.maintainer_id, coalesce(mu.display_name, mu.username) maintainer_name,
+                       d.tags, d.category, d.knowledge_status, d.review_due_at, d.verified_at
+                from documents d
+                join users cu on cu.id = d.created_by
+                join users uu on uu.id = d.updated_by
+                left join users mu on mu.id = d.maintainer_id and mu.workspace_id = d.workspace_id and mu.deleted_at is null
+                where d.workspace_id = ?
+                  and d.deleted_at is null
+                  and d.archived_at is null
+                  and d.doc_type = 'markdown'
+                  and d.maintainer_id is not null
+                  and d.review_due_at is not null
+                  and d.review_due_at <= ?
+                  and (d.review_notified_at is null or d.review_notified_at < now() - interval '1 day')
+                order by d.review_due_at asc, d.updated_at desc
+                limit ?
+                """,
+            this::mapDocumentSummary,
+            workspaceId,
+            beforeDate,
+            Math.max(1, limit)
+        );
+    }
+
+    @Override
+    public int markReviewReminderSent(UUID workspaceId, UUID documentId, UUID actorId) {
+        return jdbcTemplate.update(
+            """
+                update documents
+                set review_notified_at = now(),
+                    knowledge_status = case when knowledge_status = 'verified' then 'needs_review' else knowledge_status end,
+                    updated_by = ?,
+                    updated_at = now()
+                where workspace_id = ? and id = ? and deleted_at is null
+                """,
+            actorId,
+            workspaceId,
+            documentId
+        );
+    }
+
     private DocumentSummary mapDocumentSummary(ResultSet rs, int rowNum) throws SQLException {
         return new DocumentSummary(
             rs.getObject("id", UUID.class),
@@ -1361,8 +1585,27 @@ public class JdbcDocumentRepository implements DocumentRepository {
             rs.getString("cover_url"),
             rs.getString("default_permission_level"),
             rs.getBoolean("knowledge_base"),
-            rs.getBoolean("archived")
+            rs.getBoolean("archived"),
+            rs.getObject("maintainer_id", UUID.class),
+            rs.getString("maintainer_name"),
+            textArray(rs, "tags"),
+            rs.getString("category"),
+            rs.getString("knowledge_status"),
+            rs.getObject("review_due_at", LocalDate.class),
+            rs.getTimestamp("verified_at") == null ? null : rs.getTimestamp("verified_at").toInstant()
         );
+    }
+
+    private List<String> textArray(ResultSet rs, String column) throws SQLException {
+        java.sql.Array array = rs.getArray(column);
+        if (array == null) {
+            return List.of();
+        }
+        Object value = array.getArray();
+        if (value instanceof String[] strings) {
+            return Arrays.stream(strings).filter(item -> item != null && !item.isBlank()).toList();
+        }
+        return List.of();
     }
 
     private DocumentShareLink mapShareLink(ResultSet rs, int rowNum) throws SQLException {
@@ -1379,7 +1622,10 @@ public class JdbcDocumentRepository implements DocumentRepository {
             rs.getTimestamp("created_at").toInstant(),
             rs.getObject("updated_by", UUID.class),
             rs.getString("updated_by_name"),
-            rs.getTimestamp("updated_at") == null ? null : rs.getTimestamp("updated_at").toInstant()
+            rs.getTimestamp("updated_at") == null ? null : rs.getTimestamp("updated_at").toInstant(),
+            rs.getObject("knowledge_base_id", UUID.class),
+            rs.getString("knowledge_base_name"),
+            rs.getString("knowledge_base_code")
         );
     }
 
@@ -1409,6 +1655,9 @@ public class JdbcDocumentRepository implements DocumentRepository {
             rs.getString("category"),
             rs.getString("content"),
             rs.getBoolean("built_in"),
+            rs.getString("scope_type"),
+            rs.getObject("knowledge_base_id", UUID.class),
+            rs.getString("knowledge_base_name"),
             rs.getTimestamp("created_at").toInstant()
         );
     }

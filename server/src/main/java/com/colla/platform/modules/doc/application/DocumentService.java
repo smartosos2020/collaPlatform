@@ -24,7 +24,13 @@ import com.colla.platform.modules.doc.domain.DocumentModels.DocumentTemplate;
 import com.colla.platform.modules.doc.domain.DocumentModels.DocumentTreeNode;
 import com.colla.platform.modules.doc.domain.DocumentModels.DocumentVersion;
 import com.colla.platform.modules.doc.domain.DocumentModels.DocumentVersionDiff;
+import com.colla.platform.modules.doc.domain.DocumentModels.KnowledgeBaseMarkdownImportItem;
+import com.colla.platform.modules.doc.domain.DocumentModels.KnowledgeBaseMarkdownImportResult;
+import com.colla.platform.modules.doc.domain.DocumentModels.KnowledgeBaseSpaceSummary;
+import com.colla.platform.modules.doc.domain.DocumentModels.KnowledgeContext;
+import com.colla.platform.modules.doc.domain.DocumentModels.KnowledgeReviewReminderResult;
 import com.colla.platform.modules.doc.infrastructure.DocumentRepository;
+import com.colla.platform.modules.doc.infrastructure.KnowledgeBaseSpaceRepository;
 import com.colla.platform.modules.event.infrastructure.DomainEventRepository;
 import com.colla.platform.modules.file.infrastructure.FileRepository;
 import com.colla.platform.modules.identity.domain.UserGroupModels.UserGroupSummary;
@@ -44,6 +50,7 @@ import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -79,6 +86,7 @@ public class DocumentService {
     };
 
     private final DocumentRepository documentRepository;
+    private final KnowledgeBaseSpaceRepository knowledgeBaseSpaceRepository;
     private final PlatformObjectRepository objectRepository;
     private final DomainEventRepository eventRepository;
     private final ProjectRepository projectRepository;
@@ -92,6 +100,7 @@ public class DocumentService {
 
     public DocumentService(
         DocumentRepository documentRepository,
+        KnowledgeBaseSpaceRepository knowledgeBaseSpaceRepository,
         PlatformObjectRepository objectRepository,
         DomainEventRepository eventRepository,
         ProjectRepository projectRepository,
@@ -104,6 +113,7 @@ public class DocumentService {
         ObjectProvider<PlatformObjectResolverRegistry> objectResolverRegistryProvider
     ) {
         this.documentRepository = documentRepository;
+        this.knowledgeBaseSpaceRepository = knowledgeBaseSpaceRepository;
         this.objectRepository = objectRepository;
         this.eventRepository = eventRepository;
         this.projectRepository = projectRepository;
@@ -193,6 +203,13 @@ public class DocumentService {
     ) {
         if (parentId != null) {
             requireEdit(currentUser, parentId);
+            knowledgeBaseSpaceRepository.findDisabledRootForDocument(currentUser.workspaceId(), parentId)
+                .ifPresent(rootDocumentId -> {
+                    PermissionDecision decision = permissionDecisionService.decide(currentUser, "document", rootDocumentId, "manage");
+                    if (!decision.allowed()) {
+                        throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Knowledge base is disabled");
+                    }
+                });
         }
         String normalizedTitle = normalizeTitle(title);
         String normalizedDocType = normalizeDocType(docType);
@@ -278,7 +295,8 @@ public class DocumentService {
             permissionDecisionService.hasLevel(summary.permissionLevel(), "manage")
                 ? documentRepository.listShareLinks(currentUser.workspaceId(), documentId)
                 : List.of(),
-            documentRepository.listComments(currentUser.workspaceId(), documentId)
+            documentRepository.listComments(currentUser.workspaceId(), documentId),
+            knowledgeContext(currentUser, documentId)
         );
     }
 
@@ -408,6 +426,7 @@ public class DocumentService {
             Map.of("documentId", documentId.toString(), "versionNo", Integer.toString(nextVersionNo)),
             "document.updated:" + documentId + ":" + nextVersionNo
         );
+        notifyKnowledgeSubscribers(currentUser, documentId, normalizedTitle, nextVersionNo);
         return getDocument(currentUser, documentId);
     }
 
@@ -484,8 +503,47 @@ public class DocumentService {
         return documentRepository.listVersions(currentUser.workspaceId(), documentId);
     }
 
-    public List<DocumentTemplate> listTemplates(CurrentUser currentUser) {
-        return documentRepository.listTemplates(currentUser.workspaceId());
+    public List<DocumentTemplate> listTemplates(CurrentUser currentUser, UUID knowledgeBaseId) {
+        if (knowledgeBaseId != null) {
+            requireKnowledgeBaseView(currentUser, knowledgeBaseId);
+        }
+        return documentRepository.listTemplates(currentUser.workspaceId(), knowledgeBaseId);
+    }
+
+    @Transactional
+    public DocumentTemplate createTemplate(
+        CurrentUser currentUser,
+        UUID knowledgeBaseId,
+        String title,
+        String description,
+        String category,
+        String content
+    ) {
+        if (knowledgeBaseId == null) {
+            if (!currentUser.hasRole("admin")) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Workspace template requires admin role");
+            }
+        } else {
+            requireKnowledgeBaseManage(currentUser, knowledgeBaseId);
+        }
+        UUID templateId = documentRepository.createTemplate(
+            currentUser.workspaceId(),
+            knowledgeBaseId,
+            normalizeTitle(title),
+            normalizeNullableText(description, 512),
+            normalizeTemplateCategory(category),
+            content == null ? "" : content,
+            currentUser.id()
+        );
+        auditService.log(
+            currentUser,
+            "document.template.created",
+            knowledgeBaseId == null ? "workspace" : "knowledge_base",
+            knowledgeBaseId == null ? currentUser.workspaceId() : knowledgeBaseId,
+            Map.of("templateId", templateId.toString(), "scopeType", knowledgeBaseId == null ? "workspace" : "knowledge_base")
+        );
+        return documentRepository.findTemplate(currentUser.workspaceId(), templateId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Document template was not created"));
     }
 
     @Transactional
@@ -503,6 +561,169 @@ public class DocumentService {
             null,
             false
         );
+    }
+
+    @Transactional
+    public DocumentDetail updateKnowledgeMetadata(
+        CurrentUser currentUser,
+        UUID documentId,
+        UUID maintainerId,
+        List<String> tags,
+        String category,
+        String knowledgeStatus,
+        LocalDate reviewDueAt,
+        Instant verifiedAt
+    ) {
+        DocumentSummary before = requireEdit(currentUser, documentId);
+        String normalizedStatus = normalizeKnowledgeStatus(knowledgeStatus);
+        Instant normalizedVerifiedAt = "verified".equals(normalizedStatus) && verifiedAt == null ? Instant.now() : verifiedAt;
+        List<String> normalizedTags = normalizeTags(tags);
+        documentRepository.updateKnowledgeMetadata(
+            currentUser.workspaceId(),
+            documentId,
+            maintainerId,
+            normalizedTags,
+            normalizeNullableText(category, 64),
+            normalizedStatus,
+            reviewDueAt,
+            normalizedVerifiedAt,
+            currentUser.id()
+        );
+        auditService.log(
+            currentUser,
+            "document.knowledge_metadata.updated",
+            "document",
+            documentId,
+            Map.of(
+                "previousStatus", before.knowledgeStatus(),
+                "knowledgeStatus", normalizedStatus,
+                "tagCount", Integer.toString(normalizedTags.size())
+            )
+        );
+        return getDocument(currentUser, documentId);
+    }
+
+    @Transactional
+    public KnowledgeBaseMarkdownImportResult importKnowledgeBaseMarkdownBatch(
+        CurrentUser currentUser,
+        UUID spaceId,
+        UUID parentId,
+        List<KnowledgeBaseMarkdownImportItem> items
+    ) {
+        KnowledgeBaseSpaceSummary space = requireKnowledgeBaseManage(currentUser, spaceId);
+        UUID targetParentId = parentId == null ? space.homeDocumentId() : parentId;
+        if (!targetParentId.equals(space.rootDocumentId())
+            && !documentRepository.isDescendant(currentUser.workspaceId(), space.rootDocumentId(), targetParentId)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Import target is outside the knowledge base");
+        }
+        List<KnowledgeBaseMarkdownImportItem> normalizedItems = items == null ? List.of() : items.stream()
+            .filter(item -> item != null && item.title() != null && !item.title().isBlank())
+            .limit(50)
+            .toList();
+        if (normalizedItems.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Markdown import requires at least one item");
+        }
+        List<DocumentSummary> imported = new ArrayList<>();
+        for (KnowledgeBaseMarkdownImportItem item : normalizedItems) {
+            DocumentDetail detail = createDocument(
+                currentUser,
+                targetParentId,
+                item.title(),
+                "markdown",
+                item.content(),
+                null,
+                null,
+                "view",
+                false
+            );
+            DocumentDetail enriched = updateKnowledgeMetadata(
+                currentUser,
+                detail.document().id(),
+                currentUser.id(),
+                item.tags(),
+                item.category(),
+                "draft",
+                null,
+                null
+            );
+            imported.add(enriched.document());
+        }
+        auditService.log(
+            currentUser,
+            "knowledge_base.markdown_batch.imported",
+            "knowledge_base",
+            spaceId,
+            Map.of("importedCount", Integer.toString(imported.size()), "parentId", targetParentId.toString())
+        );
+        return new KnowledgeBaseMarkdownImportResult(spaceId, imported.size(), imported);
+    }
+
+    public String exportKnowledgeBaseMarkdown(CurrentUser currentUser, UUID spaceId) {
+        KnowledgeBaseSpaceSummary space = requireKnowledgeBaseView(currentUser, spaceId);
+        List<DocumentSummary> documents = documentRepository.listKnowledgeBaseDocuments(currentUser.workspaceId(), space.rootDocumentId()).stream()
+            .filter(document -> "markdown".equals(document.docType()))
+            .toList();
+        StringBuilder export = new StringBuilder();
+        export.append("# ").append(space.name()).append("\n\n");
+        export.append("> 导出时间：").append(Instant.now()).append("\n\n");
+        for (DocumentSummary document : documents) {
+            String content = documentRepository.findContent(currentUser.workspaceId(), document.id()).orElse("");
+            export.append("\n---\n\n");
+            export.append("# ").append(document.title()).append("\n\n");
+            if (document.category() != null || !document.tags().isEmpty() || document.reviewDueAt() != null) {
+                export.append("<!-- category: ").append(document.category() == null ? "" : document.category()).append(" -->\n");
+                export.append("<!-- tags: ").append(String.join(",", document.tags())).append(" -->\n");
+                export.append("<!-- knowledgeStatus: ").append(document.knowledgeStatus()).append(" -->\n");
+                if (document.reviewDueAt() != null) {
+                    export.append("<!-- reviewDueAt: ").append(document.reviewDueAt()).append(" -->\n");
+                }
+                export.append("\n");
+            }
+            export.append(content).append("\n");
+        }
+        return export.toString();
+    }
+
+    @Transactional
+    public KnowledgeReviewReminderResult runKnowledgeReviewReminders(CurrentUser currentUser, LocalDate beforeDate, int limit) {
+        if (!currentUser.hasRole("admin")) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Knowledge review reminder requires admin role");
+        }
+        LocalDate cutoff = beforeDate == null ? LocalDate.now().plusDays(7) : beforeDate;
+        List<DocumentSummary> dueDocuments = documentRepository.listDueForReview(currentUser.workspaceId(), cutoff, limit <= 0 ? 50 : limit);
+        int notified = 0;
+        for (DocumentSummary document : dueDocuments) {
+            if (document.maintainerId() == null) {
+                continue;
+            }
+            eventRepository.append(
+                currentUser.workspaceId(),
+                "notification.created",
+                "document",
+                document.id(),
+                currentUser.id(),
+                Map.of(
+                    "recipientId", document.maintainerId().toString(),
+                    "notificationType", "knowledge_review_due",
+                    "title", "知识文档需要复核",
+                    "body", document.title() + " 复核日期：" + document.reviewDueAt(),
+                    "targetType", "document",
+                    "targetId", document.id().toString(),
+                    "webPath", "/docs/" + document.id(),
+                    "dedupeKey", "knowledge.review_due:" + document.id() + ":" + document.reviewDueAt()
+                ),
+                "notification.knowledge.review_due:" + document.id() + ":" + document.reviewDueAt()
+            );
+            notified += documentRepository.markReviewReminderSent(currentUser.workspaceId(), document.id(), currentUser.id());
+        }
+        auditService.log(
+            currentUser,
+            "knowledge.review_reminders.sent",
+            "workspace",
+            currentUser.workspaceId(),
+            Map.of("scannedCount", Integer.toString(dueDocuments.size()), "notifiedCount", Integer.toString(notified))
+        );
+        return new KnowledgeReviewReminderResult(dueDocuments.size(), notified);
     }
 
     @Transactional
@@ -1114,6 +1335,34 @@ public class DocumentService {
         return withPermission(document, permission);
     }
 
+    private KnowledgeBaseSpaceSummary requireKnowledgeBaseView(CurrentUser currentUser, UUID spaceId) {
+        KnowledgeBaseSpaceSummary space = knowledgeBaseSpaceRepository.findSpace(currentUser.workspaceId(), spaceId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Knowledge base not found"));
+        if (currentUser.hasRole("admin")) {
+            return space;
+        }
+        PermissionDecision decision = permissionDecisionService.decide(currentUser, "knowledge_base", spaceId, "view");
+        if (decision.allowed()) {
+            return space;
+        }
+        requireView(currentUser, space.rootDocumentId());
+        return space;
+    }
+
+    private KnowledgeBaseSpaceSummary requireKnowledgeBaseManage(CurrentUser currentUser, UUID spaceId) {
+        KnowledgeBaseSpaceSummary space = knowledgeBaseSpaceRepository.findSpace(currentUser.workspaceId(), spaceId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Knowledge base not found"));
+        if (currentUser.hasRole("admin")) {
+            return space;
+        }
+        PermissionDecision decision = permissionDecisionService.decide(currentUser, "knowledge_base", spaceId, "manage");
+        if (decision.allowed()) {
+            return space;
+        }
+        requireManage(currentUser, space.rootDocumentId());
+        return space;
+    }
+
     private void validateRelationTarget(CurrentUser currentUser, String targetType, UUID targetId) {
         if ("issue".equals(targetType)) {
             IssueSummary issue = projectRepository.findIssue(currentUser.workspaceId(), targetId)
@@ -1362,6 +1611,7 @@ public class DocumentService {
         UUID commentId,
         String normalizedContent
     ) {
+        KnowledgeContext knowledgeContext = knowledgeContext(currentUser, documentId);
         for (UUID mentionedUserId : resolveMentions(currentUser, normalizedContent)) {
             CurrentUser mentionedUser = new CurrentUser(mentionedUserId, currentUser.workspaceId(), null, "", "", Set.of(), Set.of());
             if (
@@ -1382,16 +1632,50 @@ public class DocumentService {
                 Map.of(
                     "recipientId", mentionedUserId.toString(),
                     "notificationType", "document_comment_mention",
-                    "title", currentUser.displayName() + " 在文档「" + document.title() + "」评论中提到了你",
+                    "title", currentUser.displayName() + " 在「" + knowledgeLocationTitle(document, knowledgeContext) + "」评论中提到了你",
                     "body", normalizedContent,
                     "targetType", "document",
                     "targetId", documentId.toString(),
-                    "webPath", "/docs/" + documentId + "?commentId=" + threadId,
+                    "webPath", commentWebPath(documentId, threadId, knowledgeContext),
                     "dedupeKey", "document.comment.mention:" + commentId + ":" + mentionedUserId
                 ),
                 "notification.document.comment.mention:" + commentId + ":" + mentionedUserId
             );
         }
+    }
+
+    public KnowledgeContext knowledgeContext(CurrentUser currentUser, UUID documentId) {
+        return knowledgeBaseSpaceRepository.findSpaceByDocumentId(currentUser.workspaceId(), documentId)
+            .map(space -> {
+                List<DocumentPathItem> path = documentPath(currentUser, documentId);
+                String pathText = path.stream()
+                    .map(DocumentPathItem::title)
+                    .reduce((left, right) -> left + " / " + right)
+                    .orElse("");
+                return new KnowledgeContext(
+                    space.id(),
+                    space.name(),
+                    space.code(),
+                    space.rootDocumentId(),
+                    space.homeDocumentId(),
+                    path,
+                    pathText,
+                    "/knowledge-bases/" + space.id() + "?docId=" + documentId
+                );
+            })
+            .orElse(null);
+    }
+
+    private String knowledgeLocationTitle(DocumentSummary document, KnowledgeContext knowledgeContext) {
+        if (knowledgeContext == null || knowledgeContext.pathText() == null || knowledgeContext.pathText().isBlank()) {
+            return document.title();
+        }
+        return knowledgeContext.spaceName() + " / " + knowledgeContext.pathText();
+    }
+
+    private String commentWebPath(UUID documentId, UUID threadId, KnowledgeContext knowledgeContext) {
+        String basePath = knowledgeContext == null ? "/docs/" + documentId : knowledgeContext.webPath();
+        return basePath + (basePath.contains("?") ? "&" : "?") + "commentId=" + threadId;
     }
 
     private String clip(String value, int maxLength) {
@@ -1545,7 +1829,14 @@ public class DocumentService {
             document.coverUrl(),
             document.defaultPermissionLevel(),
             document.knowledgeBase(),
-            document.archived()
+            document.archived(),
+            document.maintainerId(),
+            document.maintainerName(),
+            document.tags(),
+            document.category(),
+            document.knowledgeStatus(),
+            document.reviewDueAt(),
+            document.verifiedAt()
         );
     }
 
@@ -1621,6 +1912,61 @@ public class DocumentService {
             return "view";
         }
         return normalizeSharePermission(permissionLevel);
+    }
+
+    private void notifyKnowledgeSubscribers(CurrentUser currentUser, UUID documentId, String title, int versionNo) {
+        List<UUID> subscriberIds = knowledgeBaseSpaceRepository.listSubscriberIdsForDocument(currentUser.workspaceId(), documentId).stream()
+            .filter(subscriberId -> !subscriberId.equals(currentUser.id()))
+            .distinct()
+            .toList();
+        for (UUID subscriberId : subscriberIds) {
+            eventRepository.append(
+                currentUser.workspaceId(),
+                "notification.created",
+                "document",
+                documentId,
+                currentUser.id(),
+                Map.of(
+                    "recipientId", subscriberId.toString(),
+                    "notificationType", "knowledge_subscription_updated",
+                    "title", "关注的知识已更新",
+                    "body", title + " 已更新到 v" + versionNo,
+                    "targetType", "document",
+                    "targetId", documentId.toString(),
+                    "webPath", "/docs/" + documentId,
+                    "dedupeKey", "knowledge.subscription.updated:" + documentId + ":" + versionNo + ":" + subscriberId
+                ),
+                "notification.knowledge.subscription_updated:" + documentId + ":" + versionNo + ":" + subscriberId
+            );
+        }
+    }
+
+    private String normalizeKnowledgeStatus(String knowledgeStatus) {
+        String normalized = knowledgeStatus == null || knowledgeStatus.isBlank()
+            ? "draft"
+            : knowledgeStatus.trim().toLowerCase(Locale.ROOT);
+        if (!List.of("draft", "verified", "needs_review", "outdated", "archived").contains(normalized)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid knowledge status");
+        }
+        return normalized;
+    }
+
+    private String normalizeTemplateCategory(String category) {
+        String normalized = category == null || category.isBlank() ? "knowledge" : category.trim().toLowerCase(Locale.ROOT);
+        return normalized.length() <= 64 ? normalized : normalized.substring(0, 64);
+    }
+
+    private List<String> normalizeTags(List<String> tags) {
+        if (tags == null || tags.isEmpty()) {
+            return List.of();
+        }
+        return tags.stream()
+            .filter(tag -> tag != null && !tag.isBlank())
+            .map(tag -> tag.trim())
+            .map(tag -> tag.length() <= 32 ? tag : tag.substring(0, 32))
+            .distinct()
+            .limit(20)
+            .toList();
     }
 
     private String normalizeShareScope(String scope) {

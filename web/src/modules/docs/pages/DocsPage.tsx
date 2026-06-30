@@ -19,6 +19,7 @@ import {
 } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { App as AntdApp, Alert, Breadcrumb, Button, Empty, Form, Input, Modal, Select, Space, Switch, Tag, Tooltip, Tree, Typography } from 'antd'
+import type { FormInstance } from 'antd/es/form'
 import type { ReactNode } from 'react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
@@ -27,6 +28,7 @@ import { InternalLinkCard, ObjectSummaryCard } from '../../platform/components/I
 import type { PlatformObjectSummary } from '../../platform/api/platformObjectsApi'
 import { getTable, queryRecords, type BaseField, type BaseRecord } from '../../bases/api/basesApi'
 import { objectTypeText } from '../../platform/objectTypeLabels'
+import { useAuthStore } from '../../auth/authStore'
 import { DocEditor, type DocEditorSelectionAnchor } from '../components/DocEditor'
 import { useDocumentCollaboration } from '../hooks/useDocumentCollaboration'
 import {
@@ -69,6 +71,7 @@ import {
   saveDocumentBlocks,
   setDocumentShareLinkEnabled,
   updateDocumentKnowledgeBase,
+  updateDocumentKnowledgeMetadata,
   updateDocumentShareLink,
   type DocumentAcceptanceReport,
   type DocumentBlockDraft,
@@ -109,6 +112,14 @@ type KnowledgeBaseForm = {
   coverUrl?: string
   defaultPermissionLevel?: DocumentSummary['defaultPermissionLevel']
   knowledgeBase?: boolean
+}
+
+type KnowledgeMetadataForm = {
+  maintainerId?: string
+  tags?: string[]
+  category?: string
+  knowledgeStatus?: DocumentSummary['knowledgeStatus']
+  reviewDueAt?: string
 }
 
 type PermissionRequestForm = {
@@ -159,6 +170,7 @@ type DraftState = {
 }
 
 type DocListMode = 'all' | 'recent' | 'favorites'
+type CommentFilter = 'open' | 'mentions' | 'current' | 'all'
 
 type BlockDraftState = DocumentBlockDraft & {
   id?: string
@@ -227,6 +239,7 @@ export function DocsPage() {
   const [permissionForm] = Form.useForm<PermissionForm>()
   const [shareLinkForm] = Form.useForm<ShareLinkForm>()
   const [knowledgeBaseForm] = Form.useForm<KnowledgeBaseForm>()
+  const [knowledgeMetadataForm] = Form.useForm<KnowledgeMetadataForm>()
   const [permissionRequestForm] = Form.useForm<PermissionRequestForm>()
   const [namedVersionForm] = Form.useForm<NamedVersionForm>()
   const [importMarkdownForm] = Form.useForm<ImportMarkdownForm>()
@@ -248,7 +261,7 @@ export function DocsPage() {
     queryFn: () => listUserGroups({ activeOnly: true }),
   })
   const projectsQuery = useQuery({ queryKey: ['projects'], queryFn: listProjects })
-  const templatesQuery = useQuery({ queryKey: ['docs', 'templates'], queryFn: listDocumentTemplates })
+  const templatesQuery = useQuery({ queryKey: ['docs', 'templates'], queryFn: () => listDocumentTemplates() })
   const acceptanceQuery = useQuery({ queryKey: ['docs', 'acceptance', 'v1'], queryFn: getDocumentAcceptanceReport })
   const recentObjectsQuery = useQuery({ queryKey: ['platform', 'recent', 'docs'], queryFn: () => listRecentObjects(30) })
   const favoriteObjectsQuery = useQuery({ queryKey: ['platform', 'favorites', 'docs'], queryFn: () => listFavoriteObjects(50) })
@@ -308,6 +321,13 @@ export function DocsPage() {
     }
     const detail = docQuery.data
     const timer = window.setTimeout(() => {
+      knowledgeMetadataForm.setFieldsValue({
+        maintainerId: detail.document.maintainerId ?? undefined,
+        tags: detail.document.tags ?? [],
+        category: detail.document.category ?? undefined,
+        knowledgeStatus: detail.document.knowledgeStatus ?? 'draft',
+        reviewDueAt: detail.document.reviewDueAt ?? undefined,
+      })
       setBlockDraftDocId(detail.document.id)
       setBlockDraftVersionNo(detail.document.currentVersionNo)
       setBlockDrafts(detail.blocks.map((block) => ({
@@ -319,7 +339,7 @@ export function DocsPage() {
       setCommentBlockId(undefined)
     }, 0)
     return () => window.clearTimeout(timer)
-  }, [docQuery.data])
+  }, [docQuery.data, knowledgeMetadataForm])
 
   const refreshDocs = async (documentId = activeDocId) => {
     await Promise.all([
@@ -606,6 +626,23 @@ export function DocsPage() {
       await refreshDocs()
     },
     onError: () => message.error('知识库设置更新失败'),
+  })
+
+  const knowledgeMetadataMutation = useMutation({
+    mutationFn: (values: KnowledgeMetadataForm) =>
+      updateDocumentKnowledgeMetadata(activeDocId || '', {
+        maintainerId: values.maintainerId || null,
+        tags: values.tags ?? [],
+        category: values.category?.trim() || null,
+        knowledgeStatus: values.knowledgeStatus ?? 'draft',
+        reviewDueAt: values.reviewDueAt?.trim() || null,
+        verifiedAt: values.knowledgeStatus === 'verified' ? new Date().toISOString() : undefined,
+      }),
+    onSuccess: async () => {
+      message.success('知识元数据已更新')
+      await refreshDocs()
+    },
+    onError: () => message.error('知识元数据更新失败'),
   })
 
   const permissionRequestMutation = useMutation({
@@ -1036,6 +1073,13 @@ export function DocsPage() {
               setImportMarkdownOpen(true)
             }}
             onOpenSelectionIssue={openSelectionIssue}
+            knowledgeMetadataForm={knowledgeMetadataForm}
+            knowledgeMaintainerOptions={(membersQuery.data ?? []).map((member) => ({
+              label: `${member.displayName} @${member.username}`,
+              value: member.id,
+            }))}
+            onSaveKnowledgeMetadata={(values) => knowledgeMetadataMutation.mutate(values)}
+            savingKnowledgeMetadata={knowledgeMetadataMutation.isPending}
             onRestore={(versionNo) => restoreMutation.mutate(versionNo)}
             onDiff={(versionNo) => setDiffToVersionNo(versionNo)}
             onCommentDraftChange={setCommentDraft}
@@ -1264,6 +1308,9 @@ export function DocsPage() {
                 label: `${member.displayName} @${member.username}`,
               }))}
             />
+          </Form.Item>
+          <Form.Item name="dueAt" label="截止时间">
+            <Input type="date" />
           </Form.Item>
           <Form.Item name="description" label="补充描述">
             <Input.TextArea rows={3} />
@@ -1506,6 +1553,10 @@ function DocumentEditor({
   onOpenNamedVersion,
   onOpenImportMarkdown,
   onOpenSelectionIssue,
+  knowledgeMetadataForm,
+  knowledgeMaintainerOptions,
+  onSaveKnowledgeMetadata,
+  savingKnowledgeMetadata,
   onRestore,
   onDiff,
   onCommentDraftChange,
@@ -1554,6 +1605,10 @@ function DocumentEditor({
   onOpenNamedVersion: () => void
   onOpenImportMarkdown: () => void
   onOpenSelectionIssue: () => void
+  knowledgeMetadataForm: FormInstance<KnowledgeMetadataForm>
+  knowledgeMaintainerOptions: Array<{ label: string; value: string }>
+  onSaveKnowledgeMetadata: (values: KnowledgeMetadataForm) => void
+  savingKnowledgeMetadata: boolean
   onRestore: (versionNo: number) => void
   onDiff: (versionNo: number) => void
   onCommentDraftChange: (value: string) => void
@@ -1570,6 +1625,8 @@ function DocumentEditor({
   reopeningCommentId?: string
   onActivateComment: (commentId: string) => void
 }) {
+  const currentUser = useAuthStore((state) => state.currentUser)
+  const [commentFilter, setCommentFilter] = useState<CommentFilter>('open')
   const handleRemoteSnapshot = useCallback((snapshot: { title: string; content: string }) => {
     onTitleChange(snapshot.title)
     onContentChange(snapshot.content)
@@ -1605,16 +1662,41 @@ function DocumentEditor({
     () => new Set(detail.comments.filter((comment) => commentAnchor && commentMatchesAnchor(comment, commentAnchor)).map((comment) => comment.id)),
     [commentAnchor, detail.comments],
   )
+  const commentFilterOptions = useMemo(
+    () => [
+      { value: 'open', label: `未解决 ${detail.comments.filter((comment) => !comment.resolved).length}` },
+      { value: 'mentions', label: `提及我 ${detail.comments.filter((comment) => commentMentionsUser(comment, currentUser?.username)).length}` },
+      { value: 'current', label: `当前选区 ${focusedCommentIds.size}` },
+      { value: 'all', label: `全部 ${detail.comments.length}` },
+    ],
+    [currentUser?.username, detail.comments, focusedCommentIds],
+  )
+  const filteredComments = useMemo(
+    () =>
+      detail.comments.filter((comment) => {
+        if (commentFilter === 'open') {
+          return !comment.resolved
+        }
+        if (commentFilter === 'mentions') {
+          return commentMentionsUser(comment, currentUser?.username)
+        }
+        if (commentFilter === 'current') {
+          return focusedCommentIds.has(comment.id)
+        }
+        return true
+      }),
+    [commentFilter, currentUser?.username, detail.comments, focusedCommentIds],
+  )
   const orderedComments = useMemo(
     () =>
-      [...detail.comments].sort((left, right) => {
+      [...filteredComments].sort((left, right) => {
         const focusDelta = Number(focusedCommentIds.has(right.id)) - Number(focusedCommentIds.has(left.id))
         if (focusDelta !== 0) {
           return focusDelta
         }
         return new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime()
       }),
-    [detail.comments, focusedCommentIds],
+    [filteredComments, focusedCommentIds],
   )
 
   useEffect(() => {
@@ -1662,8 +1744,41 @@ function DocumentEditor({
         onOpenRelation={onOpenRelation}
       />
 
+      {!canEdit ? (
+        <Alert
+          className="doc-readonly-alert"
+          showIcon
+          type="info"
+          message={canComment ? '当前为评论模式' : '当前为只读模式'}
+          description={canComment ? '你可以发表评论和回复，正文需要编辑权限。' : '你可以阅读文档、打开对象卡片或通过分享入口申请更高权限。'}
+          action={<Button onClick={onOpenPermission}>分享与权限</Button>}
+        />
+      ) : null}
+
+      <div className="doc-mobile-action-bar">
+        <Button onClick={() => document.querySelector<HTMLElement>('.docs-sidebar')?.scrollIntoView({ block: 'start' })}>目录</Button>
+        <Button onClick={() => document.getElementById('doc-comments-panel')?.scrollIntoView({ block: 'start' })}>评论</Button>
+        <Button onClick={onOpenPermission}>分享</Button>
+      </div>
+
       <section className="doc-meta-grid">
         <DocumentAcceptancePanel report={acceptanceReport} />
+
+        {detail.knowledgeContext ? (
+          <div className="doc-panel doc-knowledge-context">
+            <Typography.Title level={5}>知识库位置</Typography.Title>
+            <Space orientation="vertical" size={8} className="doc-panel-list">
+              <Space wrap>
+                <Tag color="blue">{detail.knowledgeContext.spaceName}</Tag>
+                <Tag>{detail.knowledgeContext.spaceCode}</Tag>
+              </Space>
+              <Typography.Text type="secondary">{detail.knowledgeContext.pathText}</Typography.Text>
+              <Button size="small" href={detail.knowledgeContext.webPath}>
+                进入知识库视图
+              </Button>
+            </Space>
+          </div>
+        ) : null}
 
         <details className="doc-panel doc-legacy-block-panel">
           <summary>兼容结构化块</summary>
@@ -1751,6 +1866,67 @@ function DocumentEditor({
             )}
           </Space>
         </details>
+
+        <div className="doc-panel">
+          <Space className="doc-panel-title">
+            <Typography.Title level={5}>知识元数据</Typography.Title>
+            <Button size="small" disabled={!canEdit} loading={savingKnowledgeMetadata} onClick={() => knowledgeMetadataForm.submit()}>
+              保存
+            </Button>
+          </Space>
+          <Space orientation="vertical" size={8} className="doc-panel-list">
+            <Space wrap>
+              <Tag color={knowledgeStatusColor(detail.document.knowledgeStatus)}>
+                {knowledgeStatusText(detail.document.knowledgeStatus)}
+              </Tag>
+              {detail.document.category ? <Tag>{templateCategoryText(detail.document.category)}</Tag> : null}
+              {detail.document.verifiedAt ? <Tag color="green">已认证 {new Date(detail.document.verifiedAt).toLocaleDateString()}</Tag> : null}
+              {detail.document.reviewDueAt ? <Tag color={isReviewDueSoon(detail.document.reviewDueAt) ? 'orange' : 'blue'}>复核 {detail.document.reviewDueAt}</Tag> : null}
+            </Space>
+            <Typography.Text type="secondary">
+              维护人 {detail.document.maintainerName ?? '未指定'}
+            </Typography.Text>
+            <Space wrap>
+              {(detail.document.tags ?? []).map((tag) => <Tag key={tag}>{tag}</Tag>)}
+              {(detail.document.tags ?? []).length === 0 ? <Typography.Text type="secondary">暂无标签</Typography.Text> : null}
+            </Space>
+            {canEdit ? (
+              <Form form={knowledgeMetadataForm} layout="vertical" onFinish={onSaveKnowledgeMetadata}>
+                <Form.Item name="maintainerId" label="维护人">
+                  <Select allowClear showSearch optionFilterProp="label" options={knowledgeMaintainerOptions} />
+                </Form.Item>
+                <Form.Item name="tags" label="标签">
+                  <Select mode="tags" tokenSeparators={[',', '，']} placeholder="输入标签后回车" />
+                </Form.Item>
+                <Form.Item name="category" label="类别">
+                  <Select
+                    allowClear
+                    options={[
+                      { label: '知识条目', value: 'knowledge' },
+                      { label: 'FAQ', value: 'faq' },
+                      { label: 'SOP', value: 'sop' },
+                      { label: '故障复盘', value: 'incident' },
+                      { label: '项目复盘', value: 'project_review' },
+                    ]}
+                  />
+                </Form.Item>
+                <Form.Item name="knowledgeStatus" label="状态">
+                  <Select
+                    options={[
+                      { label: '草稿', value: 'draft' },
+                      { label: '已认证', value: 'verified' },
+                      { label: '待复核', value: 'needs_review' },
+                      { label: '已过期', value: 'outdated' },
+                    ]}
+                  />
+                </Form.Item>
+                <Form.Item name="reviewDueAt" label="复核日期">
+                  <Input placeholder="2026-12-31" />
+                </Form.Item>
+              </Form>
+            ) : null}
+          </Space>
+        </div>
 
         <div className="doc-panel">
           <Space className="doc-panel-title">
@@ -1855,6 +2031,7 @@ function DocumentEditor({
                   <Tag icon={<LinkOutlined />} color={shareLink.enabled ? 'green' : 'default'}>
                     {shareLink.enabled ? '组织内链接已启用' : '组织内链接已停用'}
                   </Tag>
+                  {shareLink.knowledgeBaseName ? <Tag>知识库 {shareLink.knowledgeBaseName}</Tag> : null}
                   <span>{permissionText(shareLink.permissionLevel)}</span>
                   {shareLink.expiresAt ? <small>{new Date(shareLink.expiresAt).toLocaleString()} 过期</small> : null}
                 </div>
@@ -1865,10 +2042,18 @@ function DocumentEditor({
           </Space>
         </div>
 
-        <div className="doc-panel">
-          <Typography.Title level={5}>
-            <CommentOutlined /> 评论
-          </Typography.Title>
+        <div className="doc-panel" id="doc-comments-panel">
+          <Space className="doc-panel-title" wrap>
+            <Typography.Title level={5}>
+              <CommentOutlined /> 评论
+            </Typography.Title>
+            <Select
+              className="doc-comment-filter"
+              value={commentFilter}
+              onChange={(value) => setCommentFilter(value as CommentFilter)}
+              options={commentFilterOptions}
+            />
+          </Space>
           <Space orientation="vertical" size={8} className="doc-panel-list">
             {orderedComments.map((comment) => (
               <div className={`doc-comment-item${comment.id === activeCommentId ? ' active' : ''}${comment.resolved ? ' resolved' : ''}`} key={comment.id} id={`doc-comment-${comment.id}`}>
@@ -1948,6 +2133,7 @@ function DocumentEditor({
               </div>
             ))}
             {detail.comments.length === 0 ? <Typography.Text type="secondary">暂无评论</Typography.Text> : null}
+            {detail.comments.length > 0 && orderedComments.length === 0 ? <Typography.Text type="secondary">当前筛选没有评论</Typography.Text> : null}
             {commentAnchor && !commentBlockId ? (
               <div className="doc-comment-anchor-preview">
                 <Tag color="blue">选区</Tag>
@@ -2325,6 +2511,14 @@ function commentMatchesAnchor(comment: DocumentComment, anchor: DocEditorSelecti
   return comment.anchorStart <= anchor.anchorEnd && comment.anchorEnd >= anchor.anchorStart
 }
 
+function commentMentionsUser(comment: DocumentComment, username?: string) {
+  if (!username) {
+    return false
+  }
+  const mention = `@${username}`
+  return comment.content.includes(mention) || comment.replies.some((reply) => reply.content.includes(mention))
+}
+
 function commentAnchorLabel(blocks: DocumentDetail['blocks'], comment: DocumentComment) {
   if (comment.anchorType === 'selection') {
     return '选区'
@@ -2380,10 +2574,41 @@ function templateCategoryText(category: string) {
   return {
     meeting: '会议纪要',
     requirement: '需求文档',
+    prd: '需求文档',
     project: '项目计划',
     review: '复盘',
     knowledge: '知识条目',
+    faq: 'FAQ',
+    sop: 'SOP',
+    incident: '故障复盘',
+    project_review: '项目复盘',
   }[category] ?? category
+}
+
+function knowledgeStatusText(status: string) {
+  return {
+    draft: '草稿',
+    verified: '已认证',
+    needs_review: '待复核',
+    outdated: '已过期',
+    archived: '已归档',
+  }[status] ?? status
+}
+
+function knowledgeStatusColor(status: string) {
+  return {
+    draft: 'default',
+    verified: 'green',
+    needs_review: 'orange',
+    outdated: 'red',
+    archived: 'default',
+  }[status] ?? 'default'
+}
+
+function isReviewDueSoon(value: string) {
+  const due = new Date(`${value}T00:00:00`).getTime()
+  const sevenDays = 7 * 24 * 60 * 60 * 1000
+  return Number.isFinite(due) && due - Date.now() <= sevenDays
 }
 
 function documentSort(left: DocumentSummary, right: DocumentSummary) {

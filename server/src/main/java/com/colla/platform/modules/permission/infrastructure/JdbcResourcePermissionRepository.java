@@ -89,6 +89,44 @@ public class JdbcResourcePermissionRepository implements ResourcePermissionRepos
                            when rp.expires_at is not null and rp.expires_at <= now() then 'expired'
                            else 'active'
                        end effective_status,
+                       case rp.subject_type
+                           when 'user' then 1
+                           when 'department' then (
+                               select count(distinct dm.user_id)
+                               from department_members dm
+                               where dm.workspace_id = rp.workspace_id
+                                 and dm.department_id = rp.subject_id
+                                 and dm.ended_at is null
+                           )
+                           when 'user_group' then (
+                               select count(distinct expanded.user_id)
+                               from (
+                                   select ugm.subject_id user_id
+                                   from user_group_members ugm
+                                   where ugm.workspace_id = rp.workspace_id
+                                     and ugm.group_id = rp.subject_id
+                                     and ugm.subject_type = 'user'
+                                     and ugm.removed_at is null
+                                   union all
+                                   select dm.user_id
+                                   from user_group_members ugm
+                                   join department_members dm on dm.workspace_id = ugm.workspace_id
+                                       and dm.department_id = ugm.subject_id
+                                       and dm.ended_at is null
+                                   where ugm.workspace_id = rp.workspace_id
+                                     and ugm.group_id = rp.subject_id
+                                     and ugm.subject_type = 'department'
+                                     and ugm.removed_at is null
+                               ) expanded
+                           )
+                           when 'role' then (
+                               select count(distinct ur.user_id)
+                               from user_roles ur
+                               where ur.workspace_id = rp.workspace_id
+                                 and ur.role_id = rp.subject_id
+                           )
+                           else 0
+                       end expanded_member_count,
                        rp.created_at, rp.updated_at
                 from resource_permissions rp
                 left join users u on rp.subject_type = 'user' and u.id = rp.subject_id and u.workspace_id = rp.workspace_id and u.deleted_at is null
@@ -119,12 +157,50 @@ public class JdbcResourcePermissionRepository implements ResourcePermissionRepos
                            coalesce(u.display_name, d.name, ug.name, r.name) subject_name,
                            coalesce(u.username, d.code, ug.code, r.code) subject_detail,
                            rp.permission_level, rp.source_type, rp.source_id, rp.expires_at, rp.status,
-                           case
-                               when rp.status <> 'active' then rp.status
-                               when rp.expires_at is not null and rp.expires_at <= now() then 'expired'
-                               else 'active'
-                           end effective_status,
-                           rp.created_at, rp.updated_at
+                       case
+                           when rp.status <> 'active' then rp.status
+                           when rp.expires_at is not null and rp.expires_at <= now() then 'expired'
+                           else 'active'
+                       end effective_status,
+                       case rp.subject_type
+                           when 'user' then 1
+                           when 'department' then (
+                               select count(distinct dm.user_id)
+                               from department_members dm
+                               where dm.workspace_id = rp.workspace_id
+                                 and dm.department_id = rp.subject_id
+                                 and dm.ended_at is null
+                           )
+                           when 'user_group' then (
+                               select count(distinct expanded.user_id)
+                               from (
+                                   select ugm.subject_id user_id
+                                   from user_group_members ugm
+                                   where ugm.workspace_id = rp.workspace_id
+                                     and ugm.group_id = rp.subject_id
+                                     and ugm.subject_type = 'user'
+                                     and ugm.removed_at is null
+                                   union all
+                                   select dm.user_id
+                                   from user_group_members ugm
+                                   join department_members dm on dm.workspace_id = ugm.workspace_id
+                                       and dm.department_id = ugm.subject_id
+                                       and dm.ended_at is null
+                                   where ugm.workspace_id = rp.workspace_id
+                                     and ugm.group_id = rp.subject_id
+                                     and ugm.subject_type = 'department'
+                                     and ugm.removed_at is null
+                               ) expanded
+                           )
+                           when 'role' then (
+                               select count(distinct ur.user_id)
+                               from user_roles ur
+                               where ur.workspace_id = rp.workspace_id
+                                 and ur.role_id = rp.subject_id
+                           )
+                           else 0
+                       end expanded_member_count,
+                       rp.created_at, rp.updated_at
                     from resource_permissions rp
                     left join users u on rp.subject_type = 'user' and u.id = rp.subject_id and u.workspace_id = rp.workspace_id and u.deleted_at is null
                     left join departments d on rp.subject_type = 'department' and d.id = rp.subject_id and d.workspace_id = rp.workspace_id and d.deleted_at is null
@@ -343,7 +419,8 @@ public class JdbcResourcePermissionRepository implements ResourcePermissionRepos
             rs.getString("status"),
             rs.getString("effective_status"),
             timestampToInstant(rs, "created_at"),
-            timestampToInstant(rs, "updated_at")
+            timestampToInstant(rs, "updated_at"),
+            rs.getLong("expanded_member_count")
         );
     }
 

@@ -78,14 +78,23 @@ export function ObjectSummaryCard({ summary, onOpen }: { summary: PlatformObject
             <Typography.Text strong>{summary.title || '未命名对象'}</Typography.Text>
             <Tag>{objectTypeText[summary.objectType] ?? summary.objectType}</Tag>
             {summary.status ? <Tag color="blue">{summary.status}</Tag> : null}
+            <Tag color="green">{accessText[summary.accessState] ?? summary.accessState}</Tag>
           </Space>
           {summary.subtitle ? <Typography.Text type="secondary">{summary.subtitle}</Typography.Text> : null}
+          <Space wrap size={4} className="internal-link-meta">
+            {metadataText(summary.metadata.sourceModule) ? <Tag>来源 {moduleText(metadataText(summary.metadata.sourceModule))}</Tag> : null}
+            {metadataText(summary.metadata.updatedAt) ? <Tag>更新 {formatMetaDate(metadataText(summary.metadata.updatedAt))}</Tag> : null}
+            {metadataText(summary.metadata.knowledgePath) ? <Tag>{metadataText(summary.metadata.knowledgePath)}</Tag> : null}
+          </Space>
         </Space>
-        {canOpen ? (
-          <Button size="small" loading={openMutation.isPending} onClick={handleOpen}>
-            打开
-          </Button>
-        ) : null}
+        <Space size={4}>
+          {metadataText(summary.metadata.backReferencePath) ? <Button size="small" href={metadataText(summary.metadata.backReferencePath)}>回看引用</Button> : null}
+          {canOpen ? (
+            <Button size="small" loading={openMutation.isPending} onClick={handleOpen}>
+              打开
+            </Button>
+          ) : null}
+        </Space>
       </Space>
     </Card>
   )
@@ -110,4 +119,23 @@ function UnavailableObjectAlert({ summary }: { summary: PlatformObjectSummary })
       }
     />
   )
+}
+
+function metadataText(value: unknown) {
+  return typeof value === 'string' && value.trim() ? value : ''
+}
+
+function moduleText(value: string) {
+  return {
+    knowledge: '知识库',
+    project: '项目',
+    base: '表格',
+    approval: '审批',
+    im: '消息',
+  }[value] ?? value
+}
+
+function formatMetaDate(value: string) {
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString()
 }

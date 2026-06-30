@@ -1,14 +1,17 @@
 package com.colla.platform.modules.search.infrastructure;
 
 import com.colla.platform.modules.search.domain.SearchModels.SearchResult;
+import com.colla.platform.modules.search.domain.SearchModels.SearchFilters;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Timestamp;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.util.List;
 
 @Repository
 public class JdbcSearchRepository implements SearchRepository {
@@ -19,8 +22,82 @@ public class JdbcSearchRepository implements SearchRepository {
     }
 
     @Override
-    public List<SearchResult> search(UUID workspaceId, UUID userId, String query, int limit) {
+    public List<SearchResult> search(UUID workspaceId, UUID userId, String query, SearchFilters filters, int limit) {
         String likeQuery = "%" + query.toLowerCase() + "%";
+        List<Object> args = new ArrayList<>();
+        args.add(query);
+        args.add(likeQuery);
+        args.add(likeQuery);
+        args.add(likeQuery);
+        args.add(likeQuery);
+        args.add(likeQuery);
+        args.add(likeQuery);
+        args.add(likeQuery);
+        args.add(likeQuery);
+        args.add(workspaceId);
+        args.add(query);
+        args.add(likeQuery);
+        args.add(likeQuery);
+
+        StringBuilder filterSql = new StringBuilder();
+        if (filters != null && filters.knowledgeBaseId() != null) {
+            filterSql.append(" and s.knowledge_base_id = ?\n");
+            args.add(filters.knowledgeBaseId());
+        }
+        if (filters != null && filters.directoryId() != null) {
+            filterSql.append(
+                """
+                  and s.object_type = 'document'
+                  and exists (
+                      with recursive subtree(id) as (
+                          select d.id
+                          from documents d
+                          where d.workspace_id = s.workspace_id and d.id = ?
+                          union all
+                          select child.id
+                          from documents child
+                          join subtree parent on parent.id = child.parent_id
+                          where child.workspace_id = s.workspace_id and child.deleted_at is null
+                      )
+                      select 1 from subtree where subtree.id = s.object_id
+                  )
+                """
+            );
+            args.add(filters.directoryId());
+        }
+        if (filters != null && filters.docType() != null) {
+            filterSql.append(" and s.object_type = 'document' and s.doc_type = ?\n");
+            args.add(filters.docType());
+        }
+        if (filters != null && filters.tags() != null && !filters.tags().isEmpty()) {
+            filterSql.append(" and s.object_type = 'document'\n");
+            for (String tag : filters.tags()) {
+                filterSql.append(" and ? = any(s.tags)\n");
+                args.add(tag);
+            }
+        }
+        if (filters != null && filters.maintainerId() != null) {
+            filterSql.append(" and s.object_type = 'document' and s.maintainer_id = ?\n");
+            args.add(filters.maintainerId());
+        }
+        if (filters != null && filters.knowledgeStatus() != null) {
+            filterSql.append(" and s.object_type = 'document' and s.knowledge_status = ?\n");
+            args.add(filters.knowledgeStatus());
+        }
+        if (filters != null && filters.updatedFrom() != null) {
+            filterSql.append(" and s.updated_at >= ?\n");
+            args.add(Timestamp.from(filters.updatedFrom()));
+        }
+        if (filters != null && filters.updatedTo() != null) {
+            filterSql.append(" and s.updated_at < ?\n");
+            args.add(Timestamp.from(filters.updatedTo()));
+        }
+
+        for (int i = 0; i < 11; i++) {
+            args.add(userId);
+        }
+        args.add(limit);
+
         return jdbcTemplate.query(
             """
                 select s.object_type, s.object_id, s.title, s.excerpt,
@@ -32,8 +109,25 @@ public class JdbcSearchRepository implements SearchRepository {
                        s.deep_link,
                        ts_rank_cd(to_tsvector('simple', s.search_text), plainto_tsquery('simple', ?))
                          + case when lower(s.search_text) like ? or lower(s.title) like ? then 0.25 else 0 end score,
-                       s.updated_at
+                       s.updated_at,
+                       s.knowledge_base_id,
+                       s.parent_document_id,
+                       s.directory_path,
+                       s.tags,
+                       s.maintainer_id,
+                       coalesce(maintainer.display_name, maintainer.username) maintainer_name,
+                       s.knowledge_status,
+                       s.doc_type,
+                       case
+                           when lower(s.title) like ? then 'title'
+                           when lower(coalesce(array_to_string(s.tags, ' '), '')) like ? then 'tags'
+                           when document_comment.thread_id is not null then 'comment'
+                           when document_block.id is not null then 'body_block'
+                           when lower(coalesce(s.directory_path, '')) like ? then 'directory_path'
+                           else s.hit_source
+                       end hit_source
                 from search_index_documents s
+                left join users maintainer on maintainer.id = s.maintainer_id and maintainer.workspace_id = s.workspace_id
                 left join lateral (
                     select c.thread_id
                     from document_comments c
@@ -66,6 +160,7 @@ public class JdbcSearchRepository implements SearchRepository {
                       or lower(s.search_text) like ?
                       or lower(s.title) like ?
                   )
+                  %s
                   and (
                       (
                           s.object_type = 'issue'
@@ -202,30 +297,9 @@ public class JdbcSearchRepository implements SearchRepository {
                   )
                 order by score desc, s.updated_at desc
                 limit ?
-                """,
+                """.formatted(filterSql),
             this::mapResult,
-            query,
-            likeQuery,
-            likeQuery,
-            likeQuery,
-            likeQuery,
-            likeQuery,
-            workspaceId,
-            query,
-            likeQuery,
-            likeQuery,
-            userId,
-            userId,
-            userId,
-            userId,
-            userId,
-            userId,
-            userId,
-            userId,
-            userId,
-            userId,
-            userId,
-            limit
+            args.toArray()
         );
     }
 
@@ -275,7 +349,8 @@ public class JdbcSearchRepository implements SearchRepository {
         jdbcTemplate.update(
             """
                 insert into search_index_documents
-                    (workspace_id, object_type, object_id, title, excerpt, web_path, deep_link, search_text, updated_at, indexed_at)
+                    (workspace_id, object_type, object_id, title, excerpt, web_path, deep_link, search_text, updated_at, indexed_at,
+                     knowledge_base_id, parent_document_id, directory_path, tags, maintainer_id, knowledge_status, doc_type, hit_source)
                 select d.workspace_id,
                        'document',
                        d.id,
@@ -287,10 +362,60 @@ public class JdbcSearchRepository implements SearchRepository {
                            coalesce(d.description, '') || ' ' ||
                            coalesce(d.content, '') || ' ' ||
                            coalesce(blocks.block_text, '') || ' ' ||
-                           coalesce(comments.comment_text, ''),
+                           coalesce(comments.comment_text, '') || ' ' ||
+                           coalesce(array_to_string(d.tags, ' '), '') || ' ' ||
+                           coalesce(d.category, '') || ' ' ||
+                           coalesce(d.knowledge_status, '') || ' ' ||
+                           coalesce(paths.directory_path, ''),
                        d.updated_at,
-                       now()
+                       now(),
+                       kb.id,
+                       d.parent_id,
+                       paths.directory_path,
+                       d.tags,
+                       d.maintainer_id,
+                       d.knowledge_status,
+                       d.doc_type,
+                       'title'
                 from documents d
+                left join lateral (
+                    select k.id
+                    from knowledge_base_spaces k
+                    where k.workspace_id = d.workspace_id
+                      and k.deleted_at is null
+                      and exists (
+                          with recursive subtree(id) as (
+                              select root.id
+                              from documents root
+                              where root.workspace_id = k.workspace_id
+                                and root.id = k.root_document_id
+                                and root.deleted_at is null
+                              union all
+                              select child.id
+                              from documents child
+                              join subtree parent on parent.id = child.parent_id
+                              where child.workspace_id = k.workspace_id
+                                and child.deleted_at is null
+                          )
+                          select 1 from subtree where subtree.id = d.id
+                      )
+                    order by k.created_at desc
+                    limit 1
+                ) kb on true
+                left join lateral (
+                    with recursive ancestors(id, parent_id, title, depth) as (
+                        select current_doc.id, current_doc.parent_id, current_doc.title, 0
+                        from documents current_doc
+                        where current_doc.workspace_id = d.workspace_id and current_doc.id = d.id
+                        union all
+                        select parent.id, parent.parent_id, parent.title, ancestors.depth + 1
+                        from documents parent
+                        join ancestors on ancestors.parent_id = parent.id
+                        where parent.workspace_id = d.workspace_id and parent.deleted_at is null
+                    )
+                    select string_agg(title, ' / ' order by depth desc) directory_path
+                    from ancestors
+                ) paths on true
                 left join lateral (
                     select string_agg(
                         case
@@ -320,6 +445,14 @@ public class JdbcSearchRepository implements SearchRepository {
                               deep_link = excluded.deep_link,
                               search_text = excluded.search_text,
                               updated_at = excluded.updated_at,
+                              knowledge_base_id = excluded.knowledge_base_id,
+                              parent_document_id = excluded.parent_document_id,
+                              directory_path = excluded.directory_path,
+                              tags = excluded.tags,
+                              maintainer_id = excluded.maintainer_id,
+                              knowledge_status = excluded.knowledge_status,
+                              doc_type = excluded.doc_type,
+                              hit_source = excluded.hit_source,
                               indexed_at = now()
                 """,
             workspaceId
@@ -464,7 +597,28 @@ public class JdbcSearchRepository implements SearchRepository {
             rs.getDouble("score"),
             rs.getTimestamp("updated_at").toInstant(),
             "available",
-            "当前用户具备该对象的查看权限。"
+            "当前用户具备该对象的查看权限。",
+            rs.getObject("knowledge_base_id", UUID.class),
+            rs.getObject("parent_document_id", UUID.class),
+            rs.getString("directory_path"),
+            textArray(rs, "tags"),
+            rs.getObject("maintainer_id", UUID.class),
+            rs.getString("maintainer_name"),
+            rs.getString("knowledge_status"),
+            rs.getString("doc_type"),
+            rs.getString("hit_source")
         );
+    }
+
+    private List<String> textArray(ResultSet rs, String column) throws SQLException {
+        java.sql.Array array = rs.getArray(column);
+        if (array == null) {
+            return List.of();
+        }
+        Object value = array.getArray();
+        if (value instanceof String[] values) {
+            return Arrays.asList(values);
+        }
+        return List.of();
     }
 }

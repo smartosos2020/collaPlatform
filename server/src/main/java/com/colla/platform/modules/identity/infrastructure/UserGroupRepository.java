@@ -18,6 +18,8 @@ public interface UserGroupRepository {
 
     void disableGroup(UUID workspaceId, UUID groupId, UUID actorId);
 
+    void enableGroup(UUID workspaceId, UUID groupId, UUID actorId);
+
     void deleteGroup(UUID workspaceId, UUID groupId);
 
     boolean hasActiveMembers(UUID workspaceId, UUID groupId);

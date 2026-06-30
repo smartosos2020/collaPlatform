@@ -109,4 +109,11 @@ public class MemberService {
         identityRepository.updatePassword(operator.workspaceId(), userId, passwordHasher.hash(newPassword), operator.id());
         auditService.log(operator, "user.password.reset", "user", userId, Map.of());
     }
+
+    @Transactional
+    public void updateAvatar(CurrentUser operator, UUID userId, UUID avatarFileId) {
+        permissionService.requireManageUsers(operator);
+        identityRepository.updateAvatarFileId(operator.workspaceId(), userId, avatarFileId, operator.id());
+        auditService.log(operator, "user.avatar.updated", "user", userId, Map.of("avatarFileId", avatarFileId == null ? "" : avatarFileId));
+    }
 }

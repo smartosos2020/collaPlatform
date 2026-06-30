@@ -80,6 +80,25 @@ public final class PermissionModels {
         String status,
         String effectiveStatus,
         Instant createdAt,
+        Instant updatedAt,
+        long expandedMemberCount
+    ) {
+    }
+
+    public record ResourcePermissionRequest(
+        UUID id,
+        String resourceType,
+        UUID resourceId,
+        UUID requesterId,
+        String requesterName,
+        String permissionLevel,
+        String reason,
+        String status,
+        UUID decidedBy,
+        String decidedByName,
+        Instant decidedAt,
+        String decisionNote,
+        Instant createdAt,
         Instant updatedAt
     ) {
     }

@@ -54,6 +54,7 @@ public final class AuthModels {
         UUID id,
         String username,
         String displayName,
+        UUID avatarFileId,
         String email,
         String status,
         Instant lastLoginAt,

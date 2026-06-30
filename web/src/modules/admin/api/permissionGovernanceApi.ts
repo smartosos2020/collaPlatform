@@ -38,6 +38,10 @@ export type InspectPermissionParams = {
   action?: string
 }
 
+export type PermissionRiskFilters = {
+  knowledgeBaseId?: string
+}
+
 export async function inspectPermission(params: InspectPermissionParams): Promise<PermissionInspectionResult> {
   const query = new URLSearchParams({
     userId: params.userId,
@@ -48,10 +52,20 @@ export async function inspectPermission(params: InspectPermissionParams): Promis
   return apiGet<PermissionInspectionResult>(`/admin/permission-governance/inspect?${query}`)
 }
 
-export async function listPermissionRisks(): Promise<PermissionRiskSummary> {
-  return apiGet<PermissionRiskSummary>('/admin/permission-governance/risks')
+export async function listPermissionRisks(filters: PermissionRiskFilters = {}): Promise<PermissionRiskSummary> {
+  const params = new URLSearchParams()
+  if (filters.knowledgeBaseId) {
+    params.set('knowledgeBaseId', filters.knowledgeBaseId)
+  }
+  const query = params.toString()
+  return apiGet<PermissionRiskSummary>(query ? `/admin/permission-governance/risks?${query}` : '/admin/permission-governance/risks')
 }
 
-export async function exportPermissionRisks(): Promise<string> {
-  return apiGetText('/admin/permission-governance/risks/export')
+export async function exportPermissionRisks(filters: PermissionRiskFilters = {}): Promise<string> {
+  const params = new URLSearchParams()
+  if (filters.knowledgeBaseId) {
+    params.set('knowledgeBaseId', filters.knowledgeBaseId)
+  }
+  const query = params.toString()
+  return apiGetText(query ? `/admin/permission-governance/risks/export?${query}` : '/admin/permission-governance/risks/export')
 }

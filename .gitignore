@@ -30,6 +30,9 @@ logs/
 *.sh
 *.bat
 *.cmd
+!/scripts/
+!/scripts/README.md
+!/scripts/knowledge-base-*.ps1
 
 # Java
 target/

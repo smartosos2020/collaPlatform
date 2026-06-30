@@ -18,7 +18,28 @@ public final class SearchModels {
         double score,
         Instant updatedAt,
         String accessState,
-        String permissionExplanation
+        String permissionExplanation,
+        UUID knowledgeBaseId,
+        UUID parentDocumentId,
+        String directoryPath,
+        List<String> tags,
+        UUID maintainerId,
+        String maintainerName,
+        String knowledgeStatus,
+        String docType,
+        String hitSource
+    ) {
+    }
+
+    public record SearchFilters(
+        UUID knowledgeBaseId,
+        UUID directoryId,
+        String docType,
+        List<String> tags,
+        UUID maintainerId,
+        String knowledgeStatus,
+        Instant updatedFrom,
+        Instant updatedTo
     ) {
     }
 

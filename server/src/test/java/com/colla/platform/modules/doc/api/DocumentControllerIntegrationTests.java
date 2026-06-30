@@ -6,6 +6,7 @@ import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.blankOrNullString;
 import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -15,9 +16,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.colla.platform.modules.event.application.DomainEventWorker;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.LinkedHashMap;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -37,6 +40,607 @@ class DocumentControllerIntegrationTests {
 
     @Autowired
     private DomainEventWorker domainEventWorker;
+
+    @Test
+    void knowledgeBaseSpaceProductLayerKeepsLegacyDocumentTreeCompatibility() throws Exception {
+        String adminToken = login("admin", "admin123456", "kb-m1-admin-device-" + UUID.randomUUID());
+        String viewerUsername = "kbm1" + UUID.randomUUID().toString().substring(0, 8);
+        UUID viewerId = createMember(adminToken, viewerUsername, "KB M1 Viewer");
+        String viewerToken = login(viewerUsername, "member123456", "kb-m1-viewer-device-" + UUID.randomUUID());
+
+        String suffix = UUID.randomUUID().toString().substring(0, 8);
+        UUID legacyRootId = createKnowledgeBaseDocument(adminToken, "Legacy KB " + suffix);
+
+        mockMvc.perform(get("/api/knowledge-bases")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$[*].rootDocumentId", hasItem(legacyRootId.toString())));
+
+        String createResponse = mockMvc.perform(post("/api/knowledge-bases")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "name", "KB M1 Space " + suffix,
+                    "code", "kb-m1-" + suffix,
+                    "description", "Knowledge base product layer",
+                    "icon", "book",
+                    "coverUrl", "https://example.com/kb-cover.png",
+                    "visibility", "private",
+                    "defaultPermissionLevel", "view"
+                ))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.space.status").value("active"))
+            .andExpect(jsonPath("$.space.code").value("kb-m1-" + suffix))
+            .andExpect(jsonPath("$.rootDocument.docType").value("space"))
+            .andExpect(jsonPath("$.rootDocument.knowledgeBase").value(true))
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+        JsonNode created = objectMapper.readTree(createResponse);
+        UUID spaceId = UUID.fromString(created.get("space").get("id").asText());
+        UUID rootDocumentId = UUID.fromString(created.get("space").get("rootDocumentId").asText());
+        UUID homeDocumentId = UUID.fromString(created.get("space").get("homeDocumentId").asText());
+        org.hamcrest.MatcherAssert.assertThat(homeDocumentId, not(rootDocumentId));
+
+        mockMvc.perform(get("/api/docs/" + rootDocumentId)
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.document.id").value(rootDocumentId.toString()))
+            .andExpect(jsonPath("$.document.knowledgeBase").value(true));
+
+        mockMvc.perform(get("/api/docs/" + homeDocumentId)
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.document.docType").value("markdown"))
+            .andExpect(jsonPath("$.document.parentId").value(rootDocumentId.toString()))
+            .andExpect(jsonPath("$.document.title").value("首页"));
+
+        mockMvc.perform(patch("/api/knowledge-bases/" + spaceId)
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "description", "Updated without changing home"
+                ))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.space.homeDocumentId").value(homeDocumentId.toString()));
+
+        mockMvc.perform(post("/api/docs/" + rootDocumentId + "/permissions")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"userId\":\"" + viewerId + "\",\"permissionLevel\":\"edit\"}"))
+            .andExpect(status().isOk());
+
+        UUID viewerChildId = createDocument(viewerToken, rootDocumentId, "Viewer Child " + suffix, "markdown", "Before disable");
+        mockMvc.perform(get("/api/docs/" + viewerChildId)
+                .header("Authorization", "Bearer " + viewerToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.document.parentId").value(rootDocumentId.toString()));
+
+        mockMvc.perform(post("/api/knowledge-bases/" + spaceId + "/disable")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.space.status").value("disabled"));
+
+        mockMvc.perform(post("/api/docs")
+                .header("Authorization", "Bearer " + viewerToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "parentId", rootDocumentId.toString(),
+                    "title", "Blocked Child " + suffix,
+                    "content", "Blocked"
+                ))))
+            .andExpect(status().isForbidden());
+
+        UUID adminChildId = createDocument(adminToken, rootDocumentId, "Admin Governance Child " + suffix, "markdown", "Allowed");
+        mockMvc.perform(get("/api/docs/" + adminChildId)
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(patch("/api/knowledge-bases/" + spaceId)
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "homeDocumentId", adminChildId.toString()
+                ))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.space.homeDocumentId").value(adminChildId.toString()))
+            .andExpect(jsonPath("$.homeDocument.id").value(adminChildId.toString()));
+
+        mockMvc.perform(post("/api/knowledge-bases/" + spaceId + "/restore")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.space.status").value("active"));
+
+        mockMvc.perform(delete("/api/knowledge-bases/" + spaceId)
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.space.status").value("archived"))
+            .andExpect(jsonPath("$.rootDocument.archived").value(true));
+
+        mockMvc.perform(post("/api/knowledge-bases/" + spaceId + "/restore")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.space.status").value("active"))
+            .andExpect(jsonPath("$.rootDocument.archived").value(false));
+
+        mockMvc.perform(get("/api/admin/audit-logs?action=knowledge_base.disabled&targetType=knowledge_base&targetId=" + spaceId)
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.length()", greaterThanOrEqualTo(1)));
+    }
+
+    @Test
+    void knowledgeMetadataTemplatesImportExportAndReviewReminderFlow() throws Exception {
+        String adminToken = login("admin", "admin123456", "kb-m4-admin-device-" + UUID.randomUUID());
+        String suffix = UUID.randomUUID().toString().substring(0, 8);
+        UUID maintainerId = createMember(adminToken, "kbm4" + suffix, "KB M4 Maintainer");
+
+        String createResponse = mockMvc.perform(post("/api/knowledge-bases")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "name", "KB M4 Space " + suffix,
+                    "code", "kb-m4-" + suffix,
+                    "description", "Knowledge maintenance",
+                    "visibility", "private",
+                    "defaultPermissionLevel", "view"
+                ))))
+            .andExpect(status().isOk())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+        JsonNode created = objectMapper.readTree(createResponse);
+        UUID spaceId = UUID.fromString(created.get("space").get("id").asText());
+        UUID homeDocumentId = UUID.fromString(created.get("space").get("homeDocumentId").asText());
+
+        String templateResponse = mockMvc.perform(post("/api/docs/templates")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "knowledgeBaseId", spaceId.toString(),
+                    "title", "M4 Runbook " + suffix,
+                    "description", "Space scoped runbook",
+                    "category", "sop",
+                    "content", "# Runbook\n\n## Steps"
+                ))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.scopeType").value("knowledge_base"))
+            .andExpect(jsonPath("$.knowledgeBaseId").value(spaceId.toString()))
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+        UUID templateId = UUID.fromString(objectMapper.readTree(templateResponse).get("id").asText());
+
+        mockMvc.perform(get("/api/docs/templates?knowledgeBaseId=" + spaceId)
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$[*].category", hasItem("faq")))
+            .andExpect(jsonPath("$[*].id", hasItem(templateId.toString())));
+
+        mockMvc.perform(post("/api/docs/from-template")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "templateId", templateId.toString(),
+                    "parentId", homeDocumentId.toString(),
+                    "title", "M4 Template Doc " + suffix
+                ))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.document.parentId").value(homeDocumentId.toString()))
+            .andExpect(jsonPath("$.document.title").value("M4 Template Doc " + suffix));
+
+        LocalDate yesterday = LocalDate.now().minusDays(1);
+        String metadataResponse = mockMvc.perform(patch("/api/docs/" + homeDocumentId + "/knowledge-metadata")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "maintainerId", maintainerId.toString(),
+                    "tags", List.of("onboarding", "faq"),
+                    "category", "faq",
+                    "knowledgeStatus", "verified",
+                    "reviewDueAt", yesterday.toString()
+                ))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.document.maintainerId").value(maintainerId.toString()))
+            .andExpect(jsonPath("$.document.tags", hasItem("onboarding")))
+            .andExpect(jsonPath("$.document.category").value("faq"))
+            .andExpect(jsonPath("$.document.knowledgeStatus").value("verified"))
+            .andExpect(jsonPath("$.document.verifiedAt").isNotEmpty())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+        UUID metadataDocumentId = UUID.fromString(objectMapper.readTree(metadataResponse).get("document").get("id").asText());
+
+        String importResponse = mockMvc.perform(post("/api/knowledge-bases/" + spaceId + "/import/markdown-batch")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "parentId", homeDocumentId.toString(),
+                    "items", List.of(
+                        Map.of("title", "M4 Imported FAQ " + suffix, "content", "# Imported FAQ\n\nAnswer", "category", "faq", "tags", List.of("imported")),
+                        Map.of("title", "M4 Imported SOP " + suffix, "content", "# Imported SOP\n\nSteps", "category", "sop", "tags", List.of("runbook"))
+                    )
+                ))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.importedCount").value(2))
+            .andExpect(jsonPath("$.documents.length()").value(2))
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+        UUID importedDocId = UUID.fromString(objectMapper.readTree(importResponse).get("documents").get(0).get("id").asText());
+
+        mockMvc.perform(get("/api/knowledge-bases/" + spaceId + "/export/markdown")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(content().string(containsString("KB M4 Space " + suffix)))
+            .andExpect(content().string(containsString("M4 Imported FAQ " + suffix)))
+            .andExpect(content().string(containsString("knowledgeStatus")));
+
+        mockMvc.perform(post("/api/docs/knowledge-review-reminders/run")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "beforeDate", LocalDate.now().toString(),
+                    "limit", 20
+                ))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.notifiedCount", greaterThanOrEqualTo(1)));
+
+        mockMvc.perform(get("/api/docs/" + metadataDocumentId)
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.document.knowledgeStatus").value("needs_review"));
+
+        mockMvc.perform(get("/api/docs/" + importedDocId)
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.document.tags", hasItem("imported")));
+    }
+
+    @Test
+    void knowledgeSearchDiscoverySubscriptionAndAclFlow() throws Exception {
+        String adminToken = login("admin", "admin123456", "kb-m5-admin-device-" + UUID.randomUUID());
+        String suffix = UUID.randomUUID().toString().substring(0, 8);
+        UUID maintainerId = createMember(adminToken, "kbm5m" + suffix, "KB M5 Maintainer");
+        UUID followerId = createMember(adminToken, "kbm5f" + suffix, "KB M5 Follower");
+        String followerToken = login("kbm5f" + suffix, "member123456", "kb-m5-follower-device-" + UUID.randomUUID());
+        createMember(adminToken, "kbm5o" + suffix, "KB M5 Outsider");
+        String outsiderToken = login("kbm5o" + suffix, "member123456", "kb-m5-outsider-device-" + UUID.randomUUID());
+
+        String createResponse = mockMvc.perform(post("/api/knowledge-bases")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "name", "KB M5 Space " + suffix,
+                    "code", "kb-m5-" + suffix,
+                    "description", "Knowledge discovery",
+                    "visibility", "private",
+                    "defaultPermissionLevel", "view"
+                ))))
+            .andExpect(status().isOk())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+        JsonNode created = objectMapper.readTree(createResponse);
+        UUID spaceId = UUID.fromString(created.get("space").get("id").asText());
+        UUID rootDocumentId = UUID.fromString(created.get("space").get("rootDocumentId").asText());
+
+        mockMvc.perform(post("/api/docs/" + rootDocumentId + "/permissions")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"userId\":\"" + followerId + "\",\"permissionLevel\":\"view\"}"))
+            .andExpect(status().isOk());
+
+        UUID folderId = createDocument(adminToken, rootDocumentId, "M5 Discovery Folder " + suffix, "folder", "");
+        String uniqueTerm = "M5KnowledgeNeedle" + suffix;
+        UUID docId = createDocument(adminToken, folderId, "M5 Searchable Runbook " + suffix, "markdown", "# Runbook\n" + uniqueTerm + "\nBody block");
+        mockMvc.perform(patch("/api/docs/" + docId + "/knowledge-metadata")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "maintainerId", maintainerId.toString(),
+                    "tags", List.of("m5", "runbook"),
+                    "category", "sop",
+                    "knowledgeStatus", "verified",
+                    "reviewDueAt", LocalDate.now().plusDays(3).toString()
+                ))))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/search/reindex")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/search?q=" + uniqueTerm
+                    + "&knowledgeBaseId=" + spaceId
+                    + "&directoryId=" + folderId
+                    + "&docType=markdown"
+                    + "&tags=m5"
+                    + "&maintainerId=" + maintainerId
+                    + "&knowledgeStatus=verified")
+                .header("Authorization", "Bearer " + followerToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.items[*].objectId", hasItem(docId.toString())))
+            .andExpect(jsonPath("$.items[0].knowledgeBaseId").value(spaceId.toString()))
+            .andExpect(jsonPath("$.items[0].tags", hasItem("m5")))
+            .andExpect(jsonPath("$.items[0].maintainerName").value("KB M5 Maintainer"))
+            .andExpect(jsonPath("$.items[0].knowledgeStatus").value("verified"))
+            .andExpect(jsonPath("$.items[0].directoryPath", containsString("M5 Discovery Folder " + suffix)));
+
+        mockMvc.perform(get("/api/search?q=" + uniqueTerm)
+                .header("Authorization", "Bearer " + outsiderToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.items[*].objectId", not(hasItem(docId.toString()))))
+            .andExpect(jsonPath("$.items.length()").value(0))
+            .andExpect(content().string(not(containsString("M5 Searchable Runbook " + suffix))));
+
+        mockMvc.perform(post("/api/platform/objects/document/" + docId + "/access")
+                .header("Authorization", "Bearer " + followerToken))
+            .andExpect(status().isOk());
+        mockMvc.perform(post("/api/platform/objects/document/" + docId + "/favorite")
+                .header("Authorization", "Bearer " + followerToken))
+            .andExpect(status().isOk());
+        mockMvc.perform(post("/api/knowledge-bases/" + spaceId + "/subscriptions")
+                .header("Authorization", "Bearer " + followerToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"targetType\":\"knowledge_base\",\"targetId\":\"" + spaceId + "\"}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.subscribed").value(true));
+
+        mockMvc.perform(get("/api/knowledge-bases/" + spaceId + "/discovery")
+                .header("Authorization", "Bearer " + followerToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.spaceSubscribed").value(true))
+            .andExpect(jsonPath("$.recentAccessed[*].id", hasItem(docId.toString())))
+            .andExpect(jsonPath("$.favorites[*].id", hasItem(docId.toString())))
+            .andExpect(jsonPath("$.subscribedDocuments[*].id", hasItem(docId.toString())))
+            .andExpect(jsonPath("$.recommended[*].id", hasItem(docId.toString())));
+
+        mockMvc.perform(patch("/api/docs/" + docId)
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "baseVersionNo", 1,
+                    "title", "M5 Searchable Runbook Updated " + suffix,
+                    "content", "# Runbook\n" + uniqueTerm + "\nUpdated"
+                ))))
+            .andExpect(status().isOk());
+        for (int index = 0; index < 4; index++) {
+            domainEventWorker.processPendingEvents();
+        }
+
+        mockMvc.perform(get("/api/notifications?unreadOnly=true")
+                .header("Authorization", "Bearer " + followerToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$[*].notificationType", hasItem("knowledge_subscription_updated")));
+    }
+
+    @Test
+    void knowledgeCollaborationContextMentionIssueAndObjectCardFlow() throws Exception {
+        String adminToken = login("admin", "admin123456", "kb-m6-admin-device-" + UUID.randomUUID());
+        String suffix = UUID.randomUUID().toString().substring(0, 8);
+        UUID reviewerId = createMember(adminToken, "kbm6r" + suffix, "KB M6 Reviewer");
+        String reviewerToken = login("kbm6r" + suffix, "member123456", "kb-m6-reviewer-device-" + UUID.randomUUID());
+
+        String createResponse = mockMvc.perform(post("/api/knowledge-bases")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "name", "KB M6 Space " + suffix,
+                    "code", "kb-m6-" + suffix,
+                    "description", "Collaboration polish",
+                    "visibility", "private",
+                    "defaultPermissionLevel", "view"
+                ))))
+            .andExpect(status().isOk())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+        JsonNode created = objectMapper.readTree(createResponse);
+        UUID spaceId = UUID.fromString(created.get("space").get("id").asText());
+        UUID rootDocumentId = UUID.fromString(created.get("space").get("rootDocumentId").asText());
+
+        mockMvc.perform(post("/api/docs/" + rootDocumentId + "/permissions")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"userId\":\"" + reviewerId + "\",\"permissionLevel\":\"comment\"}"))
+            .andExpect(status().isOk());
+
+        UUID folderId = createDocument(adminToken, rootDocumentId, "M6 Collaboration Folder " + suffix, "folder", "");
+        UUID documentId = createDocument(adminToken, folderId, "M6 Collaboration Runbook " + suffix, "markdown", "# M6\nEscalate this paragraph");
+
+        mockMvc.perform(get("/api/docs/" + documentId)
+                .header("Authorization", "Bearer " + reviewerToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.knowledgeContext.spaceId").value(spaceId.toString()))
+            .andExpect(jsonPath("$.knowledgeContext.pathText", containsString("M6 Collaboration Folder " + suffix)))
+            .andExpect(jsonPath("$.knowledgeContext.webPath").value("/knowledge-bases/" + spaceId + "?docId=" + documentId));
+
+        String commentResponse = mockMvc.perform(post("/api/docs/" + documentId + "/comments")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                        {
+                          "anchorType": "selection",
+                          "anchorStart": 5,
+                          "anchorEnd": 13,
+                          "anchorText": "Escalate",
+                          "content": "please review @%s"
+                        }
+                        """.formatted("kbm6r" + suffix)
+                ))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.knowledgeContext.spaceName").value("KB M6 Space " + suffix))
+            .andExpect(jsonPath("$.comments[0].anchorType").value("selection"))
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+        UUID commentId = UUID.fromString(objectMapper.readTree(commentResponse).get("comments").get(0).get("id").asText());
+
+        for (int index = 0; index < 4; index++) {
+            domainEventWorker.processPendingEvents();
+        }
+        mockMvc.perform(get("/api/notifications?unreadOnly=true")
+                .header("Authorization", "Bearer " + reviewerToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$[*].notificationType", hasItem("document_comment_mention")))
+            .andExpect(jsonPath("$[*].webPath", hasItem("/knowledge-bases/" + spaceId + "?docId=" + documentId + "&commentId=" + commentId)))
+            .andExpect(content().string(containsString("KB M6 Space " + suffix)));
+
+        UUID projectId = createProject(adminToken, reviewerId, "M6 Project " + suffix);
+        String issueResponse = mockMvc.perform(post("/api/docs/" + documentId + "/issues/from-selection")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "projectId", projectId.toString(),
+                    "issueType", "task",
+                    "title", "Follow up M6 " + suffix,
+                    "priority", "high",
+                    "assigneeId", reviewerId.toString(),
+                    "dueAt", LocalDate.now().plusDays(5).toString(),
+                    "anchorStart", 5,
+                    "anchorEnd", 13,
+                    "anchorText", "Escalate"
+                ))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.issue.description", containsString("来源知识库：KB M6 Space " + suffix)))
+            .andExpect(jsonPath("$.relations[0].target.objectType").value("document"))
+            .andExpect(jsonPath("$.relations[0].target.metadata.knowledgeBaseId").value(spaceId.toString()))
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+        UUID issueId = UUID.fromString(objectMapper.readTree(issueResponse).get("issue").get("id").asText());
+
+        mockMvc.perform(get("/api/platform/objects/document/" + documentId + "/summary")
+                .header("Authorization", "Bearer " + reviewerToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.metadata.sourceModule").value("knowledge"))
+            .andExpect(jsonPath("$.metadata.knowledgePath", containsString("M6 Collaboration Runbook " + suffix)))
+            .andExpect(jsonPath("$.metadata.backReferencePath").value("/knowledge-bases/" + spaceId + "?docId=" + documentId));
+
+        mockMvc.perform(get("/api/platform/objects/issue/" + issueId + "/summary")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.metadata.sourceModule").value("project"))
+            .andExpect(jsonPath("$.metadata.updatedAt").exists())
+            .andExpect(jsonPath("$.metadata.backReferencePath").value("/issues/" + issueId + "#relations"));
+    }
+
+    @Test
+    void knowledgeGovernanceMetricsBulkAuditAndPermissionRiskFlow() throws Exception {
+        String adminToken = login("admin", "admin123456", "kb-m7-admin-device-" + UUID.randomUUID());
+        String suffix = UUID.randomUUID().toString().substring(0, 8);
+        UUID disabledUserId = createMember(adminToken, "kbm7d" + suffix, "KB M7 Disabled User");
+        UUID maintainerId = createMember(adminToken, "kbm7m" + suffix, "KB M7 Maintainer");
+
+        String createResponse = mockMvc.perform(post("/api/knowledge-bases")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "name", "KB M7 Space " + suffix,
+                    "code", "kb-m7-" + suffix,
+                    "description", "Governance analytics",
+                    "visibility", "workspace",
+                    "defaultPermissionLevel", "edit"
+                ))))
+            .andExpect(status().isOk())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+        JsonNode created = objectMapper.readTree(createResponse);
+        UUID spaceId = UUID.fromString(created.get("space").get("id").asText());
+        UUID rootDocumentId = UUID.fromString(created.get("space").get("rootDocumentId").asText());
+
+        mockMvc.perform(post("/api/resource-permissions/knowledge_base/" + spaceId)
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "subjectType", "user",
+                    "subjectId", disabledUserId.toString(),
+                    "permissionLevel", "view"
+                ))))
+            .andExpect(status().isOk());
+        mockMvc.perform(post("/api/admin/users/" + disabledUserId + "/disable")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk());
+
+        UUID documentId = createDocument(adminToken, rootDocumentId, "M7 Outdated Runbook " + suffix, "markdown", "# M7\nGovern this document");
+        mockMvc.perform(patch("/api/docs/" + documentId + "/knowledge-metadata")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "knowledgeStatus", "outdated",
+                    "reviewDueAt", LocalDate.now().minusDays(1).toString(),
+                    "tags", List.of("legacy")
+                ))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.document.knowledgeStatus").value("outdated"));
+        mockMvc.perform(post("/api/platform/objects/document/" + documentId + "/access")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk());
+        mockMvc.perform(get("/api/search?q=NoSuchM7Term" + suffix + "&knowledgeBaseId=" + spaceId)
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.items.length()").value(0));
+
+        mockMvc.perform(get("/api/knowledge-bases/" + spaceId + "/governance")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.health.documentCount", greaterThanOrEqualTo(2)))
+            .andExpect(jsonPath("$.health.outdatedDocumentCount", greaterThanOrEqualTo(1)))
+            .andExpect(jsonPath("$.health.unmaintainedDocumentCount", greaterThanOrEqualTo(1)))
+            .andExpect(jsonPath("$.risks[*].ruleCode", hasItem("document_without_maintainer")))
+            .andExpect(jsonPath("$.risks[*].ruleCode", hasItem("document_review_overdue")))
+            .andExpect(jsonPath("$.risks[*].ruleCode", hasItem("disabled_subject_permission")))
+            .andExpect(jsonPath("$.risks[*].ruleCode", hasItem("knowledge_base_broad_visibility")))
+            .andExpect(jsonPath("$.accessStats.visitorCount", greaterThanOrEqualTo(1)))
+            .andExpect(jsonPath("$.accessStats.noResultTerms[*].query", hasItem("NoSuchM7Term" + suffix)));
+
+        mockMvc.perform(get("/api/admin/permission-governance/risks?knowledgeBaseId=" + spaceId)
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.items[*].ruleCode", hasItem("disabled_user_active_permission")));
+
+        mockMvc.perform(post("/api/knowledge-bases/" + spaceId + "/governance/bulk")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "documentIds", List.of(documentId.toString()),
+                    "maintainerId", maintainerId.toString(),
+                    "tags", List.of("governed"),
+                    "requestReview", true,
+                    "reviewDueAt", LocalDate.now().plusDays(3).toString()
+                ))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.updatedCount").value(1))
+            .andExpect(jsonPath("$.reviewRequestedCount").value(1));
+        mockMvc.perform(get("/api/docs/" + documentId)
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.document.maintainerId").value(maintainerId.toString()))
+            .andExpect(jsonPath("$.document.tags", hasItem("governed")))
+            .andExpect(jsonPath("$.document.knowledgeStatus").value("needs_review"));
+
+        mockMvc.perform(post("/api/knowledge-bases/" + spaceId + "/governance/bulk")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "documentIds", List.of(documentId.toString()),
+                    "archive", true
+                ))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.archivedCount").value(1));
+
+        mockMvc.perform(get("/api/knowledge-bases/" + spaceId + "/governance/export")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(content().string(containsString("highRiskPermissionCount")))
+            .andExpect(content().string(containsString("disabled_subject_permission")));
+        mockMvc.perform(get("/api/admin/audit-logs?action=knowledge_base.governance.bulk_updated&targetType=knowledge_base&targetId=" + spaceId)
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.length()", greaterThanOrEqualTo(1)));
+    }
 
     @Test
     void documentAcceptanceReportExposesFrozenV1Criteria() throws Exception {
@@ -1133,20 +1737,35 @@ class DocumentControllerIntegrationTests {
     }
 
     private UUID createDocument(String token, UUID parentId, String title, String docType, String content) throws Exception {
-        String parentJson = parentId == null ? "null" : "\"" + parentId + "\"";
+        Map<String, Object> request = new LinkedHashMap<>();
+        if (parentId != null) {
+            request.put("parentId", parentId.toString());
+        }
+        request.put("title", title);
+        request.put("docType", docType);
+        request.put("content", content);
         String response = mockMvc.perform(post("/api/docs")
                 .header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(
-                    """
-                        {
-                          "parentId": %s,
-                          "title": "%s",
-                          "docType": "%s",
-                          "content": "%s"
-                        }
-                        """.formatted(parentJson, title, docType, content)
-                ))
+                .content(objectMapper.writeValueAsString(request)))
+            .andExpect(status().isOk())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+        return UUID.fromString(objectMapper.readTree(response).get("document").get("id").asText());
+    }
+
+    private UUID createKnowledgeBaseDocument(String token, String title) throws Exception {
+        String response = mockMvc.perform(post("/api/docs")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "title", title,
+                    "docType", "space",
+                    "content", "Legacy root",
+                    "knowledgeBase", true,
+                    "defaultPermissionLevel", "view"
+                ))))
             .andExpect(status().isOk())
             .andReturn()
             .getResponse()

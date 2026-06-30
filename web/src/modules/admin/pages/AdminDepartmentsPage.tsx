@@ -1,12 +1,11 @@
 import {
   ApartmentOutlined,
-  AuditOutlined,
+  CheckCircleOutlined,
   DeleteOutlined,
   EditOutlined,
   PlusOutlined,
   StopOutlined,
   SwapOutlined,
-  TeamOutlined,
   UserAddOutlined,
   UserSwitchOutlined,
 } from '@ant-design/icons'
@@ -15,15 +14,16 @@ import { App as AntdApp, Button, Form, Input, InputNumber, Modal, Select, Space,
 import type { DataNode } from 'antd/es/tree'
 import type { ColumnsType } from 'antd/es/table'
 import { useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 
 import { listMembers } from '../api/adminUsersApi'
+import { AdminModuleNav } from '../components/AdminModuleNav'
 import {
   addDepartmentManager,
   addDepartmentMember,
   createDepartment,
   deleteDepartment,
   disableDepartment,
+  enableDepartment,
   flattenDepartmentTree,
   listDepartmentMembers,
   listDepartmentTree,
@@ -47,7 +47,6 @@ type AssignmentModalState = 'member' | 'manager' | null
 
 export function AdminDepartmentsPage() {
   const queryClient = useQueryClient()
-  const navigate = useNavigate()
   const { message, modal } = AntdApp.useApp()
   const [selectedDepartmentId, setSelectedDepartmentId] = useState<string>()
   const [departmentModal, setDepartmentModal] = useState<DepartmentModalState | null>(null)
@@ -131,8 +130,19 @@ export function AdminDepartmentsPage() {
   const disableMutation = useMutation({
     mutationFn: disableDepartment,
     onSuccess: async () => {
-      message.success('部门已禁用')
+      message.success('部门已停用')
       await refreshOrganization()
+    },
+  })
+
+  const enableMutation = useMutation({
+    mutationFn: enableDepartment,
+    onSuccess: async () => {
+      message.success('部门已启用')
+      await refreshOrganization()
+    },
+    onError: (error) => {
+      message.error(error instanceof Error ? error.message : '部门启用失败')
     },
   })
 
@@ -304,32 +314,31 @@ export function AdminDepartmentsPage() {
           </span>
           <Typography.Title level={2}>组织架构</Typography.Title>
         </Space>
-        <Space wrap>
-          <Button icon={<TeamOutlined />} onClick={() => navigate('/admin/users')}>成员管理</Button>
-          <Button icon={<TeamOutlined />} onClick={() => navigate('/admin/user-groups')}>用户组</Button>
-          <Button icon={<AuditOutlined />} onClick={() => navigate('/admin/audit-logs')}>审计日志</Button>
-          <Button icon={<PlusOutlined />} onClick={() => openCreateDepartment(null)}>
-            新建根部门
-          </Button>
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            disabled={!effectiveSelectedDepartmentId}
-            onClick={() => {
-              if (effectiveSelectedDepartmentId) {
-                openCreateDepartment(effectiveSelectedDepartmentId)
-              }
-            }}
-          >
-            新建子部门
-          </Button>
-        </Space>
+        <AdminModuleNav />
       </Space>
 
       <div className="admin-org-grid admin-departments-layout">
         <div className="admin-org-panel admin-org-tree-panel admin-department-tree-card">
+          <div className="admin-sidebar-action-row">
+            <Button className="admin-sidebar-create" icon={<PlusOutlined />} onClick={() => openCreateDepartment(null)}>
+              新建根部门
+            </Button>
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              disabled={!effectiveSelectedDepartmentId}
+              onClick={() => {
+                if (effectiveSelectedDepartmentId) {
+                  openCreateDepartment(effectiveSelectedDepartmentId)
+                }
+              }}
+            >
+              新建子部门
+            </Button>
+          </div>
           <Tree
             blockNode
+            virtual={false}
             showLine={{ showLeafIcon: false }}
             treeData={treeData}
             className="admin-department-tree"
@@ -348,13 +357,13 @@ export function AdminDepartmentsPage() {
                     <ApartmentOutlined />
                   </span>
                   <div className="admin-group-hero-copy">
-                    <Space size={12} align="center" wrap>
+                    <Space className="admin-group-hero-title-row" size={12} align="center" wrap>
                       <Typography.Title level={3}>{selectedDepartment.name}</Typography.Title>
                       <span className={`admin-status-pill ${selectedDepartment.status === 'active' ? 'active' : 'disabled'}`}>
                         {selectedDepartment.status}
                       </span>
+                      <Typography.Text type="secondary">{selectedDepartment.code}</Typography.Text>
                     </Space>
-                    <Typography.Text type="secondary">{selectedDepartment.code}</Typography.Text>
                     <div className="admin-group-meta-grid">
                       <span className="admin-meta-chip">层级 {selectedDepartment.depth + 1}</span>
                       <span className="admin-meta-chip">成员 {selectedDepartment.memberCount}</span>
@@ -370,15 +379,25 @@ export function AdminDepartmentsPage() {
                   <Button className="admin-action-button" icon={<SwapOutlined />} onClick={() => openMoveDepartment(selectedDepartment)}>
                     移动
                   </Button>
-                  <Button
-                    className="admin-action-button"
-                    icon={<StopOutlined />}
-                    disabled={selectedDepartment.status === 'disabled'}
-                    loading={disableMutation.isPending}
-                    onClick={() => disableMutation.mutate(selectedDepartment.id)}
-                  >
-                    禁用
-                  </Button>
+                  {selectedDepartment.status === 'active' ? (
+                    <Button
+                      className="admin-danger-outline"
+                      icon={<StopOutlined />}
+                      loading={disableMutation.isPending}
+                      onClick={() => disableMutation.mutate(selectedDepartment.id)}
+                    >
+                      停用
+                    </Button>
+                  ) : (
+                    <Button
+                      className="admin-success-outline"
+                      icon={<CheckCircleOutlined />}
+                      loading={enableMutation.isPending}
+                      onClick={() => enableMutation.mutate(selectedDepartment.id)}
+                    >
+                      启用
+                    </Button>
+                  )}
                   <Button
                     className="admin-danger-outline"
                     icon={<DeleteOutlined />}
@@ -390,39 +409,41 @@ export function AdminDepartmentsPage() {
                 </Space>
               </div>
 
-              <div className="admin-data-card">
-                <Space className="admin-org-section-toolbar" wrap>
-                  <Typography.Title level={4}>部门成员</Typography.Title>
-                  <Button className="admin-action-button" icon={<UserAddOutlined />} onClick={() => openAssignment('member')}>
-                    加入成员
-                  </Button>
-                </Space>
-                <Table
-                  rowKey="id"
-                  size="middle"
-                  loading={membersQuery.isLoading}
-                  columns={memberColumns}
-                  dataSource={membersQuery.data ?? []}
-                  locale={{ emptyText: tableEmpty }}
-                  pagination={{ pageSize: 8, placement: ['bottomEnd'] }}
-                />
-              </div>
+              <div className="admin-detail-card-grid admin-department-card-grid">
+                <div className="admin-data-card">
+                  <Space className="admin-org-section-toolbar" wrap>
+                    <Typography.Title level={4}>部门成员</Typography.Title>
+                    <Button className="admin-action-button" icon={<UserAddOutlined />} onClick={() => openAssignment('member')}>
+                      加入成员
+                    </Button>
+                  </Space>
+                  <Table
+                    rowKey="id"
+                    size="middle"
+                    loading={membersQuery.isLoading}
+                    columns={memberColumns}
+                    dataSource={membersQuery.data ?? []}
+                    locale={{ emptyText: tableEmpty }}
+                    pagination={{ pageSize: 8, placement: ['bottomEnd'] }}
+                  />
+                </div>
 
-              <div className="admin-data-card">
-                <Space className="admin-org-section-toolbar" wrap>
-                  <Typography.Title level={4}>部门负责人</Typography.Title>
-                  <Button className="admin-action-button" icon={<UserSwitchOutlined />} onClick={() => openAssignment('manager')}>
-                    添加负责人
-                  </Button>
-                </Space>
-                <Table
-                  rowKey="id"
-                  size="middle"
-                  columns={managerColumns}
-                  dataSource={selectedNode?.managers ?? []}
-                  locale={{ emptyText: tableEmpty }}
-                  pagination={false}
-                />
+                <div className="admin-data-card">
+                  <Space className="admin-org-section-toolbar" wrap>
+                    <Typography.Title level={4}>部门负责人</Typography.Title>
+                    <Button className="admin-action-button" icon={<UserSwitchOutlined />} onClick={() => openAssignment('manager')}>
+                      添加负责人
+                    </Button>
+                  </Space>
+                  <Table
+                    rowKey="id"
+                    size="middle"
+                    columns={managerColumns}
+                    dataSource={selectedNode?.managers ?? []}
+                    locale={{ emptyText: tableEmpty }}
+                    pagination={false}
+                  />
+                </div>
               </div>
             </Space>
           ) : (

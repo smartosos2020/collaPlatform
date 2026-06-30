@@ -18,6 +18,9 @@ import com.colla.platform.modules.doc.domain.DocumentModels.DocumentTemplate;
 import com.colla.platform.modules.doc.domain.DocumentModels.DocumentTreeNode;
 import com.colla.platform.modules.doc.domain.DocumentModels.DocumentVersion;
 import com.colla.platform.modules.doc.domain.DocumentModels.DocumentVersionDiff;
+import com.colla.platform.modules.doc.domain.DocumentModels.KnowledgeBaseMarkdownImportItem;
+import com.colla.platform.modules.doc.domain.DocumentModels.KnowledgeBaseMarkdownImportResult;
+import com.colla.platform.modules.doc.domain.DocumentModels.KnowledgeReviewReminderResult;
 import com.colla.platform.modules.project.domain.ProjectModels.IssueDetail;
 import com.colla.platform.shared.auth.CurrentUser;
 import jakarta.validation.Valid;
@@ -74,8 +77,23 @@ public class DocumentController {
     }
 
     @GetMapping("/docs/templates")
-    public List<DocumentTemplate> templates(Authentication authentication) {
-        return documentService.listTemplates(currentUser(authentication));
+    public List<DocumentTemplate> templates(@RequestParam(required = false) UUID knowledgeBaseId, Authentication authentication) {
+        return documentService.listTemplates(currentUser(authentication), knowledgeBaseId);
+    }
+
+    @PostMapping("/docs/templates")
+    public DocumentTemplate createTemplate(
+        @Valid @RequestBody CreateDocumentTemplateRequest request,
+        Authentication authentication
+    ) {
+        return documentService.createTemplate(
+            currentUser(authentication),
+            request.knowledgeBaseId(),
+            request.title(),
+            request.description(),
+            request.category(),
+            request.content()
+        );
     }
 
     @GetMapping("/docs/acceptance/v1")
@@ -143,6 +161,24 @@ public class DocumentController {
             request.baseVersionNo(),
             request.title(),
             request.content()
+        );
+    }
+
+    @PatchMapping("/docs/{documentId}/knowledge-metadata")
+    public DocumentDetail updateKnowledgeMetadata(
+        @PathVariable UUID documentId,
+        @Valid @RequestBody UpdateKnowledgeMetadataRequest request,
+        Authentication authentication
+    ) {
+        return documentService.updateKnowledgeMetadata(
+            currentUser(authentication),
+            documentId,
+            request.maintainerId(),
+            request.tags(),
+            request.category(),
+            request.knowledgeStatus(),
+            request.reviewDueAt(),
+            request.verifiedAt()
         );
     }
 
@@ -219,6 +255,31 @@ public class DocumentController {
         return ResponseEntity.ok()
             .contentType(MediaType.TEXT_HTML)
             .body(documentService.exportHtml(currentUser(authentication), documentId));
+    }
+
+    @PostMapping("/knowledge-bases/{spaceId}/import/markdown-batch")
+    public KnowledgeBaseMarkdownImportResult importKnowledgeBaseMarkdownBatch(
+        @PathVariable UUID spaceId,
+        @Valid @RequestBody ImportKnowledgeBaseMarkdownBatchRequest request,
+        Authentication authentication
+    ) {
+        return documentService.importKnowledgeBaseMarkdownBatch(currentUser(authentication), spaceId, request.parentId(), request.items());
+    }
+
+    @GetMapping(value = "/knowledge-bases/{spaceId}/export/markdown", produces = "text/markdown;charset=UTF-8")
+    public ResponseEntity<String> exportKnowledgeBaseMarkdown(@PathVariable UUID spaceId, Authentication authentication) {
+        return ResponseEntity.ok()
+            .contentType(MediaType.valueOf("text/markdown;charset=UTF-8"))
+            .body(documentService.exportKnowledgeBaseMarkdown(currentUser(authentication), spaceId));
+    }
+
+    @PostMapping("/docs/knowledge-review-reminders/run")
+    public KnowledgeReviewReminderResult runKnowledgeReviewReminders(
+        @RequestBody(required = false) RunKnowledgeReviewRemindersRequest request,
+        Authentication authentication
+    ) {
+        RunKnowledgeReviewRemindersRequest normalized = request == null ? new RunKnowledgeReviewRemindersRequest(null, 50) : request;
+        return documentService.runKnowledgeReviewReminders(currentUser(authentication), normalized.beforeDate(), normalized.limit());
     }
 
     @GetMapping("/docs/{documentId}/versions/diff")
@@ -400,7 +461,26 @@ public class DocumentController {
     public record CreateDocumentFromTemplateRequest(@NotNull UUID templateId, UUID parentId, @Size(max = 255) String title) {
     }
 
+    public record CreateDocumentTemplateRequest(
+        UUID knowledgeBaseId,
+        @NotBlank @Size(max = 128) String title,
+        @Size(max = 512) String description,
+        @Size(max = 64) String category,
+        String content
+    ) {
+    }
+
     public record SaveDocumentRequest(int baseVersionNo, @Size(max = 255) String title, String content) {
+    }
+
+    public record UpdateKnowledgeMetadataRequest(
+        UUID maintainerId,
+        List<String> tags,
+        @Size(max = 64) String category,
+        String knowledgeStatus,
+        LocalDate reviewDueAt,
+        Instant verifiedAt
+    ) {
     }
 
     public record SaveDocumentBlocksRequest(int baseVersionNo, @NotNull List<DocumentBlockDraft> blocks) {
@@ -410,6 +490,15 @@ public class DocumentController {
     }
 
     public record ImportMarkdownRequest(@Size(max = 255) String title, String content) {
+    }
+
+    public record ImportKnowledgeBaseMarkdownBatchRequest(
+        UUID parentId,
+        @NotNull List<KnowledgeBaseMarkdownImportItem> items
+    ) {
+    }
+
+    public record RunKnowledgeReviewRemindersRequest(LocalDate beforeDate, int limit) {
     }
 
     public record MoveDocumentRequest(UUID parentId, Integer sortOrder) {

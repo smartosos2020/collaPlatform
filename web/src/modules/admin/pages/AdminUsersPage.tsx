@@ -1,9 +1,8 @@
 import {
-  ApartmentOutlined,
-  AuditOutlined,
+  CameraOutlined,
+  CheckCircleOutlined,
   KeyOutlined,
   PlusOutlined,
-  SafetyCertificateOutlined,
   SearchOutlined,
   StopOutlined,
   TeamOutlined,
@@ -12,15 +11,17 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { App as AntdApp, Button, Form, Input, Modal, Select, Space, Table, Typography } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
-import { useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useMemo, useRef, useState } from 'react'
 
+import { completeUpload, createUploadUrl, getFileDownloadUrl } from '../../files/api/filesApi'
+import { AdminModuleNav } from '../components/AdminModuleNav'
 import {
   createMember,
   disableMember,
   enableMember,
   listMembers,
   resetMemberPassword,
+  updateMemberAvatar,
 } from '../api/adminUsersApi'
 import type { CreateMemberRequest, MemberSummary } from '../api/adminUsersApi'
 import { flattenDepartmentTree, listDepartmentTree } from '../api/departmentsApi'
@@ -35,11 +36,14 @@ const passwordRules = [
 
 export function AdminUsersPage() {
   const queryClient = useQueryClient()
-  const navigate = useNavigate()
   const { message } = AntdApp.useApp()
   const [createOpen, setCreateOpen] = useState(false)
   const [resetUser, setResetUser] = useState<MemberSummary | null>(null)
   const [departmentId, setDepartmentId] = useState<string | undefined>()
+  const [filterType, setFilterType] = useState<'department' | 'name'>('department')
+  const [memberKeyword, setMemberKeyword] = useState('')
+  const [selectedMemberId, setSelectedMemberId] = useState<string>()
+  const avatarInputRef = useRef<HTMLInputElement>(null)
   const [createForm] = Form.useForm<CreateMemberRequest>()
   const [resetForm] = Form.useForm<{ newPassword: string }>()
 
@@ -55,8 +59,26 @@ export function AdminUsersPage() {
   }))
 
   const membersQuery = useQuery({
-    queryKey: ['admin', 'users', { departmentId }],
-    queryFn: () => listMembers({ departmentId }),
+    queryKey: ['admin', 'users', { departmentId: filterType === 'department' ? departmentId : undefined }],
+    queryFn: () => listMembers({ departmentId: filterType === 'department' ? departmentId : undefined }),
+  })
+
+  const members = useMemo(() => membersQuery.data ?? [], [membersQuery.data])
+  const visibleMembers = useMemo(() => {
+    const keyword = memberKeyword.trim().toLowerCase()
+    if (filterType !== 'name' || !keyword) {
+      return members
+    }
+    return members.filter((member) =>
+      [member.displayName, member.username, member.email ?? ''].some((value) => value.toLowerCase().includes(keyword)),
+    )
+  }, [filterType, memberKeyword, members])
+  const selectedMember = visibleMembers.find((member) => member.id === selectedMemberId) ?? visibleMembers[0]
+
+  const avatarUrlQuery = useQuery({
+    queryKey: ['files', selectedMember?.avatarFileId, 'download-url'],
+    queryFn: () => getFileDownloadUrl(selectedMember?.avatarFileId as string),
+    enabled: Boolean(selectedMember?.avatarFileId),
   })
 
   const refreshMembers = async () => {
@@ -65,8 +87,9 @@ export function AdminUsersPage() {
 
   const createMutation = useMutation({
     mutationFn: createMember,
-    onSuccess: async () => {
+    onSuccess: async (member) => {
       message.success('成员已创建')
+      setSelectedMemberId(member.id)
       setCreateOpen(false)
       createForm.resetFields()
       await refreshMembers()
@@ -97,6 +120,31 @@ export function AdminUsersPage() {
     },
     onError: (error) => {
       message.error(error instanceof Error ? error.message : '密码重置失败')
+    },
+  })
+
+  const avatarMutation = useMutation({
+    mutationFn: async ({ userId, file }: { userId: string; file: File }) => {
+      const upload = await createUploadUrl({
+        fileName: file.name,
+        contentType: file.type || 'application/octet-stream',
+        sizeBytes: file.size,
+      })
+      await fetch(upload.uploadUrl, {
+        method: 'PUT',
+        headers: upload.headers,
+        body: file,
+      })
+      const completed = await completeUpload({ fileId: upload.uploadId })
+      await updateMemberAvatar(userId, completed.id)
+      return completed.id
+    },
+    onSuccess: async () => {
+      message.success('头像已更新')
+      await refreshMembers()
+    },
+    onError: (error) => {
+      message.error(error instanceof Error ? error.message : '头像更新失败')
     },
   })
 
@@ -173,10 +221,16 @@ export function AdminUsersPage() {
               loading={disableMutation.isPending}
               onClick={() => disableMutation.mutate(record.id)}
             >
-              禁用
+              停用
             </Button>
           ) : (
-            <Button className="admin-action-button" size="small" loading={enableMutation.isPending} onClick={() => enableMutation.mutate(record.id)}>
+            <Button
+              className="admin-success-outline"
+              size="small"
+              icon={<CheckCircleOutlined />}
+              loading={enableMutation.isPending}
+              onClick={() => enableMutation.mutate(record.id)}
+            >
               启用
             </Button>
           )}
@@ -194,42 +248,97 @@ export function AdminUsersPage() {
           </span>
           <Typography.Title level={2}>成员管理</Typography.Title>
         </Space>
-        <Space wrap>
-          <Button icon={<ApartmentOutlined />} onClick={() => navigate('/admin/departments')}>组织架构</Button>
-          <Button icon={<TeamOutlined />} onClick={() => navigate('/admin/user-groups')}>用户组</Button>
-          <Button icon={<SafetyCertificateOutlined />} onClick={() => navigate('/admin/roles')}>角色权限</Button>
-          <Button icon={<SafetyCertificateOutlined />} onClick={() => navigate('/admin/permission-governance')}>权限治理</Button>
-          <Button icon={<AuditOutlined />} onClick={() => navigate('/admin/audit-logs')}>审计日志</Button>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
-            新增成员
-          </Button>
-        </Space>
+        <AdminModuleNav />
       </Space>
 
-      <div className="admin-members-filter-row">
-        <Select
-          allowClear
-          showSearch
-          className="admin-user-department-filter"
-          suffixIcon={<SearchOutlined />}
-          loading={departmentsQuery.isLoading}
-          options={departmentOptions}
-          optionFilterProp="label"
-          placeholder="按部门筛选成员"
-          value={departmentId}
-          onChange={setDepartmentId}
-        />
-      </div>
+      <div className="admin-members-layout">
+        <div className="admin-org-panel admin-member-sidebar">
+          <Button block type="primary" icon={<PlusOutlined />} className="admin-sidebar-create admin-sidebar-create-top" onClick={() => setCreateOpen(true)}>
+            新增成员
+          </Button>
 
-      <div className="admin-data-card admin-members-table-card">
-        <Table
-          rowKey="id"
-          loading={membersQuery.isLoading}
-          columns={columns}
-          dataSource={membersQuery.data ?? []}
-          locale={{ emptyText: <AdminTableEmpty /> }}
-          pagination={{ pageSize: 10, placement: ['bottomEnd'] }}
-        />
+          <div className="admin-member-filter-card">
+            <div className="admin-member-search-row">
+              <Button
+                className="admin-filter-toggle-button"
+                onClick={() => {
+                  setFilterType(filterType === 'department' ? 'name' : 'department')
+                  setSelectedMemberId(undefined)
+                }}
+              >
+                {filterType === 'department' ? '部门' : '名称'}
+              </Button>
+              {filterType === 'department' ? (
+                <Select
+                  allowClear
+                  showSearch
+                  className="admin-user-department-filter"
+                  suffixIcon={<SearchOutlined />}
+                  loading={departmentsQuery.isLoading}
+                  options={departmentOptions}
+                  optionFilterProp="label"
+                  placeholder="按部门筛选成员"
+                  value={departmentId}
+                  onChange={(value) => {
+                    setDepartmentId(value)
+                    setSelectedMemberId(undefined)
+                  }}
+                />
+              ) : (
+                <Input
+                  allowClear
+                  prefix={<SearchOutlined />}
+                  placeholder="按成员名称/账号/邮箱筛选"
+                  value={memberKeyword}
+                  onChange={(event) => {
+                    setMemberKeyword(event.target.value)
+                    setSelectedMemberId(undefined)
+                  }}
+                />
+              )}
+            </div>
+          </div>
+
+          <MemberInfoCard
+            member={selectedMember}
+            avatarUrl={avatarUrlQuery.data?.downloadUrl}
+            avatarLoading={avatarMutation.isPending}
+            onPickAvatar={() => avatarInputRef.current?.click()}
+          />
+          <input
+            ref={avatarInputRef}
+            hidden
+            type="file"
+            accept="image/*"
+            onChange={(event) => {
+              const file = event.target.files?.[0]
+              event.target.value = ''
+              if (!file || !selectedMember) {
+                return
+              }
+              if (!file.type.startsWith('image/')) {
+                message.error('请选择图片文件')
+                return
+              }
+              avatarMutation.mutate({ userId: selectedMember.id, file })
+            }}
+          />
+        </div>
+
+        <div className="admin-data-card admin-members-table-card">
+          <Table
+            rowKey="id"
+            loading={membersQuery.isLoading}
+            columns={columns}
+            dataSource={visibleMembers}
+            locale={{ emptyText: <AdminTableEmpty /> }}
+            pagination={{ pageSize: 10, placement: ['bottomEnd'] }}
+            rowClassName={(record) => (record.id === selectedMember?.id ? 'admin-table-row-selected' : '')}
+            onRow={(record) => ({
+              onClick: () => setSelectedMemberId(record.id),
+            })}
+          />
+        </div>
       </div>
 
       <Modal
@@ -274,7 +383,6 @@ export function AdminUsersPage() {
           </Form.Item>
         </Form>
       </Modal>
-
       <Modal
         title={`重置密码：${resetUser?.displayName ?? ''}`}
         open={Boolean(resetUser)}
@@ -304,6 +412,112 @@ export function AdminUsersPage() {
 
 function entityInitial(value: string) {
   return (value || '?').trim().slice(0, 1).toUpperCase()
+}
+
+function MemberInfoCard({
+  member,
+  avatarUrl,
+  avatarLoading,
+  onPickAvatar,
+}: {
+  member?: MemberSummary
+  avatarUrl?: string
+  avatarLoading: boolean
+  onPickAvatar: () => void
+}) {
+  if (!member) {
+    return (
+      <div className="admin-member-profile-card empty">
+        <span className="admin-empty-icon">
+          <UserOutlined />
+        </span>
+        <Typography.Text type="secondary">No data</Typography.Text>
+      </div>
+    )
+  }
+
+  return (
+    <div className="admin-member-profile-card">
+      <div className="admin-member-profile-top">
+        <div className="admin-member-avatar-wrap">
+          {avatarUrl ? (
+            <img className="admin-member-avatar-image" src={avatarUrl} alt={member.displayName} />
+          ) : (
+            <span className="admin-member-avatar-large">{entityInitial(member.displayName || member.username)}</span>
+          )}
+          <Button
+            shape="circle"
+            size="small"
+            className="admin-member-avatar-edit"
+            icon={<CameraOutlined />}
+            loading={avatarLoading}
+            onClick={onPickAvatar}
+          />
+        </div>
+      </div>
+
+      <div className="admin-member-profile-section">
+        <span>名称</span>
+        <strong>{member.displayName}</strong>
+      </div>
+      <div className="admin-member-profile-section">
+        <span>编号</span>
+        <strong>{member.username}</strong>
+      </div>
+      <div className="admin-member-profile-section">
+        <span>邮箱</span>
+        <strong>{member.email || '-'}</strong>
+      </div>
+      <div className="admin-member-profile-summary-row">
+        <div>
+          <span>状态</span>
+          <span className={`admin-status-pill ${member.status === 'active' ? 'active' : 'disabled'}`}>{member.status}</span>
+        </div>
+        <div>
+          <span>角色</span>
+          <Space size={6} wrap>
+            {member.roles.length ? member.roles.map((role) => (
+              <span key={role} className="admin-soft-badge purple">{role}</span>
+            )) : <span className="admin-soft-badge gray">未分配</span>}
+          </Space>
+        </div>
+        <div>
+          <span>部门</span>
+          <Space size={6} wrap>
+            {member.departments.length ? member.departments.map((department) => (
+              <span
+                key={`${department.departmentId}-${department.relationType}`}
+                className={`admin-soft-badge ${department.relationType === 'primary' ? 'purple' : 'gray'}`}
+              >
+                {department.departmentName}
+              </span>
+            )) : <span className="admin-soft-badge gray">未分配</span>}
+          </Space>
+        </div>
+      </div>
+      <div className="admin-member-profile-grid">
+        <div>
+          <span>创建时间</span>
+          <strong>{formatDateTime(member.createdAt)}</strong>
+        </div>
+        <div>
+          <span>最近登录</span>
+          <strong>{member.lastLoginAt ? formatDateTime(member.lastLoginAt) : '-'}</strong>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function formatDateTime(value: string) {
+  return new Intl.DateTimeFormat('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(new Date(value))
 }
 
 function AdminTableEmpty() {

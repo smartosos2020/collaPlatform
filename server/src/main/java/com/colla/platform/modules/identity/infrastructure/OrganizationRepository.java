@@ -24,6 +24,8 @@ public interface OrganizationRepository {
 
     void disableDepartment(UUID workspaceId, UUID departmentId, UUID actorId);
 
+    void enableDepartment(UUID workspaceId, UUID departmentId, UUID actorId);
+
     void deleteDepartment(UUID workspaceId, UUID departmentId);
 
     boolean hasChildren(UUID workspaceId, UUID departmentId);

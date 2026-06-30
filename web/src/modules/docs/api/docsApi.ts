@@ -21,6 +21,13 @@ export type DocumentSummary = {
   defaultPermissionLevel: 'view' | 'comment' | 'edit'
   knowledgeBase: boolean
   archived: boolean
+  maintainerId?: string | null
+  maintainerName?: string | null
+  tags: string[]
+  category?: string | null
+  knowledgeStatus: 'draft' | 'verified' | 'needs_review' | 'outdated' | 'archived'
+  reviewDueAt?: string | null
+  verifiedAt?: string | null
 }
 
 export type DocumentTreeNode = {
@@ -80,6 +87,9 @@ export type DocumentShareLink = {
   updatedBy?: string | null
   updatedByName?: string | null
   updatedAt?: string | null
+  knowledgeBaseId?: string | null
+  knowledgeBaseName?: string | null
+  knowledgeBaseCode?: string | null
 }
 
 export type DocumentPermissionRequest = {
@@ -116,6 +126,17 @@ export type DocumentComment = {
   reopenedByName?: string | null
   createdAt: string
   replies: DocumentComment[]
+}
+
+export type KnowledgeContext = {
+  spaceId: string
+  spaceName: string
+  spaceCode: string
+  rootDocumentId: string
+  homeDocumentId: string
+  path: DocumentPathItem[]
+  pathText: string
+  webPath: string
 }
 
 export type DocumentBlock = {
@@ -157,6 +178,7 @@ export type DocumentDetail = {
   permissions: DocumentPermission[]
   shareLinks: DocumentShareLink[]
   comments: DocumentComment[]
+  knowledgeContext?: KnowledgeContext | null
 }
 
 export type DocumentVersion = {
@@ -199,6 +221,9 @@ export type DocumentTemplate = {
   category: string
   content: string
   builtIn: boolean
+  scopeType: 'global' | 'workspace' | 'knowledge_base'
+  knowledgeBaseId?: string | null
+  knowledgeBaseName?: string | null
   createdAt: string
 }
 
@@ -276,8 +301,22 @@ export function listDocumentTree(options: { includeArchived?: boolean } = {}) {
   return apiGet<DocumentTreeNode[]>(`/docs/tree${params.size ? `?${params}` : ''}`)
 }
 
-export function listDocumentTemplates() {
-  return apiGet<DocumentTemplate[]>('/docs/templates')
+export function listDocumentTemplates(options: { knowledgeBaseId?: string } = {}) {
+  const params = new URLSearchParams()
+  if (options.knowledgeBaseId) {
+    params.set('knowledgeBaseId', options.knowledgeBaseId)
+  }
+  return apiGet<DocumentTemplate[]>(`/docs/templates${params.size ? `?${params}` : ''}`)
+}
+
+export function createDocumentTemplate(request: {
+  knowledgeBaseId?: string | null
+  title: string
+  description?: string
+  category?: string
+  content?: string
+}) {
+  return apiPost<DocumentTemplate>('/docs/templates', request)
 }
 
 export function getDocumentAcceptanceReport() {
@@ -325,6 +364,20 @@ export function saveDocument(documentId: string, request: { baseVersionNo: numbe
   return apiPatch<DocumentDetail>(`/docs/${documentId}`, request)
 }
 
+export function updateDocumentKnowledgeMetadata(
+  documentId: string,
+  request: {
+    maintainerId?: string | null
+    tags?: string[]
+    category?: string | null
+    knowledgeStatus?: DocumentSummary['knowledgeStatus']
+    reviewDueAt?: string | null
+    verifiedAt?: string | null
+  },
+) {
+  return apiPatch<DocumentDetail>(`/docs/${documentId}/knowledge-metadata`, request)
+}
+
 export function listDocumentBlocks(documentId: string) {
   return apiGet<DocumentBlock[]>(`/docs/${documentId}/blocks`)
 }
@@ -370,6 +423,23 @@ export function exportDocumentMarkdown(documentId: string) {
 
 export function exportDocumentHtml(documentId: string) {
   return apiGetText(`/docs/${documentId}/export/html`)
+}
+
+export function importKnowledgeBaseMarkdownBatch(
+  spaceId: string,
+  request: {
+    parentId?: string | null
+    items: Array<{ title: string; content: string; category?: string; tags?: string[] }>
+  },
+) {
+  return apiPost<{ spaceId: string; importedCount: number; documents: DocumentSummary[] }>(
+    `/knowledge-bases/${spaceId}/import/markdown-batch`,
+    request,
+  )
+}
+
+export function exportKnowledgeBaseMarkdown(spaceId: string) {
+  return apiGetText(`/knowledge-bases/${spaceId}/export/markdown`)
 }
 
 export function diffDocumentVersions(documentId: string, fromVersionNo: number, toVersionNo: number) {

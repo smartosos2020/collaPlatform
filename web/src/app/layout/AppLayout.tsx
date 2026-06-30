@@ -4,6 +4,7 @@ import {
   DatabaseOutlined,
   FileTextOutlined,
   HomeOutlined,
+  ReadOutlined,
   MenuOutlined,
   MessageOutlined,
   MobileOutlined,
@@ -28,6 +29,7 @@ const navEntries = [
   { key: '/im', icon: <MessageOutlined />, label: '消息' },
   { key: '/projects', icon: <ProjectOutlined />, label: '项目' },
   { key: '/docs', icon: <FileTextOutlined />, label: '文档' },
+  { key: '/knowledge-bases', icon: <ReadOutlined />, label: '知识库' },
   { key: '/bases', icon: <DatabaseOutlined />, label: '表格' },
   { key: '/approvals', icon: <CheckSquareOutlined />, label: '审批' },
   { key: '/notifications', icon: <BellOutlined />, label: '通知' },
@@ -37,7 +39,7 @@ const navEntries = [
 ]
 
 const navItems: MenuProps['items'] = navEntries
-const mobileNavEntries = navEntries.filter((item) => ['/im', '/projects', '/docs', '/bases', '/notifications'].includes(item.key))
+const mobileNavEntries = navEntries.filter((item) => ['/im', '/projects', '/knowledge-bases', '/bases', '/notifications'].includes(item.key))
 
 export function AppLayout() {
   const navigate = useNavigate()
@@ -84,7 +86,7 @@ export function AppLayout() {
 
   return (
     <Layout className="app-shell">
-      <Sider width={216} className="app-sidebar">
+      <Sider width={108} className="app-sidebar">
         <div className="app-brand">Colla</div>
         <Menu
           mode="inline"

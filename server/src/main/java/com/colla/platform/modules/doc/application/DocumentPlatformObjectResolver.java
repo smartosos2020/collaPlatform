@@ -1,10 +1,12 @@
 package com.colla.platform.modules.doc.application;
 
 import com.colla.platform.modules.doc.domain.DocumentModels.DocumentSummary;
+import com.colla.platform.modules.doc.domain.DocumentModels.KnowledgeContext;
 import com.colla.platform.modules.platform.application.PlatformObjectResolver;
 import com.colla.platform.modules.platform.domain.PlatformModels.ObjectAccessState;
 import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectSummary;
 import com.colla.platform.shared.auth.CurrentUser;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -29,21 +31,31 @@ public class DocumentPlatformObjectResolver implements PlatformObjectResolver {
     public Optional<PlatformObjectSummary> resolve(CurrentUser currentUser, UUID objectId) {
         try {
             DocumentSummary document = documentService.requireView(currentUser, objectId);
+            KnowledgeContext knowledgeContext = documentService.knowledgeContext(currentUser, objectId);
+            Map<String, Object> metadata = new LinkedHashMap<>();
+            metadata.put("versionNo", document.currentVersionNo());
+            metadata.put("permissionLevel", document.permissionLevel());
+            metadata.put("docType", document.docType());
+            metadata.put("archived", document.archived());
+            metadata.put("sourceModule", "knowledge");
+            metadata.put("updatedAt", document.updatedAt().toString());
+            metadata.put("backReferencePath", "/docs/" + objectId + "/relations");
+            if (knowledgeContext != null) {
+                metadata.put("knowledgeBaseId", knowledgeContext.spaceId().toString());
+                metadata.put("knowledgeBaseName", knowledgeContext.spaceName());
+                metadata.put("knowledgePath", knowledgeContext.pathText());
+                metadata.put("backReferencePath", knowledgeContext.webPath());
+            }
             return Optional.of(new PlatformObjectSummary(
                 objectType(),
                 objectId,
                 ObjectAccessState.available,
                 document.title(),
-                "文档 / v" + document.currentVersionNo(),
+                knowledgeContext == null ? "文档 / v" + document.currentVersionNo() : knowledgeContext.spaceName() + " / " + knowledgeContext.pathText(),
                 document.archived() ? "archived" : "active",
-                "/docs/" + objectId,
+                knowledgeContext == null ? "/docs/" + objectId : knowledgeContext.webPath(),
                 "colla://document/" + objectId,
-                Map.of(
-                    "versionNo", document.currentVersionNo(),
-                    "permissionLevel", document.permissionLevel(),
-                    "docType", document.docType(),
-                    "archived", document.archived()
-                )
+                metadata
             ));
         } catch (ResponseStatusException exception) {
             if (exception.getStatusCode().equals(HttpStatus.FORBIDDEN)) {

@@ -59,11 +59,23 @@ class AdminUserControllerIntegrationTests {
 
         JsonNode member = objectMapper.readTree(createResponse);
         String memberId = member.get("id").asText();
+        String avatarFileId = UUID.randomUUID().toString();
 
         mockMvc.perform(get("/api/admin/users")
                 .header("Authorization", "Bearer " + adminToken))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$[*].username", hasItem(username)));
+
+        mockMvc.perform(patch("/api/admin/users/" + memberId + "/avatar")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"avatarFileId\":\"" + avatarFileId + "\"}"))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/admin/users")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$[?(@.id == '" + memberId + "')].avatarFileId", hasItem(avatarFileId)));
 
         mockMvc.perform(post("/api/admin/users/" + memberId + "/disable")
                 .header("Authorization", "Bearer " + adminToken))

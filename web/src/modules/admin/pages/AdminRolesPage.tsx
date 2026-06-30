@@ -1,24 +1,36 @@
-import { EditOutlined, PlusOutlined, SafetyCertificateOutlined, SaveOutlined } from '@ant-design/icons'
+import {
+  AppstoreOutlined,
+  DatabaseOutlined,
+  DeleteOutlined,
+  EditOutlined,
+  FileTextOutlined,
+  FolderOpenOutlined,
+  PlusOutlined,
+  SafetyCertificateOutlined,
+  SaveOutlined,
+  SearchOutlined,
+  SettingOutlined,
+  TeamOutlined,
+  UserOutlined,
+} from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Alert,
   App as AntdApp,
   Button,
   Checkbox,
-  Divider,
   Form,
   Input,
   Modal,
   Select,
   Space,
   Table,
-  Tag,
   Typography,
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 
+import { AdminModuleNav } from '../components/AdminModuleNav'
 import { listMembers } from '../api/adminUsersApi'
 import { flattenDepartmentTree, listDepartmentTree } from '../api/departmentsApi'
 import {
@@ -46,12 +58,13 @@ import { listUserGroups } from '../api/userGroupsApi'
 type RoleFormValues = RoleRequest & Pick<UpdateRoleRequest, 'status'>
 
 export function AdminRolesPage() {
-  const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { message, modal } = AntdApp.useApp()
   const [selectedRoleId, setSelectedRoleId] = useState<string>()
   const [permissionDraft, setPermissionDraft] = useState<{ roleId?: string; codes: string[] }>({ codes: [] })
   const [confirmHighRisk, setConfirmHighRisk] = useState(false)
+  const [roleSearch, setRoleSearch] = useState('')
+  const [activePermissionModule, setActivePermissionModule] = useState('all')
   const [roleModalOpen, setRoleModalOpen] = useState(false)
   const [editingRole, setEditingRole] = useState<RoleSummary | null>(null)
   const [assignmentOpen, setAssignmentOpen] = useState(false)
@@ -92,6 +105,20 @@ export function AdminRolesPage() {
       return groups
     }, {})
   }, [permissions])
+  const permissionModules = useMemo(() => Object.keys(groupedPermissions), [groupedPermissions])
+  const visiblePermissionGroups = useMemo(() => {
+    if (activePermissionModule === 'all') {
+      return Object.entries(groupedPermissions)
+    }
+    return Object.entries(groupedPermissions).filter(([module]) => module === activePermissionModule)
+  }, [activePermissionModule, groupedPermissions])
+  const filteredRoles = useMemo(() => {
+    const keyword = roleSearch.trim().toLowerCase()
+    if (!keyword) {
+      return roles
+    }
+    return roles.filter((role) => role.name.toLowerCase().includes(keyword) || role.code.toLowerCase().includes(keyword))
+  }, [roleSearch, roles])
 
   const selectedContainsHighRisk = permissionCodes.some((code) => {
     const riskLevel = permissionByCode.get(code)?.riskLevel
@@ -167,72 +194,38 @@ export function AdminRolesPage() {
     onSuccess: refreshRoles,
   })
 
-  const roleColumns: ColumnsType<RoleSummary> = [
-    {
-      title: '角色',
-      dataIndex: 'name',
-      render: (_, record) => (
-        <Space orientation="vertical" size={0}>
-          <Typography.Text strong>{record.name}</Typography.Text>
-          <Typography.Text type="secondary">{record.code}</Typography.Text>
-        </Space>
-      ),
-    },
-    {
-      title: '权限数',
-      dataIndex: 'permissionCodes',
-      render: (codes: string[]) => codes.length,
-    },
-    {
-      title: '状态',
-      dataIndex: 'status',
-      render: (status, record) => (
-        <Space size={4}>
-          <Tag color={status === 'active' ? 'green' : 'default'}>{status}</Tag>
-          {record.builtin ? <Tag color="blue">built-in</Tag> : null}
-        </Space>
-      ),
-    },
-    {
-      title: '操作',
-      key: 'actions',
-      render: (_, record) => (
-        <Button icon={<EditOutlined />} size="small" onClick={() => openEditRole(record)}>
-          编辑
-        </Button>
-      ),
-    },
-  ]
-
   const assignmentColumns: ColumnsType<RoleAssignmentSummary> = [
     {
       title: '对象',
       dataIndex: 'subjectName',
       render: (_, record) => (
-        <Space orientation="vertical" size={0}>
-          <Typography.Text>{record.subjectName ?? record.subjectId}</Typography.Text>
-          <Typography.Text type="secondary">
-            {subjectTypeLabel(record.subjectType)} · {record.subjectDetail ?? record.subjectId}
-          </Typography.Text>
+        <Space size={12} className="admin-table-entity">
+          <span className="admin-entity-avatar">{entityInitial(record.subjectName ?? record.subjectId)}</span>
+          <Space orientation="vertical" size={0}>
+            <Typography.Text strong>{record.subjectName ?? record.subjectId}</Typography.Text>
+            <Typography.Text type="secondary">
+              {subjectTypeLabel(record.subjectType)} · {record.subjectDetail ?? record.subjectId}
+            </Typography.Text>
+          </Space>
         </Space>
       ),
     },
     {
       title: '范围',
       dataIndex: 'scopeType',
-      render: (scopeType) => <Tag>{scopeType}</Tag>,
+      render: (scopeType) => <span className="admin-soft-badge gray">{scopeType}</span>,
     },
     {
       title: '状态',
       dataIndex: 'status',
-      render: (status) => <Tag color={status === 'active' ? 'green' : 'default'}>{status}</Tag>,
+      render: (status) => <span className={`admin-status-pill ${status === 'active' ? 'active' : 'disabled'}`}>{status}</span>,
     },
     {
       title: '操作',
       key: 'actions',
       render: (_, record) =>
         record.status === 'active' ? (
-          <Button danger size="small" loading={revokeMutation.isPending} onClick={() => confirmRevoke(record)}>
+          <Button className="admin-danger-outline" icon={<DeleteOutlined />} size="small" loading={revokeMutation.isPending} onClick={() => confirmRevoke(record)}>
             撤销
           </Button>
         ) : null,
@@ -313,114 +306,211 @@ export function AdminRolesPage() {
   }
 
   return (
-    <Space orientation="vertical" size={16} className="page-stack">
-      <Space className="page-toolbar">
-        <Typography.Title level={2}>角色与权限</Typography.Title>
-        <Space>
-          <Button onClick={() => navigate('/admin/users')}>成员</Button>
-          <Button onClick={() => navigate('/admin/departments')}>组织架构</Button>
-          <Button onClick={() => navigate('/admin/user-groups')}>用户组</Button>
-          <Button onClick={() => navigate('/admin/audit-logs')}>审计日志</Button>
-          <Button type="primary" icon={<PlusOutlined />} onClick={openCreateRole}>
-            新增角色
-          </Button>
+    <Space orientation="vertical" size={16} className="page-stack admin-org-page admin-roles-page">
+      <Space className="page-toolbar admin-saas-toolbar" wrap>
+        <Space size={12}>
+          <span className="admin-page-icon">
+            <SafetyCertificateOutlined />
+          </span>
+          <Typography.Title level={2}>角色与权限</Typography.Title>
         </Space>
+        <AdminModuleNav />
       </Space>
 
-      <Table
-        rowKey="id"
-        loading={rolesQuery.isLoading}
-        columns={roleColumns}
-        dataSource={roles}
-        pagination={false}
-        rowSelection={{
-          type: 'radio',
-          selectedRowKeys: effectiveSelectedRoleId ? [effectiveSelectedRoleId] : [],
-          onChange: ([roleId]) => {
-            setSelectedRoleId(String(roleId))
-            setConfirmHighRisk(false)
-          },
-        }}
-        onRow={(record) => ({
-          onClick: () => {
-            setSelectedRoleId(record.id)
-            setConfirmHighRisk(false)
-          },
-        })}
-      />
-
-      {selectedRole ? (
-        <Space orientation="vertical" size={16} className="page-stack">
-          <Space className="page-toolbar">
-            <Space orientation="vertical" size={0}>
-              <Typography.Title level={3}>{selectedRole.name}</Typography.Title>
-              <Typography.Text type="secondary">{selectedRole.description || selectedRole.code}</Typography.Text>
-            </Space>
-            <Button
-              type="primary"
-              icon={<SaveOutlined />}
-              loading={savePermissionsMutation.isPending}
-              onClick={savePermissions}
-            >
-              保存权限
-            </Button>
-          </Space>
-
-          {selectedContainsHighRisk ? (
-            <Alert
-              showIcon
-              type="warning"
-              message="包含高风险权限"
-              description={
-                <Checkbox checked={confirmHighRisk} onChange={(event) => setConfirmHighRisk(event.target.checked)}>
-                  已确认该角色需要高风险权限，保存后将写入审计日志
-                </Checkbox>
-              }
-            />
-          ) : null}
-
-          <Space orientation="vertical" size={12} className="page-stack">
-            {Object.entries(groupedPermissions).map(([module, modulePermissions]) => (
-              <Space key={module} orientation="vertical" size={8} className="page-stack">
-                <Typography.Title level={4}>{module}</Typography.Title>
-                <Checkbox.Group
-                  className="admin-role-permission-group"
-                  value={permissionCodes}
-                  onChange={(values) => setPermissionDraft({ roleId: selectedRole.id, codes: values.map(String) })}
-                >
-                  <Space wrap>
-                    {modulePermissions.map((permission) => (
-                      <Checkbox key={permission.code} value={permission.code}>
-                        <Space size={4}>
-                          <span>{permission.name}</span>
-                          <Tag color={riskColor(permission.riskLevel)}>{permission.riskLevel}</Tag>
-                          <Typography.Text type="secondary">{permission.code}</Typography.Text>
-                        </Space>
-                      </Checkbox>
-                    ))}
-                  </Space>
-                </Checkbox.Group>
-              </Space>
-            ))}
-          </Space>
-
-          <Divider />
-
-          <Space className="page-toolbar">
-            <Typography.Title level={3}>角色分配</Typography.Title>
-            <Button icon={<SafetyCertificateOutlined />} onClick={openCreateAssignment}>
-              分配角色
-            </Button>
-          </Space>
-          <Table
-            rowKey="id"
-            loading={assignmentsQuery.isLoading}
-            columns={assignmentColumns}
-            dataSource={assignmentsQuery.data ?? []}
-            pagination={{ pageSize: 6 }}
+      <div className="admin-roles-layout">
+        <aside className="admin-org-panel admin-role-sidebar">
+          <Button block type="primary" icon={<PlusOutlined />} className="admin-sidebar-create admin-sidebar-create-top" onClick={openCreateRole}>
+            新增角色
+          </Button>
+          <Input
+            allowClear
+            className="admin-role-search"
+            prefix={<SearchOutlined />}
+            placeholder="搜索角色名称或代码"
+            value={roleSearch}
+            onChange={(event) => setRoleSearch(event.target.value)}
           />
-        </Space>
-      ) : null}
+          <div className="admin-role-card-list">
+            {rolesQuery.isLoading ? (
+              <div className="admin-user-group-empty">
+                <Typography.Text type="secondary">Loading...</Typography.Text>
+              </div>
+            ) : filteredRoles.length ? (
+              filteredRoles.map((role) => (
+                <div
+                  key={role.id}
+                  role="button"
+                  tabIndex={0}
+                  className={`admin-role-card ${role.id === effectiveSelectedRoleId ? 'active' : ''}`}
+                  onClick={() => {
+                    setSelectedRoleId(role.id)
+                    setConfirmHighRisk(false)
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault()
+                      setSelectedRoleId(role.id)
+                      setConfirmHighRisk(false)
+                    }
+                  }}
+                >
+                  <span className="admin-role-card-icon">
+                    <TeamOutlined />
+                  </span>
+                  <span className="admin-role-card-copy">
+                    <span className="admin-role-card-title">
+                      <strong>{role.name}</strong>
+                      <small>{role.permissionCodes.length} 权限数</small>
+                    </span>
+                    <small>{role.code}</small>
+                    <span className="admin-role-card-badges">
+                      <span className={`admin-status-pill ${role.status === 'active' ? 'active' : 'disabled'}`}>{role.status}</span>
+                      {role.builtin ? <span className="admin-soft-badge blue">built-in</span> : null}
+                    </span>
+                  </span>
+                  <Button
+                    className="admin-action-button admin-role-edit-button"
+                    icon={<EditOutlined />}
+                    size="small"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      openEditRole(role)
+                    }}
+                  >
+                    编辑
+                  </Button>
+                </div>
+              ))
+            ) : (
+              <div className="admin-user-group-empty">
+                <Typography.Text type="secondary">No data</Typography.Text>
+              </div>
+            )}
+          </div>
+        </aside>
+
+        <main className="admin-roles-main">
+          {selectedRole ? (
+            <Space orientation="vertical" size={16} className="page-stack">
+              <div className="admin-group-hero-card admin-role-detail-card">
+                <div className="admin-group-hero-main">
+                  <span className="admin-group-hero-icon">
+                    <TeamOutlined />
+                  </span>
+                  <div className="admin-group-hero-copy">
+                    <Space className="admin-group-hero-title-row" size={10} align="center" wrap>
+                      <Typography.Title level={3}>{selectedRole.name}</Typography.Title>
+                      {selectedRole.builtin ? <span className="admin-soft-badge blue">built-in</span> : null}
+                      <Typography.Text type="secondary">{selectedRole.code}</Typography.Text>
+                    </Space>
+                    <Typography.Paragraph className="admin-role-description" type="secondary">
+                      描述： {selectedRole.description || selectedRole.code}
+                    </Typography.Paragraph>
+                  </div>
+                </div>
+                <Button
+                  type="primary"
+                  icon={<SaveOutlined />}
+                  loading={savePermissionsMutation.isPending}
+                  onClick={savePermissions}
+                >
+                  保存权限
+                </Button>
+              </div>
+
+              <div className="admin-detail-card-grid admin-role-card-grid">
+                <div className="admin-data-card admin-permission-card">
+                  {selectedContainsHighRisk ? (
+                    <Alert
+                      className="admin-role-risk-alert"
+                      showIcon
+                      type="warning"
+                      message="包含高风险权限"
+                      description={
+                        <Checkbox checked={confirmHighRisk} onChange={(event) => setConfirmHighRisk(event.target.checked)}>
+                          已确认该角色需要高风险权限，保存后将写入审计日志
+                        </Checkbox>
+                      }
+                    />
+                  ) : null}
+
+                  <div className="admin-permission-layout">
+                    <nav className="admin-permission-category-nav" aria-label="权限分类">
+                      <button
+                        type="button"
+                        className={activePermissionModule === 'all' ? 'active' : ''}
+                        onClick={() => setActivePermissionModule('all')}
+                      >
+                        <AppstoreOutlined />
+                        <span>全部权限</span>
+                      </button>
+                      {permissionModules.map((module) => (
+                        <button
+                          type="button"
+                          key={module}
+                          className={activePermissionModule === module ? 'active' : ''}
+                          onClick={() => setActivePermissionModule(module)}
+                        >
+                          {permissionModuleIcon(module)}
+                          <span>{module}</span>
+                        </button>
+                      ))}
+                    </nav>
+
+                    <Checkbox.Group
+                      className="admin-permission-groups"
+                      value={permissionCodes}
+                      onChange={(values) => setPermissionDraft({ roleId: selectedRole.id, codes: values.map(String) })}
+                    >
+                      {visiblePermissionGroups.map(([module, modulePermissions]) => (
+                        <section key={module} className="admin-permission-group">
+                          <div className="admin-permission-group-title">
+                            {permissionModuleIcon(module)}
+                            <Typography.Title level={4}>{module}</Typography.Title>
+                          </div>
+                          <div className="admin-permission-item-grid">
+                            {modulePermissions.map((permission) => (
+                              <Checkbox key={permission.code} className="admin-permission-item-card" value={permission.code}>
+                                <span className="admin-permission-item-copy">
+                                  <strong>{permission.name}</strong>
+                                  <small>{permission.code}</small>
+                                </span>
+                                <span className={`admin-risk-badge ${riskClassName(permission.riskLevel)}`}>
+                                  {permission.riskLevel}
+                                </span>
+                              </Checkbox>
+                            ))}
+                          </div>
+                        </section>
+                      ))}
+                    </Checkbox.Group>
+                  </div>
+                </div>
+
+                <div className="admin-data-card admin-role-assignment-card">
+                  <Space className="admin-org-section-toolbar" wrap>
+                    <Space size={10}>
+                      <SafetyCertificateOutlined className="admin-section-icon" />
+                      <Typography.Title level={4}>角色分配</Typography.Title>
+                    </Space>
+                    <Button className="admin-action-button" icon={<SafetyCertificateOutlined />} onClick={openCreateAssignment}>
+                      分配角色
+                    </Button>
+                  </Space>
+                  <Table
+                    rowKey="id"
+                    loading={assignmentsQuery.isLoading}
+                    columns={assignmentColumns}
+                    dataSource={assignmentsQuery.data ?? []}
+                    locale={{ emptyText: <AdminTableEmpty /> }}
+                    pagination={{ pageSize: 6, placement: ['bottomEnd'] }}
+                  />
+                </div>
+              </div>
+            </Space>
+          ) : null}
+        </main>
+      </div>
 
       <Modal
         title={editingRole ? '编辑角色' : '新增角色'}
@@ -516,15 +606,38 @@ export function AdminRolesPage() {
   )
 }
 
-function riskColor(riskLevel: PermissionRiskLevel) {
-  if (riskLevel === 'critical') return 'red'
-  if (riskLevel === 'high') return 'orange'
-  if (riskLevel === 'medium') return 'gold'
-  return 'green'
+function riskClassName(riskLevel: PermissionRiskLevel) {
+  if (riskLevel === 'critical' || riskLevel === 'high') return 'high'
+  if (riskLevel === 'medium') return 'medium'
+  return 'low'
+}
+
+function permissionModuleIcon(module: string) {
+  if (module === 'admin') return <SettingOutlined />
+  if (module === 'identity') return <UserOutlined />
+  if (module === 'project') return <FolderOpenOutlined />
+  if (module === 'doc') return <FileTextOutlined />
+  if (module === 'base') return <DatabaseOutlined />
+  return <SafetyCertificateOutlined />
 }
 
 function subjectTypeLabel(subjectType: RoleAssignmentSubjectType) {
   if (subjectType === 'department') return '部门'
   if (subjectType === 'user_group') return '用户组'
   return '成员'
+}
+
+function entityInitial(value: string) {
+  return (value || '?').trim().slice(0, 1).toUpperCase()
+}
+
+function AdminTableEmpty() {
+  return (
+    <div className="admin-table-empty">
+      <span className="admin-empty-icon">
+        <SafetyCertificateOutlined />
+      </span>
+      <Typography.Text type="secondary">No data</Typography.Text>
+    </div>
+  )
 }

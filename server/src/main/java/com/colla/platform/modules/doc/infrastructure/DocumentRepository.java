@@ -12,6 +12,7 @@ import com.colla.platform.modules.doc.domain.DocumentModels.DocumentSummary;
 import com.colla.platform.modules.doc.domain.DocumentModels.DocumentTemplate;
 import com.colla.platform.modules.doc.domain.DocumentModels.DocumentVersion;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -92,9 +93,37 @@ public interface DocumentRepository {
 
     Optional<DocumentVersion> findVersion(UUID workspaceId, UUID documentId, int versionNo);
 
-    List<DocumentTemplate> listTemplates(UUID workspaceId);
+    List<DocumentTemplate> listTemplates(UUID workspaceId, UUID knowledgeBaseId);
 
     Optional<DocumentTemplate> findTemplate(UUID workspaceId, UUID templateId);
+
+    UUID createTemplate(
+        UUID workspaceId,
+        UUID knowledgeBaseId,
+        String title,
+        String description,
+        String category,
+        String content,
+        UUID actorId
+    );
+
+    void updateKnowledgeMetadata(
+        UUID workspaceId,
+        UUID documentId,
+        UUID maintainerId,
+        List<String> tags,
+        String category,
+        String knowledgeStatus,
+        LocalDate reviewDueAt,
+        Instant verifiedAt,
+        UUID actorId
+    );
+
+    List<DocumentSummary> listKnowledgeBaseDocuments(UUID workspaceId, UUID rootDocumentId);
+
+    List<DocumentSummary> listDueForReview(UUID workspaceId, LocalDate beforeDate, int limit);
+
+    int markReviewReminderSent(UUID workspaceId, UUID documentId, UUID actorId);
 
     void upsertPermission(UUID workspaceId, UUID documentId, UUID userId, String permissionLevel, UUID actorId);
 

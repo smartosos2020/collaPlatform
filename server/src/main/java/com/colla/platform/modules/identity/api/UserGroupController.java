@@ -75,6 +75,11 @@ public class UserGroupController {
         userGroupService.disableGroup(currentUser(authentication), groupId);
     }
 
+    @PostMapping("/{groupId}/enable")
+    public void enable(@PathVariable UUID groupId, Authentication authentication) {
+        userGroupService.enableGroup(currentUser(authentication), groupId);
+    }
+
     @DeleteMapping("/{groupId}")
     public void delete(@PathVariable UUID groupId, Authentication authentication) {
         userGroupService.deleteGroup(currentUser(authentication), groupId);

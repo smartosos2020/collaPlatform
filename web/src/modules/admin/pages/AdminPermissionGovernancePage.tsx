@@ -1,10 +1,12 @@
-import { DownloadOutlined, SearchOutlined } from '@ant-design/icons'
+import { DownloadOutlined, SafetyCertificateOutlined, SearchOutlined } from '@ant-design/icons'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { Alert, App as AntdApp, Button, Form, Input, Select, Space, Table, Tag, Typography } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
-import { useNavigate } from 'react-router-dom'
+import { useState } from 'react'
 
 import { listMembers } from '../api/adminUsersApi'
+import { AdminModuleNav } from '../components/AdminModuleNav'
+import { listKnowledgeBases } from '../../knowledgeBases/api/knowledgeBasesApi'
 import {
   exportPermissionRisks,
   inspectPermission,
@@ -14,18 +16,22 @@ import {
 } from '../api/permissionGovernanceApi'
 
 export function AdminPermissionGovernancePage() {
-  const navigate = useNavigate()
   const { message } = AntdApp.useApp()
   const [form] = Form.useForm<InspectPermissionParams>()
+  const [knowledgeBaseId, setKnowledgeBaseId] = useState<string | undefined>()
   const membersQuery = useQuery({ queryKey: ['admin', 'users'], queryFn: () => listMembers() })
-  const risksQuery = useQuery({ queryKey: ['admin', 'permission-governance', 'risks'], queryFn: listPermissionRisks })
+  const spacesQuery = useQuery({ queryKey: ['knowledge-bases', 'permission-governance'], queryFn: () => listKnowledgeBases({ includeArchived: true }) })
+  const risksQuery = useQuery({
+    queryKey: ['admin', 'permission-governance', 'risks', knowledgeBaseId],
+    queryFn: () => listPermissionRisks({ knowledgeBaseId }),
+  })
 
   const inspectMutation = useMutation({
     mutationFn: inspectPermission,
   })
 
   const exportMutation = useMutation({
-    mutationFn: exportPermissionRisks,
+    mutationFn: () => exportPermissionRisks({ knowledgeBaseId }),
     onSuccess: (csv) => {
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
       const url = URL.createObjectURL(blob)
@@ -72,19 +78,23 @@ export function AdminPermissionGovernancePage() {
   ]
 
   return (
-    <Space orientation="vertical" size={16} className="page-stack">
-      <Space className="page-toolbar">
-        <Typography.Title level={2}>权限治理</Typography.Title>
-        <Space>
-          <Button onClick={() => navigate('/admin/roles')}>角色权限</Button>
-          <Button onClick={() => navigate('/admin/audit-logs?permissionOnly=true')}>权限审计</Button>
-          <Button icon={<DownloadOutlined />} loading={exportMutation.isPending} onClick={() => exportMutation.mutate()}>
-            导出风险
-          </Button>
+    <Space orientation="vertical" size={16} className="page-stack admin-org-page admin-permission-governance-page">
+      <Space className="page-toolbar admin-saas-toolbar" wrap>
+        <Space size={12}>
+          <span className="admin-page-icon">
+            <SafetyCertificateOutlined />
+          </span>
+          <Typography.Title level={2}>权限治理</Typography.Title>
         </Space>
+        <AdminModuleNav />
       </Space>
 
-      <Form form={form} layout="inline" onFinish={(values) => inspectMutation.mutate(values)}>
+      <Form
+        form={form}
+        layout="inline"
+        className="permission-governance-inspect-form"
+        onFinish={(values) => inspectMutation.mutate(values)}
+      >
         <Form.Item name="userId" rules={[{ required: true, message: '请选择用户' }]}>
           <Select
             showSearch
@@ -103,6 +113,7 @@ export function AdminPermissionGovernancePage() {
             className="permission-governance-resource-type"
             options={[
               { label: 'document', value: 'document' },
+              { label: 'knowledge_base', value: 'knowledge_base' },
               { label: 'base', value: 'base' },
               { label: 'project', value: 'project' },
             ]}
@@ -125,6 +136,20 @@ export function AdminPermissionGovernancePage() {
         <Button type="primary" htmlType="submit" icon={<SearchOutlined />} loading={inspectMutation.isPending}>
           排查
         </Button>
+        <Button icon={<DownloadOutlined />} loading={exportMutation.isPending} onClick={() => exportMutation.mutate()}>
+          导出风险
+        </Button>
+        <Select
+          allowClear
+          showSearch
+          className="permission-governance-kb"
+          loading={spacesQuery.isLoading}
+          placeholder="按知识库筛选风险"
+          value={knowledgeBaseId}
+          onChange={setKnowledgeBaseId}
+          optionFilterProp="label"
+          options={(spacesQuery.data ?? []).map((space) => ({ value: space.id, label: space.name }))}
+        />
       </Form>
 
       {inspectMutation.data ? (

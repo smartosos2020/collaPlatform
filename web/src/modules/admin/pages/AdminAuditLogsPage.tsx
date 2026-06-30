@@ -1,4 +1,4 @@
-import { SearchOutlined } from '@ant-design/icons'
+import { AuditOutlined, SearchOutlined } from '@ant-design/icons'
 import { useQuery } from '@tanstack/react-query'
 import { Button, Form, Input, Select, Space, Table, Tag, Typography } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
@@ -7,12 +7,14 @@ import { useSearchParams } from 'react-router-dom'
 
 import { objectTypeText } from '../../platform/objectTypeLabels'
 import { listAuditLogs, type AuditLogEntry, type AuditLogFilters } from '../api/auditLogsApi'
+import { AdminModuleNav } from '../components/AdminModuleNav'
 
 const targetTypeOptions = [
   { label: '全部对象', value: '' },
   { label: '事项', value: 'issue' },
   { label: '项目', value: 'project' },
   { label: '文档', value: 'document' },
+  { label: '知识库', value: 'knowledge_base' },
   { label: '表格', value: 'base' },
   { label: '审批', value: 'approval' },
   { label: '用户', value: 'user' },
@@ -76,14 +78,15 @@ export function AdminAuditLogsPage() {
   ]
 
   return (
-    <Space orientation="vertical" size={16} className="page-stack">
-      <Space className="page-toolbar">
-        <Typography.Title level={2}>审计日志</Typography.Title>
-        <Space>
-          <Button onClick={() => applyActionFilter('resource.permission.granted')}>权限授予</Button>
-          <Button onClick={() => applyActionFilter('resource.permission.revoked')}>权限撤销</Button>
-          <Button onClick={() => applyActionFilter('role.permissions.updated')}>角色权限</Button>
+    <Space orientation="vertical" size={16} className="page-stack admin-org-page admin-audit-logs-page">
+      <Space className="page-toolbar admin-saas-toolbar" wrap>
+        <Space size={12}>
+          <span className="admin-page-icon">
+            <AuditOutlined />
+          </span>
+          <Typography.Title level={2}>审计日志</Typography.Title>
         </Space>
+        <AdminModuleNav />
       </Space>
 
       <Form
@@ -111,6 +114,15 @@ export function AdminAuditLogsPage() {
         <Button type="primary" htmlType="submit" icon={<SearchOutlined />}>
           查询
         </Button>
+        <Space className="admin-audit-shortcuts" wrap>
+          <Button onClick={() => applyActionFilter('resource.permission.granted')}>权限授予</Button>
+          <Button onClick={() => applyActionFilter('resource.permission.revoked')}>权限撤销</Button>
+          <Button onClick={() => applyActionFilter('role.permissions.updated')}>角色权限</Button>
+          <Button onClick={() => applyKnowledgeFilter('knowledge_base.updated', 'knowledge_base')}>知识库设置</Button>
+          <Button onClick={() => applyKnowledgeFilter('resource.permission.granted', 'knowledge_base')}>知识库成员</Button>
+          <Button onClick={() => applyKnowledgeFilter('knowledge_base.governance.bulk_updated', 'knowledge_base')}>批量治理</Button>
+          <Button onClick={() => applyKnowledgeFilter('resource.permission.inheritance.broken', 'document')}>继承变更</Button>
+        </Space>
       </Form>
 
       <Table
@@ -125,6 +137,12 @@ export function AdminAuditLogsPage() {
 
   function applyActionFilter(action: string) {
     const nextFilters = { ...filters, action, limit: filters.limit ?? 100 }
+    form.setFieldsValue(nextFilters)
+    setFilters(nextFilters)
+  }
+
+  function applyKnowledgeFilter(action: string, targetType: string) {
+    const nextFilters = { ...filters, action, targetType, limit: filters.limit ?? 100 }
     form.setFieldsValue(nextFilters)
     setFilters(nextFilters)
   }

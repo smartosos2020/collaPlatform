@@ -118,6 +118,14 @@ public class OrganizationService {
     }
 
     @Transactional
+    public void enableDepartment(CurrentUser operator, UUID departmentId) {
+        permissionService.requireManageOrganization(operator);
+        requireDepartment(operator.workspaceId(), departmentId);
+        organizationRepository.enableDepartment(operator.workspaceId(), departmentId, operator.id());
+        auditService.log(operator, "department.enabled", "department", departmentId, Map.of());
+    }
+
+    @Transactional
     public void deleteDepartment(CurrentUser operator, UUID departmentId) {
         permissionService.requireManageOrganization(operator);
         requireDepartment(operator.workspaceId(), departmentId);

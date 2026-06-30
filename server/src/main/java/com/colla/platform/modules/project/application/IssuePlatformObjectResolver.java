@@ -44,6 +44,9 @@ public class IssuePlatformObjectResolver implements PlatformObjectResolver {
         metadata.put("projectId", value.projectId().toString());
         metadata.put("issueKey", value.issueKey());
         metadata.put("priority", value.priority());
+        metadata.put("sourceModule", "project");
+        metadata.put("updatedAt", value.updatedAt().toString());
+        metadata.put("backReferencePath", "/issues/" + objectId + "#relations");
         if (value.workflowReason() != null) {
             metadata.put("workflowReason", value.workflowReason());
         }

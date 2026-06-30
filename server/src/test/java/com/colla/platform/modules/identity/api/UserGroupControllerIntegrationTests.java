@@ -125,6 +125,32 @@ class UserGroupControllerIntegrationTests {
             .andExpect(status().isForbidden());
     }
 
+    @Test
+    void adminCanEnableDisabledUserGroup() throws Exception {
+        String adminToken = login("admin", "admin123456", "user-group-admin-" + UUID.randomUUID());
+        String suffix = UUID.randomUUID().toString().replace("-", "").substring(0, 10);
+        JsonNode group = createGroup(adminToken, "toggle_group_" + suffix, "Toggle Group " + suffix, "normal");
+        UUID groupId = UUID.fromString(group.get("id").asText());
+
+        mockMvc.perform(post("/api/admin/user-groups/" + groupId + "/disable")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/admin/user-groups/" + groupId)
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.status").value("disabled"));
+
+        mockMvc.perform(post("/api/admin/user-groups/" + groupId + "/enable")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/admin/user-groups/" + groupId)
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.status").value("active"));
+    }
+
     private JsonNode createGroup(String token, String code, String name, String groupType) throws Exception {
         String response = mockMvc.perform(post("/api/admin/user-groups")
                 .header("Authorization", "Bearer " + token)

@@ -76,6 +76,10 @@ export async function disableDepartment(departmentId: string): Promise<void> {
   return apiPost<void>(`/admin/departments/${departmentId}/disable`)
 }
 
+export async function enableDepartment(departmentId: string): Promise<void> {
+  return apiPost<void>(`/admin/departments/${departmentId}/enable`)
+}
+
 export async function deleteDepartment(departmentId: string): Promise<void> {
   return apiDelete<void>(`/admin/departments/${departmentId}`)
 }

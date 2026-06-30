@@ -46,6 +46,8 @@ public interface IdentityRepository {
 
     void updatePassword(UUID workspaceId, UUID userId, String passwordHash, UUID updatedBy);
 
+    void updateAvatarFileId(UUID workspaceId, UUID userId, UUID avatarFileId, UUID updatedBy);
+
     Optional<UUID> findDefaultWorkspaceId();
 
     List<DeviceSummary> listDevices(UUID workspaceId, UUID userId, UUID currentDeviceId);

@@ -65,6 +65,15 @@ public class AdminUserController {
         memberService.resetPassword(currentUser(authentication), userId, request.newPassword());
     }
 
+    @PatchMapping("/{userId}/avatar")
+    public void updateAvatar(
+        @PathVariable UUID userId,
+        @RequestBody UpdateAvatarRequest request,
+        Authentication authentication
+    ) {
+        memberService.updateAvatar(currentUser(authentication), userId, request.avatarFileId());
+    }
+
     private CurrentUser currentUser(Authentication authentication) {
         return (CurrentUser) authentication.getPrincipal();
     }
@@ -80,5 +89,8 @@ public class AdminUserController {
     }
 
     public record ResetPasswordRequest(@NotBlank @Size(min = 8) String newPassword) {
+    }
+
+    public record UpdateAvatarRequest(UUID avatarFileId) {
     }
 }

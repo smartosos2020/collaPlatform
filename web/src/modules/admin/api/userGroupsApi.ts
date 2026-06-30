@@ -67,6 +67,10 @@ export async function disableUserGroup(groupId: string): Promise<void> {
   return apiPost<void>(`/admin/user-groups/${groupId}/disable`)
 }
 
+export async function enableUserGroup(groupId: string): Promise<void> {
+  return apiPost<void>(`/admin/user-groups/${groupId}/enable`)
+}
+
 export async function deleteUserGroup(groupId: string): Promise<void> {
   return apiDelete<void>(`/admin/user-groups/${groupId}`)
 }

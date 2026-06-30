@@ -1,14 +1,24 @@
 package com.colla.platform.modules.search.application;
 
+import com.colla.platform.modules.audit.application.AuditService;
 import com.colla.platform.modules.platform.application.PlatformObjectResolverRegistry;
 import com.colla.platform.modules.platform.domain.PlatformModels.ObjectAccessState;
 import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectSummary;
 import com.colla.platform.modules.permission.application.PermissionService;
 import com.colla.platform.modules.search.domain.SearchModels.SearchResponse;
+import com.colla.platform.modules.search.domain.SearchModels.SearchFilters;
 import com.colla.platform.modules.search.domain.SearchModels.SearchResult;
 import com.colla.platform.modules.search.infrastructure.SearchRepository;
 import com.colla.platform.shared.auth.CurrentUser;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -19,30 +29,64 @@ public class SearchService {
     private final SearchIndexService searchIndexService;
     private final PlatformObjectResolverRegistry objectResolverRegistry;
     private final PermissionService permissionService;
+    private final AuditService auditService;
 
     public SearchService(
         SearchRepository searchRepository,
         SearchIndexService searchIndexService,
         PlatformObjectResolverRegistry objectResolverRegistry,
-        PermissionService permissionService
+        PermissionService permissionService,
+        AuditService auditService
     ) {
         this.searchRepository = searchRepository;
         this.searchIndexService = searchIndexService;
         this.objectResolverRegistry = objectResolverRegistry;
         this.permissionService = permissionService;
+        this.auditService = auditService;
     }
 
-    public SearchResponse search(CurrentUser currentUser, String query, int limit) {
+    public SearchResponse search(
+        CurrentUser currentUser,
+        String query,
+        int limit,
+        UUID knowledgeBaseId,
+        UUID directoryId,
+        String docType,
+        List<String> tags,
+        UUID maintainerId,
+        String knowledgeStatus,
+        String updatedFrom,
+        String updatedTo
+    ) {
         String normalizedQuery = query == null ? "" : query.trim();
         if (normalizedQuery.length() < 2) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Search query must be at least 2 characters");
         }
         int boundedLimit = Math.max(1, Math.min(limit, 50));
+        SearchFilters filters = new SearchFilters(
+            knowledgeBaseId,
+            directoryId,
+            normalizeDocType(docType),
+            normalizeTags(tags),
+            maintainerId,
+            normalizeKnowledgeStatus(knowledgeStatus),
+            parseInstantOrDate(updatedFrom, false),
+            parseInstantOrDate(updatedTo, true)
+        );
         searchIndexService.refreshWorkspaceIndex(currentUser.workspaceId());
-        List<SearchResult> items = searchRepository.search(currentUser.workspaceId(), currentUser.id(), normalizedQuery, boundedLimit).stream()
+        List<SearchResult> items = searchRepository.search(currentUser.workspaceId(), currentUser.id(), normalizedQuery, filters, boundedLimit).stream()
             .map(result -> hydrateResult(currentUser, result))
             .limit(boundedLimit)
             .toList();
+        if (items.isEmpty() && knowledgeBaseId != null) {
+            auditService.log(
+                currentUser,
+                "knowledge.search.no_result",
+                "knowledge_base",
+                knowledgeBaseId,
+                Map.of("query", normalizedQuery)
+            );
+        }
         return new SearchResponse(normalizedQuery, items);
     }
 
@@ -64,7 +108,16 @@ public class SearchService {
                 result.score(),
                 result.updatedAt(),
                 summary.accessState().name(),
-                "对象当前为 " + summary.accessState().name() + " 状态，搜索结果不展示原始内容。"
+                "对象当前为 " + summary.accessState().name() + " 状态，搜索结果不展示原始内容。",
+                result.knowledgeBaseId(),
+                result.parentDocumentId(),
+                result.directoryPath(),
+                result.tags(),
+                result.maintainerId(),
+                result.maintainerName(),
+                result.knowledgeStatus(),
+                result.docType(),
+                result.hitSource()
             );
         }
         return new SearchResult(
@@ -77,8 +130,76 @@ public class SearchService {
             result.score(),
             result.updatedAt(),
             summary.accessState().name(),
-            availableExplanation(summary)
+            availableExplanation(summary),
+            result.knowledgeBaseId(),
+            result.parentDocumentId(),
+            result.directoryPath(),
+            result.tags(),
+            result.maintainerId(),
+            result.maintainerName(),
+            result.knowledgeStatus(),
+            result.docType(),
+            result.hitSource()
         );
+    }
+
+    private String normalizeDocType(String docType) {
+        if (docType == null || docType.isBlank()) {
+            return null;
+        }
+        String normalized = docType.trim().toLowerCase(Locale.ROOT);
+        if (!List.of("space", "folder", "markdown").contains(normalized)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid document type filter");
+        }
+        return normalized;
+    }
+
+    private String normalizeKnowledgeStatus(String knowledgeStatus) {
+        if (knowledgeStatus == null || knowledgeStatus.isBlank()) {
+            return null;
+        }
+        String normalized = knowledgeStatus.trim().toLowerCase(Locale.ROOT);
+        if (!List.of("draft", "verified", "needs_review", "outdated", "archived").contains(normalized)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid knowledge status filter");
+        }
+        return normalized;
+    }
+
+    private List<String> normalizeTags(List<String> tags) {
+        if (tags == null || tags.isEmpty()) {
+            return List.of();
+        }
+        List<String> normalized = new ArrayList<>();
+        for (String raw : tags) {
+            if (raw == null) {
+                continue;
+            }
+            for (String part : raw.split(",")) {
+                String value = part.trim().toLowerCase(Locale.ROOT);
+                if (!value.isBlank() && !normalized.contains(value)) {
+                    normalized.add(value);
+                }
+            }
+        }
+        return normalized;
+    }
+
+    private Instant parseInstantOrDate(String value, boolean endOfDay) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return Instant.parse(value.trim());
+        } catch (DateTimeParseException ignored) {
+            try {
+                LocalDate date = LocalDate.parse(value.trim());
+                return endOfDay
+                    ? date.plusDays(1).atStartOfDay().toInstant(ZoneOffset.UTC)
+                    : date.atStartOfDay().toInstant(ZoneOffset.UTC);
+            } catch (DateTimeParseException exception) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid updated time filter");
+            }
+        }
     }
 
     private String unavailableTitle(ObjectAccessState accessState) {

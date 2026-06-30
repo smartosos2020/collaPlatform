@@ -33,13 +33,19 @@ public class PermissionGovernanceController {
     }
 
     @GetMapping("/risks")
-    public PermissionRiskSummary risks(Authentication authentication) {
-        return permissionGovernanceService.risks(currentUser(authentication));
+    public PermissionRiskSummary risks(
+        @RequestParam(required = false) UUID knowledgeBaseId,
+        Authentication authentication
+    ) {
+        return permissionGovernanceService.risks(currentUser(authentication), knowledgeBaseId);
     }
 
     @GetMapping(value = "/risks/export", produces = "text/csv")
-    public String exportRisks(Authentication authentication) {
-        return permissionGovernanceService.exportRisksCsv(currentUser(authentication));
+    public String exportRisks(
+        @RequestParam(required = false) UUID knowledgeBaseId,
+        Authentication authentication
+    ) {
+        return permissionGovernanceService.exportRisksCsv(currentUser(authentication), knowledgeBaseId);
     }
 
     private CurrentUser currentUser(Authentication authentication) {
