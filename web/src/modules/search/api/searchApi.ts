@@ -12,6 +12,7 @@ export type SearchResult = {
   accessState: 'available' | 'forbidden' | 'deleted' | 'not_found' | 'invalid'
   permissionExplanation?: string | null
   knowledgeBaseId?: string | null
+  knowledgeBaseName?: string | null
   parentDocumentId?: string | null
   directoryPath?: string | null
   tags?: string[]

@@ -61,6 +61,10 @@ export function ObjectSummaryCard({ summary, onOpen }: { summary: PlatformObject
     return <UnavailableObjectAlert summary={summary} />
   }
   const canOpen = summary.accessState === 'available' && Boolean(summary.webPath || summary.objectId)
+  const knowledgePath = metadataText(summary.metadata.knowledgePath)
+  const knowledgeBaseName = metadataText(summary.metadata.knowledgeBaseName)
+  const displayTitle = summary.objectType === 'document' && knowledgePath ? knowledgePath : summary.title || '未命名对象'
+  const displaySubtitle = summary.objectType === 'document' && knowledgePath ? summary.title : summary.subtitle
   const handleOpen = () => {
     if (onOpen) {
       onOpen()
@@ -75,23 +79,23 @@ export function ObjectSummaryCard({ summary, onOpen }: { summary: PlatformObject
         <Space orientation="vertical" size={2}>
           <Space size={8}>
             <LinkOutlined />
-            <Typography.Text strong>{summary.title || '未命名对象'}</Typography.Text>
+            <Typography.Text strong>{displayTitle}</Typography.Text>
             <Tag>{objectTypeText[summary.objectType] ?? summary.objectType}</Tag>
             {summary.status ? <Tag color="blue">{summary.status}</Tag> : null}
             <Tag color="green">{accessText[summary.accessState] ?? summary.accessState}</Tag>
           </Space>
-          {summary.subtitle ? <Typography.Text type="secondary">{summary.subtitle}</Typography.Text> : null}
+          {displaySubtitle ? <Typography.Text type="secondary">{displaySubtitle}</Typography.Text> : null}
           <Space wrap size={4} className="internal-link-meta">
             {metadataText(summary.metadata.sourceModule) ? <Tag>来源 {moduleText(metadataText(summary.metadata.sourceModule))}</Tag> : null}
+            {knowledgeBaseName ? <Tag color="purple">{knowledgeBaseName}</Tag> : null}
             {metadataText(summary.metadata.updatedAt) ? <Tag>更新 {formatMetaDate(metadataText(summary.metadata.updatedAt))}</Tag> : null}
-            {metadataText(summary.metadata.knowledgePath) ? <Tag>{metadataText(summary.metadata.knowledgePath)}</Tag> : null}
           </Space>
         </Space>
         <Space size={4}>
           {metadataText(summary.metadata.backReferencePath) ? <Button size="small" href={metadataText(summary.metadata.backReferencePath)}>回看引用</Button> : null}
           {canOpen ? (
             <Button size="small" loading={openMutation.isPending} onClick={handleOpen}>
-              打开
+              {summary.objectType === 'document' ? '打开知识内容' : '打开'}
             </Button>
           ) : null}
         </Space>

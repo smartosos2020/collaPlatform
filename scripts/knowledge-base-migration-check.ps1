@@ -104,7 +104,7 @@ if (Get-Command $PsqlPath -ErrorAction SilentlyContinue) {
 
 Invoke-CountCheck `
     -Key "legacy-space-without-kb-space" `
-    -Name "Legacy knowledge-base root documents without space rows" `
+    -Name "Legacy knowledge-base root content nodes without space rows" `
     -Sql @"
 select count(*)
 from documents d
@@ -119,11 +119,78 @@ where d.doc_type = 'space'
         and k.deleted_at is null
   );
 "@ `
-    -EvidenceSuffix "V038 should map legacy knowledge-base space documents into knowledge_base_spaces."
+    -EvidenceSuffix "V038 should map legacy knowledge-base root content nodes into knowledge_base_spaces."
+
+Invoke-CountCheck `
+    -Key "kb-space-without-root-document" `
+    -Name "Knowledge-base spaces without active root directory content node" `
+    -Sql @"
+select count(*)
+from knowledge_base_spaces k
+where k.deleted_at is null
+  and not exists (
+      select 1
+      from documents d
+      where d.workspace_id = k.workspace_id
+        and d.id = k.root_document_id
+        and d.doc_type = 'space'
+        and d.deleted_at is null
+  );
+"@
+
+Invoke-CountCheck `
+    -Key "kb-space-without-home-document" `
+    -Name "Knowledge-base spaces without active home content node" `
+    -Sql @"
+select count(*)
+from knowledge_base_spaces k
+where k.deleted_at is null
+  and not exists (
+      select 1
+      from documents d
+      where d.workspace_id = k.workspace_id
+        and d.id = k.home_document_id
+        and d.deleted_at is null
+  );
+"@
+
+Invoke-CountCheck `
+    -Key "kb-root-metadata-shadow-fields" `
+    -Name "Knowledge-base root content nodes still carrying deprecated space metadata" `
+    -Sql @"
+select count(*)
+from knowledge_base_spaces k
+join documents d
+  on d.workspace_id = k.workspace_id
+ and d.id = k.root_document_id
+ and d.deleted_at is null
+where k.deleted_at is null
+  and (
+      d.description is not null
+      or d.cover_url is not null
+      or d.default_permission_level <> 'view'
+  );
+"@ `
+    -EvidenceSuffix "New knowledge-base settings must live in knowledge_base_spaces; these root content node fields are compatibility shadows only."
+
+Invoke-CountCheck `
+    -Key "kb-root-compat-flag-missing" `
+    -Name "Knowledge-base root content nodes missing legacy compatibility flag" `
+    -Sql @"
+select count(*)
+from knowledge_base_spaces k
+join documents d
+  on d.workspace_id = k.workspace_id
+ and d.id = k.root_document_id
+ and d.deleted_at is null
+where k.deleted_at is null
+  and d.knowledge_base = false;
+"@ `
+    -EvidenceSuffix "The flag is not authoritative, but keeping it true preserves old deep-link and migration compatibility."
 
 Invoke-CountCheck `
     -Key "orphan-document-parent" `
-    -Name "Documents with missing active parent" `
+    -Name "Knowledge content nodes with missing active parent" `
     -Sql @"
 select count(*)
 from documents d
@@ -140,7 +207,7 @@ where d.deleted_at is null
 
 Invoke-CountCheck `
     -Key "document-without-owner-permission" `
-    -Name "Active documents without owner permission" `
+    -Name "Active knowledge content nodes without owner permission" `
     -Sql @"
 select count(*)
 from documents d
@@ -177,6 +244,31 @@ where k.deleted_at is null
 "@
 
 Invoke-CountCheck `
+    -Key "legacy-document-permission-backfill-gap" `
+    -Name "Active legacy content permissions not backfilled to resource_permissions" `
+    -Sql @"
+select count(*)
+from document_permissions dp
+join documents d
+  on d.workspace_id = dp.workspace_id
+ and d.id = dp.document_id
+ and d.deleted_at is null
+where dp.revoked_at is null
+  and not exists (
+      select 1
+      from resource_permissions rp
+      where rp.workspace_id = dp.workspace_id
+        and rp.resource_type = 'document'
+        and rp.resource_id = dp.document_id
+        and rp.subject_type = dp.subject_type
+        and rp.subject_id = dp.subject_id
+        and rp.permission_level = dp.permission_level
+        and rp.status = 'active'
+        and (rp.expires_at is null or rp.expires_at > now())
+  );
+"@
+
+Invoke-CountCheck `
     -Key "inherited-permission-with-missing-source" `
     -Name "Inherited permissions with missing source object" `
     -Sql @"
@@ -199,7 +291,7 @@ where rp.status = 'active'
 
 Invoke-CountCheck `
     -Key "kb-document-search-index-gap" `
-    -Name "Knowledge-base documents missing search index rows" `
+    -Name "Knowledge-base content nodes missing search index rows" `
     -Sql @"
 with recursive kb_docs as (
     select k.id as knowledge_base_id, d.workspace_id, d.id, d.parent_id
@@ -225,7 +317,7 @@ where not exists (
 
 Invoke-CountCheck `
     -Key "search-index-deleted-document" `
-    -Name "Search index rows pointing to deleted or missing documents" `
+    -Name "Search index rows pointing to deleted or missing knowledge content nodes" `
     -Sql @"
 select count(*)
 from search_index_documents si

@@ -425,23 +425,6 @@ export function exportDocumentHtml(documentId: string) {
   return apiGetText(`/docs/${documentId}/export/html`)
 }
 
-export function importKnowledgeBaseMarkdownBatch(
-  spaceId: string,
-  request: {
-    parentId?: string | null
-    items: Array<{ title: string; content: string; category?: string; tags?: string[] }>
-  },
-) {
-  return apiPost<{ spaceId: string; importedCount: number; documents: DocumentSummary[] }>(
-    `/knowledge-bases/${spaceId}/import/markdown-batch`,
-    request,
-  )
-}
-
-export function exportKnowledgeBaseMarkdown(spaceId: string) {
-  return apiGetText(`/knowledge-bases/${spaceId}/export/markdown`)
-}
-
 export function diffDocumentVersions(documentId: string, fromVersionNo: number, toVersionNo: number) {
   const params = new URLSearchParams({ fromVersionNo: String(fromVersionNo), toVersionNo: String(toVersionNo) })
   return apiGet<DocumentVersionDiff>(`/docs/${documentId}/versions/diff?${params}`)
@@ -469,6 +452,7 @@ export function setDocumentShareLinkEnabled(documentId: string, enabled: boolean
   return apiPost<DocumentShareLink>(`/docs/${documentId}/share-link/${enabled ? 'enable' : 'disable'}`)
 }
 
+// Compatibility only: knowledge_base_spaces is the source of truth for knowledge base space settings.
 export function updateDocumentKnowledgeBase(
   documentId: string,
   request: {

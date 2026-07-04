@@ -20,7 +20,7 @@ export function DashboardPage() {
   const approvalTodos = dashboard?.approvalTodos ?? []
   const unreadConversations = dashboard?.unreadConversations ?? []
   const latestNotifications = dashboard?.latestNotifications ?? []
-  const recentDocuments = dashboard?.recentDocuments ?? []
+  const recentKnowledgeContents = dashboard?.recentKnowledgeContents ?? []
   const recentBases = dashboard?.recentBases ?? []
   const recentObjects = dashboard?.recentObjects ?? []
   const favoriteObjects = dashboard?.favoriteObjects ?? []
@@ -133,7 +133,7 @@ export function DashboardPage() {
                   </Space>
                   <Space orientation="vertical" size={4}>
                     {notification.body ? <Typography.Text type="secondary">{notification.body}</Typography.Text> : null}
-                    {notification.webPath ? <Link to={notification.webPath}>打开目标对象</Link> : null}
+                    {notification.webPath ? <Link to={notification.webPath}>打开关联对象</Link> : null}
                   </Space>
                 </span>
               </div>
@@ -141,16 +141,13 @@ export function DashboardPage() {
           </Space>
         </Card>
 
-        <Card title="最近文档和表格" loading={dashboardQuery.isLoading} className="dashboard-section">
+        <Card title="最近知识内容和表格" loading={dashboardQuery.isLoading} className="dashboard-section">
           <Space orientation="vertical" size={10} className="dashboard-list">
-            {recentDocuments.length + recentBases.length === 0 ? (
+            {recentKnowledgeContents.length + recentBases.length === 0 ? (
               <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无最近内容" />
             ) : null}
-            {recentDocuments.map((doc) => (
-              <Link className="dashboard-list-item" to={`/docs/${doc.id}`} key={`doc-${doc.id}`}>
-                <span>{doc.title}</span>
-                <Tag>文档</Tag>
-              </Link>
+            {recentKnowledgeContents.map((summary) => (
+              <ObjectSummaryCard summary={summary} key={`doc-${summary.objectId}`} />
             ))}
             {recentBases.map((base) => (
               <Link className="dashboard-list-item" to={`/bases/${base.id}`} key={`base-${base.id}`}>

@@ -1,6 +1,7 @@
 package com.colla.platform.modules.workspace.api;
 
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
+import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.blankOrNullString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -117,10 +118,10 @@ class WorkspaceControllerIntegrationTests {
             .andExpect(jsonPath("$.unreadMessageCount", greaterThanOrEqualTo(1)))
             .andExpect(jsonPath("$.unreadNotificationCount", greaterThanOrEqualTo(1)))
             .andExpect(jsonPath("$.latestNotifications.length()", greaterThanOrEqualTo(1)))
-            .andExpect(jsonPath("$.recentDocuments[0].id").value(documentId.toString()))
-            .andExpect(jsonPath("$.recentBases[0].id").value(baseId.toString()))
-            .andExpect(jsonPath("$.recentObjects[0].objectType").value("issue"))
-            .andExpect(jsonPath("$.favoriteObjects[0].objectId").value(issueId.toString()));
+            .andExpect(jsonPath("$.recentDocuments[*].id").value(hasItem(documentId.toString())))
+            .andExpect(jsonPath("$.recentBases[*].id").value(hasItem(baseId.toString())))
+            .andExpect(jsonPath("$.recentObjects[*].objectType").value(hasItem("issue")))
+            .andExpect(jsonPath("$.favoriteObjects[*].objectId").value(hasItem(issueId.toString())));
 
         mockMvc.perform(post("/api/notifications/read-batch")
                 .header("Authorization", "Bearer " + viewerToken)

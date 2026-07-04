@@ -31,6 +31,11 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public class JdbcDocumentRepository implements DocumentRepository {
+    /*
+     * Persistence compatibility boundary: the documents table stores knowledge
+     * content nodes. Table/repository names are retained for migration and old-link
+     * compatibility, not as an independent document product model.
+     */
     private final JdbcTemplate jdbcTemplate;
 
     public JdbcDocumentRepository(JdbcTemplate jdbcTemplate) {
@@ -218,53 +223,6 @@ public class JdbcDocumentRepository implements DocumentRepository {
         if (parentId == null) {
             return;
         }
-        List<Map<String, Object>> parentPermissions = jdbcTemplate.queryForList(
-            """
-                select subject_type, subject_id, user_id, permission_level
-                from document_permissions
-                where workspace_id = ? and document_id = ? and revoked_at is null
-                """,
-            workspaceId,
-            parentId
-        );
-        for (Map<String, Object> permission : parentPermissions) {
-            jdbcTemplate.update(
-            """
-                insert into document_permissions
-                    (id, workspace_id, document_id, subject_type, subject_id, user_id, permission_level, source_type, source_document_id,
-                     created_by, created_at, updated_by, updated_at)
-                values (?, ?, ?, ?, ?, ?, ?, 'inherited', ?, ?, now(), ?, now())
-                on conflict (document_id, subject_type, subject_id) do nothing
-                """,
-            UUID.randomUUID(),
-            workspaceId,
-            documentId,
-            permission.get("subject_type"),
-            permission.get("subject_id"),
-            permission.get("user_id"),
-            permission.get("permission_level"),
-            parentId,
-            actorId,
-            actorId
-            );
-            jdbcTemplate.update(
-                """
-                    insert into resource_permissions
-                        (id, workspace_id, resource_type, resource_id, subject_type, subject_id, permission_level,
-                         source_type, source_id, status, created_by, created_at, updated_by, updated_at)
-                    values (?, ?, 'document', ?, ?, ?, ?, 'inherited', ?, 'active', ?, now(), ?, now())
-                    """,
-                UUID.randomUUID(),
-                workspaceId,
-                documentId,
-                permission.get("subject_type"),
-                permission.get("subject_id"),
-                permission.get("permission_level"),
-                parentId,
-                actorId,
-                actorId
-            );
-        }
         List<Map<String, Object>> parentResourcePermissions = jdbcTemplate.queryForList(
             """
                 select subject_type, subject_id, permission_level, expires_at
@@ -412,8 +370,8 @@ public class JdbcDocumentRepository implements DocumentRepository {
         return jdbcTemplate.query(
             """
                 with visible_permissions as (
-                    select dp.document_id, dp.permission_level,
-                           case dp.permission_level
+                    select rp.resource_id document_id, rp.permission_level,
+                           case rp.permission_level
                                when 'owner' then 5
                                when 'manage' then 4
                                when 'edit' then 3
@@ -421,14 +379,19 @@ public class JdbcDocumentRepository implements DocumentRepository {
                                when 'view' then 1
                                else 0
                            end permission_rank
-                    from document_permissions dp
-                    where dp.workspace_id = ?
-                      and dp.subject_type = 'user'
-                      and dp.subject_id = ?
-                      and dp.revoked_at is null
+                    from resource_permissions rp
+                    join users u on u.id = rp.subject_id
+                        and u.workspace_id = rp.workspace_id
+                        and u.deleted_at is null
+                    where rp.workspace_id = ?
+                      and rp.resource_type = 'document'
+                      and rp.subject_type = 'user'
+                      and rp.subject_id = ?
+                      and rp.status = 'active'
+                      and (rp.expires_at is null or rp.expires_at > now())
                     union all
-                    select dp.document_id, dp.permission_level,
-                           case dp.permission_level
+                    select rp.resource_id document_id, rp.permission_level,
+                           case rp.permission_level
                                when 'owner' then 5
                                when 'manage' then 4
                                when 'edit' then 3
@@ -436,18 +399,44 @@ public class JdbcDocumentRepository implements DocumentRepository {
                                when 'view' then 1
                                else 0
                            end permission_rank
-                    from document_permissions dp
-                    join user_groups ug on ug.id = dp.subject_id
-                        and ug.workspace_id = dp.workspace_id
+                    from resource_permissions rp
+                    join departments d on d.id = rp.subject_id
+                        and d.workspace_id = rp.workspace_id
+                        and d.status = 'active'
+                        and d.deleted_at is null
+                    join department_members dm on dm.workspace_id = rp.workspace_id
+                        and dm.department_id = d.id
+                        and dm.user_id = ?
+                        and dm.ended_at is null
+                    where rp.workspace_id = ?
+                      and rp.resource_type = 'document'
+                      and rp.subject_type = 'department'
+                      and rp.status = 'active'
+                      and (rp.expires_at is null or rp.expires_at > now())
+                    union all
+                    select rp.resource_id document_id, rp.permission_level,
+                           case rp.permission_level
+                               when 'owner' then 5
+                               when 'manage' then 4
+                               when 'edit' then 3
+                               when 'comment' then 2
+                               when 'view' then 1
+                               else 0
+                           end permission_rank
+                    from resource_permissions rp
+                    join user_groups ug on ug.id = rp.subject_id
+                        and ug.workspace_id = rp.workspace_id
                         and ug.status = 'active'
                         and ug.deleted_at is null
-                    where dp.workspace_id = ?
-                      and dp.subject_type = 'user_group'
-                      and dp.revoked_at is null
+                    where rp.workspace_id = ?
+                      and rp.resource_type = 'document'
+                      and rp.subject_type = 'user_group'
+                      and rp.status = 'active'
+                      and (rp.expires_at is null or rp.expires_at > now())
                       and exists (
                           select 1
                           from user_group_members ugm
-                          where ugm.workspace_id = dp.workspace_id
+                          where ugm.workspace_id = rp.workspace_id
                             and ugm.group_id = ug.id
                             and ugm.subject_type = 'user'
                             and ugm.subject_id = ?
@@ -462,11 +451,31 @@ public class JdbcDocumentRepository implements DocumentRepository {
                               and d.workspace_id = ugm.workspace_id
                               and d.status = 'active'
                               and d.deleted_at is null
-                          where ugm.workspace_id = dp.workspace_id
+                          where ugm.workspace_id = rp.workspace_id
                             and ugm.group_id = ug.id
                             and ugm.subject_type = 'department'
                             and ugm.removed_at is null
                       )
+                    union all
+                    select rp.resource_id document_id, rp.permission_level,
+                           case rp.permission_level
+                               when 'owner' then 5
+                               when 'manage' then 4
+                               when 'edit' then 3
+                               when 'comment' then 2
+                               when 'view' then 1
+                               else 0
+                           end permission_rank
+                    from resource_permissions rp
+                    join roles r on r.id = rp.subject_id and r.workspace_id = rp.workspace_id
+                    join user_roles ur on ur.role_id = r.id
+                        and ur.workspace_id = rp.workspace_id
+                        and ur.user_id = ?
+                    where rp.workspace_id = ?
+                      and rp.resource_type = 'document'
+                      and rp.subject_type = 'role'
+                      and rp.status = 'active'
+                      and (rp.expires_at is null or rp.expires_at > now())
                 ),
                 best_permissions as (
                     select document_id, permission_level
@@ -498,9 +507,13 @@ public class JdbcDocumentRepository implements DocumentRepository {
             this::mapDocumentSummary,
             workspaceId,
             userId,
+            userId,
+            workspaceId,
             workspaceId,
             userId,
             userId,
+            userId,
+            workspaceId,
             userId,
             workspaceId,
             userId,
@@ -766,28 +779,43 @@ public class JdbcDocumentRepository implements DocumentRepository {
         String permissionLevel,
         UUID actorId
     ) {
-        UUID userId = "user".equals(subjectType) ? subjectId : null;
+        int updated = jdbcTemplate.update(
+            """
+                update resource_permissions
+                set permission_level = ?,
+                    source_type = 'direct',
+                    source_id = null,
+                    status = 'active',
+                    updated_by = ?,
+                    updated_at = now()
+                where workspace_id = ?
+                  and resource_type = 'document'
+                  and resource_id = ?
+                  and subject_type = ?
+                  and subject_id = ?
+                """,
+            permissionLevel,
+            actorId,
+            workspaceId,
+            documentId,
+            subjectType,
+            subjectId
+        );
+        if (updated > 0) {
+            return;
+        }
         jdbcTemplate.update(
             """
-                insert into document_permissions
-                    (id, workspace_id, document_id, subject_type, subject_id, user_id, permission_level, source_type, source_document_id,
-                     created_by, created_at, updated_by, updated_at)
-                values (?, ?, ?, ?, ?, ?, ?, 'direct', null, ?, now(), ?, now())
-                on conflict (document_id, subject_type, subject_id)
-                do update set permission_level = excluded.permission_level,
-                    user_id = excluded.user_id,
-                    source_type = 'direct',
-                    source_document_id = null,
-                    revoked_at = null,
-                    updated_by = excluded.updated_by,
-                    updated_at = now()
+                insert into resource_permissions
+                    (id, workspace_id, resource_type, resource_id, subject_type, subject_id, permission_level,
+                     source_type, source_id, status, created_by, created_at, updated_by, updated_at)
+                values (?, ?, 'document', ?, ?, ?, ?, 'direct', null, 'active', ?, now(), ?, now())
                 """,
             UUID.randomUUID(),
             workspaceId,
             documentId,
             subjectType,
             subjectId,
-            userId,
             permissionLevel,
             actorId,
             actorId
@@ -799,55 +827,54 @@ public class JdbcDocumentRepository implements DocumentRepository {
         try {
             return Optional.ofNullable(jdbcTemplate.queryForObject(
                 """
-                    select permission_level
-                    from (
-                        select 'owner' permission_level, 5 permission_rank
-                        from documents d
-                        where d.workspace_id = ?
-                          and d.id = ?
-                          and d.deleted_at is null
-                          and d.created_by = ?
+                    with candidate_permissions as (
+                        select rp.permission_level
+                        from resource_permissions rp
+                        join documents d on d.id = rp.resource_id and d.workspace_id = rp.workspace_id and d.deleted_at is null
+                        join users u on u.id = rp.subject_id and u.workspace_id = rp.workspace_id and u.deleted_at is null
+                        where rp.workspace_id = ?
+                          and rp.resource_type = 'document'
+                          and rp.resource_id = ?
+                          and rp.subject_type = 'user'
+                          and rp.subject_id = ?
+                          and rp.status = 'active'
+                          and (rp.expires_at is null or rp.expires_at > now())
                         union all
-                        select dp.permission_level,
-                               case dp.permission_level
-                                   when 'owner' then 5
-                                   when 'manage' then 4
-                                   when 'edit' then 3
-                                   when 'comment' then 2
-                                   when 'view' then 1
-                                   else 0
-                               end permission_rank
-                        from document_permissions dp
-                        join documents d on d.id = dp.document_id and d.deleted_at is null
-                        where dp.workspace_id = ?
-                          and dp.document_id = ?
-                          and dp.subject_type = 'user'
-                          and dp.subject_id = ?
-                          and dp.revoked_at is null
+                        select rp.permission_level
+                        from resource_permissions rp
+                        join documents doc on doc.id = rp.resource_id and doc.workspace_id = rp.workspace_id and doc.deleted_at is null
+                        join departments d on d.id = rp.subject_id
+                            and d.workspace_id = rp.workspace_id
+                            and d.status = 'active'
+                            and d.deleted_at is null
+                        join department_members dm on dm.workspace_id = rp.workspace_id
+                            and dm.department_id = d.id
+                            and dm.user_id = ?
+                            and dm.ended_at is null
+                        where rp.workspace_id = ?
+                          and rp.resource_type = 'document'
+                          and rp.resource_id = ?
+                          and rp.subject_type = 'department'
+                          and rp.status = 'active'
+                          and (rp.expires_at is null or rp.expires_at > now())
                         union all
-                        select dp.permission_level,
-                               case dp.permission_level
-                                   when 'owner' then 5
-                                   when 'manage' then 4
-                                   when 'edit' then 3
-                                   when 'comment' then 2
-                                   when 'view' then 1
-                                   else 0
-                               end permission_rank
-                        from document_permissions dp
-                        join documents doc on doc.id = dp.document_id and doc.deleted_at is null
-                        join user_groups ug on ug.id = dp.subject_id
-                            and ug.workspace_id = dp.workspace_id
+                        select rp.permission_level
+                        from resource_permissions rp
+                        join documents doc on doc.id = rp.resource_id and doc.workspace_id = rp.workspace_id and doc.deleted_at is null
+                        join user_groups ug on ug.id = rp.subject_id
+                            and ug.workspace_id = rp.workspace_id
                             and ug.status = 'active'
                             and ug.deleted_at is null
-                        where dp.workspace_id = ?
-                          and dp.document_id = ?
-                          and dp.subject_type = 'user_group'
-                          and dp.revoked_at is null
+                        where rp.workspace_id = ?
+                          and rp.resource_type = 'document'
+                          and rp.resource_id = ?
+                          and rp.subject_type = 'user_group'
+                          and rp.status = 'active'
+                          and (rp.expires_at is null or rp.expires_at > now())
                           and exists (
                               select 1
                               from user_group_members ugm
-                              where ugm.workspace_id = dp.workspace_id
+                              where ugm.workspace_id = rp.workspace_id
                                 and ugm.group_id = ug.id
                                 and ugm.subject_type = 'user'
                                 and ugm.subject_id = ?
@@ -862,40 +889,60 @@ public class JdbcDocumentRepository implements DocumentRepository {
                                   and d.workspace_id = ugm.workspace_id
                                   and d.status = 'active'
                                   and d.deleted_at is null
-                              where ugm.workspace_id = dp.workspace_id
+                              where ugm.workspace_id = rp.workspace_id
                                 and ugm.group_id = ug.id
                                 and ugm.subject_type = 'department'
                                 and ugm.removed_at is null
                           )
                         union all
-                        select dsl.permission_level,
-                               case dsl.permission_level
-                                   when 'edit' then 3
-                                   when 'comment' then 2
-                                   when 'view' then 1
-                                   else 0
-                               end permission_rank
+                        select rp.permission_level
+                        from resource_permissions rp
+                        join documents d on d.id = rp.resource_id and d.workspace_id = rp.workspace_id and d.deleted_at is null
+                        join roles r on r.id = rp.subject_id and r.workspace_id = rp.workspace_id
+                        join user_roles ur on ur.role_id = r.id
+                            and ur.workspace_id = rp.workspace_id
+                            and ur.user_id = ?
+                        where rp.workspace_id = ?
+                          and rp.resource_type = 'document'
+                          and rp.resource_id = ?
+                          and rp.subject_type = 'role'
+                          and rp.status = 'active'
+                          and (rp.expires_at is null or rp.expires_at > now())
+                        union all
+                        select dsl.permission_level
                         from document_share_links dsl
                         join documents d on d.id = dsl.document_id and d.deleted_at is null
                         where d.workspace_id = ?
                           and d.id = ?
                           and dsl.enabled = true
                           and (dsl.expires_at is null or dsl.expires_at > now())
-                    ) permissions
-                    order by permission_rank desc
+                    )
+                    select permission_level
+                    from candidate_permissions
+                    order by case permission_level
+                        when 'owner' then 5
+                        when 'manage' then 4
+                        when 'edit' then 3
+                        when 'comment' then 2
+                        when 'view' then 1
+                        else 0
+                    end desc
                     limit 1
                     """,
                 String.class,
                 workspaceId,
                 documentId,
                 userId,
-                workspaceId,
-                documentId,
                 userId,
                 workspaceId,
                 documentId,
+                workspaceId,
+                documentId,
                 userId,
                 userId,
+                userId,
+                workspaceId,
+                documentId,
                 workspaceId,
                 documentId
             ));
@@ -908,6 +955,84 @@ public class JdbcDocumentRepository implements DocumentRepository {
     public boolean isShareLinkAccess(UUID workspaceId, UUID documentId, UUID userId) {
         Boolean value = jdbcTemplate.queryForObject(
             """
+                with authorized as (
+                    select 1
+                    from resource_permissions rp
+                    join users u on u.id = rp.subject_id and u.workspace_id = rp.workspace_id and u.deleted_at is null
+                    where rp.workspace_id = ?
+                      and rp.resource_type = 'document'
+                      and rp.resource_id = ?
+                      and rp.subject_type = 'user'
+                      and rp.subject_id = ?
+                      and rp.status = 'active'
+                      and (rp.expires_at is null or rp.expires_at > now())
+                    union all
+                    select 1
+                    from resource_permissions rp
+                    join departments d on d.id = rp.subject_id
+                        and d.workspace_id = rp.workspace_id
+                        and d.status = 'active'
+                        and d.deleted_at is null
+                    join department_members dm on dm.workspace_id = rp.workspace_id
+                        and dm.department_id = d.id
+                        and dm.user_id = ?
+                        and dm.ended_at is null
+                    where rp.workspace_id = ?
+                      and rp.resource_type = 'document'
+                      and rp.resource_id = ?
+                      and rp.subject_type = 'department'
+                      and rp.status = 'active'
+                      and (rp.expires_at is null or rp.expires_at > now())
+                    union all
+                    select 1
+                    from resource_permissions rp
+                    join user_groups ug on ug.id = rp.subject_id
+                        and ug.workspace_id = rp.workspace_id
+                        and ug.status = 'active'
+                        and ug.deleted_at is null
+                    where rp.workspace_id = ?
+                      and rp.resource_type = 'document'
+                      and rp.resource_id = ?
+                      and rp.subject_type = 'user_group'
+                      and rp.status = 'active'
+                      and (rp.expires_at is null or rp.expires_at > now())
+                      and exists (
+                          select 1
+                          from user_group_members ugm
+                          where ugm.workspace_id = rp.workspace_id
+                            and ugm.group_id = ug.id
+                            and ugm.subject_type = 'user'
+                            and ugm.subject_id = ?
+                            and ugm.removed_at is null
+                          union all
+                          select 1
+                          from user_group_members ugm
+                          join department_members dm on dm.department_id = ugm.subject_id
+                              and dm.user_id = ?
+                              and dm.ended_at is null
+                          join departments dep on dep.id = ugm.subject_id
+                              and dep.workspace_id = ugm.workspace_id
+                              and dep.status = 'active'
+                              and dep.deleted_at is null
+                          where ugm.workspace_id = rp.workspace_id
+                            and ugm.group_id = ug.id
+                            and ugm.subject_type = 'department'
+                            and ugm.removed_at is null
+                      )
+                    union all
+                    select 1
+                    from resource_permissions rp
+                    join roles r on r.id = rp.subject_id and r.workspace_id = rp.workspace_id
+                    join user_roles ur on ur.role_id = r.id
+                        and ur.workspace_id = rp.workspace_id
+                        and ur.user_id = ?
+                    where rp.workspace_id = ?
+                      and rp.resource_type = 'document'
+                      and rp.resource_id = ?
+                      and rp.subject_type = 'role'
+                      and rp.status = 'active'
+                      and (rp.expires_at is null or rp.expires_at > now())
+                )
                 select exists(
                     select 1
                     from documents d
@@ -916,48 +1041,7 @@ public class JdbcDocumentRepository implements DocumentRepository {
                       and d.id = ?
                       and d.deleted_at is null
                       and d.created_by <> ?
-                      and not exists (
-                          select 1
-                          from document_permissions dp
-                          where dp.document_id = d.id
-                            and dp.subject_type = 'user'
-                            and dp.subject_id = ?
-                            and dp.revoked_at is null
-                      )
-                      and not exists (
-                          select 1
-                          from document_permissions dp
-                          join user_groups ug on ug.id = dp.subject_id
-                              and ug.workspace_id = dp.workspace_id
-                              and ug.status = 'active'
-                              and ug.deleted_at is null
-                          where dp.document_id = d.id
-                            and dp.subject_type = 'user_group'
-                            and dp.revoked_at is null
-                            and exists (
-                                select 1
-                                from user_group_members ugm
-                                where ugm.workspace_id = dp.workspace_id
-                                  and ugm.group_id = ug.id
-                                  and ugm.subject_type = 'user'
-                                  and ugm.subject_id = ?
-                                  and ugm.removed_at is null
-                                union all
-                                select 1
-                                from user_group_members ugm
-                                join department_members dm on dm.department_id = ugm.subject_id
-                                    and dm.user_id = ?
-                                    and dm.ended_at is null
-                                join departments dep on dep.id = ugm.subject_id
-                                    and dep.workspace_id = ugm.workspace_id
-                                    and dep.status = 'active'
-                                    and dep.deleted_at is null
-                                where ugm.workspace_id = dp.workspace_id
-                                  and ugm.group_id = ug.id
-                                  and ugm.subject_type = 'department'
-                                  and ugm.removed_at is null
-                            )
-                      )
+                      and not exists (select 1 from authorized)
                       and dsl.enabled = true
                       and (dsl.expires_at is null or dsl.expires_at > now())
                 )
@@ -967,7 +1051,17 @@ public class JdbcDocumentRepository implements DocumentRepository {
             documentId,
             userId,
             userId,
+            workspaceId,
+            documentId,
+            workspaceId,
+            documentId,
             userId,
+            userId,
+            userId,
+            workspaceId,
+            documentId,
+            workspaceId,
+            documentId,
             userId
         );
         return Boolean.TRUE.equals(value);
@@ -977,17 +1071,27 @@ public class JdbcDocumentRepository implements DocumentRepository {
     public List<DocumentPermission> listPermissions(UUID workspaceId, UUID documentId) {
         return jdbcTemplate.query(
             """
-                select dp.id, dp.document_id, dp.subject_type, dp.subject_id, dp.user_id,
+                select rp.id, rp.resource_id document_id, rp.subject_type, rp.subject_id,
+                       case when rp.subject_type = 'user' then rp.subject_id end user_id,
                        u.username, u.display_name,
-                       case dp.subject_type when 'user' then u.display_name else ug.name end subject_name,
-                       case dp.subject_type when 'user' then u.username else ug.code end subject_detail,
-                       dp.permission_level, dp.source_type, dp.source_document_id, sd.title source_title, dp.created_at
-                from document_permissions dp
-                left join users u on u.id = dp.user_id
-                left join user_groups ug on ug.id = dp.subject_id and dp.subject_type = 'user_group'
-                left join documents sd on sd.id = dp.source_document_id
-                where dp.workspace_id = ? and dp.document_id = ? and dp.revoked_at is null
-                order by dp.subject_type, dp.created_at
+                       coalesce(u.display_name, d.name, ug.name, r.name) subject_name,
+                       coalesce(u.username, d.code, ug.code, r.code) subject_detail,
+                       rp.permission_level, rp.source_type, rp.source_id source_document_id, sd.title source_title, rp.created_at
+                from resource_permissions rp
+                left join users u on rp.subject_type = 'user' and u.id = rp.subject_id and u.workspace_id = rp.workspace_id and u.deleted_at is null
+                left join departments d on rp.subject_type = 'department' and d.id = rp.subject_id and d.workspace_id = rp.workspace_id and d.deleted_at is null
+                left join user_groups ug on rp.subject_type = 'user_group' and ug.id = rp.subject_id and ug.workspace_id = rp.workspace_id and ug.deleted_at is null
+                left join roles r on rp.subject_type = 'role' and r.id = rp.subject_id and r.workspace_id = rp.workspace_id
+                left join documents sd on sd.id = rp.source_id
+                where rp.workspace_id = ?
+                  and rp.resource_type = 'document'
+                  and rp.resource_id = ?
+                  and rp.status = 'active'
+                  and (rp.expires_at is null or rp.expires_at > now())
+                order by
+                  case rp.source_type when 'direct' then 0 when 'owner' then 1 when 'inherited' then 2 else 3 end,
+                  rp.subject_type,
+                  rp.created_at
                 """,
             (rs, rowNum) -> new DocumentPermission(
                 rs.getObject("id", UUID.class),
@@ -1146,23 +1250,69 @@ public class JdbcDocumentRepository implements DocumentRepository {
     public List<UUID> findDocumentManagerUserIds(UUID workspaceId, UUID documentId) {
         return jdbcTemplate.queryForList(
             """
-                select distinct user_id
-                from (
-                    select d.created_by user_id
+                with manager_permissions as (
+                    select 'user' subject_type, d.created_by subject_id
                     from documents d
                     where d.workspace_id = ? and d.id = ? and d.deleted_at is null
                     union all
-                    select dp.user_id
-                    from document_permissions dp
-                    where dp.workspace_id = ? and dp.document_id = ? and dp.revoked_at is null
-                      and dp.permission_level in ('manage', 'owner')
+                    select rp.subject_type, rp.subject_id
+                    from resource_permissions rp
+                    where rp.workspace_id = ?
+                      and rp.resource_type = 'document'
+                      and rp.resource_id = ?
+                      and rp.permission_level in ('manage', 'owner')
+                      and rp.status = 'active'
+                      and (rp.expires_at is null or rp.expires_at > now())
+                )
+                select distinct user_id
+                from (
+                    select mp.subject_id user_id
+                    from manager_permissions mp
+                    join users u on mp.subject_type = 'user' and u.id = mp.subject_id and u.workspace_id = ? and u.deleted_at is null
+                    union all
+                    select dm.user_id
+                    from manager_permissions mp
+                    join department_members dm on mp.subject_type = 'department'
+                        and dm.workspace_id = ?
+                        and dm.department_id = mp.subject_id
+                        and dm.ended_at is null
+                    union all
+                    select ugm.subject_id
+                    from manager_permissions mp
+                    join user_group_members ugm on mp.subject_type = 'user_group'
+                        and ugm.workspace_id = ?
+                        and ugm.group_id = mp.subject_id
+                        and ugm.subject_type = 'user'
+                        and ugm.removed_at is null
+                    union all
+                    select dm.user_id
+                    from manager_permissions mp
+                    join user_group_members ugm on mp.subject_type = 'user_group'
+                        and ugm.workspace_id = ?
+                        and ugm.group_id = mp.subject_id
+                        and ugm.subject_type = 'department'
+                        and ugm.removed_at is null
+                    join department_members dm on dm.workspace_id = ugm.workspace_id
+                        and dm.department_id = ugm.subject_id
+                        and dm.ended_at is null
+                    union all
+                    select ur.user_id
+                    from manager_permissions mp
+                    join user_roles ur on mp.subject_type = 'role'
+                        and ur.workspace_id = ?
+                        and ur.role_id = mp.subject_id
                 ) managers
                 """,
             UUID.class,
             workspaceId,
             documentId,
             workspaceId,
-            documentId
+            documentId,
+            workspaceId,
+            workspaceId,
+            workspaceId,
+            workspaceId,
+            workspaceId
         );
     }
 

@@ -326,7 +326,7 @@ public class ResourcePermissionManagementService {
                     "body", permissionRequestBody(normalizedPermission, normalizedReason),
                     "targetType", normalizedResourceType,
                     "targetId", resourceId.toString(),
-                    "webPath", webPath(normalizedResourceType, resourceId),
+                    "webPath", webPath(currentUser.workspaceId(), normalizedResourceType, resourceId),
                     "dedupeKey", "resource.permission_request:" + requestId + ":" + managerId
                 ),
                 "notification.resource.permission_request:" + requestId + ":" + managerId
@@ -774,7 +774,7 @@ public class ResourcePermissionManagementService {
                 "body", "权限：" + request.permissionLevel(),
                 "targetType", request.resourceType(),
                 "targetId", request.resourceId().toString(),
-                "webPath", webPath(request.resourceType(), request.resourceId()),
+                "webPath", webPath(currentUser.workspaceId(), request.resourceType(), request.resourceId()),
                 "dedupeKey", "resource.permission_request.decision:" + request.id()
             ),
             "notification.resource.permission_request.decision:" + request.id()
@@ -856,9 +856,11 @@ public class ResourcePermissionManagementService {
         return "申请权限：" + permissionLevel + "；原因：" + reason;
     }
 
-    private String webPath(String resourceType, UUID resourceId) {
+    private String webPath(UUID workspaceId, String resourceType, UUID resourceId) {
         return switch (resourceType) {
-            case "document" -> "/docs/" + resourceId;
+            case "document" -> knowledgeBaseSpaceRepository.findSpaceByDocumentId(workspaceId, resourceId)
+                .map(space -> "/knowledge-bases/" + space.id() + "?docId=" + resourceId)
+                .orElse("/docs/" + resourceId);
             case "knowledge_base" -> "/knowledge-bases/" + resourceId;
             default -> "/";
         };

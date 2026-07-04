@@ -70,7 +70,6 @@ import {
   saveDocument,
   saveDocumentBlocks,
   setDocumentShareLinkEnabled,
-  updateDocumentKnowledgeBase,
   updateDocumentKnowledgeMetadata,
   updateDocumentShareLink,
   type DocumentAcceptanceReport,
@@ -89,10 +88,6 @@ type CreateDocForm = {
   content?: string
   docType?: DocumentSummary['docType']
   parentId?: string
-  description?: string
-  coverUrl?: string
-  defaultPermissionLevel?: DocumentSummary['defaultPermissionLevel']
-  knowledgeBase?: boolean
 }
 
 type PermissionForm = {
@@ -105,13 +100,6 @@ type ShareLinkForm = {
   permissionLevel: 'view' | 'comment' | 'edit'
   enabled?: boolean
   expiresAt?: string
-}
-
-type KnowledgeBaseForm = {
-  description?: string
-  coverUrl?: string
-  defaultPermissionLevel?: DocumentSummary['defaultPermissionLevel']
-  knowledgeBase?: boolean
 }
 
 type KnowledgeMetadataForm = {
@@ -205,7 +193,7 @@ const blockAccessText: Record<string, string> = {
 }
 
 export function DocsPage() {
-  const { docId } = useParams()
+  const { docId, spaceId } = useParams()
   const location = useLocation()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -238,7 +226,6 @@ export function DocsPage() {
   const [moveForm] = Form.useForm<MoveDocForm>()
   const [permissionForm] = Form.useForm<PermissionForm>()
   const [shareLinkForm] = Form.useForm<ShareLinkForm>()
-  const [knowledgeBaseForm] = Form.useForm<KnowledgeBaseForm>()
   const [knowledgeMetadataForm] = Form.useForm<KnowledgeMetadataForm>()
   const [permissionRequestForm] = Form.useForm<PermissionRequestForm>()
   const [namedVersionForm] = Form.useForm<NamedVersionForm>()
@@ -277,6 +264,15 @@ export function DocsPage() {
     queryFn: () => getDocument(activeDocId || ''),
     enabled: Boolean(activeDocId),
   })
+  const activeKnowledgeContext = docQuery.data?.knowledgeContext
+  const activeKnowledgeDocument = docQuery.data?.document
+  const knowledgeRouteSpaceId = activeKnowledgeContext?.spaceId ?? spaceId
+  const contentRouteFor = useCallback(
+    (documentId: string, suffix = '') =>
+      knowledgeRouteSpaceId ? `/knowledge-bases/${knowledgeRouteSpaceId}/items/${documentId}${suffix}` : `/docs/${documentId}${suffix}`,
+    [knowledgeRouteSpaceId],
+  )
+  const returnToKnowledgeBasePath = activeKnowledgeContext?.webPath ?? (spaceId ? `/knowledge-bases/${spaceId}` : '/knowledge-bases')
   const versionsQuery = useQuery({
     queryKey: ['docs', activeDocId, 'versions'],
     queryFn: () => listDocumentVersions(activeDocId || ''),
@@ -305,9 +301,9 @@ export function DocsPage() {
   useEffect(() => {
     const first = docsQuery.data?.[0]
     if (!docId && !selectedDocId && first) {
-      navigate(`/docs/${first.id}`, { replace: true })
+      navigate(contentRouteFor(first.id), { replace: true })
     }
-  }, [docId, docsQuery.data, navigate, selectedDocId])
+  }, [contentRouteFor, docId, docsQuery.data, navigate, selectedDocId])
 
   useEffect(() => {
     if (activeDocId) {
@@ -424,8 +420,6 @@ export function DocsPage() {
       docType,
       parentId: activeDirectoryId ?? ROOT_PARENT_VALUE,
       content: docType === 'markdown' ? '' : '',
-      knowledgeBase: docType === 'space',
-      defaultPermissionLevel: 'view',
     })
     setCreateOpen(true)
   }
@@ -442,16 +436,12 @@ export function DocsPage() {
         content: values.content,
         docType: values.docType ?? createDocType,
         parentId: values.parentId === ROOT_PARENT_VALUE ? null : values.parentId,
-        description: values.description,
-        coverUrl: values.coverUrl,
-        defaultPermissionLevel: values.defaultPermissionLevel,
-        knowledgeBase: values.knowledgeBase,
       }),
     onSuccess: async (detail) => {
       setCreateOpen(false)
       createForm.resetFields()
       setSelectedDocId(detail.document.id)
-      navigate(`/docs/${detail.document.id}`)
+      navigate(contentRouteFor(detail.document.id))
       await refreshDocs(detail.document.id)
     },
   })
@@ -474,7 +464,7 @@ export function DocsPage() {
       message.success('已归档')
       await refreshDocs(detail.document.id)
       if (!includeArchived) {
-        navigate('/docs')
+        navigate('/knowledge-bases')
       }
     },
   })
@@ -484,7 +474,7 @@ export function DocsPage() {
     onSuccess: async (detail) => {
       message.success('已恢复')
       await refreshDocs(detail.document.id)
-      navigate(`/docs/${detail.document.id}`)
+      navigate(contentRouteFor(detail.document.id))
     },
   })
 
@@ -509,7 +499,7 @@ export function DocsPage() {
     onError: (error) => {
       if (error.message.includes('409')) {
         setConflictDocId(activeDocId)
-        message.warning('文档已被其他版本更新，请刷新后再合并保存')
+        message.warning('内容已被其他版本更新，请刷新后再合并保存')
         return
       }
       message.error('保存失败')
@@ -565,8 +555,8 @@ export function DocsPage() {
       setTemplateOpen(false)
       templateForm.resetFields()
       setSelectedDocId(detail.document.id)
-      navigate(`/docs/${detail.document.id}`)
-      message.success('已从模板创建文档')
+      navigate(contentRouteFor(detail.document.id))
+      message.success('已从模板创建内容页')
       await refreshDocs(detail.document.id)
     },
     onError: () => message.error('从模板创建失败'),
@@ -617,15 +607,6 @@ export function DocsPage() {
       await refreshDocs()
     },
     onError: () => message.error('分享链接状态更新失败'),
-  })
-
-  const knowledgeBaseMutation = useMutation({
-    mutationFn: (values: KnowledgeBaseForm) => updateDocumentKnowledgeBase(activeDocId || '', values),
-    onSuccess: async () => {
-      message.success('知识库设置已更新')
-      await refreshDocs()
-    },
-    onError: () => message.error('知识库设置更新失败'),
   })
 
   const knowledgeMetadataMutation = useMutation({
@@ -704,7 +685,7 @@ export function DocsPage() {
     onError: (error) => {
       if (error.message.includes('409')) {
         setConflictDocId(activeDocId)
-        message.warning('文档已被其他版本更新，请刷新后再保存块')
+        message.warning('内容已被其他版本更新，请刷新后再保存块')
         return
       }
       message.error('块保存失败')
@@ -845,7 +826,7 @@ export function DocsPage() {
     }
     Modal.confirm({
       title: `归档「${activeDocument.title}」`,
-      content: '归档会同时隐藏其子目录和子文档。需要显示归档后才能查看或恢复。',
+      content: '归档会同时隐藏其子目录和子内容。需要显示归档后才能查看或恢复。',
       okText: '归档',
       okButtonProps: { danger: true },
       onOk: () => archiveMutation.mutate(activeDocId),
@@ -872,7 +853,7 @@ export function DocsPage() {
 
   const openSelectionIssue = () => {
     if (!commentAnchor) {
-      message.warning('请先选择文档正文')
+      message.warning('请先选择内容正文')
       return
     }
     selectionIssueForm.setFieldsValue({
@@ -890,20 +871,17 @@ export function DocsPage() {
       <aside className="docs-sidebar">
         <div className="section-heading">
           <div>
-            <Typography.Title level={4}>团队空间</Typography.Title>
-            <Typography.Text type="secondary">{visibleDocs.length} / {docsQuery.data?.length ?? 0} 个节点</Typography.Text>
+            <Typography.Title level={4}>知识内容树</Typography.Title>
+            <Typography.Text type="secondary">{visibleDocs.length} / {docsQuery.data?.length ?? 0} 个内容节点</Typography.Text>
           </div>
           <Space>
             <Tooltip title="新建文件夹">
               <Button icon={<FolderOutlined />} onClick={() => openCreate('folder')} />
             </Tooltip>
-            <Tooltip title="新建知识库">
-              <Button icon={<FolderOpenOutlined />} onClick={() => openCreate('space')} />
-            </Tooltip>
             <Tooltip title="从模板创建">
               <Button icon={<FileTextOutlined />} onClick={openTemplateCreate} />
             </Tooltip>
-            <Tooltip title="新建文档">
+            <Tooltip title="新建内容页">
               <Button icon={<PlusOutlined />} type="primary" onClick={() => openCreate('markdown')} />
             </Tooltip>
           </Space>
@@ -921,9 +899,9 @@ export function DocsPage() {
             value={docListMode}
             onChange={setDocListMode}
             options={[
-              { value: 'all', label: '全部文档' },
+              { value: 'all', label: '全部内容' },
               { value: 'recent', label: '最近访问' },
-              { value: 'favorites', label: '收藏文档' },
+              { value: 'favorites', label: '收藏内容' },
             ]}
           />
           <div className="docs-archive-toggle">
@@ -981,11 +959,11 @@ export function DocsPage() {
                 const key = String(keys[0] ?? '')
                 if (key) {
                   setSelectedDocId(key)
-                  navigate(`/docs/${key}`)
+                  navigate(contentRouteFor(key))
                 }
               }}
             />
-            {treeData.length === 0 ? <Empty description="暂无文档空间" /> : null}
+            {treeData.length === 0 ? <Empty description="暂无知识内容" /> : null}
           </div>
         ) : (
           <Space orientation="vertical" size={8} className="docs-list">
@@ -996,7 +974,7 @@ export function DocsPage() {
                   type="button"
                   onClick={() => {
                     setSelectedDocId(document.id)
-                    navigate(`/docs/${document.id}`)
+                    navigate(contentRouteFor(document.id))
                   }}
                 >
                   {document.docType === 'markdown' ? <FileTextOutlined /> : <FolderOutlined />}
@@ -1015,17 +993,34 @@ export function DocsPage() {
                 </Tooltip>
               </div>
             ))}
-            {visibleDocs.length === 0 ? <Empty description="没有匹配文档" /> : null}
+            {visibleDocs.length === 0 ? <Empty description="没有匹配内容" /> : null}
           </Space>
         )}
       </aside>
 
       <main className="docs-main">
+        {activeKnowledgeContext && activeKnowledgeDocument ? (
+          <div className="docs-knowledge-context-bar">
+            <Button type="primary" onClick={() => navigate(returnToKnowledgeBasePath)}>
+              返回知识库
+            </Button>
+            <div className="docs-knowledge-context-main">
+              <Typography.Text strong>{activeKnowledgeContext.spaceName}</Typography.Text>
+              <Typography.Text type="secondary">{activeKnowledgeContext.pathText}</Typography.Text>
+            </div>
+            <Space wrap size={6} className="docs-knowledge-context-tags">
+              <Tag color={knowledgeStatusColor(activeKnowledgeDocument.knowledgeStatus)}>{knowledgeStatusText(activeKnowledgeDocument.knowledgeStatus)}</Tag>
+              <Tag>{permissionText(activeKnowledgeDocument.permissionLevel)}</Tag>
+              <Tag>{activeKnowledgeDocument.maintainerName ? `维护人 ${activeKnowledgeDocument.maintainerName}` : '维护人未指定'}</Tag>
+              <Tag>更新 {new Date(activeKnowledgeDocument.updatedAt).toLocaleDateString()}</Tag>
+            </Space>
+          </div>
+        ) : null}
         {pathQuery.data && pathQuery.data.length > 0 ? (
           <div className="docs-breadcrumb-bar">
             <Breadcrumb
               items={pathQuery.data.map((item) => ({
-                title: item.id === activeDocId ? item.title : <button type="button" onClick={() => navigate(`/docs/${item.id}`)}>{item.title}</button>,
+                title: item.id === activeDocId ? item.title : <button type="button" onClick={() => navigate(contentRouteFor(item.id))}>{item.title}</button>,
               }))}
             />
           </div>
@@ -1094,15 +1089,15 @@ export function DocsPage() {
             resolvingCommentId={resolveCommentMutation.variables}
             onReopenComment={(commentId) => reopenCommentMutation.mutate(commentId)}
             reopeningCommentId={reopenCommentMutation.variables}
-            onActivateComment={(commentId) => navigate(`/docs/${docQuery.data.document.id}?commentId=${commentId}`)}
+            onActivateComment={(commentId) => navigate(contentRouteFor(docQuery.data.document.id, `?commentId=${commentId}`))}
           />
         ) : docQuery.isError && activeDocId ? (
           <div className="doc-access-request">
             <Alert
               type="warning"
               showIcon
-              message="无法访问该文档"
-              description="你可以向文档管理员申请查看、评论或编辑权限。"
+              message="无法访问该知识内容"
+              description="你可以向知识库管理员申请查看、评论或编辑权限。"
             />
             <Form
               form={permissionRequestForm}
@@ -1128,16 +1123,16 @@ export function DocsPage() {
             </Form>
           </div>
         ) : (
-          <Empty description="暂无文档">
+          <Empty description="暂无知识内容">
             <Button type="primary" icon={<PlusOutlined />} onClick={() => openCreate('markdown')}>
-              新建文档
+              新建内容页
             </Button>
           </Empty>
         )}
       </main>
 
       <Modal
-        title={createDocType === 'space' ? '新建知识库' : createDocType === 'folder' ? '新建文件夹' : '新建文档'}
+        title={createDocType === 'folder' ? '新建文件夹' : '新建内容页'}
         open={createOpen}
         onCancel={() => setCreateOpen(false)}
         onOk={() => createForm.submit()}
@@ -1153,7 +1148,7 @@ export function DocsPage() {
           <Form.Item name="parentId" label="父级目录" initialValue={activeDirectoryId ?? ROOT_PARENT_VALUE}>
             <Select
               options={[
-                { label: '团队空间根目录', value: ROOT_PARENT_VALUE },
+                { label: '知识库根目录', value: ROOT_PARENT_VALUE },
                 ...folderOptions,
               ]}
             />
@@ -1162,28 +1157,6 @@ export function DocsPage() {
           <Form.Item name="content" label="内容">
             <Input.TextArea rows={8} />
           </Form.Item>
-          ) : null}
-          {createDocType === 'space' ? (
-            <>
-              <Form.Item name="knowledgeBase" label="知识库入口" valuePropName="checked" initialValue>
-                <Switch />
-              </Form.Item>
-              <Form.Item name="description" label="描述">
-                <Input.TextArea rows={3} />
-              </Form.Item>
-              <Form.Item name="coverUrl" label="封面 URL">
-                <Input />
-              </Form.Item>
-              <Form.Item name="defaultPermissionLevel" label="默认权限" initialValue="view">
-                <Select
-                  options={[
-                    { label: '可查看', value: 'view' },
-                    { label: '可评论', value: 'comment' },
-                    { label: '可编辑', value: 'edit' },
-                  ]}
-                />
-              </Form.Item>
-            </>
           ) : null}
         </Form>
       </Modal>
@@ -1212,7 +1185,7 @@ export function DocsPage() {
           <Form.Item name="parentId" label="父级目录" initialValue={activeDirectoryId ?? ROOT_PARENT_VALUE}>
             <Select
               options={[
-                { label: '团队空间根目录', value: ROOT_PARENT_VALUE },
+                { label: '知识库根目录', value: ROOT_PARENT_VALUE },
                 ...folderOptions,
               ]}
             />
@@ -1319,7 +1292,7 @@ export function DocsPage() {
       </Modal>
 
       <Modal
-        title="移动文档"
+        title="移动内容"
         open={moveOpen}
         onCancel={() => setMoveOpen(false)}
         onOk={() => moveForm.submit()}
@@ -1329,7 +1302,7 @@ export function DocsPage() {
           <Form.Item name="parentId" label="移动到" initialValue={activeDocument?.parentId ?? ROOT_PARENT_VALUE}>
             <Select
               options={[
-                { label: '团队空间根目录', value: ROOT_PARENT_VALUE },
+                { label: '知识库根目录', value: ROOT_PARENT_VALUE },
                 ...moveFolderOptions,
               ]}
             />
@@ -1440,34 +1413,6 @@ export function DocsPage() {
             </Form>
           </section>
 
-          {docQuery.data?.document.docType === 'space' ? (
-            <section>
-              <Typography.Title level={5}>知识库设置</Typography.Title>
-              <Form form={knowledgeBaseForm} layout="vertical" onFinish={(values) => knowledgeBaseMutation.mutate(values)}>
-                <Form.Item name="knowledgeBase" label="知识库入口" valuePropName="checked" initialValue>
-                  <Switch />
-                </Form.Item>
-                <Form.Item name="description" label="描述">
-                  <Input.TextArea rows={3} />
-                </Form.Item>
-                <Form.Item name="coverUrl" label="封面 URL">
-                  <Input />
-                </Form.Item>
-                <Form.Item name="defaultPermissionLevel" label="默认权限" initialValue="view">
-                  <Select
-                    options={[
-                      { label: '可查看', value: 'view' },
-                      { label: '可评论', value: 'comment' },
-                      { label: '可编辑', value: 'edit' },
-                    ]}
-                  />
-                </Form.Item>
-                <Button loading={knowledgeBaseMutation.isPending} onClick={() => knowledgeBaseForm.submit()}>
-                  保存知识库设置
-                </Button>
-              </Form>
-            </section>
-          ) : null}
         </Space>
       </Modal>
 
@@ -1489,7 +1434,7 @@ export function DocsPage() {
                 { label: '文件', value: 'file' },
                 { label: '消息', value: 'message' },
                 { label: '审批', value: 'approval' },
-                { label: '文档', value: 'document' },
+                { label: '知识内容', value: 'document' },
               ]}
             />
           </Form.Item>
@@ -1750,7 +1695,7 @@ function DocumentEditor({
           showIcon
           type="info"
           message={canComment ? '当前为评论模式' : '当前为只读模式'}
-          description={canComment ? '你可以发表评论和回复，正文需要编辑权限。' : '你可以阅读文档、打开对象卡片或通过分享入口申请更高权限。'}
+          description={canComment ? '你可以发表评论和回复，正文需要编辑权限。' : '你可以阅读内容、打开对象卡片或通过分享入口申请更高权限。'}
           action={<Button onClick={onOpenPermission}>分享与权限</Button>}
         />
       ) : null}
@@ -1993,14 +1938,17 @@ function DocumentEditor({
 
         {detail.document.docType === 'space' ? (
           <div className="doc-panel">
-            <Typography.Title level={5}>知识库</Typography.Title>
+            <Typography.Title level={5}>空间节点</Typography.Title>
             <Space orientation="vertical" size={8} className="doc-panel-list">
               <Space wrap>
                 <Tag color={detail.document.knowledgeBase ? 'green' : 'default'}>
-                  {detail.document.knowledgeBase ? '知识库入口' : '普通空间'}
+                  {detail.document.knowledgeBase ? '知识库根目录' : '普通根目录'}
                 </Tag>
                 <Tag>默认 {permissionText(detail.document.defaultPermissionLevel)}</Tag>
               </Space>
+              <Typography.Text type="secondary">
+                知识库空间的名称、封面、成员、首页和治理设置请在知识库入口维护。
+              </Typography.Text>
               {detail.document.description ? <Typography.Paragraph>{detail.document.description}</Typography.Paragraph> : null}
               {detail.document.coverUrl ? <Typography.Text type="secondary">{detail.document.coverUrl}</Typography.Text> : null}
             </Space>
@@ -2364,7 +2312,7 @@ function EmbedBlockEditor({
             onChange={(nextType) => emit({ objectType: nextType })}
             options={[
               { value: 'issue', label: '事项/BUG' },
-              { value: 'document', label: '文档' },
+              { value: 'document', label: '知识内容' },
               { value: 'base', label: 'Base' },
               { value: 'base_table', label: '数据表' },
               { value: 'base_record', label: '表格记录' },
@@ -2539,7 +2487,7 @@ function permissionText(permission: string) {
 }
 
 function docTypeText(docType: string) {
-  return { space: '空间', folder: '文件夹', markdown: '文档' }[docType] ?? docType
+  return { space: '根目录', folder: '文件夹', markdown: '内容页' }[docType] ?? docType
 }
 
 function versionTypeText(versionType: string) {
@@ -2573,8 +2521,8 @@ function acceptanceStatusColor(status: string) {
 function templateCategoryText(category: string) {
   return {
     meeting: '会议纪要',
-    requirement: '需求文档',
-    prd: '需求文档',
+    requirement: '需求说明',
+    prd: '需求说明',
     project: '项目计划',
     review: '复盘',
     knowledge: '知识条目',

@@ -120,7 +120,7 @@ type SlashCommand = {
 }
 
 const OBJECT_INSERT_TYPES = [
-  { value: 'document', label: '文档' },
+  { value: 'document', label: '知识内容' },
   { value: 'issue', label: '项目事项' },
   { value: 'message', label: '消息' },
   { value: 'base', label: 'Base' },
@@ -427,7 +427,7 @@ export function DocEditor({
         attributes: {
           class: 'doc-prosemirror',
           role: 'textbox',
-          'aria-label': '文档正文编辑器',
+          'aria-label': '知识内容正文编辑器',
           'aria-multiline': 'true',
         },
         handleKeyDown: (_view, event) => {
@@ -562,7 +562,7 @@ export function DocEditor({
           <Input
             className="doc-title-input"
             disabled={!canEdit || !fullEditorLoaded}
-            aria-label="文档标题"
+            aria-label="知识内容标题"
             value={title}
             placeholder="Untitled"
             onChange={(event) => onTitleChange(event.target.value)}
@@ -571,7 +571,7 @@ export function DocEditor({
             <Tag>v{versionNo}</Tag>
             <Tag>{permissionText(permissionLevel)}</Tag>
             <Tag color={statusColorValue}>{statusLabel}</Tag>
-            {documentStats.largeDocument ? <Tag color="orange">大文档 {documentStats.blockCount} 块</Tag> : null}
+            {documentStats.largeDocument ? <Tag color="orange">大内容 {documentStats.blockCount} 块</Tag> : null}
             <Typography.Text type="secondary">更新于 {new Date(updatedAt).toLocaleString()}</Typography.Text>
             {collaboration?.lastSavedAt ? (
               <Typography.Text type="secondary">自动保存 {new Date(collaboration.lastSavedAt).toLocaleTimeString()}</Typography.Text>
@@ -605,7 +605,7 @@ export function DocEditor({
           showIcon
           type="warning"
           message="版本冲突"
-          description="当前草稿基于旧版本。请刷新文档查看最新内容，再手动合并后保存。"
+          description="当前草稿基于旧版本。请刷新知识内容查看最新内容，再手动合并后保存。"
           action={<Button onClick={onRefresh}>刷新</Button>}
         />
       ) : null}
@@ -621,8 +621,8 @@ export function DocEditor({
         <Alert
           showIcon
           type="info"
-          message="大文档预览模式"
-          description={`当前文档约 ${documentStats.blockCount} 块、${documentStats.embedCount} 个嵌入。已先渲染前 ${LARGE_DOCUMENT_PREVIEW_BLOCKS} 块，避免移动端或低性能设备卡顿。`}
+          message="大内容预览模式"
+          description={`当前知识内容约 ${documentStats.blockCount} 块、${documentStats.embedCount} 个嵌入。已先渲染前 ${LARGE_DOCUMENT_PREVIEW_BLOCKS} 块，避免移动端或低性能设备卡顿。`}
           action={<Button onClick={() => setFullEditorState({ documentId, largeDocument: documentStats.largeDocument, loaded: true })}>加载完整编辑器</Button>}
         />
       ) : null}
@@ -1007,7 +1007,7 @@ function ObjectInsertModal({
       {state.mode === 'link' ? (
         <Input
           value={state.link}
-          placeholder="/issues/...、/docs/... 或完整链接"
+          placeholder="粘贴事项、知识内容、表格、消息或完整链接"
           onChange={(event) => onChange({ ...state, link: event.target.value })}
         />
       ) : (
@@ -1829,7 +1829,7 @@ function previewMarkdown(content: string, maxBlocks: number) {
   }
   if (preview.length < lines.length) {
     preview.push('')
-    preview.push(`> 已进入大文档预览模式，仅显示前 ${maxBlocks} 块。加载完整编辑器后可继续编辑。`)
+    preview.push(`> 已进入大内容预览模式，仅显示前 ${maxBlocks} 块。加载完整编辑器后可继续编辑。`)
   }
   return preview.join('\n')
 }

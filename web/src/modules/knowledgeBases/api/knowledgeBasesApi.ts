@@ -1,5 +1,5 @@
 import { apiDelete, apiGet, apiGetText, apiPatch, apiPost } from '../../../shared/api/httpClient'
-import type { DocumentSummary } from '../../docs/api/docsApi'
+import type { DocumentDetail, DocumentSummary, DocumentTemplate, DocumentTreeNode } from '../../docs/api/docsApi'
 
 export type KnowledgeBaseSpaceSummary = {
   id: string
@@ -139,6 +139,69 @@ export function getKnowledgeBase(spaceId: string) {
   return apiGet<KnowledgeBaseSpaceDetail>(`/knowledge-bases/${spaceId}`)
 }
 
+export function listKnowledgeBaseItems(spaceId: string, options: { includeArchived?: boolean } = {}) {
+  const params = new URLSearchParams()
+  if (options.includeArchived) {
+    params.set('includeArchived', 'true')
+  }
+  return apiGet<DocumentSummary[]>(`/knowledge-bases/${spaceId}/items${params.size ? `?${params}` : ''}`)
+}
+
+export function listKnowledgeBaseItemTree(spaceId: string, options: { includeArchived?: boolean } = {}) {
+  const params = new URLSearchParams()
+  if (options.includeArchived) {
+    params.set('includeArchived', 'true')
+  }
+  return apiGet<DocumentTreeNode[]>(`/knowledge-bases/${spaceId}/items/tree${params.size ? `?${params}` : ''}`)
+}
+
+export function listKnowledgeBaseTemplates(spaceId: string) {
+  return apiGet<DocumentTemplate[]>(`/knowledge-bases/${spaceId}/templates`)
+}
+
+export function createKnowledgeBaseTemplate(
+  spaceId: string,
+  request: {
+    title: string
+    description?: string
+    category?: string
+    content?: string
+  },
+) {
+  return apiPost<DocumentTemplate>(`/knowledge-bases/${spaceId}/templates`, request)
+}
+
+export function createKnowledgeBaseItem(
+  spaceId: string,
+  request: {
+    parentId?: string | null
+    title: string
+    docType?: DocumentSummary['docType']
+    content?: string
+  },
+) {
+  return apiPost<DocumentDetail>(`/knowledge-bases/${spaceId}/items`, request)
+}
+
+export function createKnowledgeBaseItemFromTemplate(
+  spaceId: string,
+  request: { templateId: string; parentId?: string | null; title?: string },
+) {
+  return apiPost<DocumentDetail>(`/knowledge-bases/${spaceId}/items/from-template`, request)
+}
+
+export function moveKnowledgeBaseItem(spaceId: string, documentId: string, request: { parentId?: string | null; sortOrder?: number }) {
+  return apiPost<DocumentDetail>(`/knowledge-bases/${spaceId}/items/${documentId}/move`, request)
+}
+
+export function archiveKnowledgeBaseItem(spaceId: string, documentId: string) {
+  return apiPost<DocumentDetail>(`/knowledge-bases/${spaceId}/items/${documentId}/archive`)
+}
+
+export function restoreKnowledgeBaseItem(spaceId: string, documentId: string) {
+  return apiPost<DocumentDetail>(`/knowledge-bases/${spaceId}/items/${documentId}/restore`)
+}
+
 export function getKnowledgeBaseDiscovery(spaceId: string) {
   return apiGet<KnowledgeBaseDiscovery>(`/knowledge-bases/${spaceId}/discovery`)
 }
@@ -153,6 +216,23 @@ export function bulkGovernKnowledgeBase(spaceId: string, request: KnowledgeBaseB
 
 export function exportKnowledgeBaseGovernance(spaceId: string) {
   return apiGetText(`/knowledge-bases/${spaceId}/governance/export`)
+}
+
+export function importKnowledgeBaseMarkdownBatch(
+  spaceId: string,
+  request: {
+    parentId?: string | null
+    items: Array<{ title: string; content: string; category?: string; tags?: string[] }>
+  },
+) {
+  return apiPost<{ spaceId: string; importedCount: number; documents: DocumentSummary[] }>(
+    `/knowledge-bases/${spaceId}/import/markdown-batch`,
+    request,
+  )
+}
+
+export function exportKnowledgeBaseMarkdown(spaceId: string) {
+  return apiGetText(`/knowledge-bases/${spaceId}/export/markdown`)
 }
 
 export function updateKnowledgeBase(spaceId: string, request: Partial<KnowledgeBaseSpaceRequest>) {

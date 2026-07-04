@@ -114,7 +114,7 @@ public class DocumentCrossModuleService {
             lines.add("知识路径：" + knowledgeContext.pathText());
             lines.add("反向引用：" + knowledgeContext.webPath());
         } else {
-            lines.add("来源文档：" + document.title() + " /docs/" + document.id());
+            lines.add("来源知识内容：" + document.title() + " /docs/" + document.id());
         }
         if (anchorStart != null && anchorEnd != null) {
             lines.add("选区范围：" + anchorStart + "-" + anchorEnd);

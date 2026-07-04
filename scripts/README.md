@@ -16,7 +16,8 @@ Project-level helper scripts live here.
 - `../deploy/scripts/rollback.ps1` - rolls back to a Git ref and optionally restores data after explicit `-ConfirmRollback`.
 - `trial-team-template.ps1` - generates the controlled 10-person team initialization CSV and report for M40 trial readiness.
 - `team-trial-readiness.ps1` - checks trial readiness evidence and writes a Go/No-Go report.
-- `knowledge-base-migration-check.ps1` - checks knowledge-base migration readiness, orphan documents, owner permissions, inheritance sources, and search-index gaps; writes a rollback SQL template.
+- `knowledge-base-migration-check.ps1` - checks knowledge-base migration readiness, orphan knowledge content nodes, owner permissions, inheritance sources, and search-index gaps; writes a rollback SQL template.
+- `knowledge-base-compat-cleanup-check.ps1` - scans knowledge-base cleanup readiness for `/docs` entry points, legacy field writes, legacy permission table writes, old copy, and deprecated compatibility decisions.
 - `knowledge-base-trial-runbook.ps1` - generates a 3-5 person knowledge-base trial script and checklist.
 - `knowledge-base-acceptance-report.ps1` - aggregates knowledge-base migration, trial, quality-gate, and smoke evidence into a v1 acceptance report.
 
@@ -39,6 +40,7 @@ pnpm ops:release-check
 pnpm trial:team-template
 pnpm trial:readiness
 pnpm kb:migration-check
+pnpm kb:compat-check
 pnpm kb:trial-runbook
 pnpm kb:acceptance
 ```
@@ -122,11 +124,12 @@ Knowledge-base v1 migration and acceptance:
 
 ```powershell
 pnpm kb:migration-check
+pnpm kb:compat-check
 pnpm kb:trial-runbook
 pnpm kb:acceptance
 ```
 
-`pnpm kb:migration-check` is read-only against PostgreSQL and writes a rollback SQL template under `.local-reports/`; it does not reset, migrate, or delete data. Use it before and after knowledge-base cutover, then keep the generated report with the backup manifest.
+`pnpm kb:migration-check` is read-only against PostgreSQL and writes a rollback SQL template under `.local-reports/`; it does not reset, migrate, or delete data. Use it before and after knowledge-base cutover, then keep the generated report with the backup manifest. `pnpm kb:compat-check` is source-only and reports whether `/docs`, `document`, old root shadow fields, and legacy permission tables are removable or still required for compatibility.
 
 Explicit M31 local data reset and flow regression:
 
@@ -137,7 +140,7 @@ pnpm sim:m31 -- -Stage verify
 pnpm smoke:m31
 ```
 
-`pnpm data:reset` and `pnpm sim:m31` both create a local SQL backup, reset the local database to the fixed M31 10-role, 5-project collaboration scenario, then seed and verify deterministic data. Use them only when the user explicitly asks to reset or restore the M31 baseline. Use `pnpm sim:m31 -- -Stage verify` only to verify an existing M31 dataset without resetting. Full backend quality gates can create integration-test fixtures in the shared local database, but that does not require an automatic reset; rerun `pnpm data:reset` only when the user asks for the browser to show the clean M31 scenario. `pnpm smoke:m31` expects Docker dependencies, backend, and frontend to be running, verifies M31 data, then runs Playwright across project, issue, document, Base, IM, search, and permission-denied paths; run it only when the user explicitly asks for M31 baseline regression.
+`pnpm data:reset` and `pnpm sim:m31` both create a local SQL backup, reset the local database to the fixed M31 10-role, 5-project collaboration scenario, then seed and verify deterministic data. Use them only when the user explicitly asks to reset or restore the M31 baseline. Use `pnpm sim:m31 -- -Stage verify` only to verify an existing M31 dataset without resetting. Full backend quality gates can create integration-test fixtures in the shared local database, but that does not require an automatic reset; rerun `pnpm data:reset` only when the user asks for the browser to show the clean M31 scenario. `pnpm smoke:m31` expects Docker dependencies, backend, and frontend to be running, verifies M31 data, then runs Playwright across project, issue, knowledge content, Base, IM, search, and permission-denied paths; run it only when the user explicitly asks for M31 baseline regression.
 
 Legacy M12 reset:
 

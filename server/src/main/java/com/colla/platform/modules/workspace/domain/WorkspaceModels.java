@@ -21,6 +21,7 @@ public final class WorkspaceModels {
         long unreadNotificationCount,
         List<NotificationItem> latestNotifications,
         List<DocumentSummary> recentDocuments,
+        List<PlatformObjectSummary> recentKnowledgeContents,
         List<BaseSummary> recentBases,
         List<PlatformObjectSummary> recentObjects,
         List<PlatformObjectSummary> favoriteObjects

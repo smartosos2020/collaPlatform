@@ -20,6 +20,7 @@ public final class SearchModels {
         String accessState,
         String permissionExplanation,
         UUID knowledgeBaseId,
+        String knowledgeBaseName,
         UUID parentDocumentId,
         String directoryPath,
         List<String> tags,

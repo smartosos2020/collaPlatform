@@ -46,13 +46,14 @@ function Test-Report {
 }
 
 $Checks = @(
-    [pscustomobject]@{ Name = "Knowledge-base space model"; Status = "PASS"; Evidence = "Root/home document, navigation, settings, import/export, subscriptions, and governance APIs are implemented." },
-    [pscustomobject]@{ Name = "Permission inheritance and ACL"; Status = "PASS"; Evidence = "Knowledge-base grants propagate to document resources; search and governance respect resource permissions." },
+    [pscustomobject]@{ Name = "Knowledge-base space model"; Status = "PASS"; Evidence = "Root/home content nodes, navigation, settings, import/export, subscriptions, and governance APIs are implemented." },
+    [pscustomobject]@{ Name = "Permission inheritance and ACL"; Status = "PASS"; Evidence = "Knowledge-base grants propagate to knowledge content resources; search and governance respect resource permissions." },
     [pscustomobject]@{ Name = "Search and discovery"; Status = "PASS"; Evidence = "Knowledge-base scoped search, tags, maintainer/status filters, recommendation/discovery, and no-result audit stats are implemented." },
-    [pscustomobject]@{ Name = "Collaboration loop"; Status = "PASS"; Evidence = "Document comments, mentions, notifications, object links, and cross-module cards preserve knowledge context." },
+    [pscustomobject]@{ Name = "Collaboration loop"; Status = "PASS"; Evidence = "Knowledge content comments, mentions, notifications, object links, and cross-module cards preserve knowledge context." },
     [pscustomobject]@{ Name = "Governance and audit"; Status = "PASS"; Evidence = "Health metrics, risks, bulk governance, CSV export, and audit filters are implemented." },
     [pscustomobject]@{ Name = "Rollback plan"; Status = "PASS"; Evidence = "knowledge-base-migration-check.ps1 emits a rollback SQL template that archives space rows instead of hard deletion." },
     (Test-Report "Migration check evidence" "kb-migration-check-*.md" "Decision: (GO|GO-WITH-REVIEW)" "required"),
+    (Test-Report "Compatibility cleanup evidence" "kb-compat-cleanup-check-*.md" "Decision: (GO|GO-WITH-REVIEW)" "required"),
     (Test-Report "Trial runbook evidence" "kb-trial-runbook-*.md" "Knowledge Base 3-5 Person Trial Runbook" "required"),
     (Test-Report "Quality gate evidence" "quality-gate-*.md" "- Status: PASS" "required"),
     (Test-Report "Browser smoke evidence" "kb-m7-governance-smoke.png" ".*" "optional")
@@ -84,8 +85,8 @@ $report += @(
     "",
     "## v1 Freeze Standard",
     "",
-    "- Knowledge-base spaces are the product entry for document collections.",
-    "- Content, links, permissions, and search context must survive migration from legacy document spaces.",
+    "- Knowledge-base spaces are the product entry for knowledge content collections.",
+    "- Content, links, permissions, and search context must survive migration from legacy content spaces.",
     "- Permission decisions must be consistent between page access, search results, governance views, and audit review.",
     "- 3-5 person trial scenarios must cover create, SOP capture, share, comment, search, expired-review governance, export, and migration checks.",
     "- Future enhancements start from this report and the M8 execution report as the v1 baseline."

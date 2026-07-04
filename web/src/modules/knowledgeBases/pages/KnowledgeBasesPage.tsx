@@ -132,7 +132,7 @@ export function KnowledgeBasesPage() {
   const confirmArchive = (space: KnowledgeBaseSpaceSummary) => {
     modal.confirm({
       title: `归档 ${space.name}`,
-      content: '归档会同步归档知识库根文档和目录树，旧链接仍保留恢复路径。',
+      content: '归档会同步归档知识库根内容和目录树，旧链接仍保留恢复路径。',
       okText: '归档',
       okButtonProps: { danger: true },
       onOk: () => archiveMutation.mutate(space.id),
@@ -152,7 +152,7 @@ export function KnowledgeBasesPage() {
       <div className="kb-toolbar">
         <div>
           <Typography.Title level={3}>知识库</Typography.Title>
-          <Typography.Text type="secondary">空间、根目录和旧文档树共用同一套文档与权限底座</Typography.Text>
+          <Typography.Text type="secondary">空间、根目录和内容树共用同一套编辑、评论、版本与权限底座</Typography.Text>
         </div>
         <Space wrap>
           <Input.Search
@@ -190,7 +190,7 @@ export function KnowledgeBasesPage() {
                   <Tag>{space.code}</Tag>
                   <Tag>{visibilityText(space.visibility)}</Tag>
                   <Tag>{permissionText(space.defaultPermissionLevel)}</Tag>
-                  <Tag>{space.documentCount} 个节点</Tag>
+                  <Tag>{space.documentCount} 个内容节点</Tag>
                 </Space>
                 <div className="kb-card-footer">
                   <Typography.Text type="secondary">维护人 {space.ownerName}</Typography.Text>
@@ -198,8 +198,8 @@ export function KnowledgeBasesPage() {
                     <Tooltip title="进入知识库">
                       <Button icon={<EyeOutlined />} onClick={() => navigate(`/knowledge-bases/${space.id}`)} />
                     </Tooltip>
-                    <Tooltip title="进入首页">
-                      <Button icon={<FileTextOutlined />} onClick={() => navigate(`/docs/${space.homeDocumentId}`)} />
+                    <Tooltip title="打开首页内容">
+                      <Button icon={<FileTextOutlined />} onClick={() => navigate(`/knowledge-bases/${space.id}/items/${space.homeDocumentId}`)} />
                     </Tooltip>
                     <Tooltip title="编辑设置">
                       <Button icon={<EditOutlined />} onClick={() => openEdit(space)} />
@@ -272,7 +272,7 @@ export function KnowledgeBasesPage() {
             <Input maxLength={1024} />
           </Form.Item>
           {editingSpace ? (
-            <Form.Item name="homeDocumentId" label="首页文档 ID">
+            <Form.Item name="homeDocumentId" label="首页内容 ID">
               <Input />
             </Form.Item>
           ) : null}

@@ -13,7 +13,7 @@ const targetTypeOptions = [
   { label: '全部对象', value: '' },
   { label: '事项', value: 'issue' },
   { label: '项目', value: 'project' },
-  { label: '文档', value: 'document' },
+  { label: '知识内容', value: 'document' },
   { label: '知识库', value: 'knowledge_base' },
   { label: '表格', value: 'base' },
   { label: '审批', value: 'approval' },

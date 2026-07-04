@@ -16,6 +16,11 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Component
 public class DocumentPlatformObjectResolver implements PlatformObjectResolver {
+    /*
+     * The platform object type remains "document" for historical links, search
+     * index rows, notifications and cross-module cards. User-facing labels and
+     * primary navigation should treat it as knowledge content.
+     */
     private final DocumentService documentService;
 
     public DocumentPlatformObjectResolver(DocumentService documentService) {
@@ -51,7 +56,7 @@ public class DocumentPlatformObjectResolver implements PlatformObjectResolver {
                 objectId,
                 ObjectAccessState.available,
                 document.title(),
-                knowledgeContext == null ? "文档 / v" + document.currentVersionNo() : knowledgeContext.spaceName() + " / " + knowledgeContext.pathText(),
+                knowledgeContext == null ? "知识内容 / v" + document.currentVersionNo() : knowledgeContext.spaceName() + " / " + knowledgeContext.pathText(),
                 document.archived() ? "archived" : "active",
                 knowledgeContext == null ? "/docs/" + objectId : knowledgeContext.webPath(),
                 "colla://document/" + objectId,

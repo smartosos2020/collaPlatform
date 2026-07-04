@@ -3,6 +3,8 @@ package com.colla.platform.modules.doc.application;
 import com.colla.platform.modules.audit.application.AuditService;
 import com.colla.platform.modules.doc.domain.DocumentModels.DocumentDetail;
 import com.colla.platform.modules.doc.domain.DocumentModels.DocumentSummary;
+import com.colla.platform.modules.doc.domain.DocumentModels.DocumentTemplate;
+import com.colla.platform.modules.doc.domain.DocumentModels.DocumentTreeNode;
 import com.colla.platform.modules.doc.domain.DocumentModels.KnowledgeBaseAccessDocumentStat;
 import com.colla.platform.modules.doc.domain.DocumentModels.KnowledgeBaseAccessStats;
 import com.colla.platform.modules.doc.domain.DocumentModels.KnowledgeBaseBulkGovernanceResult;
@@ -24,7 +26,9 @@ import com.colla.platform.shared.auth.CurrentUser;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -82,6 +86,68 @@ public class KnowledgeBaseSpaceService {
         DocumentSummary home = documentRepository.findDocument(currentUser.workspaceId(), space.homeDocumentId())
             .orElse(root);
         return new KnowledgeBaseSpaceDetail(space, root, home);
+    }
+
+    public List<DocumentSummary> listItems(CurrentUser currentUser, UUID spaceId, boolean includeArchived) {
+        KnowledgeBaseSpaceSummary space = requireView(currentUser, spaceId);
+        return visibleKnowledgeDocuments(currentUser, space.rootDocumentId()).stream()
+            .filter(document -> includeArchived || !document.archived())
+            .toList();
+    }
+
+    public List<DocumentTreeNode> itemTree(CurrentUser currentUser, UUID spaceId, boolean includeArchived) {
+        return buildTree(listItems(currentUser, spaceId, includeArchived));
+    }
+
+    public List<DocumentTemplate> listTemplates(CurrentUser currentUser, UUID spaceId) {
+        requireView(currentUser, spaceId);
+        return documentService.listTemplates(currentUser, spaceId);
+    }
+
+    @Transactional
+    public DocumentDetail createItem(
+        CurrentUser currentUser,
+        UUID spaceId,
+        UUID parentId,
+        String title,
+        String docType,
+        String content
+    ) {
+        KnowledgeBaseSpaceSummary space = requireView(currentUser, spaceId);
+        UUID targetParentId = parentId == null ? space.rootDocumentId() : parentId;
+        requireDocumentInsideKnowledgeBase(currentUser, space.rootDocumentId(), targetParentId);
+        return documentService.createDocument(currentUser, targetParentId, title, docType, content, null, null, "view", false);
+    }
+
+    @Transactional
+    public DocumentDetail createItemFromTemplate(CurrentUser currentUser, UUID spaceId, UUID templateId, UUID parentId, String title) {
+        KnowledgeBaseSpaceSummary space = requireView(currentUser, spaceId);
+        UUID targetParentId = parentId == null ? space.rootDocumentId() : parentId;
+        requireDocumentInsideKnowledgeBase(currentUser, space.rootDocumentId(), targetParentId);
+        return documentService.createFromTemplate(currentUser, templateId, targetParentId, title);
+    }
+
+    @Transactional
+    public DocumentDetail moveItem(CurrentUser currentUser, UUID spaceId, UUID documentId, UUID parentId, Integer sortOrder) {
+        KnowledgeBaseSpaceSummary space = requireView(currentUser, spaceId);
+        requireContentItem(currentUser, space, documentId);
+        UUID targetParentId = parentId == null ? space.rootDocumentId() : parentId;
+        requireDocumentInsideKnowledgeBase(currentUser, space.rootDocumentId(), targetParentId);
+        return documentService.moveDocument(currentUser, documentId, targetParentId, sortOrder);
+    }
+
+    @Transactional
+    public DocumentDetail archiveItem(CurrentUser currentUser, UUID spaceId, UUID documentId) {
+        KnowledgeBaseSpaceSummary space = requireView(currentUser, spaceId);
+        requireContentItem(currentUser, space, documentId);
+        return documentService.archiveDocument(currentUser, documentId);
+    }
+
+    @Transactional
+    public DocumentDetail restoreItem(CurrentUser currentUser, UUID spaceId, UUID documentId) {
+        KnowledgeBaseSpaceSummary space = requireView(currentUser, spaceId);
+        requireContentItem(currentUser, space, documentId);
+        return documentService.restoreDocument(currentUser, documentId);
     }
 
     @Transactional
@@ -328,12 +394,12 @@ public class KnowledgeBaseSpaceService {
         DocumentDetail root = documentService.createDocument(
             currentUser,
             null,
-            normalizedName,
+            "根目录",
             "space",
-            "# " + normalizedName,
-            normalizedDescription,
-            normalizedCoverUrl,
-            normalizedDefaultPermission,
+            "# 根目录",
+            null,
+            null,
+            "view",
             true
         );
         DocumentDetail home = documentService.createDocument(
@@ -502,8 +568,8 @@ public class KnowledgeBaseSpaceService {
                 null,
                 null,
                 null,
-                "知识文档未设置维护人。",
-                "/docs/" + document.id()
+                "知识内容未设置维护人。",
+                knowledgeDocumentWebPath(space.id(), document.id())
             )));
         documents.stream()
             .filter(document -> "markdown".equals(document.docType()) && !document.archived())
@@ -522,7 +588,7 @@ public class KnowledgeBaseSpaceService {
                 null,
                 null,
                 "知识状态为待复核/已过期，或复核日期已到期。",
-                "/docs/" + document.id()
+                knowledgeDocumentWebPath(space.id(), document.id())
             )));
         risks.addAll(permissionRisks(workspaceId, space, documentsById));
         if ("workspace".equals(space.visibility()) || List.of("edit", "comment").contains(space.defaultPermissionLevel())) {
@@ -642,7 +708,7 @@ public class KnowledgeBaseSpaceService {
                     rs.getString("subject_name"),
                     rs.getString("permission_level"),
                     riskReason(rule),
-                    "document".equals(resourceType) ? "/docs/" + resourceId : "/knowledge-bases/" + space.id()
+                    "document".equals(resourceType) ? knowledgeDocumentWebPath(space.id(), resourceId) : "/knowledge-bases/" + space.id()
                 );
             },
             workspaceId,
@@ -653,6 +719,10 @@ public class KnowledgeBaseSpaceService {
             workspaceId,
             workspaceId
         );
+    }
+
+    private String knowledgeDocumentWebPath(UUID spaceId, UUID documentId) {
+        return "/knowledge-bases/" + spaceId + "?docId=" + documentId;
     }
 
     private KnowledgeBaseAccessStats accessStats(UUID workspaceId, List<DocumentSummary> documents, UUID spaceId) {
@@ -850,6 +920,53 @@ public class KnowledgeBaseSpaceService {
             .toList();
     }
 
+    private Comparator<DocumentSummary> documentOrder() {
+        return Comparator
+            .comparingInt(DocumentSummary::sortOrder)
+            .thenComparing(document -> document.title().toLowerCase(Locale.ROOT))
+            .thenComparing(DocumentSummary::updatedAt, Comparator.reverseOrder());
+    }
+
+    private List<DocumentTreeNode> buildTree(List<DocumentSummary> documents) {
+        Map<UUID, List<DocumentSummary>> byParent = new HashMap<>();
+        Set<UUID> visibleIds = new LinkedHashSet<>();
+        for (DocumentSummary document : documents) {
+            visibleIds.add(document.id());
+            byParent.computeIfAbsent(document.parentId(), ignored -> new ArrayList<>()).add(document);
+        }
+        for (List<DocumentSummary> siblings : byParent.values()) {
+            siblings.sort(documentOrder());
+        }
+        List<DocumentSummary> roots = documents.stream()
+            .filter(document -> document.parentId() == null || !visibleIds.contains(document.parentId()))
+            .sorted(documentOrder())
+            .toList();
+        Set<UUID> visited = new LinkedHashSet<>();
+        List<DocumentTreeNode> nodes = new ArrayList<>();
+        for (DocumentSummary root : roots) {
+            nodes.add(buildTreeNode(root, "", 0, byParent, visited));
+        }
+        return nodes;
+    }
+
+    private DocumentTreeNode buildTreeNode(
+        DocumentSummary document,
+        String parentPath,
+        int depth,
+        Map<UUID, List<DocumentSummary>> byParent,
+        Set<UUID> visited
+    ) {
+        visited.add(document.id());
+        String path = parentPath.isBlank() ? document.title() : parentPath + " / " + document.title();
+        List<DocumentTreeNode> children = new ArrayList<>();
+        for (DocumentSummary child : byParent.getOrDefault(document.id(), List.of())) {
+            if (!visited.contains(child.id())) {
+                children.add(buildTreeNode(child, path, depth + 1, byParent, visited));
+            }
+        }
+        return new DocumentTreeNode(document, path, depth, children.size(), !children.isEmpty(), children);
+    }
+
     private List<DocumentSummary> idsToDocuments(List<UUID> ids, Map<UUID, DocumentSummary> byId, int limit) {
         return ids.stream()
             .map(byId::get)
@@ -890,6 +1007,17 @@ public class KnowledgeBaseSpaceService {
             .filter(item -> rootDocumentId.equals(item.id()))
             .findFirst()
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Home document must belong to the knowledge base"));
+    }
+
+    private void requireContentItem(CurrentUser currentUser, KnowledgeBaseSpaceSummary space, UUID documentId) {
+        if (space.rootDocumentId().equals(documentId)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Knowledge base root is managed by space APIs");
+        }
+        KnowledgeBaseSpaceSummary actualSpace = knowledgeBaseSpaceRepository.findSpaceByDocumentId(currentUser.workspaceId(), documentId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Content item must belong to a knowledge base"));
+        if (!space.id().equals(actualSpace.id())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Content item must belong to the current knowledge base");
+        }
     }
 
     private String uniqueCode(UUID workspaceId, String baseCode, UUID excludeId) {

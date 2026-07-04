@@ -63,6 +63,7 @@ public class WorkspaceDashboardService {
             notificationRepository.unreadCount(currentUser.workspaceId(), currentUser.id()),
             notificationRepository.list(currentUser.workspaceId(), currentUser.id(), false, null, null, null, DASHBOARD_LIMIT),
             recentDocuments,
+            platformObjectService.summaries(currentUser, "document", recentDocuments.stream().map(document -> document.id()).toList()),
             recentBases,
             platformObjectService.recent(currentUser, DASHBOARD_LIMIT),
             platformObjectService.favorites(currentUser, DASHBOARD_LIMIT)

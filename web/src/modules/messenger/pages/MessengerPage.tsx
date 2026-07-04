@@ -286,13 +286,13 @@ export function MessengerPage() {
         { title: values.title },
       ),
     onSuccess: async (detail) => {
-      message.success('已从消息创建文档')
+      message.success('已从消息沉淀为知识内容')
       setConvertDocumentMessage(null)
       convertDocumentForm.resetFields()
       await refreshIm()
-      navigate(`/docs/${detail.document.id}`)
+      navigate(detail.knowledgeContext?.webPath ?? `/docs/${detail.document.id}`)
     },
-    onError: () => message.error('从消息创建文档失败'),
+    onError: () => message.error('从消息沉淀知识内容失败'),
   })
 
   const readMutation = useMutation({
@@ -709,7 +709,7 @@ export function MessengerPage() {
                 onChange={(value) => setMessageSearchTargetType(value)}
                 options={[
                   { value: 'issue', label: '事项' },
-                  { value: 'document', label: '文档' },
+                  { value: 'document', label: '知识内容' },
                   { value: 'base', label: '表格' },
                   { value: 'approval', label: '审批' },
                   { value: 'message', label: '消息' },
@@ -815,7 +815,7 @@ export function MessengerPage() {
                 <Input.TextArea
                   value={draft}
                   autoSize={{ minRows: 1, maxRows: 5 }}
-                  placeholder="输入消息，使用 @username 提醒成员，粘贴 /issues、/docs 或 /bases 内部链接生成卡片"
+                  placeholder="输入消息，使用 @username 提醒成员，粘贴事项、知识内容或表格链接生成卡片"
                   onChange={(event) => setDraft(event.target.value)}
                   onPressEnter={(event) => {
                     if (event.altKey) {
@@ -988,7 +988,7 @@ export function MessengerPage() {
       </Modal>
 
       <Modal
-        title="从消息创建文档"
+        title="从消息沉淀知识内容"
         open={Boolean(convertDocumentMessage)}
         confirmLoading={convertDocumentMutation.isPending}
         onCancel={() => setConvertDocumentMessage(null)}
@@ -1195,7 +1195,7 @@ function MessageBubble({
     {
       key: 'document',
       icon: <FileTextOutlined />,
-      label: '转文档',
+      label: '转知识内容',
       disabled: Boolean(item.revokedAt) || isLocal,
       onClick: onCreateDocument,
     },

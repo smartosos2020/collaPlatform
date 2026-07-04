@@ -18,8 +18,6 @@ import com.colla.platform.modules.doc.domain.DocumentModels.DocumentTemplate;
 import com.colla.platform.modules.doc.domain.DocumentModels.DocumentTreeNode;
 import com.colla.platform.modules.doc.domain.DocumentModels.DocumentVersion;
 import com.colla.platform.modules.doc.domain.DocumentModels.DocumentVersionDiff;
-import com.colla.platform.modules.doc.domain.DocumentModels.KnowledgeBaseMarkdownImportItem;
-import com.colla.platform.modules.doc.domain.DocumentModels.KnowledgeBaseMarkdownImportResult;
 import com.colla.platform.modules.doc.domain.DocumentModels.KnowledgeReviewReminderResult;
 import com.colla.platform.modules.project.domain.ProjectModels.IssueDetail;
 import com.colla.platform.shared.auth.CurrentUser;
@@ -46,6 +44,12 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api")
 public class DocumentController {
+    /*
+     * Compatibility boundary: /api/docs remains the editor/content substrate for old deep links,
+     * document detail, blocks, comments, versions, sharing and collaboration. New knowledge-base
+     * workspace, navigation, item lifecycle and governance APIs must be exposed from
+     * /api/knowledge-bases in KnowledgeBaseSpaceController.
+     */
     private final DocumentCollaborationService documentCollaborationService;
     private final DocumentCrossModuleService documentCrossModuleService;
     private final DocumentService documentService;
@@ -255,22 +259,6 @@ public class DocumentController {
         return ResponseEntity.ok()
             .contentType(MediaType.TEXT_HTML)
             .body(documentService.exportHtml(currentUser(authentication), documentId));
-    }
-
-    @PostMapping("/knowledge-bases/{spaceId}/import/markdown-batch")
-    public KnowledgeBaseMarkdownImportResult importKnowledgeBaseMarkdownBatch(
-        @PathVariable UUID spaceId,
-        @Valid @RequestBody ImportKnowledgeBaseMarkdownBatchRequest request,
-        Authentication authentication
-    ) {
-        return documentService.importKnowledgeBaseMarkdownBatch(currentUser(authentication), spaceId, request.parentId(), request.items());
-    }
-
-    @GetMapping(value = "/knowledge-bases/{spaceId}/export/markdown", produces = "text/markdown;charset=UTF-8")
-    public ResponseEntity<String> exportKnowledgeBaseMarkdown(@PathVariable UUID spaceId, Authentication authentication) {
-        return ResponseEntity.ok()
-            .contentType(MediaType.valueOf("text/markdown;charset=UTF-8"))
-            .body(documentService.exportKnowledgeBaseMarkdown(currentUser(authentication), spaceId));
     }
 
     @PostMapping("/docs/knowledge-review-reminders/run")
@@ -490,12 +478,6 @@ public class DocumentController {
     }
 
     public record ImportMarkdownRequest(@Size(max = 255) String title, String content) {
-    }
-
-    public record ImportKnowledgeBaseMarkdownBatchRequest(
-        UUID parentId,
-        @NotNull List<KnowledgeBaseMarkdownImportItem> items
-    ) {
     }
 
     public record RunKnowledgeReviewRemindersRequest(LocalDate beforeDate, int limit) {

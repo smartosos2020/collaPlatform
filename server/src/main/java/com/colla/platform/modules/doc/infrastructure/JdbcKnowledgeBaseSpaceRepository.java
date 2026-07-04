@@ -165,31 +165,6 @@ public class JdbcKnowledgeBaseSpaceRepository implements KnowledgeBaseSpaceRepos
             workspaceId,
             spaceId
         );
-        jdbcTemplate.update(
-            """
-                update documents d
-                set title = ?,
-                    description = ?,
-                    cover_url = ?,
-                    default_permission_level = ?,
-                    knowledge_base = true,
-                    updated_by = ?,
-                    updated_at = now()
-                from knowledge_base_spaces k
-                where k.workspace_id = ?
-                  and k.id = ?
-                  and d.workspace_id = k.workspace_id
-                  and d.id = k.root_document_id
-                  and d.deleted_at is null
-                """,
-            name,
-            description,
-            coverUrl,
-            defaultPermissionLevel,
-            actorId,
-            workspaceId,
-            spaceId
-        );
     }
 
     @Override

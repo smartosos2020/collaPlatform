@@ -362,7 +362,7 @@ export function useDocumentCollaboration({
     }
     if (event.type === 'document.error') {
       setStatus('error')
-      setError(String(payload.message ?? '文档协同连接异常'))
+      setError(String(payload.message ?? '知识内容协同连接异常'))
     }
   }
 

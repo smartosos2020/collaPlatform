@@ -2,7 +2,6 @@ import {
   BellOutlined,
   CheckSquareOutlined,
   DatabaseOutlined,
-  FileTextOutlined,
   HomeOutlined,
   ReadOutlined,
   MenuOutlined,
@@ -28,7 +27,6 @@ const navEntries = [
   { key: '/', icon: <HomeOutlined />, label: '工作台' },
   { key: '/im', icon: <MessageOutlined />, label: '消息' },
   { key: '/projects', icon: <ProjectOutlined />, label: '项目' },
-  { key: '/docs', icon: <FileTextOutlined />, label: '文档' },
   { key: '/knowledge-bases', icon: <ReadOutlined />, label: '知识库' },
   { key: '/bases', icon: <DatabaseOutlined />, label: '表格' },
   { key: '/approvals', icon: <CheckSquareOutlined />, label: '审批' },
@@ -109,7 +107,7 @@ export function AppLayout() {
               className="app-global-search"
               allowClear
               prefix={<SearchOutlined />}
-              placeholder="搜索事项、文档、表格、消息"
+              placeholder="搜索事项、知识内容、表格、消息"
               value={searchDraft}
               onChange={(event) => setSearchDraft(event.target.value)}
               onPressEnter={() => {

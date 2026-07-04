@@ -35,7 +35,7 @@ export function SearchPage() {
       <Space className="page-toolbar">
         <div>
           <Typography.Title level={3}>全局搜索</Typography.Title>
-          <Typography.Text type="secondary">搜索事项、文档、Base、数据表、表格记录和消息</Typography.Text>
+          <Typography.Text type="secondary">搜索事项、知识内容、Base、数据表、表格记录和消息</Typography.Text>
         </div>
         <Input.Search
           className="global-search-page-input"
@@ -62,17 +62,27 @@ export function SearchPage() {
                 {items.map((item) => (
                   <div className="search-result-item" key={`${item.objectType}-${item.objectId}`}>
                     <div>
-                      <Space>
+                      <Space wrap>
                         <Tag>{objectTypeText[item.objectType] ?? item.objectType}</Tag>
                         {item.accessState === 'available' ? <Tag color="green">可访问</Tag> : <Tag color="orange">{item.accessState}</Tag>}
-                        <Typography.Text strong>{item.title || '不可访问对象'}</Typography.Text>
+                        {item.objectType === 'document' && item.docType ? <Tag>{docTypeText(item.docType)}</Tag> : null}
+                        {item.objectType === 'document' && item.knowledgeBaseName ? <Tag color="purple">{item.knowledgeBaseName}</Tag> : null}
+                        <Typography.Text strong>{resultTitle(item)}</Typography.Text>
                       </Space>
+                      {item.objectType === 'document' && item.directoryPath ? (
+                        <Typography.Text type="secondary">路径：{item.directoryPath}</Typography.Text>
+                      ) : null}
                       <Typography.Paragraph type="secondary">{item.excerpt || item.permissionExplanation || item.webPath}</Typography.Paragraph>
+                      {item.objectType === 'document' && item.tags?.length ? (
+                        <Space wrap size={4}>
+                          {item.tags.map((tag) => <Tag key={tag}>{tag}</Tag>)}
+                        </Space>
+                      ) : null}
                       {item.permissionExplanation ? <Alert type="info" showIcon message={item.permissionExplanation} /> : null}
                     </div>
                     {item.accessState === 'available' && (item.webPath || item.deepLink) ? (
                       <Button type="link" onClick={() => navigate(resolveNavigationPath(item) ?? item.webPath ?? '/')}>
-                        打开
+                        {item.objectType === 'document' ? '打开知识内容' : '打开'}
                       </Button>
                     ) : null}
                   </div>
@@ -94,4 +104,23 @@ function groupResults(items: SearchResult[]) {
     acc[item.objectType].push(item)
     return acc
   }, {})
+}
+
+function resultTitle(item: SearchResult) {
+  if (item.accessState !== 'available') {
+    return '不可访问对象'
+  }
+  if (item.objectType === 'document' && item.directoryPath) {
+    return item.directoryPath
+  }
+  return item.title || '未命名对象'
+}
+
+function docTypeText(value: SearchResult['docType']) {
+  if (!value) return ''
+  return ({
+    space: '知识库根',
+    folder: '目录',
+    markdown: '知识内容',
+  } as Record<string, string>)[value] ?? value
 }

@@ -19,6 +19,7 @@
     "trial:team-template": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/trial-team-template.ps1",
     "trial:readiness": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/team-trial-readiness.ps1",
     "kb:migration-check": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/knowledge-base-migration-check.ps1",
+    "kb:compat-check": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/knowledge-base-compat-cleanup-check.ps1",
     "kb:trial-runbook": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/knowledge-base-trial-runbook.ps1",
     "kb:acceptance": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/knowledge-base-acceptance-report.ps1",
     "ops:backup": "powershell -NoProfile -ExecutionPolicy Bypass -File deploy/scripts/backup.ps1",

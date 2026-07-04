@@ -109,15 +109,16 @@ public class SearchService {
                 result.updatedAt(),
                 summary.accessState().name(),
                 "对象当前为 " + summary.accessState().name() + " 状态，搜索结果不展示原始内容。",
-                result.knowledgeBaseId(),
-                result.parentDocumentId(),
-                result.directoryPath(),
-                result.tags(),
-                result.maintainerId(),
-                result.maintainerName(),
-                result.knowledgeStatus(),
-                result.docType(),
-                result.hitSource()
+                null,
+                null,
+                null,
+                null,
+                List.of(),
+                null,
+                null,
+                null,
+                null,
+                null
             );
         }
         return new SearchResult(
@@ -132,6 +133,7 @@ public class SearchService {
             summary.accessState().name(),
             availableExplanation(summary),
             result.knowledgeBaseId(),
+            result.knowledgeBaseName(),
             result.parentDocumentId(),
             result.directoryPath(),
             result.tags(),

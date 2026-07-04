@@ -19,16 +19,11 @@ import { Alert, App as AntdApp, Button, Empty, Form, Input, Modal, Select, Space
 import type { DataNode } from 'antd/es/tree'
 import type { FormInstance } from 'antd/es/form'
 import type { Key, ReactNode } from 'react'
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 
 import {
-  createDocument,
-  createDocumentFromTemplate,
   getDocumentCollaborationHealth,
-  listDocumentTemplates,
-  listDocumentTree,
-  moveDocument,
   type DocumentSummary,
   type DocumentTemplate,
   type DocumentTreeNode,
@@ -40,11 +35,16 @@ import { listFavoriteObjects } from '../../platform/api/platformObjectsApi'
 import { ApiRequestError } from '../../../shared/api/httpClient'
 import {
   bulkGovernKnowledgeBase,
+  createKnowledgeBaseItem,
+  createKnowledgeBaseItemFromTemplate,
   exportKnowledgeBaseGovernance,
   getKnowledgeBase,
   getKnowledgeBaseDiscovery,
   getKnowledgeBaseGovernance,
+  listKnowledgeBaseItemTree,
+  listKnowledgeBaseTemplates,
   listKnowledgeBases,
+  moveKnowledgeBaseItem,
   subscribeKnowledgeTarget,
   unsubscribeKnowledgeTarget,
   updateKnowledgeBase,
@@ -113,6 +113,14 @@ export function KnowledgeBaseDetailPage() {
   const [moveForm] = Form.useForm<MoveNodeForm>()
   const [governanceForm] = Form.useForm<GovernanceBulkForm>()
   const [accessRequestForm] = Form.useForm<{ reason?: string }>()
+  const contentPath = useCallback((documentId: string) => `/knowledge-bases/${spaceId}/items/${documentId}`, [spaceId])
+  const normalizeKnowledgePath = useCallback(
+    (path: string) => {
+      const match = path.match(/^\/docs\/([^/?#]+)(.*)$/)
+      return match ? `${contentPath(match[1])}${match[2] ?? ''}` : path
+    },
+    [contentPath],
+  )
 
   const spacesQuery = useQuery({ queryKey: ['knowledge-bases', false], queryFn: () => listKnowledgeBases() })
   const spaceQuery = useQuery({
@@ -120,10 +128,14 @@ export function KnowledgeBaseDetailPage() {
     queryFn: () => getKnowledgeBase(spaceId),
     enabled: Boolean(spaceId),
   })
-  const treeQuery = useQuery({ queryKey: ['docs', 'tree', 'kb-detail'], queryFn: () => listDocumentTree({ includeArchived: true }) })
+  const treeQuery = useQuery({
+    queryKey: ['knowledge-bases', spaceId, 'items', 'tree', true],
+    queryFn: () => listKnowledgeBaseItemTree(spaceId, { includeArchived: true }),
+    enabled: Boolean(spaceId),
+  })
   const templatesQuery = useQuery({
-    queryKey: ['docs', 'templates', spaceId],
-    queryFn: () => listDocumentTemplates({ knowledgeBaseId: spaceId }),
+    queryKey: ['knowledge-bases', spaceId, 'templates'],
+    queryFn: () => listKnowledgeBaseTemplates(spaceId),
     enabled: Boolean(spaceId),
   })
   const favoriteObjectsQuery = useQuery({ queryKey: ['platform', 'favorites', 'kb-detail'], queryFn: () => listFavoriteObjects(50) })
@@ -302,7 +314,7 @@ export function KnowledgeBaseDetailPage() {
 
   const createMutation = useMutation({
     mutationFn: (values: CreateNodeForm) =>
-      createDocument({
+      createKnowledgeBaseItem(spaceId, {
         parentId: normalizeParentId(values.parentId),
         title: values.title,
         docType: values.docType,
@@ -320,7 +332,7 @@ export function KnowledgeBaseDetailPage() {
 
   const templateMutation = useMutation({
     mutationFn: (values: TemplateCreateForm) =>
-      createDocumentFromTemplate({
+      createKnowledgeBaseItemFromTemplate(spaceId, {
         templateId: values.templateId,
         parentId: normalizeParentId(values.parentId),
         title: values.title,
@@ -337,7 +349,7 @@ export function KnowledgeBaseDetailPage() {
 
   const moveMutation = useMutation({
     mutationFn: ({ documentId, parentId, sortOrder }: { documentId: string; parentId?: string | null; sortOrder?: number }) =>
-      moveDocument(documentId, { parentId, sortOrder }),
+      moveKnowledgeBaseItem(spaceId, documentId, { parentId, sortOrder }),
     onSuccess: async (detail) => {
       setMoveOpen(false)
       moveForm.resetFields()
@@ -437,7 +449,7 @@ export function KnowledgeBaseDetailPage() {
     const values = governanceForm.getFieldsValue()
     const documentIds = values.documentIds ?? []
     if (documentIds.length === 0) {
-      message.warning('请选择治理文档')
+      message.warning('请选择治理内容')
       return
     }
     governanceMutation.mutate({
@@ -517,7 +529,7 @@ export function KnowledgeBaseDetailPage() {
           <Tooltip title="新建文件夹">
             <Button icon={<FolderOutlined />} onClick={() => openCreate('folder')} />
           </Tooltip>
-          <Tooltip title="新建文档">
+          <Tooltip title="新建内容页">
             <Button type="primary" icon={<PlusOutlined />} onClick={() => openCreate('markdown')} />
           </Tooltip>
           <Tooltip title="从模板创建">
@@ -596,7 +608,7 @@ export function KnowledgeBaseDetailPage() {
                   <Tag>维护人 {space?.ownerName ?? '-'}</Tag>
                   <Tag>{space ? permissionText(space.defaultPermissionLevel) : '-'}</Tag>
                   <Tag>{space ? visibilityText(space.visibility) : '-'}</Tag>
-                  <Tag>{stats.total} 个节点</Tag>
+                  <Tag>{stats.total} 个内容节点</Tag>
                 </Space>
               </div>
             </Space>
@@ -627,8 +639,8 @@ export function KnowledgeBaseDetailPage() {
               <Button icon={<HomeOutlined />} onClick={() => homeDocumentId && setSelectedDocumentId(homeDocumentId)}>
                 首页
               </Button>
-              <Button type="primary" icon={<FileTextOutlined />} onClick={() => selectedDocument && navigate(`/docs/${selectedDocument.id}`)}>
-                打开
+              <Button type="primary" icon={<FileTextOutlined />} onClick={() => selectedDocument && navigate(contentPath(selectedDocument.id))}>
+                打开内容页
               </Button>
             </Space>
           </div>
@@ -659,7 +671,7 @@ export function KnowledgeBaseDetailPage() {
               value={kbSearchDocType}
               onChange={setKbSearchDocType}
               options={[
-                { value: 'markdown', label: '文档' },
+                { value: 'markdown', label: '内容页' },
                 { value: 'folder', label: '目录' },
                 { value: 'space', label: '空间' },
               ]}
@@ -706,7 +718,7 @@ export function KnowledgeBaseDetailPage() {
               loading={kbSearchQuery.isLoading}
               results={kbSearchQuery.data?.items ?? []}
               query={kbSearchText}
-              onOpen={(path) => navigate(path)}
+              onOpen={(path) => navigate(normalizeKnowledgePath(path))}
               onCreate={() => openCreate('markdown')}
               onClear={() => {
                 setKbSearchText('')
@@ -717,13 +729,14 @@ export function KnowledgeBaseDetailPage() {
         </section>
 
         <section className="kb-stat-strip">
-          <Metric label="文档" value={stats.markdown} />
+          <Metric label="内容页" value={stats.markdown} />
           <Metric label="目录" value={stats.folder} />
           <Metric label="归档" value={stats.archived} />
           <Metric label="收藏" value={discoveryQuery.data?.favorites.length ?? favoriteDocuments.length} />
         </section>
 
         <GovernancePanel
+          spaceId={spaceId}
           dashboard={governanceQuery.data}
           loading={governanceQuery.isLoading}
           documentOptions={governanceDocumentOptions}
@@ -734,7 +747,7 @@ export function KnowledgeBaseDetailPage() {
           exporting={governanceExportMutation.isPending}
           onSubmit={submitGovernance}
           onExport={() => governanceExportMutation.mutate()}
-          onOpen={(path) => navigate(path)}
+          onOpen={(path) => navigate(normalizeKnowledgePath(path))}
           onSelectDocuments={(ids) => governanceForm.setFieldsValue({ documentIds: ids })}
         />
 
@@ -746,8 +759,8 @@ export function KnowledgeBaseDetailPage() {
               {spaceQuery.data?.homeDocument.description || `最后更新 ${formatDate(spaceQuery.data?.homeDocument.updatedAt)}`}
             </Typography.Paragraph>
             <Space wrap>
-              <Button type="primary" onClick={() => homeDocumentId && navigate(`/docs/${homeDocumentId}`)}>
-                进入首页
+              <Button type="primary" onClick={() => homeDocumentId && navigate(contentPath(homeDocumentId))}>
+                进入首页内容
               </Button>
               <Button onClick={() => homeDocumentId && setSelectedDocumentId(homeDocumentId)}>在目录中定位</Button>
             </Space>
@@ -792,7 +805,7 @@ export function KnowledgeBaseDetailPage() {
                 onlineCount={collaborationHealthQuery.data?.activeUsers ?? 0}
                 serverClock={collaborationHealthQuery.data?.serverClock ?? 0}
                 lastSavedAt={collaborationHealthQuery.data?.lastSavedAt}
-                onOpen={() => navigate(`/docs/${selectedDocument.id}`)}
+                onOpen={() => navigate(contentPath(selectedDocument.id))}
                 onRefresh={() => collaborationHealthQuery.refetch()}
               />
             ) : null}
@@ -800,14 +813,14 @@ export function KnowledgeBaseDetailPage() {
         </section>
 
         <section className="kb-section-grid">
-          <KnowledgeList title="置顶" items={pinnedDocuments} onOpen={(id) => navigate(`/docs/${id}`)} onSelect={setSelectedDocumentId} />
-          <KnowledgeList title="最近访问" items={discoveryQuery.data?.recentAccessed ?? recentDocuments} onOpen={(id) => navigate(`/docs/${id}`)} onSelect={setSelectedDocumentId} />
-          <KnowledgeList title="我维护的文档" items={discoveryQuery.data?.maintainedByMe ?? []} onOpen={(id) => navigate(`/docs/${id}`)} onSelect={setSelectedDocumentId} />
-          <KnowledgeList title="待复核" items={discoveryQuery.data?.dueForReview ?? []} onOpen={(id) => navigate(`/docs/${id}`)} onSelect={setSelectedDocumentId} />
-          <KnowledgeList title="收藏" items={discoveryQuery.data?.favorites ?? favoriteDocuments} onOpen={(id) => navigate(`/docs/${id}`)} onSelect={setSelectedDocumentId} />
-          <KnowledgeList title="热门知识" items={discoveryQuery.data?.popular ?? []} onOpen={(id) => navigate(`/docs/${id}`)} onSelect={setSelectedDocumentId} />
-          <KnowledgeList title="推荐阅读" items={discoveryQuery.data?.recommended ?? []} onOpen={(id) => navigate(`/docs/${id}`)} onSelect={setSelectedDocumentId} />
-          <KnowledgeList title="我的关注" items={discoveryQuery.data?.subscribedDocuments ?? []} onOpen={(id) => navigate(`/docs/${id}`)} onSelect={setSelectedDocumentId} />
+          <KnowledgeList title="置顶" items={pinnedDocuments} onOpen={(id) => navigate(contentPath(id))} onSelect={setSelectedDocumentId} />
+          <KnowledgeList title="最近访问" items={discoveryQuery.data?.recentAccessed ?? recentDocuments} onOpen={(id) => navigate(contentPath(id))} onSelect={setSelectedDocumentId} />
+          <KnowledgeList title="我维护的内容" items={discoveryQuery.data?.maintainedByMe ?? []} onOpen={(id) => navigate(contentPath(id))} onSelect={setSelectedDocumentId} />
+          <KnowledgeList title="待复核" items={discoveryQuery.data?.dueForReview ?? []} onOpen={(id) => navigate(contentPath(id))} onSelect={setSelectedDocumentId} />
+          <KnowledgeList title="收藏" items={discoveryQuery.data?.favorites ?? favoriteDocuments} onOpen={(id) => navigate(contentPath(id))} onSelect={setSelectedDocumentId} />
+          <KnowledgeList title="热门知识" items={discoveryQuery.data?.popular ?? []} onOpen={(id) => navigate(contentPath(id))} onSelect={setSelectedDocumentId} />
+          <KnowledgeList title="推荐阅读" items={discoveryQuery.data?.recommended ?? []} onOpen={(id) => navigate(contentPath(id))} onSelect={setSelectedDocumentId} />
+          <KnowledgeList title="我的关注" items={discoveryQuery.data?.subscribedDocuments ?? []} onOpen={(id) => navigate(contentPath(id))} onSelect={setSelectedDocumentId} />
           <KnowledgeList title="常用目录" items={commonDirectories} onOpen={(id) => setSelectedDocumentId(id)} onSelect={setSelectedDocumentId} />
           <TemplateList templates={templatesQuery.data ?? []} onUse={(template) => {
             templateForm.setFieldsValue({
@@ -837,7 +850,7 @@ export function KnowledgeBaseDetailPage() {
           </Form.Item>
           <Form.Item name="docType" label="类型" rules={[{ required: true }]}>
             <Select options={[
-              { value: 'markdown', label: '文档' },
+              { value: 'markdown', label: '内容页' },
               { value: 'folder', label: '文件夹' },
             ]} />
           </Form.Item>
@@ -925,6 +938,7 @@ function Metric({ label, value }: { label: string; value: number }) {
 }
 
 function GovernancePanel({
+  spaceId,
   dashboard,
   loading,
   documentOptions,
@@ -938,6 +952,7 @@ function GovernancePanel({
   onOpen,
   onSelectDocuments,
 }: {
+  spaceId: string
   dashboard?: KnowledgeBaseGovernanceDashboard
   loading: boolean
   documentOptions: { label: string; value: string }[]
@@ -967,7 +982,7 @@ function GovernancePanel({
         </div>
         <Space wrap>
           <Button size="small" onClick={() => onSelectDocuments(riskDocumentIds)} disabled={riskDocumentIds.length === 0}>
-            选择风险文档
+            选择风险内容
           </Button>
           <Button size="small" icon={<DownloadOutlined />} loading={exporting} onClick={onExport}>
             导出报告
@@ -978,7 +993,7 @@ function GovernancePanel({
       {loading ? <Typography.Text type="secondary">治理数据加载中...</Typography.Text> : null}
 
       <div className="kb-governance-metrics">
-        <Metric label="活跃文档" value={health?.activeDocumentCount ?? 0} />
+        <Metric label="活跃内容" value={health?.activeDocumentCount ?? 0} />
         <Metric label="过期/待复核" value={health?.outdatedDocumentCount ?? 0} />
         <Metric label="无人维护" value={health?.unmaintainedDocumentCount ?? 0} />
         <Metric label="无 owner" value={health?.ownerlessDocumentCount ?? 0} />
@@ -987,8 +1002,8 @@ function GovernancePanel({
       </div>
 
       <Form form={form} layout="vertical" className="kb-governance-bulk-form">
-        <Form.Item name="documentIds" label="批量治理文档">
-          <Select mode="multiple" options={documentOptions} placeholder="选择文档" maxTagCount="responsive" />
+        <Form.Item name="documentIds" label="批量治理内容">
+          <Select mode="multiple" options={documentOptions} placeholder="选择内容页" maxTagCount="responsive" />
         </Form.Item>
         <Space wrap align="end">
           <Form.Item name="maintainerId" label="维护人">
@@ -1039,7 +1054,7 @@ function GovernancePanel({
           <Space direction="vertical" size={8} className="kb-governance-list">
             <Typography.Text type="secondary">访问 {dashboard?.accessStats.accessCount ?? 0} 次 · 访问人数 {dashboard?.accessStats.visitorCount ?? 0}</Typography.Text>
             {(dashboard?.accessStats.popularDocuments ?? []).slice(0, 4).map((item) => (
-              <button className="kb-list-item" type="button" key={item.document.id} onClick={() => onOpen(`/docs/${item.document.id}`)}>
+              <button className="kb-list-item" type="button" key={item.document.id} onClick={() => onOpen(`/knowledge-bases/${spaceId}?docId=${item.document.id}`)}>
                 <FileTextOutlined />
                 <span>
                   <strong>{item.document.title}</strong>
@@ -1089,7 +1104,7 @@ function CollaborationHealthCard({
             在线 {onlineCount} 人 · serverClock {serverClock}
             {lastSavedAt ? ` · 保存 ${new Date(lastSavedAt).toLocaleTimeString()}` : ''}
           </Typography.Text>
-          <Typography.Text type="secondary">异常时可刷新状态、进入文档重连，或按只读方式查看最近已保存版本。</Typography.Text>
+          <Typography.Text type="secondary">异常时可刷新状态、进入内容页重连，或按只读方式查看最近已保存版本。</Typography.Text>
           <Space size={6}>
             <Button size="small" onClick={onRefresh}>刷新状态</Button>
             <Button size="small" type="primary" onClick={onOpen}>打开重连</Button>
@@ -1123,7 +1138,7 @@ function KnowledgeSearchResults({
       <div className="kb-search-empty">
         <Empty description={`没有找到 “${query}”`} />
         <Space wrap>
-          <Button type="primary" onClick={onCreate}>创建文档</Button>
+          <Button type="primary" onClick={onCreate}>创建内容页</Button>
           <Button onClick={onClear}>扩大范围</Button>
         </Space>
       </div>
@@ -1335,13 +1350,13 @@ function permissionText(permission?: string | null) {
 }
 
 function docTypeText(docType: DocumentSummary['docType']) {
-  return { space: '空间', folder: '目录', markdown: '文档' }[docType]
+  return { space: '根目录', folder: '目录', markdown: '内容页' }[docType]
 }
 
 function categoryText(category: string) {
   return {
     meeting: '会议纪要',
-    requirement: '需求文档',
+    requirement: '需求说明',
     project: '项目计划',
     review: '复盘',
     knowledge: '知识条目',

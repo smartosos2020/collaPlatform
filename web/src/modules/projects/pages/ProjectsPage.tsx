@@ -854,7 +854,7 @@ function IssueDrawer({
           {issue.workflowNote ? <Typography.Paragraph className="issue-workflow-note">{issue.workflowNote}</Typography.Paragraph> : null}
           <Typography.Paragraph>{issue.description || '暂无描述'}</Typography.Paragraph>
           {hasDocumentRelation && documentSnippet ? (
-            <Card size="small" title="关联文档片段">
+            <Card size="small" title="关联知识内容片段">
               <Typography.Paragraph>{documentSnippet}</Typography.Paragraph>
             </Card>
           ) : null}
@@ -905,7 +905,7 @@ function IssueDrawer({
               <Space.Compact className="issue-relation-input">
                 <Input
                   value={relationInput}
-                  placeholder="粘贴 /issues、/docs、/bases 或消息链接"
+                  placeholder="粘贴事项、知识内容、表格或消息链接"
                   onChange={(event) => onRelationInputChange(event.target.value)}
                 />
                 <Button icon={<LinkOutlined />} loading={relating} onClick={onAddRelation}>

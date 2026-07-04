@@ -89,6 +89,13 @@ public class PlatformObjectService {
             .toList();
     }
 
+    public List<PlatformObjectSummary> summaries(CurrentUser currentUser, String objectType, List<UUID> objectIds) {
+        return objectIds.stream()
+            .map(objectId -> resolverRegistry.resolve(currentUser, objectType, objectId))
+            .filter(summary -> summary.accessState() == ObjectAccessState.available)
+            .toList();
+    }
+
     public PlatformObjectSummary addFavorite(CurrentUser currentUser, String objectType, UUID objectId) {
         PlatformObjectSummary summary = resolverRegistry.resolve(currentUser, objectType, objectId);
         if (summary.accessState() == ObjectAccessState.available) {
@@ -171,7 +178,7 @@ public class PlatformObjectService {
     private String source(PlatformObjectSummary summary) {
         return switch (summary.objectType()) {
             case "issue" -> "project_members";
-            case "document" -> "document_permissions";
+            case "document" -> "resource_permissions";
             case "base", "base_table", "base_record" -> "base_members";
             case "approval" -> "approval_participants";
             case "message" -> "conversation_members";

@@ -102,8 +102,26 @@ public class JdbcSearchRepository implements SearchRepository {
             """
                 select s.object_type, s.object_id, s.title, s.excerpt,
                        coalesce(
-                           '/docs/' || s.object_id::text || '?commentId=' || document_comment.thread_id::text,
-                           '/docs/' || s.object_id::text || '#doc-block-' || document_block.id::text,
+                           case
+                               when s.object_type = 'document' and s.knowledge_base_id is not null and document_comment.thread_id is not null
+                                   then '/knowledge-bases/' || s.knowledge_base_id::text || '?docId=' || s.object_id::text || '&commentId=' || document_comment.thread_id::text
+                           end,
+                           case
+                               when s.object_type = 'document' and s.knowledge_base_id is not null and document_block.id is not null
+                                   then '/knowledge-bases/' || s.knowledge_base_id::text || '?docId=' || s.object_id::text || '#doc-block-' || document_block.id::text
+                           end,
+                           case
+                               when s.object_type = 'document' and s.knowledge_base_id is not null
+                                   then '/knowledge-bases/' || s.knowledge_base_id::text || '?docId=' || s.object_id::text
+                           end,
+                           case
+                               when s.object_type = 'document' and document_comment.thread_id is not null
+                                   then '/docs/' || s.object_id::text || '?commentId=' || document_comment.thread_id::text
+                           end,
+                           case
+                               when s.object_type = 'document' and document_block.id is not null
+                                   then '/docs/' || s.object_id::text || '#doc-block-' || document_block.id::text
+                           end,
                            s.web_path
                        ) web_path,
                        s.deep_link,
@@ -111,6 +129,7 @@ public class JdbcSearchRepository implements SearchRepository {
                          + case when lower(s.search_text) like ? or lower(s.title) like ? then 0.25 else 0 end score,
                        s.updated_at,
                        s.knowledge_base_id,
+                       kb.name knowledge_base_name,
                        s.parent_document_id,
                        s.directory_path,
                        s.tags,
@@ -128,6 +147,9 @@ public class JdbcSearchRepository implements SearchRepository {
                        end hit_source
                 from search_index_documents s
                 left join users maintainer on maintainer.id = s.maintainer_id and maintainer.workspace_id = s.workspace_id
+                left join knowledge_base_spaces kb on kb.id = s.knowledge_base_id
+                    and kb.workspace_id = s.workspace_id
+                    and kb.deleted_at is null
                 left join lateral (
                     select c.thread_id
                     from document_comments c
@@ -306,6 +328,8 @@ public class JdbcSearchRepository implements SearchRepository {
     @Override
     @Transactional
     public synchronized void refreshWorkspaceIndex(UUID workspaceId) {
+        // Serialize same-workspace rebuilds across bean instances and test contexts.
+        jdbcTemplate.query("select pg_advisory_xact_lock(hashtext(?))", rs -> { }, "search-index:" + workspaceId);
         jdbcTemplate.update("delete from search_index_documents where workspace_id = ?", workspaceId);
         indexIssues(workspaceId);
         indexDocuments(workspaceId);
@@ -356,9 +380,13 @@ public class JdbcSearchRepository implements SearchRepository {
                        d.id,
                        d.title,
                        left(coalesce(nullif(blocks.block_text, ''), d.content, d.title), 240),
-                       '/docs/' || d.id::text,
+                       case
+                           when kb.id is null then '/docs/' || d.id::text
+                           else '/knowledge-bases/' || kb.id::text || '?docId=' || d.id::text
+                       end,
                        'colla://document/' || d.id::text,
                        coalesce(d.title, '') || ' ' ||
+                           coalesce(kb.name, '') || ' ' ||
                            coalesce(d.description, '') || ' ' ||
                            coalesce(d.content, '') || ' ' ||
                            coalesce(blocks.block_text, '') || ' ' ||
@@ -379,7 +407,7 @@ public class JdbcSearchRepository implements SearchRepository {
                        'title'
                 from documents d
                 left join lateral (
-                    select k.id
+                    select k.id, k.name
                     from knowledge_base_spaces k
                     where k.workspace_id = d.workspace_id
                       and k.deleted_at is null
@@ -599,6 +627,7 @@ public class JdbcSearchRepository implements SearchRepository {
             "available",
             "当前用户具备该对象的查看权限。",
             rs.getObject("knowledge_base_id", UUID.class),
+            rs.getString("knowledge_base_name"),
             rs.getObject("parent_document_id", UUID.class),
             rs.getString("directory_path"),
             textArray(rs, "tags"),

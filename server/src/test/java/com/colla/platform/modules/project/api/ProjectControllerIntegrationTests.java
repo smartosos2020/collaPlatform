@@ -21,6 +21,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -141,12 +142,7 @@ class ProjectControllerIntegrationTests {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.comments[0].content").value("please verify @" + bobUsername));
 
-        domainEventWorker.processPendingEvents();
-
-        mockMvc.perform(get("/api/notifications?unreadOnly=true")
-                .header("Authorization", "Bearer " + bobToken))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.length()", greaterThanOrEqualTo(1)));
+        assertMentionNotificationEventuallyAvailable(bobToken, issueId);
     }
 
     @Test
@@ -537,6 +533,30 @@ class ProjectControllerIntegrationTests {
             .getResponse()
             .getContentAsString();
         return objectMapper.readTree(response).get("accessToken").asText();
+    }
+
+    private void assertMentionNotificationEventuallyAvailable(String token, UUID issueId) throws Exception {
+        for (int attempt = 0; attempt < 8; attempt++) {
+            domainEventWorker.processPendingEvents();
+            MvcResult result = mockMvc.perform(get("/api/notifications?unreadOnly=true")
+                    .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andReturn();
+
+            JsonNode notifications = objectMapper.readTree(result.getResponse().getContentAsString());
+            for (JsonNode notification : notifications) {
+                if (issueId.toString().equals(notification.path("targetId").asText())
+                    && "issue_comment_mention".equals(notification.path("notificationType").asText())) {
+                    return;
+                }
+            }
+        }
+
+        mockMvc.perform(get("/api/notifications?unreadOnly=true")
+                .header("Authorization", "Bearer " + token))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$[?(@.targetId == '" + issueId + "')].notificationType")
+                .value(hasItem("issue_comment_mention")));
     }
 
     private String projectKey(String prefix) {

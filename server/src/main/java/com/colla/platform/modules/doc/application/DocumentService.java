@@ -65,6 +65,11 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class DocumentService {
+    /*
+     * Historical naming boundary: Document* services operate the knowledge-content
+     * editor substrate stored in the documents table. Product-level space and content
+     * lifecycle semantics must be exposed through KnowledgeBaseSpaceService.
+     */
     private static final Pattern MENTION_PATTERN = Pattern.compile("(?<!\\w)@([a-zA-Z0-9_.-]{2,64})");
     private static final Set<String> BLOCK_TYPES = Set.of(
         "paragraph",
@@ -132,23 +137,23 @@ public class DocumentService {
 
     public DocumentAcceptanceReport acceptanceReport(CurrentUser currentUser) {
         List<DocumentAcceptanceScenario> scenarios = List.of(
-            new DocumentAcceptanceScenario("meeting-notes", "会议纪要", "多人编辑纪要、评论行动项、从纪要生成任务", "ready", "协同编辑、评论线程、文档选区转事项已可用"),
-            new DocumentAcceptanceScenario("requirements", "需求文档", "模板创建、版本命名、评审评论、关联项目事项", "ready", "模板、命名版本、评论和事项关系已可用"),
-            new DocumentAcceptanceScenario("project-plan", "项目计划", "文档嵌入 Base 视图和项目事项，任务回看文档片段", "ready", "Base view、issue embed、关联文档片段已可用"),
+            new DocumentAcceptanceScenario("meeting-notes", "会议纪要", "多人编辑纪要、评论行动项、从纪要生成任务", "ready", "协同编辑、评论线程、内容选区转事项已可用"),
+            new DocumentAcceptanceScenario("requirements", "需求说明", "模板创建、版本命名、评审评论、关联项目事项", "ready", "模板、命名版本、评论和事项关系已可用"),
+            new DocumentAcceptanceScenario("project-plan", "项目计划", "内容页嵌入 Base 视图和项目事项，任务回看知识片段", "ready", "Base view、issue embed、关联知识片段已可用"),
             new DocumentAcceptanceScenario("retro", "项目复盘", "多人补充复盘内容、提及成员、冻结命名版本", "ready", "协同、@mention 通知和命名版本已可用"),
             new DocumentAcceptanceScenario("knowledge-base", "知识库", "空间/文件夹组织知识条目、默认权限和分享链接", "ready", "space/folder/tree、知识库默认权限和分享链接已可用"),
-            new DocumentAcceptanceScenario("base-kanban", "Base 看板说明", "文档内嵌 Base 视图并展示权限态、筛选和排序", "ready", "M48 Base view 摘要已可用"),
-            new DocumentAcceptanceScenario("incident", "问题排查", "从消息创建文档、从选区创建 BUG/任务、保留来源上下文", "ready", "消息转文档、文档选区转事项已可用"),
-            new DocumentAcceptanceScenario("approval-brief", "审批说明", "文档关联审批对象并展示状态卡片", "ready", "approval 对象关系和平台对象卡已可用"),
-            new DocumentAcceptanceScenario("file-brief", "文件说明", "文档内上传文件卡、预览/下载/替换", "ready", "文件卡和文档上下文替换已可用"),
-            new DocumentAcceptanceScenario("workbench", "跨模块工作台", "汇总消息、任务、Base、审批、文件并可反向回看", "ready", "文档关系、项目/Base 反向关系和对象卡已可用")
+            new DocumentAcceptanceScenario("base-kanban", "Base 看板说明", "内容页内嵌 Base 视图并展示权限态、筛选和排序", "ready", "M48 Base view 摘要已可用"),
+            new DocumentAcceptanceScenario("incident", "问题排查", "从消息沉淀知识内容、从选区创建 BUG/任务、保留来源上下文", "ready", "消息转知识内容、内容选区转事项已可用"),
+            new DocumentAcceptanceScenario("approval-brief", "审批说明", "知识内容关联审批对象并展示状态卡片", "ready", "approval 对象关系和平台对象卡已可用"),
+            new DocumentAcceptanceScenario("file-brief", "文件说明", "内容页内上传文件卡、预览/下载/替换", "ready", "文件卡和内容上下文替换已可用"),
+            new DocumentAcceptanceScenario("workbench", "跨模块工作台", "汇总消息、任务、Base、审批、文件并可反向回看", "ready", "知识内容关系、项目/Base 反向关系和对象卡已可用")
         );
         List<DocumentAcceptanceGate> gates = List.of(
             new DocumentAcceptanceGate("concurrent-editing", "3-5 人同时编辑", "trial-ready", "自动化覆盖双客户端协同；真人 3-5 人试运行需按验收清单执行"),
             new DocumentAcceptanceGate("permission-sharing", "权限分享试运行", "ready", "owner/manage/edit/comment/view、分享链接和权限申请已可用"),
             new DocumentAcceptanceGate("comment-notification", "评论提及通知闭环", "ready", "选区评论、回复、resolve/reopen 和 @mention 通知已可用"),
-            new DocumentAcceptanceGate("message-to-doc", "从消息生成文档", "ready", "IM 消息 convert-to-document 已可用"),
-            new DocumentAcceptanceGate("doc-to-task", "从文档生成任务", "ready", "docs/{id}/issues/from-selection 已可用"),
+            new DocumentAcceptanceGate("message-to-doc", "从消息沉淀知识内容", "ready", "IM 消息 convert-to-document 兼容 API 已可用"),
+            new DocumentAcceptanceGate("doc-to-task", "从内容生成任务", "ready", "docs/{id}/issues/from-selection 兼容 API 已可用"),
             new DocumentAcceptanceGate("p0-p1-defects", "P0/P1 缺陷收口", "ready", "当前自动化门禁未发现 P0/P1 阻塞缺陷"),
             new DocumentAcceptanceGate("v1-freeze", "v1 验收标准冻结", "frozen", "以本报告 10 场景和 8 验收门为冻结标准"),
             new DocumentAcceptanceGate("quality-gates", "质量门禁", "ready", "M49 finish 已通过全量测试、构建、敏感扫描和安全门禁")
@@ -233,7 +238,6 @@ public class DocumentService {
             currentUser.id()
         );
         documentRepository.copyParentPermissions(currentUser.workspaceId(), documentId, parentId, currentUser.id());
-        documentRepository.upsertPermission(currentUser.workspaceId(), documentId, currentUser.id(), "owner", currentUser.id());
         permissionDecisionService.grantResource(
             currentUser.workspaceId(),
             "document",
@@ -705,11 +709,11 @@ public class DocumentService {
                 Map.of(
                     "recipientId", document.maintainerId().toString(),
                     "notificationType", "knowledge_review_due",
-                    "title", "知识文档需要复核",
+                    "title", "知识内容需要复核",
                     "body", document.title() + " 复核日期：" + document.reviewDueAt(),
                     "targetType", "document",
                     "targetId", document.id().toString(),
-                    "webPath", "/docs/" + document.id(),
+                    "webPath", knowledgeDocumentWebPath(currentUser.workspaceId(), document.id()),
                     "dedupeKey", "knowledge.review_due:" + document.id() + ":" + document.reviewDueAt()
                 ),
                 "notification.knowledge.review_due:" + document.id() + ":" + document.reviewDueAt()
@@ -974,16 +978,14 @@ public class DocumentService {
         String normalizedSubjectType = permissionDecisionService.normalizeSubjectType(subjectType);
         requireValidPermissionSubject(currentUser, normalizedSubjectType, subjectId);
         String normalizedPermission = normalizePermission(permissionLevel);
-        if (List.of("user", "user_group").contains(normalizedSubjectType)) {
-            documentRepository.upsertSubjectPermission(
-                currentUser.workspaceId(),
-                documentId,
-                normalizedSubjectType,
-                subjectId,
-                normalizedPermission,
-                currentUser.id()
-            );
-        }
+        documentRepository.upsertSubjectPermission(
+            currentUser.workspaceId(),
+            documentId,
+            normalizedSubjectType,
+            subjectId,
+            normalizedPermission,
+            currentUser.id()
+        );
         permissionDecisionService.grantResource(
             currentUser.workspaceId(),
             "document",
@@ -1096,7 +1098,21 @@ public class DocumentService {
     ) {
         DocumentSummary document = requireManage(currentUser, documentId);
         if (!"space".equals(document.docType())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Only spaces can be configured as knowledge bases");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Only root directories can be configured as knowledge bases");
+        }
+        java.util.Optional<KnowledgeBaseSpaceSummary> registeredSpace = knowledgeBaseSpaceRepository.findSpaceByRootDocumentId(
+            currentUser.workspaceId(),
+            documentId
+        );
+        if (registeredSpace.isPresent()) {
+            auditService.log(
+                currentUser,
+                "document.knowledge_base.deprecated_noop",
+                "document",
+                documentId,
+                Map.of("spaceId", registeredSpace.get().id().toString())
+            );
+            return getDocument(currentUser, documentId);
         }
         String normalizedDescription = normalizeNullableText(description, 512);
         String normalizedCoverUrl = normalizeNullableText(coverUrl, 1024);
@@ -1142,13 +1158,13 @@ public class DocumentService {
                 Map.of(
                     "recipientId", managerId.toString(),
                     "notificationType", "document_permission_request",
-                    "title", currentUser.displayName() + " 申请访问文档「" + document.title() + "」",
+                    "title", currentUser.displayName() + " 申请访问知识内容「" + document.title() + "」",
                     "body", normalizedReason == null || normalizedReason.isBlank()
                         ? "申请权限：" + normalizedPermission
                         : "申请权限：" + normalizedPermission + "；原因：" + normalizedReason,
                     "targetType", "document",
                     "targetId", documentId.toString(),
-                    "webPath", "/docs/" + documentId,
+                    "webPath", knowledgeDocumentWebPath(currentUser.workspaceId(), documentId),
                     "dedupeKey", "document.permission_request:" + requestId + ":" + managerId
                 ),
                 "notification.document.permission_request:" + requestId + ":" + managerId
@@ -1466,7 +1482,7 @@ public class DocumentService {
             workspaceId,
             "document",
             documentId,
-            "/docs/" + documentId,
+            knowledgeDocumentWebPath(workspaceId, documentId),
             "colla://document/" + documentId,
             title
         );
@@ -1676,6 +1692,12 @@ public class DocumentService {
     private String commentWebPath(UUID documentId, UUID threadId, KnowledgeContext knowledgeContext) {
         String basePath = knowledgeContext == null ? "/docs/" + documentId : knowledgeContext.webPath();
         return basePath + (basePath.contains("?") ? "&" : "?") + "commentId=" + threadId;
+    }
+
+    private String knowledgeDocumentWebPath(UUID workspaceId, UUID documentId) {
+        return knowledgeBaseSpaceRepository.findSpaceByDocumentId(workspaceId, documentId)
+            .map(space -> "/knowledge-bases/" + space.id() + "?docId=" + documentId)
+            .orElse("/docs/" + documentId);
     }
 
     private String clip(String value, int maxLength) {
@@ -1933,7 +1955,7 @@ public class DocumentService {
                     "body", title + " 已更新到 v" + versionNo,
                     "targetType", "document",
                     "targetId", documentId.toString(),
-                    "webPath", "/docs/" + documentId,
+                    "webPath", knowledgeDocumentWebPath(currentUser.workspaceId(), documentId),
                     "dedupeKey", "knowledge.subscription.updated:" + documentId + ":" + versionNo + ":" + subscriberId
                 ),
                 "notification.knowledge.subscription_updated:" + documentId + ":" + versionNo + ":" + subscriberId

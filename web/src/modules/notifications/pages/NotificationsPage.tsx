@@ -123,7 +123,7 @@ export function NotificationsPage() {
           options={[
             { label: '全部来源', value: 'all' },
             { label: '项目', value: 'issue' },
-            { label: '文档', value: 'document' },
+            { label: '知识内容', value: 'document' },
             { label: 'IM', value: 'mention' },
             { label: '表格', value: 'base' },
             { label: '审批', value: 'approval' },
@@ -135,7 +135,7 @@ export function NotificationsPage() {
           options={[
             { label: '全部对象', value: 'all' },
             { label: '需求/Bug', value: 'issue' },
-            { label: '文档', value: 'document' },
+            { label: '知识内容', value: 'document' },
             { label: '多维表格', value: 'base' },
             { label: '表格记录', value: 'base_record' },
             { label: '审批', value: 'approval' },

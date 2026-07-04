@@ -15,6 +15,7 @@ export type WorkspaceDashboard = {
   unreadNotificationCount: number
   latestNotifications: NotificationItem[]
   recentDocuments: DocumentSummary[]
+  recentKnowledgeContents: PlatformObjectSummary[]
   recentBases: BaseSummary[]
   recentObjects: PlatformObjectSummary[]
   favoriteObjects: PlatformObjectSummary[]

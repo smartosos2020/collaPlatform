@@ -2642,6 +2642,40 @@ body {
   padding: 0;
 }
 
+.docs-knowledge-context-bar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
+}
+
+.docs-knowledge-context-main {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.docs-knowledge-context-main .ant-typography {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.docs-knowledge-context-tags {
+  justify-content: flex-end;
+}
+
 .doc-list-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 34px;
@@ -4194,6 +4228,19 @@ body {
 
   .doc-editor-shell {
     padding: 12px;
+  }
+
+  .docs-knowledge-context-bar {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .docs-knowledge-context-bar .ant-btn {
+    width: fit-content;
+  }
+
+  .docs-knowledge-context-tags {
+    justify-content: flex-start;
   }
 
   .doc-title-input {
