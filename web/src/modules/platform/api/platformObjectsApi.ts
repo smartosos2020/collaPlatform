@@ -25,12 +25,30 @@ export type PermissionExplanation = {
   objectType: string
   objectId: string
   action: string
+  actionCategory?: 'user_action' | 'object_management' | 'space_management' | 'admin_management' | 'super_admin'
+  presentationContext?: 'user' | 'admin'
   allowed: boolean
   accessState: ObjectAccessState
   reason: string
+  actionAdvice?: string
+  policySourceDetail?: string
   currentLevel: string
   requiredLevel: string
   source: string
+}
+
+export type PlatformObjectAction = {
+  key: string
+  label: string
+  href?: string | null
+  tone: string
+}
+
+export type PlatformObjectCard = {
+  summary: PlatformObjectSummary
+  presentationContext: 'user' | 'admin'
+  actions: PlatformObjectAction[]
+  permissionHint: string
 }
 
 export type PlatformObjectTypeRule = {
@@ -68,6 +86,13 @@ export function getPermissionExplanation(objectType: string, objectId: string, a
   const params = new URLSearchParams({ action })
   return apiGet<PermissionExplanation>(
     `/platform/objects/${encodeURIComponent(objectType)}/${encodeURIComponent(objectId)}/permission-explanation?${params}`,
+  )
+}
+
+export function getObjectCard(objectType: string, objectId: string, context: 'user' | 'admin' = 'user') {
+  const params = new URLSearchParams({ context })
+  return apiGet<PlatformObjectCard>(
+    `/platform/objects/${encodeURIComponent(objectType)}/${encodeURIComponent(objectId)}/card?${params}`,
   )
 }
 

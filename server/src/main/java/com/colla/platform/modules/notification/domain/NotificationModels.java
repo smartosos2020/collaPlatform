@@ -11,6 +11,7 @@ public final class NotificationModels {
         UUID id,
         String notificationType,
         String sourceType,
+        String notificationScope,
         String title,
         String body,
         String targetType,

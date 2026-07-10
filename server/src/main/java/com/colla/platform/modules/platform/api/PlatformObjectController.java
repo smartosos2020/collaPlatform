@@ -4,6 +4,7 @@ import com.colla.platform.modules.platform.application.InternalLinkService;
 import com.colla.platform.modules.platform.application.PlatformObjectService;
 import com.colla.platform.modules.platform.application.PlatformObjectResolverRegistry;
 import com.colla.platform.modules.platform.domain.PlatformModels.ParsedInternalLink;
+import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectCard;
 import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectNavigation;
 import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectSummary;
 import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectTypeRule;
@@ -44,6 +45,16 @@ public class PlatformObjectController {
         return resolverRegistry.resolve(currentUser(authentication), type, id);
     }
 
+    @GetMapping("/objects/{type}/{id}/card")
+    public PlatformObjectCard card(
+        @PathVariable String type,
+        @PathVariable UUID id,
+        @RequestParam(defaultValue = "user") String context,
+        Authentication authentication
+    ) {
+        return platformObjectService.card(currentUser(authentication), type, id, context);
+    }
+
     @GetMapping("/object-types")
     public List<PlatformObjectTypeRule> objectTypes() {
         return platformObjectService.objectTypes();
@@ -59,9 +70,10 @@ public class PlatformObjectController {
         @PathVariable String type,
         @PathVariable UUID id,
         @RequestParam(defaultValue = "view") String action,
+        @RequestParam(defaultValue = "user") String context,
         Authentication authentication
     ) {
-        return platformObjectService.explainPermission(currentUser(authentication), type, id, action);
+        return platformObjectService.explainPermission(currentUser(authentication), type, id, action, context);
     }
 
     @PostMapping("/objects/{type}/{id}/access")

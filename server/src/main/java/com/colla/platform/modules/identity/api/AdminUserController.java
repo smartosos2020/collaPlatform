@@ -1,7 +1,7 @@
 package com.colla.platform.modules.identity.api;
 
 import com.colla.platform.modules.identity.application.MemberService;
-import com.colla.platform.modules.identity.domain.AuthModels.MemberSummary;
+import com.colla.platform.modules.identity.api.AdminIdentityDtos.AdminMemberView;
 import com.colla.platform.shared.auth.CurrentUser;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
@@ -29,13 +29,15 @@ public class AdminUserController {
     }
 
     @GetMapping
-    public List<MemberSummary> list(@RequestParam(required = false) UUID departmentId, Authentication authentication) {
-        return memberService.listMembers(currentUser(authentication), departmentId);
+    public List<AdminMemberView> list(@RequestParam(required = false) UUID departmentId, Authentication authentication) {
+        return memberService.listMembers(currentUser(authentication), departmentId).stream()
+            .map(AdminIdentityDtos::member)
+            .toList();
     }
 
     @PostMapping
-    public MemberSummary create(@Valid @RequestBody CreateMemberRequest request, Authentication authentication) {
-        return memberService.createMember(
+    public AdminMemberView create(@Valid @RequestBody CreateMemberRequest request, Authentication authentication) {
+        return AdminIdentityDtos.member(memberService.createMember(
             currentUser(authentication),
             request.username(),
             request.password(),
@@ -43,7 +45,7 @@ public class AdminUserController {
             request.email(),
             request.roleCode(),
             request.primaryDepartmentId()
-        );
+        ));
     }
 
     @PostMapping("/{userId}/disable")

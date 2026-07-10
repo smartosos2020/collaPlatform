@@ -18,7 +18,10 @@ import com.colla.platform.modules.doc.domain.DocumentModels.KnowledgeBaseSpaceSu
 import com.colla.platform.modules.doc.domain.DocumentModels.KnowledgeBaseSubscription;
 import com.colla.platform.modules.doc.infrastructure.DocumentRepository;
 import com.colla.platform.modules.doc.infrastructure.KnowledgeBaseSpaceRepository;
+import com.colla.platform.modules.platform.application.PlatformObjectResolverRegistry;
+import com.colla.platform.modules.platform.domain.PlatformModels.ObjectAccessState;
 import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectReference;
+import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectSummary;
 import com.colla.platform.modules.platform.infrastructure.PlatformObjectRepository;
 import com.colla.platform.modules.permission.application.PermissionDecisionService;
 import com.colla.platform.modules.permission.domain.PermissionModels.PermissionDecision;
@@ -48,6 +51,7 @@ public class KnowledgeBaseSpaceService {
     private final PlatformObjectRepository objectRepository;
     private final DocumentService documentService;
     private final PermissionDecisionService permissionDecisionService;
+    private final PlatformObjectResolverRegistry objectResolverRegistry;
     private final AuditService auditService;
     private final JdbcTemplate jdbcTemplate;
 
@@ -57,6 +61,7 @@ public class KnowledgeBaseSpaceService {
         PlatformObjectRepository objectRepository,
         DocumentService documentService,
         PermissionDecisionService permissionDecisionService,
+        PlatformObjectResolverRegistry objectResolverRegistry,
         AuditService auditService,
         JdbcTemplate jdbcTemplate
     ) {
@@ -65,6 +70,7 @@ public class KnowledgeBaseSpaceService {
         this.objectRepository = objectRepository;
         this.documentService = documentService;
         this.permissionDecisionService = permissionDecisionService;
+        this.objectResolverRegistry = objectResolverRegistry;
         this.auditService = auditService;
         this.jdbcTemplate = jdbcTemplate;
     }
@@ -111,12 +117,34 @@ public class KnowledgeBaseSpaceService {
         UUID parentId,
         String title,
         String docType,
-        String content
+        String content,
+        String targetObjectType,
+        UUID targetObjectId,
+        String targetRoute,
+        String displayMode,
+        String targetTitleStrategy,
+        String entryAlias
     ) {
         KnowledgeBaseSpaceSummary space = requireView(currentUser, spaceId);
         UUID targetParentId = parentId == null ? space.rootDocumentId() : parentId;
         requireDocumentInsideKnowledgeBase(currentUser, space.rootDocumentId(), targetParentId);
-        return documentService.createDocument(currentUser, targetParentId, title, docType, content, null, null, "view", false);
+        String normalizedDocType = normalizeItemDocType(docType);
+        DocumentDetail detail = documentService.createDocument(currentUser, targetParentId, title, normalizedDocType, content, null, null, "view", false);
+        documentRepository.updateKnowledgeNodeMetadata(
+            currentUser.workspaceId(),
+            detail.document().id(),
+            nodeKindFor(normalizedDocType),
+            normalizeTargetObjectType(normalizedDocType, targetObjectType),
+            normalizeTargetObjectId(normalizedDocType, targetObjectId),
+            normalizeTargetRoute(normalizedDocType, targetRoute),
+            normalizeDisplayMode(displayMode),
+            normalizeTitleStrategy(targetTitleStrategy),
+            normalizeEntryAlias(entryAlias),
+            currentUser.id()
+        );
+        DocumentDetail created = hydrateDetailTargetSummary(currentUser, documentService.getDocument(currentUser, detail.document().id()));
+        auditService.log(currentUser, "knowledge.node.created", "document", created.document().id(), knowledgeNodeAuditPayload(spaceId, created.document()));
+        return created;
     }
 
     @Transactional
@@ -133,21 +161,27 @@ public class KnowledgeBaseSpaceService {
         requireContentItem(currentUser, space, documentId);
         UUID targetParentId = parentId == null ? space.rootDocumentId() : parentId;
         requireDocumentInsideKnowledgeBase(currentUser, space.rootDocumentId(), targetParentId);
-        return documentService.moveDocument(currentUser, documentId, targetParentId, sortOrder);
+        DocumentDetail moved = hydrateDetailTargetSummary(currentUser, documentService.moveDocument(currentUser, documentId, targetParentId, sortOrder));
+        auditService.log(currentUser, "knowledge.node.moved", "document", documentId, knowledgeNodeAuditPayload(spaceId, moved.document()));
+        return moved;
     }
 
     @Transactional
     public DocumentDetail archiveItem(CurrentUser currentUser, UUID spaceId, UUID documentId) {
         KnowledgeBaseSpaceSummary space = requireView(currentUser, spaceId);
         requireContentItem(currentUser, space, documentId);
-        return documentService.archiveDocument(currentUser, documentId);
+        DocumentDetail archived = hydrateDetailTargetSummary(currentUser, documentService.archiveDocument(currentUser, documentId));
+        auditService.log(currentUser, "knowledge.node.archived", "document", documentId, knowledgeNodeAuditPayload(spaceId, archived.document()));
+        return archived;
     }
 
     @Transactional
     public DocumentDetail restoreItem(CurrentUser currentUser, UUID spaceId, UUID documentId) {
         KnowledgeBaseSpaceSummary space = requireView(currentUser, spaceId);
         requireContentItem(currentUser, space, documentId);
-        return documentService.restoreDocument(currentUser, documentId);
+        DocumentDetail restored = hydrateDetailTargetSummary(currentUser, documentService.restoreDocument(currentUser, documentId));
+        auditService.log(currentUser, "knowledge.node.restored", "document", documentId, knowledgeNodeAuditPayload(spaceId, restored.document()));
+        return restored;
     }
 
     @Transactional
@@ -359,6 +393,10 @@ public class KnowledgeBaseSpaceService {
         csv.append(row("health", "unmaintainedDocumentCount", health.unmaintainedDocumentCount(), null, null, null, null, null, null, null));
         csv.append(row("health", "ownerlessDocumentCount", health.ownerlessDocumentCount(), null, null, null, null, null, null, null));
         csv.append(row("health", "highRiskPermissionCount", health.highRiskPermissionCount(), null, null, null, null, null, null, null));
+        csv.append(row("health", "blockCoverageGapCount", health.blockCoverageGapCount(), null, null, null, null, null, null, null));
+        csv.append(row("health", "emptyBlockCount", health.emptyBlockCount(), null, null, null, null, null, null, null));
+        csv.append(row("health", "invalidEmbedBlockCount", health.invalidEmbedBlockCount(), null, null, null, null, null, null, null));
+        csv.append(row("health", "blockCoveragePercent", health.blockCoveragePercent(), null, null, null, null, null, null, null));
         csv.append(row("access", "visitorCount", dashboard.accessStats().visitorCount(), null, null, null, null, null, null, null));
         csv.append(row("access", "accessCount", dashboard.accessStats().accessCount(), null, null, null, null, null, null, null));
         for (KnowledgeBaseGovernanceRisk risk : dashboard.risks()) {
@@ -522,6 +560,7 @@ public class KnowledgeBaseSpaceService {
     }
 
     private KnowledgeBaseHealthMetrics healthMetrics(List<DocumentSummary> documents, List<KnowledgeBaseGovernanceRisk> risks) {
+        BlockGovernanceStats blockStats = blockGovernanceStats(documents);
         long documentCount = documents.stream().filter(document -> "markdown".equals(document.docType())).count();
         long activeDocumentCount = documents.stream()
             .filter(document -> "markdown".equals(document.docType()) && !document.archived())
@@ -546,7 +585,11 @@ public class KnowledgeBaseSpaceService {
             outdatedDocumentCount,
             unmaintainedDocumentCount,
             ownerlessDocumentCount,
-            highRiskPermissionCount
+            highRiskPermissionCount,
+            blockStats.coverageGapCount(),
+            blockStats.emptyBlockCount(),
+            blockStats.invalidEmbedBlockCount(),
+            blockStats.coveragePercent()
         );
     }
 
@@ -571,6 +614,55 @@ public class KnowledgeBaseSpaceService {
                 "知识内容未设置维护人。",
                 knowledgeDocumentWebPath(space.id(), document.id())
             )));
+        BlockGovernanceStats blockStats = blockGovernanceStats(documents);
+        if (blockStats.coverageGapCount() > 0) {
+            risks.add(new KnowledgeBaseGovernanceRisk(
+                "block-coverage:" + space.id(),
+                "block_coverage_gap",
+                "high",
+                "knowledge_base",
+                space.id(),
+                space.name(),
+                null,
+                null,
+                null,
+                null,
+                "存在 " + blockStats.coverageGapCount() + " 个活动知识内容仍只依赖旧富文本，需投影为 blocks。",
+                "/knowledge-bases/" + space.id()
+            ));
+        }
+        if (blockStats.emptyBlockCount() > 0) {
+            risks.add(new KnowledgeBaseGovernanceRisk(
+                "empty-block:" + space.id(),
+                "empty_content_block",
+                "medium",
+                "knowledge_base",
+                space.id(),
+                space.name(),
+                null,
+                null,
+                null,
+                null,
+                "存在 " + blockStats.emptyBlockCount() + " 个空内容块，建议清理或补全文本。",
+                "/knowledge-bases/" + space.id()
+            ));
+        }
+        if (blockStats.invalidEmbedBlockCount() > 0) {
+            risks.add(new KnowledgeBaseGovernanceRisk(
+                "invalid-embed:" + space.id(),
+                "invalid_embedded_object",
+                "high",
+                "knowledge_base",
+                space.id(),
+                space.name(),
+                null,
+                null,
+                null,
+                null,
+                "存在 " + blockStats.invalidEmbedBlockCount() + " 个无法解析或缺少目标的嵌入对象块。",
+                "/knowledge-bases/" + space.id()
+            ));
+        }
         documents.stream()
             .filter(document -> "markdown".equals(document.docType()) && !document.archived())
             .filter(document -> "outdated".equals(document.knowledgeStatus())
@@ -611,6 +703,79 @@ public class KnowledgeBaseSpaceService {
             .sorted(Comparator.comparingInt((KnowledgeBaseGovernanceRisk risk) -> severityRank(risk.severity())).reversed())
             .limit(100)
             .toList();
+    }
+
+    private BlockGovernanceStats blockGovernanceStats(List<DocumentSummary> documents) {
+        List<UUID> activeMarkdownIds = documents.stream()
+            .filter(document -> "markdown".equals(document.docType()) && !document.archived())
+            .map(DocumentSummary::id)
+            .toList();
+        if (activeMarkdownIds.isEmpty()) {
+            return new BlockGovernanceStats(0, 0, 0, 100.0d);
+        }
+        String idArray = activeMarkdownIds.stream().map(UUID::toString).collect(java.util.stream.Collectors.joining(","));
+        Map<String, Object> row = jdbcTemplate.queryForMap(
+            """
+                with target_documents as (
+                    select d.workspace_id, d.id, d.content
+                    from documents d
+                    where d.id = any(string_to_array(?, ',')::uuid[])
+                      and d.deleted_at is null
+                      and d.archived_at is null
+                ),
+                active_blocks as (
+                    select b.*
+                    from document_blocks b
+                    join target_documents d on d.workspace_id = b.workspace_id and d.id = b.document_id
+                    where b.deleted_at is null
+                )
+                select
+                    count(distinct d.id) filter (
+                        where coalesce(d.content, '') <> ''
+                          and not exists (
+                              select 1 from active_blocks b where b.workspace_id = d.workspace_id and b.document_id = d.id
+                          )
+                    ) coverage_gap_count,
+                    count(b.id) filter (
+                        where b.block_type not in ('divider', 'toc')
+                          and coalesce(b.plain_text, '') = ''
+                          and coalesce(b.content, '') = ''
+                          and coalesce(b.rich_content, '{}'::jsonb) = '{}'::jsonb
+                    ) empty_block_count,
+                    count(b.id) filter (
+                        where b.block_type in ('embed', 'embed_object', 'base_view', 'issue_embed', 'message_embed', 'file_embed', 'link', 'link_card')
+                          and (
+                              coalesce(b.content, '') !~ '"objectType"\\s*:'
+                              or coalesce(b.content, '') !~ '"objectId"\\s*:'
+                          )
+                    ) invalid_embed_block_count,
+                    count(distinct d.id) total_count,
+                    count(distinct d.id) filter (
+                        where exists (
+                            select 1 from active_blocks b where b.workspace_id = d.workspace_id and b.document_id = d.id
+                        )
+                    ) covered_count
+                from target_documents d
+                left join active_blocks b on b.workspace_id = d.workspace_id and b.document_id = d.id
+                """,
+            idArray
+        );
+        long total = asLong(row.get("total_count"));
+        long covered = asLong(row.get("covered_count"));
+        double coveragePercent = total == 0 ? 100.0d : Math.round((covered * 10000.0d / total)) / 100.0d;
+        return new BlockGovernanceStats(
+            asLong(row.get("coverage_gap_count")),
+            asLong(row.get("empty_block_count")),
+            asLong(row.get("invalid_embed_block_count")),
+            coveragePercent
+        );
+    }
+
+    private long asLong(Object value) {
+        return value instanceof Number number ? number.longValue() : 0L;
+    }
+
+    private record BlockGovernanceStats(long coverageGapCount, long emptyBlockCount, long invalidEmbedBlockCount, double coveragePercent) {
     }
 
     private List<KnowledgeBaseGovernanceRisk> permissionRisks(
@@ -917,7 +1082,124 @@ public class KnowledgeBaseSpaceService {
         return documentRepository.listKnowledgeBaseDocuments(currentUser.workspaceId(), rootDocumentId).stream()
             .filter(document -> currentUser.id().equals(document.createdBy())
                 || permissionDecisionService.decide(currentUser, "document", document.id(), "view").allowed())
+            .map(document -> hydrateTargetSummary(currentUser, document))
             .toList();
+    }
+
+    private DocumentSummary hydrateTargetSummary(CurrentUser currentUser, DocumentSummary document) {
+        if ("external_link".equals(document.docType())) {
+            PlatformObjectSummary summary = new PlatformObjectSummary(
+                "external_link",
+                document.id(),
+                ObjectAccessState.available,
+                document.title(),
+                document.targetRoute(),
+                document.archived() ? "archived" : "active",
+                document.targetRoute(),
+                null,
+                Map.of("sourceModule", "knowledge")
+            );
+            return copyDocumentSummary(document, document.title(), document.targetRoute(), summary);
+        }
+        if (!"object_ref".equals(document.docType()) || document.targetObjectType() == null || document.targetObjectId() == null) {
+            return document;
+        }
+        PlatformObjectSummary targetSummary = objectResolverRegistry.resolve(currentUser, document.targetObjectType(), document.targetObjectId());
+        if (targetSummary.accessState() != ObjectAccessState.available) {
+            auditService.log(
+                currentUser,
+                "knowledge.node.target_unavailable",
+                "document",
+                document.id(),
+                Map.of(
+                    "targetObjectType", document.targetObjectType(),
+                    "targetObjectId", document.targetObjectId().toString(),
+                    "accessState", targetSummary.accessState().name()
+                )
+            );
+            return copyDocumentSummary(document, unavailableTargetTitle(targetSummary.accessState()), null, targetSummary);
+        }
+        return copyDocumentSummary(document, document.title(), document.targetRoute(), targetSummary);
+    }
+
+    private DocumentDetail hydrateDetailTargetSummary(CurrentUser currentUser, DocumentDetail detail) {
+        return new DocumentDetail(
+            hydrateTargetSummary(currentUser, detail.document()),
+            detail.content(),
+            detail.blocks(),
+            detail.relations(),
+            detail.permissions(),
+            detail.shareLinks(),
+            detail.comments(),
+            detail.knowledgeContext()
+        );
+    }
+
+    private DocumentSummary copyDocumentSummary(
+        DocumentSummary document,
+        String title,
+        String targetRoute,
+        PlatformObjectSummary targetSummary
+    ) {
+        return new DocumentSummary(
+            document.id(),
+            document.parentId(),
+            title,
+            document.docType(),
+            document.currentVersionNo(),
+            document.permissionLevel(),
+            document.createdBy(),
+            document.createdByName(),
+            document.createdAt(),
+            document.updatedBy(),
+            document.updatedByName(),
+            document.updatedAt(),
+            document.sortOrder(),
+            document.description(),
+            document.coverUrl(),
+            document.defaultPermissionLevel(),
+            document.knowledgeBase(),
+            document.archived(),
+            document.maintainerId(),
+            document.maintainerName(),
+            document.tags(),
+            document.category(),
+            document.knowledgeStatus(),
+            document.reviewDueAt(),
+            document.verifiedAt(),
+            document.nodeKind(),
+            document.targetObjectType(),
+            document.targetObjectId(),
+            targetRoute,
+            document.displayMode(),
+            document.targetTitleStrategy(),
+            document.entryAlias(),
+            targetSummary
+        );
+    }
+
+    private String unavailableTargetTitle(ObjectAccessState accessState) {
+        return switch (accessState) {
+            case forbidden -> "无权限对象入口";
+            case deleted -> "已删除对象入口";
+            case not_found -> "不存在对象入口";
+            case invalid -> "无效对象入口";
+            default -> "不可访问对象入口";
+        };
+    }
+
+    private Map<String, Object> knowledgeNodeAuditPayload(UUID spaceId, DocumentSummary document) {
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("spaceId", spaceId.toString());
+        payload.put("nodeKind", document.nodeKind());
+        payload.put("docType", document.docType());
+        if (document.targetObjectType() != null) {
+            payload.put("targetObjectType", document.targetObjectType());
+        }
+        if (document.targetObjectId() != null) {
+            payload.put("targetObjectId", document.targetObjectId().toString());
+        }
+        return payload;
     }
 
     private Comparator<DocumentSummary> documentOrder() {
@@ -925,6 +1207,85 @@ public class KnowledgeBaseSpaceService {
             .comparingInt(DocumentSummary::sortOrder)
             .thenComparing(document -> document.title().toLowerCase(Locale.ROOT))
             .thenComparing(DocumentSummary::updatedAt, Comparator.reverseOrder());
+    }
+
+    private String normalizeItemDocType(String docType) {
+        String type = docType == null || docType.isBlank() ? "markdown" : docType.trim().toLowerCase(Locale.ROOT);
+        if (!List.of("markdown", "folder", "object_ref", "external_link").contains(type)) {
+            throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST, "Invalid knowledge item type");
+        }
+        return type;
+    }
+
+    private String nodeKindFor(String docType) {
+        return switch (docType) {
+            case "folder" -> "directory";
+            case "object_ref" -> "object_ref";
+            case "external_link" -> "external_link";
+            default -> "content";
+        };
+    }
+
+    private String normalizeTargetObjectType(String docType, String targetObjectType) {
+        if ("external_link".equals(docType)) {
+            return "external_link";
+        }
+        if (!"object_ref".equals(docType)) {
+            return null;
+        }
+        if (targetObjectType == null || targetObjectType.isBlank()) {
+            throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST, "Target object type is required");
+        }
+        String normalized = targetObjectType.trim().toLowerCase(Locale.ROOT);
+        if (!List.of("document", "base", "file", "project", "external_link").contains(normalized)) {
+            throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST, "Invalid target object type");
+        }
+        return normalized;
+    }
+
+    private UUID normalizeTargetObjectId(String docType, UUID targetObjectId) {
+        if ("object_ref".equals(docType) && targetObjectId == null) {
+            throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST, "Target object id is required");
+        }
+        return "object_ref".equals(docType) ? targetObjectId : null;
+    }
+
+    private String normalizeTargetRoute(String docType, String targetRoute) {
+        if (!"object_ref".equals(docType) && !"external_link".equals(docType)) {
+            return null;
+        }
+        if (targetRoute == null || targetRoute.isBlank()) {
+            throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST, "Target route is required");
+        }
+        String normalized = targetRoute.trim();
+        if (normalized.length() > 1024) {
+            return normalized.substring(0, 1024);
+        }
+        return normalized;
+    }
+
+    private String normalizeDisplayMode(String displayMode) {
+        String normalized = displayMode == null || displayMode.isBlank() ? "default" : displayMode.trim().toLowerCase(Locale.ROOT);
+        if (!List.of("default", "inline", "preview", "link").contains(normalized)) {
+            throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST, "Invalid display mode");
+        }
+        return normalized;
+    }
+
+    private String normalizeTitleStrategy(String targetTitleStrategy) {
+        String normalized = targetTitleStrategy == null || targetTitleStrategy.isBlank() ? "manual" : targetTitleStrategy.trim().toLowerCase(Locale.ROOT);
+        if (!List.of("manual", "follow_target", "alias").contains(normalized)) {
+            throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST, "Invalid title strategy");
+        }
+        return normalized;
+    }
+
+    private String normalizeEntryAlias(String entryAlias) {
+        if (entryAlias == null || entryAlias.isBlank()) {
+            return null;
+        }
+        String normalized = entryAlias.trim();
+        return normalized.length() > 255 ? normalized.substring(0, 255) : normalized;
     }
 
     private List<DocumentTreeNode> buildTree(List<DocumentSummary> documents) {

@@ -70,6 +70,7 @@ public class SecurityConfig {
             "Content-Type",
             "Accept",
             "X-Colla-Client",
+            "X-Colla-Ui",
             "X-Colla-Retry-Attempt",
             "X-Colla-Request-Id"
         ));

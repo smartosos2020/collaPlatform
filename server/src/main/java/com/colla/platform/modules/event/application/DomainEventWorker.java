@@ -16,6 +16,8 @@ import org.springframework.stereotype.Component;
 @Component
 public class DomainEventWorker {
     private static final String NOTIFICATION_CREATED = "notification.created";
+    private static final int BATCH_SIZE = 100;
+    private static final int MAX_BATCHES_PER_RUN = 100;
 
     private final DomainEventRepository eventRepository;
     private final NotificationRepository notificationRepository;
@@ -36,18 +38,24 @@ public class DomainEventWorker {
 
     @Scheduled(fixedDelayString = "${colla.events.worker-delay-ms:5000}")
     public void processPendingEvents() {
-        for (DomainEvent event : eventRepository.claimPending(20)) {
-            try {
-                process(event);
-                eventRepository.markProcessed(event.id(), Instant.now());
-            } catch (RuntimeException exception) {
-                int retryCount = event.retryCount() + 1;
-                eventRepository.markFailed(
-                    event.id(),
-                    retryCount,
-                    Instant.now().plus(Math.min(retryCount * 10L, 300L), ChronoUnit.SECONDS),
-                    exception.getMessage()
-                );
+        for (int batch = 0; batch < MAX_BATCHES_PER_RUN; batch += 1) {
+            var events = eventRepository.claimPending(BATCH_SIZE);
+            if (events.isEmpty()) {
+                return;
+            }
+            for (DomainEvent event : events) {
+                try {
+                    process(event);
+                    eventRepository.markProcessed(event.id(), Instant.now());
+                } catch (RuntimeException exception) {
+                    int retryCount = event.retryCount() + 1;
+                    eventRepository.markFailed(
+                        event.id(),
+                        retryCount,
+                        Instant.now().plus(Math.min(retryCount * 10L, 300L), ChronoUnit.SECONDS),
+                        exception.getMessage()
+                    );
+                }
             }
         }
     }

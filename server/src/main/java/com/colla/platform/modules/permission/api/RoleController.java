@@ -1,10 +1,10 @@
 package com.colla.platform.modules.permission.api;
 
 import com.colla.platform.modules.permission.application.RoleService;
-import com.colla.platform.modules.permission.domain.PermissionModels.PermissionCatalogItem;
-import com.colla.platform.modules.permission.domain.PermissionModels.RoleAssignmentSummary;
-import com.colla.platform.modules.permission.domain.PermissionModels.RoleDetail;
-import com.colla.platform.modules.permission.domain.PermissionModels.RoleSummary;
+import com.colla.platform.modules.permission.api.AdminPermissionDtos.AdminPermissionCatalogItemView;
+import com.colla.platform.modules.permission.api.AdminPermissionDtos.AdminRoleAssignmentView;
+import com.colla.platform.modules.permission.api.AdminPermissionDtos.AdminRoleDetailView;
+import com.colla.platform.modules.permission.api.AdminPermissionDtos.AdminRoleView;
 import com.colla.platform.shared.auth.CurrentUser;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -34,75 +34,81 @@ public class RoleController {
     }
 
     @GetMapping("/permissions")
-    public List<PermissionCatalogItem> permissions(Authentication authentication) {
-        return roleService.listPermissions(currentUser(authentication));
+    public List<AdminPermissionCatalogItemView> permissions(Authentication authentication) {
+        return roleService.listPermissions(currentUser(authentication)).stream()
+            .map(AdminPermissionDtos::permission)
+            .toList();
     }
 
     @GetMapping("/roles")
-    public List<RoleSummary> roles(Authentication authentication) {
-        return roleService.listRoles(currentUser(authentication));
+    public List<AdminRoleView> roles(Authentication authentication) {
+        return roleService.listRoles(currentUser(authentication)).stream()
+            .map(AdminPermissionDtos::role)
+            .toList();
     }
 
     @PostMapping("/roles")
-    public RoleSummary createRole(@Valid @RequestBody RoleRequest request, Authentication authentication) {
-        return roleService.createRole(
+    public AdminRoleView createRole(@Valid @RequestBody RoleRequest request, Authentication authentication) {
+        return AdminPermissionDtos.role(roleService.createRole(
             currentUser(authentication),
             request.code(),
             request.name(),
             request.scope(),
             request.description()
-        );
+        ));
     }
 
     @GetMapping("/roles/{roleId}")
-    public RoleDetail role(@PathVariable UUID roleId, Authentication authentication) {
-        return roleService.getRole(currentUser(authentication), roleId);
+    public AdminRoleDetailView role(@PathVariable UUID roleId, Authentication authentication) {
+        return AdminPermissionDtos.roleDetail(roleService.getRole(currentUser(authentication), roleId));
     }
 
     @PatchMapping("/roles/{roleId}")
-    public RoleSummary updateRole(
+    public AdminRoleView updateRole(
         @PathVariable UUID roleId,
         @Valid @RequestBody UpdateRoleRequest request,
         Authentication authentication
     ) {
-        return roleService.updateRole(
+        return AdminPermissionDtos.role(roleService.updateRole(
             currentUser(authentication),
             roleId,
             request.name(),
             request.scope(),
             request.description(),
             request.status()
-        );
+        ));
     }
 
     @PutMapping("/roles/{roleId}/permissions")
-    public RoleDetail replaceRolePermissions(
+    public AdminRoleDetailView replaceRolePermissions(
         @PathVariable UUID roleId,
         @Valid @RequestBody RolePermissionsRequest request,
         Authentication authentication
     ) {
-        return roleService.replaceRolePermissions(
+        return AdminPermissionDtos.roleDetail(roleService.replaceRolePermissions(
             currentUser(authentication),
             roleId,
             request.permissionCodes(),
             request.confirmHighRisk()
-        );
+        ));
     }
 
     @GetMapping("/role-assignments")
-    public List<RoleAssignmentSummary> assignments(
+    public List<AdminRoleAssignmentView> assignments(
         @RequestParam(required = false) UUID roleId,
         Authentication authentication
     ) {
-        return roleService.listAssignments(currentUser(authentication), roleId);
+        return roleService.listAssignments(currentUser(authentication), roleId).stream()
+            .map(AdminPermissionDtos::assignment)
+            .toList();
     }
 
     @PostMapping("/role-assignments")
-    public RoleAssignmentSummary createAssignment(
+    public AdminRoleAssignmentView createAssignment(
         @Valid @RequestBody RoleAssignmentRequest request,
         Authentication authentication
     ) {
-        return roleService.createAssignment(
+        return AdminPermissionDtos.assignment(roleService.createAssignment(
             currentUser(authentication),
             request.roleId(),
             request.subjectType(),
@@ -112,7 +118,7 @@ public class RoleController {
             request.effectiveAt(),
             request.expiresAt(),
             request.confirmHighRisk()
-        );
+        ));
     }
 
     @DeleteMapping("/role-assignments/{assignmentId}")

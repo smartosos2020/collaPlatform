@@ -1,6 +1,6 @@
 import { apiGet, apiPatch, apiPost } from '../../../shared/api/httpClient'
 
-export type ProjectSummary = {
+export type UserProjectView = {
   id: string
   projectKey: string
   name: string
@@ -11,7 +11,15 @@ export type ProjectSummary = {
   openIssueCount: number
   createdAt: string
   updatedAt: string
+  collaboration?: {
+    conversationId?: string | null
+    memberCount: number
+    displayText: string
+  }
+  availableActions?: string[]
 }
+
+export type ProjectSummary = UserProjectView
 
 export type ProjectMember = {
   userId: string
@@ -21,11 +29,13 @@ export type ProjectMember = {
   joinedAt: string
 }
 
-export type ProjectDetail = ProjectSummary & {
+export type UserProjectDetailView = UserProjectView & {
   members: ProjectMember[]
 }
 
-export type IssueSummary = {
+export type ProjectDetail = UserProjectDetailView
+
+export type UserIssueView = {
   id: string
   projectId: string
   projectKey: string
@@ -47,7 +57,16 @@ export type IssueSummary = {
   updatedAt: string
   resolvedAt?: string | null
   closedAt?: string | null
+  collaboration?: {
+    assigneeId?: string | null
+    assigneeName?: string | null
+    reporterId: string
+    reporterName: string
+  }
+  availableActions?: string[]
 }
+
+export type IssueSummary = UserIssueView
 
 export type IssueComment = {
   id: string
@@ -124,8 +143,8 @@ export type IssueWorkflowAction = {
   description: string
 }
 
-export type IssueDetail = {
-  issue: IssueSummary
+export type UserIssueDetailView = {
+  issue: UserIssueView
   comments: IssueComment[]
   attachments: IssueAttachment[]
   activities: IssueActivity[]
@@ -133,6 +152,8 @@ export type IssueDetail = {
   relations: IssueRelation[]
   availableActions: IssueWorkflowAction[]
 }
+
+export type IssueDetail = UserIssueDetailView
 
 export type CountBucket = {
   key: string
@@ -156,15 +177,15 @@ export type MemberSummary = {
 }
 
 export function listProjects() {
-  return apiGet<ProjectSummary[]>('/projects')
+  return apiGet<UserProjectView[]>('/projects')
 }
 
 export function createProject(request: { projectKey?: string; name: string; description?: string; memberIds: string[] }) {
-  return apiPost<ProjectDetail>('/projects', request)
+  return apiPost<UserProjectDetailView>('/projects', request)
 }
 
 export function getProject(projectId: string) {
-  return apiGet<ProjectDetail>(`/projects/${projectId}`)
+  return apiGet<UserProjectDetailView>(`/projects/${projectId}`)
 }
 
 export function getProjectStats(projectId: string) {
@@ -187,7 +208,7 @@ export function listIssues(projectId: string, filters: IssueFilters = {}) {
     }
   }
   const query = params.toString()
-  return apiGet<IssueSummary[]>(`/projects/${projectId}/issues${query ? `?${query}` : ''}`)
+  return apiGet<UserIssueView[]>(`/projects/${projectId}/issues${query ? `?${query}` : ''}`)
 }
 
 export function createIssue(
@@ -201,11 +222,11 @@ export function createIssue(
     dueAt?: string
   },
 ) {
-  return apiPost<IssueDetail>(`/projects/${projectId}/issues`, request)
+  return apiPost<UserIssueDetailView>(`/projects/${projectId}/issues`, request)
 }
 
 export function getIssue(issueId: string) {
-  return apiGet<IssueDetail>(`/issues/${issueId}`)
+  return apiGet<UserIssueDetailView>(`/issues/${issueId}`)
 }
 
 export function updateIssue(
@@ -218,7 +239,7 @@ export function updateIssue(
     dueAt?: string
   },
 ) {
-  return apiPatch<IssueDetail>(`/issues/${issueId}`, request)
+  return apiPatch<UserIssueDetailView>(`/issues/${issueId}`, request)
 }
 
 export type TransitionIssueRequest = {
@@ -230,15 +251,15 @@ export type TransitionIssueRequest = {
 }
 
 export function transitionIssue(issueId: string, request: TransitionIssueRequest) {
-  return apiPost<IssueDetail>(`/issues/${issueId}/transition`, request)
+  return apiPost<UserIssueDetailView>(`/issues/${issueId}/transition`, request)
 }
 
 export function addIssueComment(issueId: string, content: string) {
-  return apiPost<IssueDetail>(`/issues/${issueId}/comments`, { content })
+  return apiPost<UserIssueDetailView>(`/issues/${issueId}/comments`, { content })
 }
 
 export function addIssueAttachment(issueId: string, fileId: string) {
-  return apiPost<IssueDetail>(`/issues/${issueId}/attachments`, { fileId })
+  return apiPost<UserIssueDetailView>(`/issues/${issueId}/attachments`, { fileId })
 }
 
 export function addIssueVerification(
@@ -251,11 +272,11 @@ export function addIssueVerification(
     fixVersion?: string
   },
 ) {
-  return apiPost<IssueDetail>(`/issues/${issueId}/verifications`, request)
+  return apiPost<UserIssueDetailView>(`/issues/${issueId}/verifications`, request)
 }
 
 export function addIssueRelation(issueId: string, targetType: string, targetId: string) {
-  return apiPost<IssueDetail>(`/issues/${issueId}/relations`, { targetType, targetId })
+  return apiPost<UserIssueDetailView>(`/issues/${issueId}/relations`, { targetType, targetId })
 }
 
 export function listDirectoryMembers() {

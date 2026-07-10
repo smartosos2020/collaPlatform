@@ -1,6 +1,8 @@
 package com.colla.platform.modules.permission.application;
 
 import com.colla.platform.shared.auth.CurrentUser;
+import com.colla.platform.modules.permission.domain.PermissionModels.PermissionActionCategory;
+import java.util.Locale;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -89,5 +91,37 @@ public class PermissionService {
         if (!canInspectPermissions(user)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Permission inspect permission required");
         }
+    }
+
+    public PermissionActionCategory categorizeAction(String objectType, String action) {
+        String normalizedObjectType = normalize(objectType);
+        String normalizedAction = normalize(action);
+        if (ListHolder.SUPER_ADMIN_ACTIONS.contains(normalizedAction)) {
+            return PermissionActionCategory.super_admin;
+        }
+        if (normalizedObjectType.startsWith("admin") || ListHolder.ADMIN_OBJECTS.contains(normalizedObjectType)
+            || ListHolder.ADMIN_ACTIONS.contains(normalizedAction)) {
+            return PermissionActionCategory.admin_management;
+        }
+        if (ListHolder.SPACE_OBJECTS.contains(normalizedObjectType) || ListHolder.SPACE_ACTIONS.contains(normalizedAction)) {
+            return PermissionActionCategory.space_management;
+        }
+        if (ListHolder.OBJECT_MANAGEMENT_ACTIONS.contains(normalizedAction)) {
+            return PermissionActionCategory.object_management;
+        }
+        return PermissionActionCategory.user_action;
+    }
+
+    private String normalize(String value) {
+        return value == null || value.isBlank() ? "" : value.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private static final class ListHolder {
+        private static final java.util.Set<String> SUPER_ADMIN_ACTIONS = java.util.Set.of("super_admin", "impersonate", "security_override");
+        private static final java.util.Set<String> ADMIN_ACTIONS = java.util.Set.of("admin", "audit", "inspect", "govern", "configure");
+        private static final java.util.Set<String> ADMIN_OBJECTS = java.util.Set.of("user", "role", "department", "user_group", "permission", "audit_log");
+        private static final java.util.Set<String> SPACE_OBJECTS = java.util.Set.of("knowledge_base", "workspace", "space");
+        private static final java.util.Set<String> SPACE_ACTIONS = java.util.Set.of("archive_space", "manage_space", "space_permission");
+        private static final java.util.Set<String> OBJECT_MANAGEMENT_ACTIONS = java.util.Set.of("manage", "share", "permission", "delete", "archive", "restore");
     }
 }

@@ -58,20 +58,27 @@ class OrganizationControllerIntegrationTests {
         JsonNode productNode = findDepartmentNode(objectMapper.readTree(treeResponse), childId);
         assertThat(productNode).isNotNull();
         assertThat(productNode.get("department").get("name").asText()).isEqualTo("Product");
+        assertThat(productNode.get("department").get("hierarchy").get("depth").asInt()).isEqualTo(1);
+        assertThat(productNode.get("department").get("membership").get("memberCount").asInt()).isGreaterThanOrEqualTo(1);
+        assertThat(productNode.get("department").get("governance").get("managedObjectType").asText()).isEqualTo("department");
         assertThat(productNode.get("managers")).hasSize(1);
         assertThat(productNode.get("managers").get(0).get("userId").asText()).isEqualTo(memberId.toString());
+        assertThat(productNode.get("managers").get(0).get("profile").get("displayName").asText()).isEqualTo("Org Member");
 
         mockMvc.perform(get("/api/admin/departments/" + childId + "/members")
                 .header("Authorization", "Bearer " + adminToken))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$[*].username", hasItem("orgmember" + suffix)))
-            .andExpect(jsonPath("$[*].relationType", hasItem("primary")));
+            .andExpect(jsonPath("$[*].relationType", hasItem("primary")))
+            .andExpect(jsonPath("$[*].profile.displayName", hasItem("Org Member")))
+            .andExpect(jsonPath("$[*].governance.managedObjectType", hasItem("department_member")));
 
         mockMvc.perform(get("/api/admin/users?departmentId=" + childId)
                 .header("Authorization", "Bearer " + adminToken))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$[*].username", hasItem("orgmember" + suffix)))
-            .andExpect(jsonPath("$[0].departments.length()", greaterThanOrEqualTo(1)));
+            .andExpect(jsonPath("$[0].departments.length()", greaterThanOrEqualTo(1)))
+            .andExpect(jsonPath("$[0].organization.primaryDepartmentId").value(childId.toString()));
 
         mockMvc.perform(get("/api/admin/audit-logs?action=department.member.added&targetType=department&targetId=" + childId)
                 .header("Authorization", "Bearer " + adminToken))
@@ -169,6 +176,8 @@ class OrganizationControllerIntegrationTests {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.code").value(code))
             .andExpect(jsonPath("$.name").value(name))
+            .andExpect(jsonPath("$.hierarchy.sortOrder").value(sortOrder))
+            .andExpect(jsonPath("$.governance.managedObjectType").value("department"))
             .andReturn()
             .getResponse()
             .getContentAsString();

@@ -1,5 +1,6 @@
 package com.colla.platform.modules.identity.api;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
 import static org.hamcrest.Matchers.hasItem;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -38,26 +39,33 @@ class UserGroupControllerIntegrationTests {
 
         JsonNode group = createGroup(adminToken, "reviewers_" + suffix, "Reviewers " + suffix, "permission");
         UUID groupId = UUID.fromString(group.get("id").asText());
+        assertThat(group.get("memberExpansion").get("directMemberCount").asInt()).isEqualTo(0);
+        assertThat(group.get("authorizationSubject").get("subjectType").asText()).isEqualTo("user_group");
 
         mockMvc.perform(post("/api/admin/user-groups/" + groupId + "/members")
                 .header("Authorization", "Bearer " + adminToken)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(Map.of("subjectType", "user", "subjectId", directUserId))))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.subjectType").value("user"));
+            .andExpect(jsonPath("$.subjectType").value("user"))
+            .andExpect(jsonPath("$.authorizationSubject.subjectType").value("user"))
+            .andExpect(jsonPath("$.governance.managedObjectType").value("user"));
 
         mockMvc.perform(post("/api/admin/user-groups/" + groupId + "/members")
                 .header("Authorization", "Bearer " + adminToken)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(Map.of("subjectType", "department", "subjectId", departmentId))))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.subjectType").value("department"));
+            .andExpect(jsonPath("$.subjectType").value("department"))
+            .andExpect(jsonPath("$.authorizationSubject.subjectType").value("department"));
 
         mockMvc.perform(get("/api/admin/user-groups/" + groupId + "/expanded-members")
                 .header("Authorization", "Bearer " + adminToken))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$[*].userId", hasItem(departmentUserId.toString())))
-            .andExpect(jsonPath("$[*].userId", hasItem(directUserId.toString())));
+            .andExpect(jsonPath("$[*].userId", hasItem(directUserId.toString())))
+            .andExpect(jsonPath("$[*].expansionSource.sourceType", hasItem("department")))
+            .andExpect(jsonPath("$[*].governance.managedObjectType", hasItem("user")));
 
         mockMvc.perform(get("/api/admin/audit-logs?action=usergroup.member.added&targetType=user_group&targetId=" + groupId)
                 .header("Authorization", "Bearer " + adminToken))
@@ -164,6 +172,8 @@ class UserGroupControllerIntegrationTests {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.code").value(code))
             .andExpect(jsonPath("$.status").value("active"))
+            .andExpect(jsonPath("$.memberExpansion.directMemberCount").value(0))
+            .andExpect(jsonPath("$.governance.managedObjectType").value("user_group"))
             .andReturn()
             .getResponse()
             .getContentAsString();

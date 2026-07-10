@@ -1,6 +1,7 @@
 package com.colla.platform.modules.base.api;
 
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
+import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.blankOrNullString;
 import static org.hamcrest.Matchers.containsString;
@@ -50,7 +51,8 @@ class BaseControllerIntegrationTests {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"userId\":\"" + viewerId + "\",\"permissionLevel\":\"view\"}"))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.members.length()", greaterThanOrEqualTo(2)));
+            .andExpect(jsonPath("$.members.length()", greaterThanOrEqualTo(2)))
+            .andExpect(jsonPath("$.members[?(@.userId == '" + viewerId + "')].collaboration.displayText", hasItem("可查看")));
 
         JsonNode table = createTable(adminToken, baseId, "需求单");
         UUID tableId = UUID.fromString(table.get("table").get("id").asText());
@@ -121,6 +123,7 @@ class BaseControllerIntegrationTests {
                 ))))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.total").value(1))
+            .andExpect(jsonPath("$.collaborationHint").value("可查看和筛选记录"))
             .andExpect(jsonPath("$.items[0].id").value(recordId.toString()))
             .andExpect(jsonPath("$.items[0].primaryText").value("Login Case"));
 

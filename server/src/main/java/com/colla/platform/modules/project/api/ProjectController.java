@@ -1,11 +1,12 @@
 package com.colla.platform.modules.project.api;
 
 import com.colla.platform.modules.project.application.ProjectService;
+import com.colla.platform.modules.project.api.UserProjectDtos.UserIssueDetailView;
+import com.colla.platform.modules.project.api.UserProjectDtos.UserIssueView;
+import com.colla.platform.modules.project.api.UserProjectDtos.UserProjectDetailView;
+import com.colla.platform.modules.project.api.UserProjectDtos.UserProjectView;
 import com.colla.platform.modules.project.domain.ProjectModels.IssueDetail;
-import com.colla.platform.modules.project.domain.ProjectModels.IssueSummary;
-import com.colla.platform.modules.project.domain.ProjectModels.ProjectDetail;
 import com.colla.platform.modules.project.domain.ProjectModels.ProjectStats;
-import com.colla.platform.modules.project.domain.ProjectModels.ProjectSummary;
 import com.colla.platform.shared.auth.CurrentUser;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -33,24 +34,26 @@ public class ProjectController {
     }
 
     @GetMapping("/projects")
-    public List<ProjectSummary> listProjects(Authentication authentication) {
-        return projectService.listProjects(currentUser(authentication));
+    public List<UserProjectView> listProjects(Authentication authentication) {
+        return projectService.listProjects(currentUser(authentication)).stream()
+            .map(UserProjectDtos::project)
+            .toList();
     }
 
     @PostMapping("/projects")
-    public ProjectDetail createProject(@Valid @RequestBody CreateProjectRequest request, Authentication authentication) {
-        return projectService.createProject(
+    public UserProjectDetailView createProject(@Valid @RequestBody CreateProjectRequest request, Authentication authentication) {
+        return UserProjectDtos.projectDetail(projectService.createProject(
             currentUser(authentication),
             request.projectKey(),
             request.name(),
             request.description(),
             request.memberIds()
-        );
+        ));
     }
 
     @GetMapping("/projects/{projectId}")
-    public ProjectDetail project(@PathVariable UUID projectId, Authentication authentication) {
-        return projectService.getProject(currentUser(authentication), projectId);
+    public UserProjectDetailView project(@PathVariable UUID projectId, Authentication authentication) {
+        return UserProjectDtos.projectDetail(projectService.getProject(currentUser(authentication), projectId));
     }
 
     @GetMapping("/projects/{projectId}/stats")
@@ -59,16 +62,16 @@ public class ProjectController {
     }
 
     @PostMapping("/projects/{projectId}/members")
-    public ProjectDetail addMembers(
+    public UserProjectDetailView addMembers(
         @PathVariable UUID projectId,
         @RequestBody AddProjectMembersRequest request,
         Authentication authentication
     ) {
-        return projectService.addProjectMembers(currentUser(authentication), projectId, request.memberIds());
+        return UserProjectDtos.projectDetail(projectService.addProjectMembers(currentUser(authentication), projectId, request.memberIds()));
     }
 
     @GetMapping("/projects/{projectId}/issues")
-    public List<IssueSummary> issues(
+    public List<UserIssueView> issues(
         @PathVariable UUID projectId,
         @RequestParam(required = false) String status,
         @RequestParam(required = false) String issueType,
@@ -77,16 +80,18 @@ public class ProjectController {
         @RequestParam(required = false) String sort,
         Authentication authentication
     ) {
-        return projectService.listIssues(currentUser(authentication), projectId, status, issueType, priority, assigneeId, sort);
+        return projectService.listIssues(currentUser(authentication), projectId, status, issueType, priority, assigneeId, sort).stream()
+            .map(UserProjectDtos::issue)
+            .toList();
     }
 
     @PostMapping("/projects/{projectId}/issues")
-    public IssueDetail createIssue(
+    public UserIssueDetailView createIssue(
         @PathVariable UUID projectId,
         @Valid @RequestBody CreateIssueRequest request,
         Authentication authentication
     ) {
-        return projectService.createIssue(
+        return UserProjectDtos.issueDetail(projectService.createIssue(
             currentUser(authentication),
             projectId,
             request.issueType(),
@@ -95,26 +100,28 @@ public class ProjectController {
             request.priority(),
             request.assigneeId(),
             request.dueAt()
-        );
+        ));
     }
 
     @GetMapping("/my/issues")
-    public List<IssueSummary> myIssues(Authentication authentication) {
-        return projectService.listMyIssues(currentUser(authentication));
+    public List<UserIssueView> myIssues(Authentication authentication) {
+        return projectService.listMyIssues(currentUser(authentication)).stream()
+            .map(UserProjectDtos::issue)
+            .toList();
     }
 
     @GetMapping("/issues/{issueId}")
-    public IssueDetail issue(@PathVariable UUID issueId, Authentication authentication) {
-        return projectService.getIssue(currentUser(authentication), issueId);
+    public UserIssueDetailView issue(@PathVariable UUID issueId, Authentication authentication) {
+        return UserProjectDtos.issueDetail(projectService.getIssue(currentUser(authentication), issueId));
     }
 
     @PatchMapping("/issues/{issueId}")
-    public IssueDetail updateIssue(
+    public UserIssueDetailView updateIssue(
         @PathVariable UUID issueId,
         @Valid @RequestBody UpdateIssueRequest request,
         Authentication authentication
     ) {
-        return projectService.updateIssue(
+        return UserProjectDtos.issueDetail(projectService.updateIssue(
             currentUser(authentication),
             issueId,
             request.title(),
@@ -122,16 +129,16 @@ public class ProjectController {
             request.priority(),
             request.assigneeId(),
             request.dueAt()
-        );
+        ));
     }
 
     @PostMapping("/issues/{issueId}/transition")
-    public IssueDetail transitionIssue(
+    public UserIssueDetailView transitionIssue(
         @PathVariable UUID issueId,
         @RequestBody TransitionIssueRequest request,
         Authentication authentication
     ) {
-        return projectService.transitionIssue(
+        return UserProjectDtos.issueDetail(projectService.transitionIssue(
             currentUser(authentication),
             issueId,
             request.action(),
@@ -139,34 +146,34 @@ public class ProjectController {
             request.reason(),
             request.targetIssueId(),
             request.dueAt()
-        );
+        ));
     }
 
     @PostMapping("/issues/{issueId}/comments")
-    public IssueDetail addComment(
+    public UserIssueDetailView addComment(
         @PathVariable UUID issueId,
         @Valid @RequestBody AddCommentRequest request,
         Authentication authentication
     ) {
-        return projectService.addComment(currentUser(authentication), issueId, request.content());
+        return UserProjectDtos.issueDetail(projectService.addComment(currentUser(authentication), issueId, request.content()));
     }
 
     @PostMapping("/issues/{issueId}/attachments")
-    public IssueDetail addAttachment(
+    public UserIssueDetailView addAttachment(
         @PathVariable UUID issueId,
         @Valid @RequestBody AddAttachmentRequest request,
         Authentication authentication
     ) {
-        return projectService.addAttachment(currentUser(authentication), issueId, request.fileId());
+        return UserProjectDtos.issueDetail(projectService.addAttachment(currentUser(authentication), issueId, request.fileId()));
     }
 
     @PostMapping("/issues/{issueId}/verifications")
-    public IssueDetail addVerification(
+    public UserIssueDetailView addVerification(
         @PathVariable UUID issueId,
         @Valid @RequestBody AddVerificationRequest request,
         Authentication authentication
     ) {
-        return projectService.addVerification(
+        return UserProjectDtos.issueDetail(projectService.addVerification(
             currentUser(authentication),
             issueId,
             request.result(),
@@ -174,16 +181,16 @@ public class ProjectController {
             request.environment(),
             request.reproductionSteps(),
             request.fixVersion()
-        );
+        ));
     }
 
     @PostMapping("/issues/{issueId}/relations")
-    public IssueDetail addRelation(
+    public UserIssueDetailView addRelation(
         @PathVariable UUID issueId,
         @Valid @RequestBody AddIssueRelationRequest request,
         Authentication authentication
     ) {
-        return projectService.addRelation(currentUser(authentication), issueId, request.targetType(), request.targetId());
+        return UserProjectDtos.issueDetail(projectService.addRelation(currentUser(authentication), issueId, request.targetType(), request.targetId()));
     }
 
     private CurrentUser currentUser(Authentication authentication) {

@@ -3,9 +3,12 @@ import type { ComponentType, ReactElement } from 'react'
 import { Navigate, createBrowserRouter } from 'react-router-dom'
 import { Spin } from 'antd'
 
-import { AppLayout } from './layout/AppLayout'
-import { RequireAuth } from '../modules/auth/components/RequireAuth'
+import { AuthenticatedRoot } from './layout/AuthenticatedRoot'
+import { AdminConsoleShell } from './layout/AdminConsoleShell'
+import { UserWorkspaceShell } from './layout/UserWorkspaceShell'
+import { RequireAdmin } from '../modules/auth/components/RequireAdmin'
 
+const AdminOverviewPage = lazyRoute(() => import('../modules/admin/pages/AdminOverviewPage'), 'AdminOverviewPage')
 const AdminUsersPage = lazyRoute(() => import('../modules/admin/pages/AdminUsersPage'), 'AdminUsersPage')
 const AdminAuditLogsPage = lazyRoute(
   () => import('../modules/admin/pages/AdminAuditLogsPage'),
@@ -23,6 +26,14 @@ const AdminRolesPage = lazyRoute(() => import('../modules/admin/pages/AdminRoles
 const AdminPermissionGovernancePage = lazyRoute(
   () => import('../modules/admin/pages/AdminPermissionGovernancePage'),
   'AdminPermissionGovernancePage',
+)
+const AdminKnowledgeBasesPage = lazyRoute(
+  () => import('../modules/admin/pages/AdminKnowledgeBasesPage'),
+  'AdminKnowledgeBasesPage',
+)
+const AdminApplicationGovernancePage = lazyRoute(
+  () => import('../modules/admin/pages/AdminApplicationGovernancePage'),
+  'AdminApplicationGovernancePage',
 )
 const ApprovalsPage = lazyRoute(() => import('../modules/approvals/pages/ApprovalsPage'), 'ApprovalsPage')
 const AuthLoginPage = lazyRoute(() => import('../modules/auth/pages/AuthLoginPage'), 'AuthLoginPage')
@@ -73,40 +84,56 @@ export const router = createBrowserRouter([
   },
   {
     path: '/',
-    element: (
-      <RequireAuth>
-        <AppLayout />
-      </RequireAuth>
-    ),
+    element: <AuthenticatedRoot />,
     children: [
-      { index: true, element: routeElement(<DashboardPage />) },
-      { path: 'im', element: routeElement(<MessengerPage />) },
-      { path: 'messages', element: <Navigate to="/im" replace /> },
-      { path: 'projects', element: routeElement(<ProjectsPage />) },
-      { path: 'projects/:projectId', element: routeElement(<ProjectsPage />) },
-      { path: 'issues/:issueId', element: routeElement(<ProjectsPage />) },
-      { path: 'docs', element: <Navigate to="/knowledge-bases" replace /> },
-      { path: 'docs/:docId', element: routeElement(<DocsPage />) },
-      { path: 'knowledge-bases', element: routeElement(<KnowledgeBasesPage />) },
-      { path: 'knowledge-bases/:spaceId', element: routeElement(<KnowledgeBaseDetailPage />) },
-      { path: 'knowledge-bases/:spaceId/items/:docId', element: routeElement(<DocsPage />) },
-      { path: 'bases', element: routeElement(<BasesPage />) },
-      { path: 'bases/:baseId', element: routeElement(<BasesPage />) },
-      { path: 'bases/:baseId/tables/:tableId', element: routeElement(<BasesPage />) },
-      { path: 'bases/:baseId/tables/:tableId/records/:recordId', element: routeElement(<BasesPage />) },
-      { path: 'approvals', element: routeElement(<ApprovalsPage />) },
-      { path: 'approvals/:approvalId', element: routeElement(<ApprovalsPage />) },
-      { path: 'notifications', element: routeElement(<NotificationsPage />) },
-      { path: 'devices', element: routeElement(<DevicesPage />) },
-      { path: 'search', element: routeElement(<SearchPage />) },
-      { path: 'admin/users', element: routeElement(<AdminUsersPage />) },
-      { path: 'admin/departments', element: routeElement(<AdminDepartmentsPage />) },
-      { path: 'admin/user-groups', element: routeElement(<AdminUserGroupsPage />) },
-      { path: 'admin/roles', element: routeElement(<AdminRolesPage />) },
-      { path: 'admin/permission-governance', element: routeElement(<AdminPermissionGovernancePage />) },
-      { path: 'admin/audit-logs', element: routeElement(<AdminAuditLogsPage />) },
-      { path: 'error/:state', element: routeElement(<AppErrorPage />) },
-      { path: '*', element: routeElement(<AppErrorPage stateOverride="404" />) },
+      {
+        path: 'admin',
+        element: (
+          <RequireAdmin>
+            <AdminConsoleShell />
+          </RequireAdmin>
+        ),
+        children: [
+          { index: true, element: <Navigate to="/admin/overview" replace /> },
+          { path: 'overview', element: routeElement(<AdminOverviewPage />) },
+          { path: 'users', element: routeElement(<AdminUsersPage />) },
+          { path: 'departments', element: routeElement(<AdminDepartmentsPage />) },
+          { path: 'user-groups', element: routeElement(<AdminUserGroupsPage />) },
+          { path: 'roles', element: routeElement(<AdminRolesPage />) },
+          { path: 'permission-governance', element: routeElement(<AdminPermissionGovernancePage />) },
+          { path: 'knowledge-bases', element: routeElement(<AdminKnowledgeBasesPage />) },
+          { path: 'app-governance', element: routeElement(<AdminApplicationGovernancePage />) },
+          { path: 'audit-logs', element: routeElement(<AdminAuditLogsPage />) },
+          { path: '*', element: routeElement(<AppErrorPage stateOverride="404" />) },
+        ],
+      },
+      {
+        element: <UserWorkspaceShell />,
+        children: [
+          { index: true, element: routeElement(<DashboardPage />) },
+          { path: 'im', element: routeElement(<MessengerPage />) },
+          { path: 'messages', element: <Navigate to="/im" replace /> },
+          { path: 'projects', element: routeElement(<ProjectsPage />) },
+          { path: 'projects/:projectId', element: routeElement(<ProjectsPage />) },
+          { path: 'issues/:issueId', element: routeElement(<ProjectsPage />) },
+          { path: 'docs', element: <Navigate to="/knowledge-bases" replace /> },
+          { path: 'docs/:docId', element: routeElement(<DocsPage />) },
+          { path: 'knowledge-bases', element: routeElement(<KnowledgeBasesPage />) },
+          { path: 'knowledge-bases/:spaceId', element: routeElement(<KnowledgeBaseDetailPage />) },
+          { path: 'knowledge-bases/:spaceId/items/:docId', element: routeElement(<DocsPage />) },
+          { path: 'bases', element: routeElement(<BasesPage />) },
+          { path: 'bases/:baseId', element: routeElement(<BasesPage />) },
+          { path: 'bases/:baseId/tables/:tableId', element: routeElement(<BasesPage />) },
+          { path: 'bases/:baseId/tables/:tableId/records/:recordId', element: routeElement(<BasesPage />) },
+          { path: 'approvals', element: routeElement(<ApprovalsPage />) },
+          { path: 'approvals/:approvalId', element: routeElement(<ApprovalsPage />) },
+          { path: 'notifications', element: routeElement(<NotificationsPage />) },
+          { path: 'devices', element: routeElement(<DevicesPage />) },
+          { path: 'search', element: routeElement(<SearchPage />) },
+          { path: 'error/:state', element: routeElement(<AppErrorPage />) },
+          { path: '*', element: routeElement(<AppErrorPage stateOverride="404" />) },
+        ],
+      },
     ],
   },
 ])

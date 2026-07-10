@@ -122,5 +122,7 @@ function docTypeText(value: SearchResult['docType']) {
     space: '知识库根',
     folder: '目录',
     markdown: '知识内容',
+    object_ref: '对象入口',
+    external_link: '外部链接',
   } as Record<string, string>)[value] ?? value
 }

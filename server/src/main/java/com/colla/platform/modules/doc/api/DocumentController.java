@@ -32,6 +32,7 @@ import java.util.UUID;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -200,6 +201,44 @@ public class DocumentController {
         return documentService.saveBlocks(currentUser(authentication), documentId, request.baseVersionNo(), request.blocks());
     }
 
+    @PostMapping("/docs/{documentId}/blocks")
+    public DocumentDetail insertBlock(
+        @PathVariable UUID documentId,
+        @Valid @RequestBody InsertDocumentBlockRequest request,
+        Authentication authentication
+    ) {
+        return documentService.insertBlock(currentUser(authentication), documentId, request.baseVersionNo(), request.block(), request.afterSortOrder());
+    }
+
+    @PatchMapping("/docs/{documentId}/blocks/{blockId}")
+    public DocumentDetail updateBlock(
+        @PathVariable UUID documentId,
+        @PathVariable UUID blockId,
+        @Valid @RequestBody UpdateDocumentBlockRequest request,
+        Authentication authentication
+    ) {
+        return documentService.updateBlock(currentUser(authentication), documentId, blockId, request.baseVersionNo(), request.block());
+    }
+
+    @PostMapping("/docs/{documentId}/blocks/reorder")
+    public DocumentDetail reorderBlocks(
+        @PathVariable UUID documentId,
+        @Valid @RequestBody ReorderDocumentBlocksRequest request,
+        Authentication authentication
+    ) {
+        return documentService.reorderBlocks(currentUser(authentication), documentId, request.baseVersionNo(), request.blockIds());
+    }
+
+    @DeleteMapping("/docs/{documentId}/blocks/{blockId}")
+    public DocumentDetail deleteBlock(
+        @PathVariable UUID documentId,
+        @PathVariable UUID blockId,
+        @RequestParam int baseVersionNo,
+        Authentication authentication
+    ) {
+        return documentService.deleteBlock(currentUser(authentication), documentId, blockId, baseVersionNo);
+    }
+
     @PostMapping("/docs/{documentId}/move")
     public DocumentDetail moveDocument(
         @PathVariable UUID documentId,
@@ -245,6 +284,15 @@ public class DocumentController {
         Authentication authentication
     ) {
         return documentService.importMarkdown(currentUser(authentication), documentId, request.title(), request.content());
+    }
+
+    @PostMapping("/docs/{documentId}/import/html")
+    public DocumentDetail importHtml(
+        @PathVariable UUID documentId,
+        @Valid @RequestBody ImportHtmlRequest request,
+        Authentication authentication
+    ) {
+        return documentService.importHtml(currentUser(authentication), documentId, request.title(), request.html());
     }
 
     @GetMapping(value = "/docs/{documentId}/export/markdown", produces = "text/markdown;charset=UTF-8")
@@ -474,10 +522,22 @@ public class DocumentController {
     public record SaveDocumentBlocksRequest(int baseVersionNo, @NotNull List<DocumentBlockDraft> blocks) {
     }
 
+    public record InsertDocumentBlockRequest(int baseVersionNo, DocumentBlockDraft block, Integer afterSortOrder) {
+    }
+
+    public record UpdateDocumentBlockRequest(int baseVersionNo, DocumentBlockDraft block) {
+    }
+
+    public record ReorderDocumentBlocksRequest(int baseVersionNo, @NotNull List<UUID> blockIds) {
+    }
+
     public record CreateNamedVersionRequest(@NotBlank @Size(max = 128) String versionName, @Size(max = 512) String summary) {
     }
 
     public record ImportMarkdownRequest(@Size(max = 255) String title, String content) {
+    }
+
+    public record ImportHtmlRequest(@Size(max = 255) String title, String html) {
     }
 
     public record RunKnowledgeReviewRemindersRequest(LocalDate beforeDate, int limit) {

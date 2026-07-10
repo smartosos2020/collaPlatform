@@ -44,6 +44,18 @@ public final class SearchModels {
     ) {
     }
 
-    public record SearchResponse(String query, List<SearchResult> items) {
+    public record SearchResponse(String query, String searchScope, List<SearchResult> items) {
+    }
+
+    public record AdminGovernanceSearchResult(
+        String governanceType,
+        String title,
+        String description,
+        String adminPath,
+        String riskLevel
+    ) {
+    }
+
+    public record AdminGovernanceSearchResponse(String query, String searchScope, List<AdminGovernanceSearchResult> items) {
     }
 }

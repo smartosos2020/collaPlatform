@@ -2,6 +2,7 @@ package com.colla.platform.modules.permission.application;
 
 import com.colla.platform.modules.permission.domain.PermissionModels.PermissionDecision;
 import com.colla.platform.modules.permission.domain.PermissionModels.PermissionExplanation;
+import com.colla.platform.modules.permission.domain.PermissionModels.PermissionActionCategory;
 import com.colla.platform.modules.permission.domain.PermissionModels.ResourcePermissionGrant;
 import com.colla.platform.modules.permission.domain.PermissionModels.ResourcePermissionMatch;
 import com.colla.platform.modules.permission.infrastructure.ResourcePermissionRepository;
@@ -83,9 +84,13 @@ public class PermissionDecisionService {
             normalizeObjectType(objectType),
             objectId,
             normalizeAction(actionOrRequiredLevel),
+            PermissionActionCategory.user_action,
+            "user",
             allowed,
             accessState,
             reason,
+            allowed ? "可以继续操作。" : "请联系对象负责人或提交权限申请。",
+            allowed ? decision.source() : "",
             decision.currentLevel(),
             decision.requiredLevel(),
             decision.source()

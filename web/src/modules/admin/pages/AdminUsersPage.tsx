@@ -5,7 +5,6 @@ import {
   PlusOutlined,
   SearchOutlined,
   StopOutlined,
-  TeamOutlined,
   UserOutlined,
 } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -13,8 +12,11 @@ import { App as AntdApp, Button, Form, Input, Modal, Select, Space, Table, Typog
 import type { ColumnsType } from 'antd/es/table'
 import { useMemo, useRef, useState } from 'react'
 
+import { EntityAvatar } from '../../../shared/components/EntityAvatar'
+import { SoftBadge } from '../../../shared/components/SoftBadge'
+import { StatusBadge } from '../../../shared/components/StatusBadge'
+import { TableEmptyState } from '../../../shared/components/TableEmptyState'
 import { completeUpload, createUploadUrl, getFileDownloadUrl } from '../../files/api/filesApi'
-import { AdminModuleNav } from '../components/AdminModuleNav'
 import {
   createMember,
   disableMember,
@@ -154,7 +156,7 @@ export function AdminUsersPage() {
       dataIndex: 'displayName',
       render: (_, record) => (
         <Space size={12} className="admin-table-entity">
-          <span className="admin-entity-avatar">{entityInitial(record.displayName || record.username)}</span>
+          <EntityAvatar className="admin-entity-avatar" value={record.displayName || record.username} />
           <Space orientation="vertical" size={0}>
             <Typography.Text strong>{record.displayName}</Typography.Text>
             <Typography.Text type="secondary">{record.username}</Typography.Text>
@@ -173,9 +175,7 @@ export function AdminUsersPage() {
       render: (roles: string[]) => (
         <Space size={6} wrap>
           {roles.map((role) => (
-            <span key={role} className="admin-soft-badge purple">
-              {role}
-            </span>
+            <SoftBadge key={role} tone="purple">{role}</SoftBadge>
           ))}
         </Space>
       ),
@@ -187,15 +187,12 @@ export function AdminUsersPage() {
         <Space size={6} wrap>
           {record.departments?.length ? (
             record.departments.map((department) => (
-              <span
-                key={`${department.departmentId}-${department.relationType}`}
-                className={`admin-soft-badge ${department.relationType === 'primary' ? 'purple' : 'gray'}`}
-              >
+              <SoftBadge key={`${department.departmentId}-${department.relationType}`} tone={department.relationType === 'primary' ? 'purple' : 'gray'}>
                 {department.departmentName}
-              </span>
+              </SoftBadge>
             ))
           ) : (
-            <span className="admin-soft-badge gray">未分配</span>
+            <SoftBadge>未分配</SoftBadge>
           )}
         </Space>
       ),
@@ -203,7 +200,7 @@ export function AdminUsersPage() {
     {
       title: '状态',
       dataIndex: 'status',
-      render: (status) => <span className={`admin-status-pill ${status === 'active' ? 'active' : 'disabled'}`}>{status}</span>,
+      render: (status) => <StatusBadge status={status} />,
     },
     {
       title: '操作',
@@ -241,16 +238,6 @@ export function AdminUsersPage() {
 
   return (
     <Space orientation="vertical" size={16} className="page-stack admin-org-page admin-members-page">
-      <Space className="page-toolbar admin-saas-toolbar" wrap>
-        <Space size={12}>
-          <span className="admin-page-icon">
-            <TeamOutlined />
-          </span>
-          <Typography.Title level={2}>成员管理</Typography.Title>
-        </Space>
-        <AdminModuleNav />
-      </Space>
-
       <div className="admin-members-layout">
         <div className="admin-org-panel admin-member-sidebar">
           <Button block type="primary" icon={<PlusOutlined />} className="admin-sidebar-create admin-sidebar-create-top" onClick={() => setCreateOpen(true)}>
@@ -471,27 +458,24 @@ function MemberInfoCard({
       <div className="admin-member-profile-summary-row">
         <div>
           <span>状态</span>
-          <span className={`admin-status-pill ${member.status === 'active' ? 'active' : 'disabled'}`}>{member.status}</span>
+          <StatusBadge status={member.status} />
         </div>
         <div>
           <span>角色</span>
           <Space size={6} wrap>
             {member.roles.length ? member.roles.map((role) => (
-              <span key={role} className="admin-soft-badge purple">{role}</span>
-            )) : <span className="admin-soft-badge gray">未分配</span>}
+              <SoftBadge key={role} tone="purple">{role}</SoftBadge>
+            )) : <SoftBadge>未分配</SoftBadge>}
           </Space>
         </div>
         <div>
           <span>部门</span>
           <Space size={6} wrap>
             {member.departments.length ? member.departments.map((department) => (
-              <span
-                key={`${department.departmentId}-${department.relationType}`}
-                className={`admin-soft-badge ${department.relationType === 'primary' ? 'purple' : 'gray'}`}
-              >
+              <SoftBadge key={`${department.departmentId}-${department.relationType}`} tone={department.relationType === 'primary' ? 'purple' : 'gray'}>
                 {department.departmentName}
-              </span>
-            )) : <span className="admin-soft-badge gray">未分配</span>}
+              </SoftBadge>
+            )) : <SoftBadge>未分配</SoftBadge>}
           </Space>
         </div>
       </div>
@@ -521,12 +505,5 @@ function formatDateTime(value: string) {
 }
 
 function AdminTableEmpty() {
-  return (
-    <div className="admin-table-empty">
-      <span className="admin-empty-icon">
-        <UserOutlined />
-      </span>
-      <Typography.Text type="secondary">No data</Typography.Text>
-    </div>
-  )
+  return <TableEmptyState icon={<UserOutlined />} />
 }

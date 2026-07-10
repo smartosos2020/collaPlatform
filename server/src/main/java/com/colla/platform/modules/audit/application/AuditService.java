@@ -4,6 +4,9 @@ import com.colla.platform.modules.audit.domain.AuditModels.AuditLogEntry;
 import com.colla.platform.modules.audit.infrastructure.AuditRepository;
 import com.colla.platform.modules.permission.application.PermissionService;
 import com.colla.platform.shared.auth.CurrentUser;
+import com.colla.platform.shared.request.RequestBoundaryContext;
+import com.colla.platform.shared.request.RequestBoundaryContext.RequestBoundary;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -23,7 +26,7 @@ public class AuditService {
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void log(CurrentUser actor, String action, String targetType, UUID targetId, Map<String, Object> metadata) {
-        auditRepository.append(actor.workspaceId(), actor.id(), action, targetType, targetId, null, null, metadata);
+        auditRepository.append(actor.workspaceId(), actor.id(), action, targetType, targetId, null, null, enrichMetadata(metadata));
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -40,11 +43,26 @@ public class AuditService {
         if (workspaceId == null) {
             return;
         }
-        auditRepository.append(workspaceId, actorId, action, targetType, targetId, ipAddress, userAgent, metadata);
+        auditRepository.append(workspaceId, actorId, action, targetType, targetId, ipAddress, userAgent, enrichMetadata(metadata));
     }
 
     public List<AuditLogEntry> list(CurrentUser currentUser, String action, String targetType, UUID targetId, UUID actorId, int limit) {
         permissionService.requireManageUsers(currentUser);
         return auditRepository.list(currentUser.workspaceId(), action, targetType, targetId, actorId, limit);
+    }
+
+    private Map<String, Object> enrichMetadata(Map<String, Object> metadata) {
+        RequestBoundary boundary = RequestBoundaryContext.current();
+        Map<String, Object> enriched = new LinkedHashMap<>();
+        if (metadata != null) {
+            enriched.putAll(metadata);
+        }
+        enriched.putIfAbsent("sourceUi", boundary.sourceUi());
+        enriched.putIfAbsent("apiSurface", boundary.apiSurface());
+        enriched.putIfAbsent("client", boundary.client());
+        if (boundary.requestPath() != null && !boundary.requestPath().isBlank()) {
+            enriched.putIfAbsent("requestPath", boundary.requestPath());
+        }
+        return enriched;
     }
 }

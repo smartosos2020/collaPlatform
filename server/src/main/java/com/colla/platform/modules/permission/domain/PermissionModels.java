@@ -22,13 +22,25 @@ public final class PermissionModels {
     ) {
     }
 
+    public enum PermissionActionCategory {
+        user_action,
+        object_management,
+        space_management,
+        admin_management,
+        super_admin
+    }
+
     public record PermissionExplanation(
         String objectType,
         UUID objectId,
         String action,
+        PermissionActionCategory actionCategory,
+        String presentationContext,
         boolean allowed,
         String accessState,
         String reason,
+        String actionAdvice,
+        String policySourceDetail,
         String currentLevel,
         String requiredLevel,
         String source

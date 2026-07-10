@@ -2,24 +2,25 @@ import {
   ArrowDownOutlined,
   ArrowLeftOutlined,
   ArrowUpOutlined,
+  AppstoreOutlined,
   BookOutlined,
   BellOutlined,
-  DownloadOutlined,
   FileTextOutlined,
   FolderOpenOutlined,
   FolderOutlined,
   HomeOutlined,
+  LinkOutlined,
   PlusOutlined,
   SafetyCertificateOutlined,
   SearchOutlined,
   StarFilled,
+  TableOutlined,
 } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Alert, App as AntdApp, Button, Empty, Form, Input, Modal, Select, Space, Tag, Tooltip, Tree, Typography } from 'antd'
+import { Alert, App as AntdApp, Button, Empty, Form, Input, Modal, Select, Space, Table, Tag, Tooltip, Tree, Typography } from 'antd'
 import type { DataNode } from 'antd/es/tree'
-import type { FormInstance } from 'antd/es/form'
 import type { Key, ReactNode } from 'react'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 
 import {
@@ -32,15 +33,13 @@ import { searchAll, type SearchResult } from '../../search/api/searchApi'
 import { ResourcePermissionsModal } from '../../permissions/components/ResourcePermissionsModal'
 import { requestResourcePermission, type ManagedResourceType } from '../../permissions/api/resourcePermissionsApi'
 import { listFavoriteObjects } from '../../platform/api/platformObjectsApi'
+import { createBase, getBase, getTable, listBases, queryRecords, type BaseField, type BaseRecord } from '../../bases/api/basesApi'
 import { ApiRequestError } from '../../../shared/api/httpClient'
 import {
-  bulkGovernKnowledgeBase,
   createKnowledgeBaseItem,
   createKnowledgeBaseItemFromTemplate,
-  exportKnowledgeBaseGovernance,
   getKnowledgeBase,
   getKnowledgeBaseDiscovery,
-  getKnowledgeBaseGovernance,
   listKnowledgeBaseItemTree,
   listKnowledgeBaseTemplates,
   listKnowledgeBases,
@@ -48,16 +47,25 @@ import {
   subscribeKnowledgeTarget,
   unsubscribeKnowledgeTarget,
   updateKnowledgeBase,
-  type KnowledgeBaseBulkGovernanceRequest,
-  type KnowledgeBaseGovernanceDashboard,
-  type KnowledgeBaseGovernanceRisk,
   type KnowledgeBaseSpaceSummary,
 } from '../api/knowledgeBasesApi'
 
 type CreateNodeForm = {
   title: string
-  docType: 'markdown' | 'folder'
+  docType: 'markdown' | 'folder' | 'object_ref' | 'external_link'
   parentId?: string
+  targetObjectType?: string
+  targetObjectId?: string
+  targetRoute?: string
+  displayMode?: DocumentSummary['displayMode']
+  targetTitleStrategy?: DocumentSummary['targetTitleStrategy']
+  entryAlias?: string
+  targetBaseMode?: 'existing' | 'new'
+  targetBaseId?: string
+  targetBaseTableId?: string
+  targetBaseViewId?: string
+  newBaseName?: string
+  newBaseDescription?: string
 }
 
 type TemplateCreateForm = {
@@ -68,14 +76,6 @@ type TemplateCreateForm = {
 
 type MoveNodeForm = {
   parentId?: string
-}
-
-type GovernanceBulkForm = {
-  documentIds: string[]
-  maintainerId?: string
-  tags?: string[]
-  replaceTags?: boolean
-  reviewDueAt?: string
 }
 
 type PermissionTarget = {
@@ -111,9 +111,23 @@ export function KnowledgeBaseDetailPage() {
   const [createForm] = Form.useForm<CreateNodeForm>()
   const [templateForm] = Form.useForm<TemplateCreateForm>()
   const [moveForm] = Form.useForm<MoveNodeForm>()
-  const [governanceForm] = Form.useForm<GovernanceBulkForm>()
   const [accessRequestForm] = Form.useForm<{ reason?: string }>()
+  const mainScrollRef = useRef<HTMLElement | null>(null)
+  const createDocType = Form.useWatch('docType', createForm)
+  const createTargetObjectType = Form.useWatch('targetObjectType', createForm)
+  const createTargetBaseMode = Form.useWatch('targetBaseMode', createForm)
+  const createTargetBaseId = Form.useWatch('targetBaseId', createForm)
+  const createTargetBaseTableId = Form.useWatch('targetBaseTableId', createForm)
   const contentPath = useCallback((documentId: string) => `/knowledge-bases/${spaceId}/items/${documentId}`, [spaceId])
+  const directoryPath = useCallback(
+    (documentId: string, view = 'directory') => {
+      const params = new URLSearchParams()
+      params.set('docId', documentId)
+      params.set('view', view)
+      return `/knowledge-bases/${spaceId}?${params.toString()}`
+    },
+    [spaceId],
+  )
   const normalizeKnowledgePath = useCallback(
     (path: string) => {
       const match = path.match(/^\/docs\/([^/?#]+)(.*)$/)
@@ -138,15 +152,25 @@ export function KnowledgeBaseDetailPage() {
     queryFn: () => listKnowledgeBaseTemplates(spaceId),
     enabled: Boolean(spaceId),
   })
+  const basesQuery = useQuery({
+    queryKey: ['bases', 'kb-object-picker'],
+    queryFn: listBases,
+    enabled: createOpen,
+  })
+  const createTargetBaseQuery = useQuery({
+    queryKey: ['bases', createTargetBaseId, 'kb-object-picker'],
+    queryFn: () => getBase(createTargetBaseId || ''),
+    enabled: Boolean(createOpen && createDocType === 'object_ref' && createTargetObjectType === 'base' && createTargetBaseId),
+  })
+  const createTargetBaseTableQuery = useQuery({
+    queryKey: ['bases', createTargetBaseId, 'tables', createTargetBaseTableId, 'kb-object-picker'],
+    queryFn: () => getTable(createTargetBaseId || '', createTargetBaseTableId || ''),
+    enabled: Boolean(createOpen && createDocType === 'object_ref' && createTargetObjectType === 'base' && createTargetBaseId && createTargetBaseTableId),
+  })
   const favoriteObjectsQuery = useQuery({ queryKey: ['platform', 'favorites', 'kb-detail'], queryFn: () => listFavoriteObjects(50) })
   const discoveryQuery = useQuery({
     queryKey: ['knowledge-bases', spaceId, 'discovery'],
     queryFn: () => getKnowledgeBaseDiscovery(spaceId),
-    enabled: Boolean(spaceId),
-  })
-  const governanceQuery = useQuery({
-    queryKey: ['knowledge-bases', spaceId, 'governance'],
-    queryFn: () => getKnowledgeBaseGovernance(spaceId),
     enabled: Boolean(spaceId),
   })
   const space = spaceQuery.data?.space ?? null
@@ -158,7 +182,18 @@ export function KnowledgeBaseDetailPage() {
   )
   const flatNodes = useMemo(() => flattenTree(rootNode), [rootNode])
   const documents = useMemo(() => flatNodes.map((node) => node.document), [flatNodes])
-  const queryDocumentId = useMemo(() => new URLSearchParams(location.search).get('docId'), [location.search])
+  const queryState = useMemo(() => {
+    const params = new URLSearchParams(location.search)
+    return {
+      documentId: params.get('docId'),
+      view: params.get('view') ?? 'directory',
+      mode: params.get('mode') ?? 'browse',
+      blockId: params.get('blockId'),
+      commentId: params.get('commentId'),
+    }
+  }, [location.search])
+  const queryDocumentId = queryState.documentId
+  const queryDocumentMissing = Boolean(queryDocumentId && documents.length > 0 && !documents.some((document) => document.id === queryDocumentId))
   const activeDocumentId =
     selectedDocumentId && documents.some((document) => document.id === selectedDocumentId)
       ? selectedDocumentId
@@ -245,7 +280,14 @@ export function KnowledgeBaseDetailPage() {
       .sort(documentSort)
   }, [documents, selectedDocument])
   const activeSiblingIndex = selectedDocument ? activeSiblings.findIndex((document) => document.id === selectedDocument.id) : -1
-  const stats = useMemo(() => summarizeDocuments(documents), [documents])
+  const selectedDirectoryChildren = useMemo(() => {
+    if (!selectedDirectoryId) {
+      return []
+    }
+    return documents
+      .filter((document) => document.parentId === selectedDirectoryId && !document.archived)
+      .sort(documentSort)
+  }, [documents, selectedDirectoryId])
   const maintainerOptions = useMemo(
     () =>
       Array.from(
@@ -260,14 +302,6 @@ export function KnowledgeBaseDetailPage() {
   const knowledgeTags = useMemo(
     () => Array.from(new Set(documents.flatMap((document) => document.tags ?? []))).sort().map((tag) => ({ value: tag, label: tag })),
     [documents],
-  )
-  const governanceDocumentOptions = useMemo(
-    () =>
-      documents
-        .filter((document) => document.id !== rootDocumentId && document.docType === 'markdown' && !document.archived)
-        .sort(documentSort)
-        .map((document) => ({ value: document.id, label: document.title })),
-    [documents, rootDocumentId],
   )
   const parsedSearchTags = useMemo(
     () => kbSearchTagText.split(',').map((tag) => tag.trim()).filter(Boolean),
@@ -307,25 +341,117 @@ export function KnowledgeBaseDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['docs'] }),
       queryClient.invalidateQueries({ queryKey: ['knowledge-bases'] }),
       queryClient.invalidateQueries({ queryKey: ['knowledge-bases', spaceId, 'discovery'] }),
-      queryClient.invalidateQueries({ queryKey: ['knowledge-bases', spaceId, 'governance'] }),
       documentId ? queryClient.invalidateQueries({ queryKey: ['docs', documentId] }) : Promise.resolve(),
     ])
   }
 
+  const openDocumentOrDirectory = useCallback(
+    (documentId: string, options?: { replace?: boolean }) => {
+      const document = documents.find((item) => item.id === documentId)
+      if (!document) {
+        return
+      }
+      setSelectedDocumentId(documentId)
+      if (document.docType === 'markdown') {
+        navigate(contentPath(documentId), { replace: options?.replace })
+        return
+      }
+      if (document.docType === 'object_ref') {
+        if (document.targetSummary && document.targetSummary.accessState !== 'available') {
+          message.warning(targetAccessText(document.targetSummary.accessState))
+          return
+        }
+        if (document.targetObjectType === 'base') {
+          navigate(directoryPath(documentId), { replace: options?.replace })
+          return
+        }
+        if (!document.targetRoute) {
+          message.warning('目标不可访问')
+          return
+        }
+        navigate(normalizeKnowledgePath(document.targetRoute), { replace: options?.replace })
+        return
+      }
+      if (document.docType === 'external_link' && document.targetRoute) {
+        window.open(document.targetRoute, '_blank', 'noopener,noreferrer')
+        return
+      }
+      navigate(directoryPath(documentId), { replace: options?.replace })
+    },
+    [contentPath, directoryPath, documents, message, navigate, normalizeKnowledgePath],
+  )
+
+  const setManagementView = useCallback(
+    (open: boolean) => {
+      const params = new URLSearchParams(location.search)
+      if (selectedDocument?.docType !== 'markdown' && selectedDocument?.id) {
+        params.set('docId', selectedDocument.id)
+      }
+      if (open) {
+        params.set('view', 'management')
+      } else if (params.get('view') === 'management') {
+        params.delete('view')
+      }
+      const search = params.toString()
+      navigate(`/knowledge-bases/${spaceId}${search ? `?${search}` : ''}`, { replace: false })
+    },
+    [location.search, navigate, selectedDocument, spaceId],
+  )
+
   const createMutation = useMutation({
-    mutationFn: (values: CreateNodeForm) =>
-      createKnowledgeBaseItem(spaceId, {
+    mutationFn: async (values: CreateNodeForm) => {
+      if (values.docType === 'object_ref' && values.targetObjectType === 'base') {
+        let baseId = values.targetBaseId || values.targetObjectId
+        let baseName = values.title
+        if (values.targetBaseMode === 'new') {
+          const detail = await createBase({
+            name: values.newBaseName || values.title,
+            description: values.newBaseDescription,
+          })
+          baseId = detail.base.id
+          baseName = values.title || detail.base.name
+        }
+        if (!baseId) {
+          throw new Error('Base target is required')
+        }
+        return createKnowledgeBaseItem(spaceId, {
+          parentId: normalizeParentId(values.parentId),
+          title: values.title || baseName,
+          docType: 'object_ref',
+          content: '',
+          targetObjectType: 'base',
+          targetObjectId: baseId,
+          targetRoute: baseTargetRoute(baseId, values.targetBaseTableId, values.targetBaseViewId),
+          displayMode: 'inline',
+          targetTitleStrategy: values.targetTitleStrategy ?? 'alias',
+          entryAlias: values.entryAlias || values.title || baseName,
+        })
+      }
+      return createKnowledgeBaseItem(spaceId, {
         parentId: normalizeParentId(values.parentId),
         title: values.title,
         docType: values.docType,
-        content: values.docType === 'folder' ? '' : `# ${values.title}`,
-      }),
+        content: values.docType === 'markdown' ? `# ${values.title}` : '',
+        targetObjectType: values.targetObjectType,
+        targetObjectId: values.targetObjectId,
+        targetRoute: values.targetRoute,
+        displayMode: values.displayMode,
+        targetTitleStrategy: values.targetTitleStrategy,
+        entryAlias: values.entryAlias,
+      })
+    },
     onSuccess: async (detail) => {
       setCreateOpen(false)
       createForm.resetFields()
       setSelectedDocumentId(detail.document.id)
       message.success('已创建')
+      await queryClient.invalidateQueries({ queryKey: ['bases'] })
       await refresh(detail.document.id)
+      if (detail.document.docType === 'external_link') {
+        navigate(directoryPath(detail.document.parentId ?? detail.document.id), { replace: true })
+      } else {
+        openDocumentOrDirectory(detail.document.id)
+      }
     },
     onError: () => message.error('创建失败'),
   })
@@ -343,6 +469,7 @@ export function KnowledgeBaseDetailPage() {
       setSelectedDocumentId(detail.document.id)
       message.success('已从模板创建')
       await refresh(detail.document.id)
+      openDocumentOrDirectory(detail.document.id)
     },
     onError: () => message.error('模板创建失败'),
   })
@@ -356,6 +483,9 @@ export function KnowledgeBaseDetailPage() {
       setSelectedDocumentId(detail.document.id)
       message.success('目录已更新')
       await refresh(detail.document.id)
+      if (detail.document.docType !== 'markdown') {
+        navigate(directoryPath(detail.document.id), { replace: true })
+      }
     },
     onError: () => message.error('移动或排序失败'),
   })
@@ -389,31 +519,23 @@ export function KnowledgeBaseDetailPage() {
     },
     onError: () => message.error('关注状态更新失败'),
   })
-  const governanceMutation = useMutation({
-    mutationFn: (request: KnowledgeBaseBulkGovernanceRequest) => bulkGovernKnowledgeBase(spaceId, request),
-    onSuccess: async (result) => {
-      message.success(`治理已更新：元数据 ${result.updatedCount}，归档 ${result.archivedCount}，复核 ${result.reviewRequestedCount}`)
-      governanceForm.resetFields()
-      await refresh()
-    },
-    onError: () => message.error('批量治理失败'),
-  })
-  const governanceExportMutation = useMutation({
-    mutationFn: () => exportKnowledgeBaseGovernance(spaceId),
-    onSuccess: (csv) => {
-      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = `knowledge-governance-${spaceId}.csv`
-      link.click()
-      URL.revokeObjectURL(url)
-      message.success('治理报告已导出')
-    },
-  })
-
-  const openCreate = (docType: CreateNodeForm['docType']) => {
-    createForm.setFieldsValue({ docType, parentId: selectedDirectoryId ?? rootDocumentId ?? undefined })
+  const openCreate = (docType: CreateNodeForm['docType'], targetObjectType?: string) => {
+    createForm.setFieldsValue({
+      docType,
+      parentId: selectedDirectoryId ?? rootDocumentId ?? undefined,
+      displayMode: docType === 'external_link' ? 'link' : targetObjectType === 'base' ? 'inline' : 'default',
+      targetTitleStrategy: docType === 'object_ref' ? 'alias' : 'manual',
+      targetObjectType: docType === 'external_link' ? 'external_link' : targetObjectType,
+      targetObjectId: undefined,
+      targetRoute: undefined,
+      entryAlias: undefined,
+      targetBaseMode: targetObjectType === 'base' ? 'existing' : undefined,
+      targetBaseId: undefined,
+      targetBaseTableId: undefined,
+      targetBaseViewId: undefined,
+      newBaseName: undefined,
+      newBaseDescription: undefined,
+    })
     setCreateOpen(true)
   }
 
@@ -445,24 +567,6 @@ export function KnowledgeBaseDetailPage() {
     })
   }
 
-  const submitGovernance = (mode: 'metadata' | 'review' | 'archive') => {
-    const values = governanceForm.getFieldsValue()
-    const documentIds = values.documentIds ?? []
-    if (documentIds.length === 0) {
-      message.warning('请选择治理内容')
-      return
-    }
-    governanceMutation.mutate({
-      documentIds,
-      maintainerId: values.maintainerId,
-      tags: values.tags,
-      replaceTags: Boolean(values.replaceTags),
-      requestReview: mode === 'review',
-      archive: mode === 'archive',
-      reviewDueAt: values.reviewDueAt,
-    })
-  }
-
   const persistExpandedKeys = (keys: Key[]) => {
     const next = keys.map(String)
     setExpandedKeysBySpace((current) => ({ ...current, [spaceId]: next }))
@@ -470,6 +574,52 @@ export function KnowledgeBaseDetailPage() {
       localStorage.setItem(expandedStorageKey(spaceId), JSON.stringify(next))
     }
   }
+
+  useEffect(() => {
+    if (!spaceId || spaceQuery.isLoading || treeQuery.isLoading) {
+      return
+    }
+    if (queryDocumentId) {
+      const queryDocument = documents.find((document) => document.id === queryDocumentId)
+      if (!queryDocument) {
+        return
+      }
+      if (queryDocument.docType === 'markdown') {
+        navigate(contentPath(queryDocument.id), { replace: true })
+      }
+      return
+    }
+    if (queryState.view !== 'management' && !selectedDocumentId && homeDocumentId && documents.some((document) => document.id === homeDocumentId)) {
+      navigate(contentPath(homeDocumentId), { replace: true })
+    }
+  }, [
+    contentPath,
+    documents,
+    homeDocumentId,
+    navigate,
+    queryDocumentId,
+    queryState.view,
+    selectedDocumentId,
+    spaceId,
+    spaceQuery.isLoading,
+    treeQuery.isLoading,
+  ])
+
+  useEffect(() => {
+    const element = mainScrollRef.current
+    if (!element || !spaceId) {
+      return
+    }
+    const key = scrollStorageKey(spaceId, queryDocumentId ?? selectedDocument?.id ?? 'home', queryState.view)
+    const saved = sessionStorage.getItem(key)
+    element.scrollTop = saved ? Number(saved) : 0
+    const saveScroll = () => sessionStorage.setItem(key, String(element.scrollTop))
+    element.addEventListener('scroll', saveScroll, { passive: true })
+    return () => {
+      saveScroll()
+      element.removeEventListener('scroll', saveScroll)
+    }
+  }, [queryDocumentId, queryState.view, selectedDocument?.id, spaceId])
 
   if (!spaceId) {
     return <Empty description="知识库不存在" />
@@ -585,7 +735,7 @@ export function KnowledgeBaseDetailPage() {
             onSelect={(keys) => {
               const key = String(keys[0] ?? '')
               if (key) {
-                setSelectedDocumentId(key)
+                openDocumentOrDirectory(key)
               }
             }}
           />
@@ -593,57 +743,64 @@ export function KnowledgeBaseDetailPage() {
         </div>
       </aside>
 
-      <main className="kb-detail-main">
-        <section className="kb-hero" style={space?.coverUrl ? { backgroundImage: `url(${space.coverUrl})` } : undefined}>
-          <div className="kb-hero-overlay">
-            <Space align="start" className="kb-hero-heading">
-              <span className="kb-hero-icon">{space?.icon || <BookOutlined />}</span>
-              <div>
-                <Space wrap>
-                  <Typography.Title level={2}>{space?.name ?? '知识库'}</Typography.Title>
-                  {space ? <Tag color={statusColor(space.status)}>{statusText(space.status)}</Tag> : null}
-                </Space>
-                <Typography.Paragraph>{space?.description || '暂无描述'}</Typography.Paragraph>
-                <Space wrap className="kb-hero-meta">
-                  <Tag>维护人 {space?.ownerName ?? '-'}</Tag>
-                  <Tag>{space ? permissionText(space.defaultPermissionLevel) : '-'}</Tag>
-                  <Tag>{space ? visibilityText(space.visibility) : '-'}</Tag>
-                  <Tag>{stats.total} 个内容节点</Tag>
-                </Space>
-              </div>
-            </Space>
-            <Space wrap>
-              <Button
-                icon={<BellOutlined />}
-                loading={subscriptionMutation.isPending}
-                onClick={() =>
-                  space &&
-                  subscriptionMutation.mutate({
-                    subscribed: Boolean(discoveryQuery.data?.spaceSubscribed),
-                    targetType: 'knowledge_base',
-                    targetId: space.id,
-                  })
-                }
-              >
-                {discoveryQuery.data?.spaceSubscribed ? '取消关注' : '关注知识库'}
+      <main className="kb-detail-main" ref={mainScrollRef}>
+        <section className="kb-content-first-card">
+          <Space align="start" className="kb-content-first-heading">
+            <span className="kb-content-first-icon">
+              {nodeIcon(selectedDocument)}
+            </span>
+            <div>
+              <Space wrap>
+                <Typography.Title level={2}>{selectedDocument?.title ?? space?.name ?? '知识库'}</Typography.Title>
+                {selectedDocument ? <Tag>{docTypeText(selectedDocument.docType)}</Tag> : null}
+                {space ? <Tag color={statusColor(space.status)}>{statusText(space.status)}</Tag> : null}
+              </Space>
+              <Typography.Paragraph type="secondary">
+                {queryDocumentMissing
+                  ? '目标节点不存在、已被移除或当前账号无法访问。'
+                  : selectedDocument?.description ||
+                  (selectedDocument
+                    ? `更新于 ${formatDate(selectedDocument.updatedAt)}`
+                    : homeDocumentId
+                      ? '正在打开知识库首页内容...'
+                      : '这个知识库还没有首页内容，请创建内容页或选择目录。')}
+              </Typography.Paragraph>
+              <Space wrap size={6}>
+                {selectedDocument ? <Tag>{permissionText(selectedDocument.permissionLevel)}</Tag> : null}
+                {selectedDocument?.archived ? <Tag color="default">已归档</Tag> : null}
+                {selectedDocument ? <Tag>子内容 {selectedDirectoryChildren.length}</Tag> : null}
+                {space ? <Tag>{visibilityText(space.visibility)}</Tag> : null}
+              </Space>
+            </div>
+          </Space>
+          <Space wrap>
+            {homeDocumentId ? (
+              <Button icon={<HomeOutlined />} onClick={() => openDocumentOrDirectory(homeDocumentId)}>
+                打开首页
               </Button>
-              <Button
-                icon={<SafetyCertificateOutlined />}
-                onClick={() =>
-                  space &&
-                  setPermissionTarget({ resourceType: 'knowledge_base', resourceId: space.id, resourceName: `${space.name} 空间权限` })
-                }
-              >
-                空间权限
+            ) : null}
+            {selectedDocument?.docType === 'markdown' ? (
+              <Button type="primary" icon={<FileTextOutlined />} onClick={() => openDocumentOrDirectory(selectedDocument.id)}>
+                打开正文
               </Button>
-              <Button icon={<HomeOutlined />} onClick={() => homeDocumentId && setSelectedDocumentId(homeDocumentId)}>
-                首页
+            ) : (
+              <Button type="primary" icon={<PlusOutlined />} onClick={() => openCreate('markdown')}>
+                新建内容页
               </Button>
-              <Button type="primary" icon={<FileTextOutlined />} onClick={() => selectedDocument && navigate(contentPath(selectedDocument.id))}>
-                打开内容页
-              </Button>
-            </Space>
-          </div>
+            )}
+            <Button icon={<FolderOutlined />} onClick={() => openCreate('folder')}>
+              新建目录
+            </Button>
+            <Button icon={<AppstoreOutlined />} onClick={() => openCreate('object_ref')}>
+              挂载对象
+            </Button>
+            <Button icon={<TableOutlined />} onClick={() => openCreate('object_ref', 'base')}>
+              多维表格
+            </Button>
+            <Button icon={<LinkOutlined />} onClick={() => openCreate('external_link')}>
+              外部链接
+            </Button>
+          </Space>
         </section>
 
         <section className="kb-search-panel">
@@ -674,6 +831,8 @@ export function KnowledgeBaseDetailPage() {
                 { value: 'markdown', label: '内容页' },
                 { value: 'folder', label: '目录' },
                 { value: 'space', label: '空间' },
+                { value: 'object_ref', label: '对象入口' },
+                { value: 'external_link', label: '外部链接' },
               ]}
             />
             <Select
@@ -728,100 +887,169 @@ export function KnowledgeBaseDetailPage() {
           ) : null}
         </section>
 
-        <section className="kb-stat-strip">
-          <Metric label="内容页" value={stats.markdown} />
-          <Metric label="目录" value={stats.folder} />
-          <Metric label="归档" value={stats.archived} />
-          <Metric label="收藏" value={discoveryQuery.data?.favorites.length ?? favoriteDocuments.length} />
+        <section className="kb-directory-content-card">
+          <Space className="kb-directory-toolbar" align="center" wrap>
+            <div>
+              <Typography.Title level={4}>{selectedDocument?.docType === 'markdown' ? '当前内容' : '目录内容'}</Typography.Title>
+              <Typography.Text type="secondary">
+                {selectedDocument?.docType === 'markdown' ? '内容页会直接进入正文编辑/阅读路由；这里保留为刷新恢复兜底。' : '点击内容页直接打开正文；目录节点继续展示子内容。'}
+              </Typography.Text>
+            </div>
+            <Space wrap>
+              <Button icon={<FileTextOutlined />} onClick={() => openCreate('markdown')}>新建内容页</Button>
+              <Button icon={<FileTextOutlined />} onClick={openTemplate}>从模板创建</Button>
+              <Button icon={<AppstoreOutlined />} onClick={() => openCreate('object_ref')}>挂载对象</Button>
+              <Button icon={<TableOutlined />} onClick={() => openCreate('object_ref', 'base')}>多维表格</Button>
+              <Button icon={<LinkOutlined />} onClick={() => openCreate('external_link')}>外部链接</Button>
+            </Space>
+          </Space>
+          {queryDocumentMissing ? (
+            <div className="kb-directory-empty">
+              <Empty description="节点不存在或已无权限" />
+              <Space wrap>
+                {homeDocumentId ? <Button type="primary" onClick={() => openDocumentOrDirectory(homeDocumentId)}>返回首页内容</Button> : null}
+                <Button onClick={() => navigate(`/knowledge-bases/${spaceId}`)}>返回知识库</Button>
+              </Space>
+            </div>
+          ) : selectedDocument?.docType === 'markdown' ? (
+            <div className="kb-content-fallback">
+              <FileTextOutlined />
+              <Typography.Title level={4}>{selectedDocument.title}</Typography.Title>
+              <Typography.Paragraph type="secondary">如未自动跳转，可直接打开正文内容。</Typography.Paragraph>
+              <Button type="primary" onClick={() => openDocumentOrDirectory(selectedDocument.id)}>打开正文</Button>
+            </div>
+          ) : isBaseObjectEntry(selectedDocument) ? (
+            <KnowledgeBaseBasePreview document={selectedDocument} onOpenFull={(path) => navigate(path)} />
+          ) : selectedDirectoryChildren.length > 0 ? (
+            <div className="kb-directory-grid">
+              {selectedDirectoryChildren.map((document) => (
+                <button className="kb-directory-item" key={document.id} type="button" onClick={() => openDocumentOrDirectory(document.id)}>
+                  <span className="kb-directory-item-icon">{nodeIcon(document)}</span>
+                  <span>
+                    <strong>{document.title}</strong>
+                    <small>{nodeMetaText(document)} · 更新 {formatDate(document.updatedAt)}</small>
+                  </span>
+                  {document.targetSummary && document.targetSummary.accessState !== 'available' ? <Tag color="default">{targetAccessText(document.targetSummary.accessState)}</Tag> : null}
+                  <Tag>{permissionText(document.permissionLevel)}</Tag>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="kb-directory-empty">
+              <Empty description="这个目录暂无内容" />
+              <Space wrap>
+                <Button type="primary" icon={<PlusOutlined />} onClick={() => openCreate('markdown')}>创建内容页</Button>
+                <Button icon={<FolderOutlined />} onClick={() => openCreate('folder')}>创建子目录</Button>
+                <Button icon={<AppstoreOutlined />} onClick={() => openCreate('object_ref')}>挂载对象</Button>
+                <Button icon={<TableOutlined />} onClick={() => openCreate('object_ref', 'base')}>挂载多维表格</Button>
+              </Space>
+            </div>
+          )}
         </section>
 
-        <GovernancePanel
-          spaceId={spaceId}
-          dashboard={governanceQuery.data}
-          loading={governanceQuery.isLoading}
-          documentOptions={governanceDocumentOptions}
-          maintainerOptions={maintainerOptions}
-          tagOptions={knowledgeTags}
-          form={governanceForm}
-          submitting={governanceMutation.isPending}
-          exporting={governanceExportMutation.isPending}
-          onSubmit={submitGovernance}
-          onExport={() => governanceExportMutation.mutate()}
-          onOpen={(path) => navigate(normalizeKnowledgePath(path))}
-          onSelectDocuments={(ids) => governanceForm.setFieldsValue({ documentIds: ids })}
-        />
-
-        <section className="kb-home-band">
-          <div className="kb-home-summary">
-            <Tag color="blue">当前首页</Tag>
-            <Typography.Title level={4}>{spaceQuery.data?.homeDocument.title ?? '首页'}</Typography.Title>
-            <Typography.Paragraph type="secondary">
-              {spaceQuery.data?.homeDocument.description || `最后更新 ${formatDate(spaceQuery.data?.homeDocument.updatedAt)}`}
-            </Typography.Paragraph>
-            <Space wrap>
-              <Button type="primary" onClick={() => homeDocumentId && navigate(contentPath(homeDocumentId))}>
-                进入首页内容
-              </Button>
-              <Button onClick={() => homeDocumentId && setSelectedDocumentId(homeDocumentId)}>在目录中定位</Button>
-            </Space>
-          </div>
-          <div className="kb-selected-summary">
-            <Tag>{selectedDocument ? docTypeText(selectedDocument.docType) : '未选择'}</Tag>
-            <Typography.Title level={4}>{selectedDocument?.title ?? '选择一个目录节点'}</Typography.Title>
-            <Space wrap size={6}>
-              {selectedDocument ? <Tag>{permissionText(selectedDocument.permissionLevel)}</Tag> : null}
-              {selectedDocument?.archived ? <Tag color="default">已归档</Tag> : null}
-              {selectedDocument ? <Tag>更新 {formatDate(selectedDocument.updatedAt)}</Tag> : null}
-            </Space>
-            {selectedDocument ? (
+        <details
+          className="kb-management-details"
+          open={queryState.view === 'management'}
+          onToggle={(event) => setManagementView((event.currentTarget as HTMLDetailsElement).open)}
+        >
+          <summary>
+            <span>空间设置</span>
+            <Typography.Text type="secondary">关注、权限和当前节点操作，不展示后台治理仪表盘</Typography.Text>
+          </summary>
+          <section className="kb-management-summary-grid">
+            <div className="kb-selected-summary">
+              <Tag color="blue">当前知识库</Tag>
+              <Typography.Title level={4}>{space?.name ?? '知识库'}</Typography.Title>
+              <Typography.Paragraph type="secondary">{space?.description || '暂无描述'}</Typography.Paragraph>
+              <Space wrap>
+                <Tag>维护人 {space?.ownerName ?? '-'}</Tag>
+                <Tag>{space ? permissionText(space.defaultPermissionLevel) : '-'}</Tag>
+                <Tag>{space ? visibilityText(space.visibility) : '-'}</Tag>
+              </Space>
               <Space wrap>
                 <Button
                   icon={<BellOutlined />}
                   loading={subscriptionMutation.isPending}
                   onClick={() =>
-                    selectedDocument &&
+                    space &&
                     subscriptionMutation.mutate({
-                      subscribed: (discoveryQuery.data?.subscribedDocuments ?? []).some((document) => document.id === selectedDocument.id),
-                      targetType: 'document',
-                      targetId: selectedDocument.id,
+                      subscribed: Boolean(discoveryQuery.data?.spaceSubscribed),
+                      targetType: 'knowledge_base',
+                      targetId: space.id,
                     })
                   }
                 >
-                  {(discoveryQuery.data?.subscribedDocuments ?? []).some((document) => document.id === selectedDocument.id) ? '取消关注' : '关注节点'}
+                  {discoveryQuery.data?.spaceSubscribed ? '取消关注' : '关注知识库'}
                 </Button>
                 <Button
                   icon={<SafetyCertificateOutlined />}
                   onClick={() =>
-                    setPermissionTarget({ resourceType: 'document', resourceId: selectedDocument.id, resourceName: `${selectedDocument.title} 节点权限` })
+                    space &&
+                    setPermissionTarget({ resourceType: 'knowledge_base', resourceId: space.id, resourceName: `${space.name} 空间权限` })
                   }
                 >
-                  节点权限
+                  空间权限
                 </Button>
               </Space>
-            ) : null}
-            {selectedDocument?.docType === 'markdown' ? (
-              <CollaborationHealthCard
-                dirty={Boolean(collaborationHealthQuery.data?.dirty)}
-                onlineCount={collaborationHealthQuery.data?.activeUsers ?? 0}
-                serverClock={collaborationHealthQuery.data?.serverClock ?? 0}
-                lastSavedAt={collaborationHealthQuery.data?.lastSavedAt}
-                onOpen={() => navigate(contentPath(selectedDocument.id))}
-                onRefresh={() => collaborationHealthQuery.refetch()}
-              />
-            ) : null}
-          </div>
-        </section>
+            </div>
+            <div className="kb-selected-summary">
+              <Tag>{selectedDocument ? docTypeText(selectedDocument.docType) : '未选择'}</Tag>
+              <Typography.Title level={4}>{selectedDocument?.title ?? '选择一个目录节点'}</Typography.Title>
+              <Space wrap size={6}>
+                {selectedDocument ? <Tag>{permissionText(selectedDocument.permissionLevel)}</Tag> : null}
+                {selectedDocument?.archived ? <Tag color="default">已归档</Tag> : null}
+                {selectedDocument ? <Tag>更新 {formatDate(selectedDocument.updatedAt)}</Tag> : null}
+              </Space>
+              {selectedDocument ? (
+                <Space wrap>
+                  <Button
+                    icon={<BellOutlined />}
+                    loading={subscriptionMutation.isPending}
+                    onClick={() =>
+                      selectedDocument &&
+                      subscriptionMutation.mutate({
+                        subscribed: (discoveryQuery.data?.subscribedDocuments ?? []).some((document) => document.id === selectedDocument.id),
+                        targetType: 'document',
+                        targetId: selectedDocument.id,
+                      })
+                    }
+                  >
+                    {(discoveryQuery.data?.subscribedDocuments ?? []).some((document) => document.id === selectedDocument.id) ? '取消关注' : '关注节点'}
+                  </Button>
+                  <Button
+                    icon={<SafetyCertificateOutlined />}
+                    onClick={() =>
+                      setPermissionTarget({ resourceType: 'document', resourceId: selectedDocument.id, resourceName: `${selectedDocument.title} 节点权限` })
+                    }
+                  >
+                    节点权限
+                  </Button>
+                </Space>
+              ) : null}
+              {selectedDocument?.docType === 'markdown' ? (
+                <CollaborationHealthCard
+                  dirty={Boolean(collaborationHealthQuery.data?.dirty)}
+                  onlineCount={collaborationHealthQuery.data?.activeUsers ?? 0}
+                  serverClock={collaborationHealthQuery.data?.serverClock ?? 0}
+                  lastSavedAt={collaborationHealthQuery.data?.lastSavedAt}
+                  onOpen={() => openDocumentOrDirectory(selectedDocument.id)}
+                  onRefresh={() => collaborationHealthQuery.refetch()}
+                />
+              ) : null}
+            </div>
+          </section>
+        </details>
 
-        <section className="kb-section-grid">
-          <KnowledgeList title="置顶" items={pinnedDocuments} onOpen={(id) => navigate(contentPath(id))} onSelect={setSelectedDocumentId} />
-          <KnowledgeList title="最近访问" items={discoveryQuery.data?.recentAccessed ?? recentDocuments} onOpen={(id) => navigate(contentPath(id))} onSelect={setSelectedDocumentId} />
-          <KnowledgeList title="我维护的内容" items={discoveryQuery.data?.maintainedByMe ?? []} onOpen={(id) => navigate(contentPath(id))} onSelect={setSelectedDocumentId} />
-          <KnowledgeList title="待复核" items={discoveryQuery.data?.dueForReview ?? []} onOpen={(id) => navigate(contentPath(id))} onSelect={setSelectedDocumentId} />
-          <KnowledgeList title="收藏" items={discoveryQuery.data?.favorites ?? favoriteDocuments} onOpen={(id) => navigate(contentPath(id))} onSelect={setSelectedDocumentId} />
-          <KnowledgeList title="热门知识" items={discoveryQuery.data?.popular ?? []} onOpen={(id) => navigate(contentPath(id))} onSelect={setSelectedDocumentId} />
-          <KnowledgeList title="推荐阅读" items={discoveryQuery.data?.recommended ?? []} onOpen={(id) => navigate(contentPath(id))} onSelect={setSelectedDocumentId} />
-          <KnowledgeList title="我的关注" items={discoveryQuery.data?.subscribedDocuments ?? []} onOpen={(id) => navigate(contentPath(id))} onSelect={setSelectedDocumentId} />
-          <KnowledgeList title="常用目录" items={commonDirectories} onOpen={(id) => setSelectedDocumentId(id)} onSelect={setSelectedDocumentId} />
+        <section className="kb-section-grid kb-discovery-grid">
+          <KnowledgeList title="置顶" items={pinnedDocuments} onOpen={openDocumentOrDirectory} onSelect={openDocumentOrDirectory} />
+          <KnowledgeList title="最近访问" items={discoveryQuery.data?.recentAccessed ?? recentDocuments} onOpen={openDocumentOrDirectory} onSelect={openDocumentOrDirectory} />
+          <KnowledgeList title="我维护的内容" items={discoveryQuery.data?.maintainedByMe ?? []} onOpen={openDocumentOrDirectory} onSelect={openDocumentOrDirectory} />
+          <KnowledgeList title="待复核" items={discoveryQuery.data?.dueForReview ?? []} onOpen={openDocumentOrDirectory} onSelect={openDocumentOrDirectory} />
+          <KnowledgeList title="收藏" items={discoveryQuery.data?.favorites ?? favoriteDocuments} onOpen={openDocumentOrDirectory} onSelect={openDocumentOrDirectory} />
+          <KnowledgeList title="热门知识" items={discoveryQuery.data?.popular ?? []} onOpen={openDocumentOrDirectory} onSelect={openDocumentOrDirectory} />
+          <KnowledgeList title="推荐阅读" items={discoveryQuery.data?.recommended ?? []} onOpen={openDocumentOrDirectory} onSelect={openDocumentOrDirectory} />
+          <KnowledgeList title="我的关注" items={discoveryQuery.data?.subscribedDocuments ?? []} onOpen={openDocumentOrDirectory} onSelect={openDocumentOrDirectory} />
+          <KnowledgeList title="常用目录" items={commonDirectories} onOpen={openDocumentOrDirectory} onSelect={openDocumentOrDirectory} />
           <TemplateList templates={templatesQuery.data ?? []} onUse={(template) => {
             templateForm.setFieldsValue({
               templateId: template.id,
@@ -851,12 +1079,150 @@ export function KnowledgeBaseDetailPage() {
           <Form.Item name="docType" label="类型" rules={[{ required: true }]}>
             <Select options={[
               { value: 'markdown', label: '内容页' },
-              { value: 'folder', label: '文件夹' },
+              { value: 'folder', label: '目录' },
+              { value: 'object_ref', label: '对象入口' },
+              { value: 'external_link', label: '外部链接' },
             ]} />
           </Form.Item>
           <Form.Item name="parentId" label="位置">
             <Select options={directoryOptions} />
           </Form.Item>
+          {createDocType === 'object_ref' ? (
+            <>
+              <Form.Item name="targetObjectType" label="目标类型" rules={[{ required: true, message: '请选择目标类型' }]}>
+                <Select
+                  options={[
+                    { value: 'document', label: '文档' },
+                    { value: 'base', label: '多维表格' },
+                    { value: 'file', label: '文件' },
+                    { value: 'project', label: '项目' },
+                  ]}
+                  onChange={(value) => {
+                    createForm.setFieldsValue({
+                      targetBaseMode: value === 'base' ? 'existing' : undefined,
+                      displayMode: value === 'base' ? 'inline' : 'default',
+                      targetObjectId: undefined,
+                      targetRoute: undefined,
+                      targetBaseId: undefined,
+                      targetBaseTableId: undefined,
+                      targetBaseViewId: undefined,
+                    })
+                  }}
+                />
+              </Form.Item>
+              {createTargetObjectType === 'base' ? (
+                <>
+                  <Form.Item name="targetBaseMode" label="多维表格来源" rules={[{ required: true, message: '请选择来源' }]}>
+                    <Select options={[
+                      { value: 'existing', label: '选择已有多维表格' },
+                      { value: 'new', label: '新建多维表格并挂载' },
+                    ]} />
+                  </Form.Item>
+                  {createTargetBaseMode !== 'new' ? (
+                    <>
+                      <Form.Item name="targetBaseId" label="选择多维表格" rules={[{ required: true, message: '请选择多维表格' }]}>
+                        <Select
+                          showSearch
+                          loading={basesQuery.isLoading}
+                          optionFilterProp="label"
+                          options={(basesQuery.data ?? []).map((base) => ({
+                            value: base.id,
+                            label: `${base.name} / ${base.tableCount} 表 · ${base.recordCount} 记录`,
+                          }))}
+                          onChange={(baseId) => {
+                            const base = (basesQuery.data ?? []).find((item) => item.id === baseId)
+                            const currentTitle = createForm.getFieldValue('title')
+                            createForm.setFieldsValue({
+                              targetObjectId: baseId,
+                              targetRoute: baseTargetRoute(baseId),
+                              title: currentTitle || base?.name,
+                              entryAlias: createForm.getFieldValue('entryAlias') || base?.name,
+                              targetBaseTableId: undefined,
+                              targetBaseViewId: undefined,
+                            })
+                          }}
+                        />
+                      </Form.Item>
+                      <Form.Item name="targetBaseTableId" label="默认数据表">
+                        <Select
+                          allowClear
+                          loading={createTargetBaseQuery.isLoading}
+                          options={(createTargetBaseQuery.data?.tables ?? []).map((table) => ({
+                            value: table.id,
+                            label: `${table.name} / ${table.recordCount} 记录`,
+                          }))}
+                          onChange={(tableId) => {
+                            const baseId = createForm.getFieldValue('targetBaseId')
+                            createForm.setFieldsValue({
+                              targetRoute: baseId ? baseTargetRoute(baseId, tableId) : undefined,
+                              targetBaseViewId: undefined,
+                            })
+                          }}
+                        />
+                      </Form.Item>
+                      <Form.Item name="targetBaseViewId" label="默认视图">
+                        <Select
+                          allowClear
+                          disabled={!createTargetBaseTableId}
+                          loading={createTargetBaseTableQuery.isLoading}
+                          options={(createTargetBaseTableQuery.data?.views ?? []).map((view) => ({
+                            value: view.id,
+                            label: view.name,
+                          }))}
+                          onChange={(viewId) => {
+                            const baseId = createForm.getFieldValue('targetBaseId')
+                            const tableId = createForm.getFieldValue('targetBaseTableId')
+                            createForm.setFieldsValue({ targetRoute: baseId ? baseTargetRoute(baseId, tableId, viewId) : undefined })
+                          }}
+                        />
+                      </Form.Item>
+                    </>
+                  ) : (
+                    <>
+                      <Form.Item name="newBaseName" label="新多维表格名称" rules={[{ required: true, message: '请输入多维表格名称' }]}>
+                        <Input maxLength={128} />
+                      </Form.Item>
+                      <Form.Item name="newBaseDescription" label="说明">
+                        <Input.TextArea maxLength={512} rows={3} />
+                      </Form.Item>
+                    </>
+                  )}
+                </>
+              ) : (
+                <>
+                  <Form.Item name="targetObjectId" label="目标对象 ID" rules={[{ required: true, message: '请输入目标对象 ID' }]}>
+                    <Input placeholder="目标对象 UUID" />
+                  </Form.Item>
+                  <Form.Item name="targetRoute" label="目标路由" rules={[{ required: true, message: '请输入目标路由' }]}>
+                    <Input placeholder="/knowledge-bases/... 或 /bases/..." maxLength={1024} />
+                  </Form.Item>
+                </>
+              )}
+              <Form.Item name="targetTitleStrategy" label="标题策略">
+                <Select options={[
+                  { value: 'manual', label: '手动标题' },
+                  { value: 'alias', label: '入口别名' },
+                  { value: 'follow_target', label: '跟随目标' },
+                ]} />
+              </Form.Item>
+              <Form.Item name="entryAlias" label="入口别名">
+                <Input maxLength={255} />
+              </Form.Item>
+            </>
+          ) : null}
+          {createDocType === 'external_link' ? (
+            <>
+              <Form.Item name="targetRoute" label="链接地址" rules={[{ required: true, message: '请输入链接地址' }]}>
+                <Input placeholder="https://example.com" maxLength={1024} />
+              </Form.Item>
+              <Form.Item name="displayMode" label="打开方式">
+                <Select options={[
+                  { value: 'link', label: '链接打开' },
+                  { value: 'preview', label: '预览卡片' },
+                ]} />
+              </Form.Item>
+            </>
+          ) : null}
         </Form>
       </Modal>
 
@@ -928,155 +1294,6 @@ export function KnowledgeBaseDetailPage() {
   )
 }
 
-function Metric({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="kb-metric">
-      <strong>{value}</strong>
-      <span>{label}</span>
-    </div>
-  )
-}
-
-function GovernancePanel({
-  spaceId,
-  dashboard,
-  loading,
-  documentOptions,
-  maintainerOptions,
-  tagOptions,
-  form,
-  submitting,
-  exporting,
-  onSubmit,
-  onExport,
-  onOpen,
-  onSelectDocuments,
-}: {
-  spaceId: string
-  dashboard?: KnowledgeBaseGovernanceDashboard
-  loading: boolean
-  documentOptions: { label: string; value: string }[]
-  maintainerOptions: { label: string; value: string }[]
-  tagOptions: { label: string; value: string }[]
-  form: FormInstance<GovernanceBulkForm>
-  submitting: boolean
-  exporting: boolean
-  onSubmit: (mode: 'metadata' | 'review' | 'archive') => void
-  onExport: () => void
-  onOpen: (path: string) => void
-  onSelectDocuments: (ids: string[]) => void
-}) {
-  const health = dashboard?.health
-  const risks = dashboard?.risks ?? []
-  const riskDocumentIds = risks
-    .filter((risk) => risk.resourceType === 'document' && risk.resourceId)
-    .map((risk) => risk.resourceId)
-    .filter((id, index, all) => all.indexOf(id) === index)
-
-  return (
-    <section className="kb-governance-panel">
-      <Space className="kb-governance-heading" align="center" wrap>
-        <div>
-          <Typography.Title level={4}>治理</Typography.Title>
-          <Typography.Text type="secondary">内容健康、权限风险、访问统计和批量处理</Typography.Text>
-        </div>
-        <Space wrap>
-          <Button size="small" onClick={() => onSelectDocuments(riskDocumentIds)} disabled={riskDocumentIds.length === 0}>
-            选择风险内容
-          </Button>
-          <Button size="small" icon={<DownloadOutlined />} loading={exporting} onClick={onExport}>
-            导出报告
-          </Button>
-        </Space>
-      </Space>
-
-      {loading ? <Typography.Text type="secondary">治理数据加载中...</Typography.Text> : null}
-
-      <div className="kb-governance-metrics">
-        <Metric label="活跃内容" value={health?.activeDocumentCount ?? 0} />
-        <Metric label="过期/待复核" value={health?.outdatedDocumentCount ?? 0} />
-        <Metric label="无人维护" value={health?.unmaintainedDocumentCount ?? 0} />
-        <Metric label="无 owner" value={health?.ownerlessDocumentCount ?? 0} />
-        <Metric label="权限风险" value={health?.highRiskPermissionCount ?? 0} />
-        <Metric label="访问人数" value={dashboard?.accessStats.visitorCount ?? 0} />
-      </div>
-
-      <Form form={form} layout="vertical" className="kb-governance-bulk-form">
-        <Form.Item name="documentIds" label="批量治理内容">
-          <Select mode="multiple" options={documentOptions} placeholder="选择内容页" maxTagCount="responsive" />
-        </Form.Item>
-        <Space wrap align="end">
-          <Form.Item name="maintainerId" label="维护人">
-            <Select allowClear showSearch className="kb-governance-select" options={maintainerOptions} placeholder="维护人" optionFilterProp="label" />
-          </Form.Item>
-          <Form.Item name="tags" label="标签">
-            <Select mode="tags" className="kb-governance-tags" options={tagOptions} placeholder="标签" />
-          </Form.Item>
-          <Form.Item name="replaceTags" label="标签模式" initialValue={false}>
-            <Select
-              className="kb-governance-mode"
-              options={[
-                { value: false, label: '追加标签' },
-                { value: true, label: '替换标签' },
-              ]}
-            />
-          </Form.Item>
-          <Form.Item name="reviewDueAt" label="复核日期">
-            <Input className="kb-date-filter" type="date" />
-          </Form.Item>
-        </Space>
-        <Space wrap>
-          <Button loading={submitting} onClick={() => onSubmit('metadata')}>更新维护信息</Button>
-          <Button loading={submitting} onClick={() => onSubmit('review')}>发起复核</Button>
-          <Button danger loading={submitting} onClick={() => onSubmit('archive')}>批量归档</Button>
-        </Space>
-      </Form>
-
-      <div className="kb-governance-grid">
-        <div className="kb-governance-section">
-          <Typography.Title level={5}>风险列表</Typography.Title>
-          <Space direction="vertical" size={6} className="kb-governance-list">
-            {risks.slice(0, 8).map((risk) => (
-              <button className="kb-governance-risk" type="button" key={risk.id} onClick={() => risk.actionPath && onOpen(risk.actionPath)}>
-                <Tag color={severityColor(risk.severity)}>{risk.severity}</Tag>
-                <span>
-                  <strong>{risk.title ?? risk.ruleCode}</strong>
-                  <small>{risk.reason}</small>
-                </span>
-                {risk.permissionLevel ? <Tag>{permissionText(risk.permissionLevel)}</Tag> : null}
-              </button>
-            ))}
-            {risks.length === 0 ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无治理风险" /> : null}
-          </Space>
-        </div>
-        <div className="kb-governance-section">
-          <Typography.Title level={5}>访问统计</Typography.Title>
-          <Space direction="vertical" size={8} className="kb-governance-list">
-            <Typography.Text type="secondary">访问 {dashboard?.accessStats.accessCount ?? 0} 次 · 访问人数 {dashboard?.accessStats.visitorCount ?? 0}</Typography.Text>
-            {(dashboard?.accessStats.popularDocuments ?? []).slice(0, 4).map((item) => (
-              <button className="kb-list-item" type="button" key={item.document.id} onClick={() => onOpen(`/knowledge-bases/${spaceId}?docId=${item.document.id}`)}>
-                <FileTextOutlined />
-                <span>
-                  <strong>{item.document.title}</strong>
-                  <small>{item.accessCount} 次 · {item.visitorCount} 人</small>
-                </span>
-              </button>
-            ))}
-            {(dashboard?.accessStats.lowAccessDocuments ?? []).length ? (
-              <Typography.Text type="secondary">低访问：{dashboard?.accessStats.lowAccessDocuments.map((item) => item.document.title).join('、')}</Typography.Text>
-            ) : null}
-            {(dashboard?.accessStats.noResultTerms ?? []).length ? (
-              <Space wrap size={4}>
-                {(dashboard?.accessStats.noResultTerms ?? []).map((term) => <Tag key={term.query}>无结果 {term.query} · {term.count}</Tag>)}
-              </Space>
-            ) : null}
-          </Space>
-        </div>
-      </div>
-    </section>
-  )
-}
-
 function CollaborationHealthCard({
   dirty,
   onlineCount,
@@ -1112,6 +1329,123 @@ function CollaborationHealthCard({
         </Space>
       }
     />
+  )
+}
+
+function KnowledgeBaseBasePreview({ document, onOpenFull }: { document: DocumentSummary; onOpenFull: (path: string) => void }) {
+  const target = parseBaseTargetRoute(document)
+  const baseId = document.targetObjectId ?? target.baseId
+  const canOpen = !document.targetSummary || document.targetSummary.accessState === 'available'
+  const baseQuery = useQuery({
+    queryKey: ['bases', baseId, 'kb-preview'],
+    queryFn: () => getBase(baseId || ''),
+    enabled: Boolean(baseId && canOpen),
+  })
+  const activeTableId = target.tableId ?? baseQuery.data?.tables[0]?.id ?? null
+  const tableQuery = useQuery({
+    queryKey: ['bases', baseId, 'tables', activeTableId, 'kb-preview'],
+    queryFn: () => getTable(baseId || '', activeTableId || ''),
+    enabled: Boolean(baseId && activeTableId && canOpen),
+  })
+  const activeView = tableQuery.data?.views.find((view) => view.id === target.viewId)
+  const recordsQuery = useQuery({
+    queryKey: ['bases', baseId, 'tables', activeTableId, 'records', 'kb-preview', activeView?.id],
+    queryFn: () =>
+      queryRecords(baseId || '', activeTableId || '', {
+        filters: activeView?.filters ?? [],
+        sorts: activeView?.sorts ?? [],
+        limit: 20,
+        offset: 0,
+      }),
+    enabled: Boolean(baseId && activeTableId && canOpen),
+  })
+
+  if (!canOpen) {
+    return (
+      <div className="kb-base-preview kb-base-preview-unavailable">
+        <Empty description={document.targetSummary ? targetAccessText(document.targetSummary.accessState) : '目标不可访问'} />
+      </div>
+    )
+  }
+
+  const base = baseQuery.data?.base
+  const table = tableQuery.data?.table
+  const fields = visibleBaseFields(tableQuery.data?.fields ?? [], activeView?.visibleFieldIds ?? [])
+  const rows = recordsQuery.data?.items ?? []
+  const columns = [
+    {
+      title: '#',
+      dataIndex: 'recordNo',
+      key: 'recordNo',
+      width: 72,
+      render: (value: number) => <Tag>#{value}</Tag>,
+    },
+    ...fields.map((field) => ({
+      title: field.name,
+      dataIndex: field.id,
+      key: field.id,
+      width: 180,
+      render: (_value: unknown, record: BaseRecord) => renderBaseValue(field, record),
+    })),
+    {
+      title: '更新',
+      dataIndex: 'updatedAt',
+      key: 'updatedAt',
+      width: 170,
+      render: (value: string) => formatDate(value),
+    },
+  ]
+
+  return (
+    <div className="kb-base-preview">
+      <div className="kb-base-preview-header">
+        <Space align="start">
+          <span className="kb-base-preview-icon">
+            <TableOutlined />
+          </span>
+          <div>
+            <Space wrap size={6}>
+              <Typography.Title level={4}>{base?.name ?? document.title}</Typography.Title>
+              <Tag color="purple">多维表格</Tag>
+              {activeView ? <Tag>{activeView.name}</Tag> : null}
+              {base ? <Tag>{permissionText(base.permissionLevel)}</Tag> : null}
+            </Space>
+            <Typography.Text type="secondary">
+              {base?.description || document.targetSummary?.subtitle || 'Base 数据仍归多维表格模块，知识库仅提供目录入口和上下文预览。'}
+            </Typography.Text>
+          </div>
+        </Space>
+        <Space wrap>
+          {base ? <Tag>{base.tableCount} 表</Tag> : null}
+          {base ? <Tag>{base.recordCount} 记录</Tag> : null}
+          <Button onClick={() => onOpenFull(document.targetRoute || (baseId ? `/bases/${baseId}` : '/bases'))}>打开完整表格</Button>
+        </Space>
+      </div>
+      <div className="kb-base-preview-tabs">
+        {(baseQuery.data?.tables ?? []).map((item) => (
+          <Tag color={item.id === activeTableId ? 'blue' : 'default'} key={item.id}>
+            {item.name} · {item.recordCount}
+          </Tag>
+        ))}
+      </div>
+      {table ? (
+        <Table
+          className="kb-base-preview-table"
+          rowKey="id"
+          size="middle"
+          columns={columns}
+          dataSource={rows}
+          loading={baseQuery.isLoading || tableQuery.isLoading || recordsQuery.isLoading}
+          pagination={false}
+          scroll={{ x: Math.max(620, fields.length * 180 + 260), y: 360 }}
+          locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No data" /> }}
+        />
+      ) : (
+        <div className="kb-directory-empty">
+          <Empty description={baseQuery.isLoading ? '多维表格加载中...' : '这个多维表格还没有数据表'} />
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -1186,10 +1520,10 @@ function KnowledgeList({
       <Space orientation="vertical" size={6} className="kb-list-panel">
         {items.map((document) => (
           <button className="kb-list-item" type="button" key={document.id} onClick={() => onSelect(document.id)} onDoubleClick={() => onOpen(document.id)}>
-            {document.docType === 'folder' ? <FolderOutlined /> : <FileTextOutlined />}
+            {nodeIcon(document)}
             <span>
               <strong>{document.title}</strong>
-              <small>{docTypeText(document.docType)} · {formatDate(document.updatedAt)}</small>
+              <small>{nodeMetaText(document)} · {formatDate(document.updatedAt)}</small>
             </span>
           </button>
         ))}
@@ -1247,9 +1581,11 @@ function buildKbTreeNode(
     key: node.document.id,
     title: (
       <span className={`kb-tree-title${node.document.id === activeDocumentId ? ' active' : ''}${node.document.archived ? ' archived' : ''}`}>
-        {node.document.docType === 'markdown' ? <FileTextOutlined /> : <FolderOutlined />}
+        {nodeIcon(node.document)}
         <span>{node.document.title}</span>
         <Tag>{docTypeText(node.document.docType)}</Tag>
+        {node.document.targetObjectType ? <Tag color="blue">{targetObjectTypeText(node.document.targetObjectType)}</Tag> : null}
+        {node.document.targetSummary && node.document.targetSummary.accessState !== 'available' ? <Tag color="default">{targetAccessText(node.document.targetSummary.accessState)}</Tag> : null}
         <Tag>{permissionText(node.document.permissionLevel)}</Tag>
         {favoriteDocumentIds.has(node.document.id) ? <StarFilled className="kb-tree-star" /> : null}
         {node.document.archived ? <Tag color="default">归档</Tag> : null}
@@ -1280,15 +1616,6 @@ function flattenTree(root: DocumentTreeNode | null): DocumentTreeNode[] {
   return [root, ...root.children.flatMap(flattenTree)]
 }
 
-function summarizeDocuments(documents: DocumentSummary[]) {
-  return {
-    total: documents.length,
-    markdown: documents.filter((document) => document.docType === 'markdown' && !document.archived).length,
-    folder: documents.filter((document) => document.docType === 'folder' && !document.archived).length,
-    archived: documents.filter((document) => document.archived).length,
-  }
-}
-
 function documentSort(left: DocumentSummary, right: DocumentSummary) {
   if (left.sortOrder !== right.sortOrder) {
     return left.sortOrder - right.sortOrder
@@ -1311,8 +1638,71 @@ function normalizeParentId(value?: string | null) {
   return !value || value === ROOT_PARENT_VALUE ? null : value
 }
 
+function isBaseObjectEntry(document?: DocumentSummary | null): document is DocumentSummary {
+  return document?.docType === 'object_ref' && document.targetObjectType === 'base'
+}
+
+function baseTargetRoute(baseId: string, tableId?: string, viewId?: string) {
+  const path = tableId ? `/bases/${baseId}/tables/${tableId}` : `/bases/${baseId}`
+  if (!viewId) {
+    return path
+  }
+  return `${path}?${new URLSearchParams({ viewId }).toString()}`
+}
+
+function parseBaseTargetRoute(document: DocumentSummary) {
+  const route = document.targetRoute ?? ''
+  const [path, search = ''] = route.split('?')
+  const match = path.match(/^\/bases\/([^/?#]+)(?:\/tables\/([^/?#]+))?/)
+  const params = new URLSearchParams(search)
+  return {
+    baseId: match?.[1],
+    tableId: match?.[2],
+    viewId: params.get('viewId') ?? undefined,
+  }
+}
+
+function visibleBaseFields(fields: BaseField[], visibleFieldIds: string[]) {
+  if (visibleFieldIds.length === 0) {
+    return fields
+  }
+  const visible = fields.filter((field) => visibleFieldIds.includes(field.id))
+  return visible.length > 0 ? visible : fields
+}
+
+function renderBaseValue(field: BaseField, record: BaseRecord) {
+  const value = record.values[field.id] ?? record.values[field.name]
+  if (value == null || value === '') {
+    return <Typography.Text type="secondary">-</Typography.Text>
+  }
+  if (Array.isArray(value)) {
+    return (
+      <Space size={4} wrap>
+        {value.map((item) => <Tag key={String(item)}>{String(item)}</Tag>)}
+      </Space>
+    )
+  }
+  if (typeof value === 'object') {
+    if ('title' in value && value.title) {
+      return <Tag>{String(value.title)}</Tag>
+    }
+    if ('objectType' in value && 'objectId' in value) {
+      return <Tag>{`${String(value.objectType)}:${String(value.objectId).slice(0, 8)}`}</Tag>
+    }
+    return <Typography.Text>{JSON.stringify(value)}</Typography.Text>
+  }
+  if (['single_select', 'multi_select', 'status', 'member', 'object_link'].includes(field.fieldType)) {
+    return <Tag>{String(value)}</Tag>
+  }
+  return <Typography.Text>{String(value)}</Typography.Text>
+}
+
 function expandedStorageKey(spaceId: string) {
   return `kb-expanded-${spaceId}`
+}
+
+function scrollStorageKey(spaceId: string, documentId: string, view: string) {
+  return `kb-scroll-${spaceId}-${documentId}-${view}`
 }
 
 function readExpandedKeys(spaceId: string) {
@@ -1350,7 +1740,52 @@ function permissionText(permission?: string | null) {
 }
 
 function docTypeText(docType: DocumentSummary['docType']) {
-  return { space: '根目录', folder: '目录', markdown: '内容页' }[docType]
+  return { space: '根目录', folder: '目录', markdown: '内容页', object_ref: '对象入口', external_link: '外部链接' }[docType]
+}
+
+function targetObjectTypeText(targetObjectType?: string | null) {
+  return {
+    document: '文档',
+    base: '多维表格',
+    file: '文件',
+    project: '项目',
+    external_link: '外链',
+  }[targetObjectType ?? ''] ?? targetObjectType
+}
+
+function nodeMetaText(document: DocumentSummary) {
+  const target = targetObjectTypeText(document.targetObjectType)
+  const targetTitle = document.targetSummary?.accessState === 'available' && document.targetSummary.title ? ` · ${document.targetSummary.title}` : ''
+  return target ? `${docTypeText(document.docType)} · ${target}${targetTitle}` : docTypeText(document.docType)
+}
+
+function nodeIcon(document?: DocumentSummary | null) {
+  if (!document) {
+    return <BookOutlined />
+  }
+  if (document.docType === 'markdown') {
+    return <FileTextOutlined />
+  }
+  if (document.docType === 'object_ref') {
+    if (document.targetObjectType === 'base') {
+      return <TableOutlined />
+    }
+    return <AppstoreOutlined />
+  }
+  if (document.docType === 'external_link') {
+    return <LinkOutlined />
+  }
+  return <FolderOutlined />
+}
+
+function targetAccessText(accessState?: string | null) {
+  return {
+    forbidden: '目标无权限',
+    deleted: '目标已删除',
+    not_found: '目标不存在',
+    invalid: '目标无效',
+    available: '目标可访问',
+  }[accessState ?? ''] ?? '目标不可访问'
 }
 
 function categoryText(category: string) {
@@ -1385,13 +1820,6 @@ function hitSourceText(source?: string | null) {
     tags: '标签',
     directory_path: '目录路径',
   }[source ?? 'title'] ?? source
-}
-
-function severityColor(severity: KnowledgeBaseGovernanceRisk['severity']) {
-  if (severity === 'critical') return 'red'
-  if (severity === 'high') return 'orange'
-  if (severity === 'medium') return 'gold'
-  return 'blue'
 }
 
 function formatDate(value?: string | null) {

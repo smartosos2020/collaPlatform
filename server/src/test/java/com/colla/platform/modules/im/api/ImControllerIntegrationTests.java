@@ -1,6 +1,7 @@
 package com.colla.platform.modules.im.api;
 
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
+import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.blankOrNullString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -69,6 +70,8 @@ class ImControllerIntegrationTests {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.title").value("IM MVP"))
             .andExpect(jsonPath("$.members.length()").value(2))
+            .andExpect(jsonPath("$.reminder.unreadCount").value(0))
+            .andExpect(jsonPath("$.availableActions", hasItem("send_message")))
             .andReturn()
             .getResponse()
             .getContentAsString();
@@ -90,6 +93,7 @@ class ImControllerIntegrationTests {
             .andExpect(jsonPath("$.content").value("hi @" + bobUsername + " see /issues/" + issueId))
             .andExpect(jsonPath("$.mentions[0].username").value(bobUsername))
             .andExpect(jsonPath("$.links[0].summary.title").value("IM unread bug"))
+            .andExpect(jsonPath("$.availableActions", hasItem("reply")))
             .andReturn()
             .getResponse()
             .getContentAsString();
@@ -99,7 +103,8 @@ class ImControllerIntegrationTests {
                 .header("Authorization", "Bearer " + adminToken))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.items.length()", greaterThanOrEqualTo(1)))
-            .andExpect(jsonPath("$.items[0].id").value(messageId.toString()));
+            .andExpect(jsonPath("$.items[0].id").value(messageId.toString()))
+            .andExpect(jsonPath("$.items[0].availableActions", hasItem("react")));
 
         String secondMessageResponse = mockMvc.perform(post("/api/conversations/" + conversationId + "/messages")
                 .header("Authorization", "Bearer " + adminToken)

@@ -1,12 +1,12 @@
-import { apiGet, apiGetText, apiPatch, apiPost } from '../../../shared/api/httpClient'
+import { apiDelete, apiGet, apiGetText, apiPatch, apiPost } from '../../../shared/api/httpClient'
 import type { PlatformObjectSummary } from '../../platform/api/platformObjectsApi'
 import type { IssueDetail } from '../../projects/api/projectsApi'
 
-export type DocumentSummary = {
+export type UserKnowledgeContentView = {
   id: string
   parentId?: string | null
   title: string
-  docType: 'markdown' | 'folder' | 'space'
+  docType: 'markdown' | 'folder' | 'space' | 'object_ref' | 'external_link'
   currentVersionNo: number
   permissionLevel: 'view' | 'comment' | 'edit' | 'manage' | 'owner'
   createdBy: string
@@ -28,7 +28,30 @@ export type DocumentSummary = {
   knowledgeStatus: 'draft' | 'verified' | 'needs_review' | 'outdated' | 'archived'
   reviewDueAt?: string | null
   verifiedAt?: string | null
+  nodeKind?: 'content' | 'directory' | 'object_ref' | 'external_link'
+  targetObjectType?: 'document' | 'base' | 'file' | 'project' | 'external_link' | string | null
+  targetObjectId?: string | null
+  targetRoute?: string | null
+  displayMode?: 'default' | 'inline' | 'preview' | 'link'
+  targetTitleStrategy?: 'manual' | 'follow_target' | 'alias'
+  entryAlias?: string | null
+  targetSummary?: PlatformObjectSummary | null
+  contentEntry?: {
+    nodeKind?: string | null
+    docType: string
+    targetObjectType?: string | null
+    targetObjectId?: string | null
+    targetRoute?: string | null
+  }
+  collaborationPermission?: {
+    level: 'view' | 'comment' | 'edit' | 'manage' | 'owner'
+    displayText: string
+    canEdit: boolean
+  }
+  availableActions?: string[]
 }
+
+export type DocumentSummary = UserKnowledgeContentView
 
 export type DocumentTreeNode = {
   document: DocumentSummary
@@ -142,32 +165,63 @@ export type KnowledgeContext = {
 export type DocumentBlock = {
   id: string
   documentId: string
+  parentId?: string | null
   blockType:
     | 'paragraph'
     | 'heading'
     | 'list'
+    | 'bullet_list'
+    | 'bulleted_list'
+    | 'ordered_list'
     | 'task'
+    | 'todo'
+    | 'task_item'
     | 'quote'
     | 'code'
+    | 'code_block'
     | 'table'
+    | 'image'
+    | 'file'
     | 'embed'
+    | 'embed_object'
     | 'base_view'
     | 'issue_embed'
     | 'message_embed'
     | 'file_embed'
     | 'link'
+    | 'link_card'
+    | 'legacy_html'
+    | 'divider'
+    | 'callout'
+    | 'toc'
   content: string
   sortOrder: number
+  schemaVersion: number
+  attrs: Record<string, unknown>
+  richContent: Record<string, unknown>
+  plainText: string
+  anchorId?: string | null
+  blockVersion: number
+  createdBy: string
   createdAt: string
+  updatedBy: string
   updatedAt: string
   embedSummary?: PlatformObjectSummary | null
   metadata?: Record<string, unknown>
 }
 
 export type DocumentBlockDraft = {
+  id?: string | null
+  parentId?: string | null
   blockType: DocumentBlock['blockType']
   content: string
   sortOrder?: number
+  schemaVersion?: number
+  attrs?: Record<string, unknown>
+  richContent?: Record<string, unknown>
+  plainText?: string
+  anchorId?: string | null
+  deleted?: boolean
 }
 
 export type DocumentDetail = {
@@ -387,6 +441,30 @@ export function saveDocumentBlocks(
   request: { baseVersionNo: number; blocks: DocumentBlockDraft[] },
 ) {
   return apiPatch<DocumentDetail>(`/docs/${documentId}/blocks`, request)
+}
+
+export function insertDocumentBlock(
+  documentId: string,
+  request: { baseVersionNo: number; block: DocumentBlockDraft; afterSortOrder?: number | null },
+) {
+  return apiPost<DocumentDetail>(`/docs/${documentId}/blocks`, request)
+}
+
+export function updateDocumentBlock(
+  documentId: string,
+  blockId: string,
+  request: { baseVersionNo: number; block: Partial<DocumentBlockDraft> },
+) {
+  return apiPatch<DocumentDetail>(`/docs/${documentId}/blocks/${blockId}`, request)
+}
+
+export function reorderDocumentBlocks(documentId: string, request: { baseVersionNo: number; blockIds: string[] }) {
+  return apiPost<DocumentDetail>(`/docs/${documentId}/blocks/reorder`, request)
+}
+
+export function deleteDocumentBlock(documentId: string, blockId: string, baseVersionNo: number) {
+  const params = new URLSearchParams({ baseVersionNo: String(baseVersionNo) })
+  return apiDelete<DocumentDetail>(`/docs/${documentId}/blocks/${blockId}?${params}`)
 }
 
 export function moveDocument(documentId: string, request: { parentId?: string | null; sortOrder?: number }) {

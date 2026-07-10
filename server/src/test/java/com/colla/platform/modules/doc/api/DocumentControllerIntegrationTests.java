@@ -58,7 +58,9 @@ class DocumentControllerIntegrationTests {
         mockMvc.perform(get("/api/knowledge-bases")
                 .header("Authorization", "Bearer " + adminToken))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$[*].rootDocumentId", hasItem(legacyRootId.toString())));
+            .andExpect(jsonPath("$[*].rootDocumentId", hasItem(legacyRootId.toString())))
+            .andExpect(content().string(containsString("\"navigation\"")))
+            .andExpect(content().string(containsString("\"collaborationPermission\"")));
 
         String createResponse = mockMvc.perform(post("/api/knowledge-bases")
                 .header("Authorization", "Bearer " + adminToken)
@@ -75,7 +77,11 @@ class DocumentControllerIntegrationTests {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.space.status").value("active"))
             .andExpect(jsonPath("$.space.code").value("kb-m1-" + suffix))
+            .andExpect(jsonPath("$.space.navigation.webPath", containsString("/knowledge-bases/")))
+            .andExpect(jsonPath("$.space.collaborationPermission.displayText").value("可查看"))
+            .andExpect(jsonPath("$.space.availableActions", hasItem("create_content")))
             .andExpect(jsonPath("$.rootDocument.docType").value("space"))
+            .andExpect(jsonPath("$.rootDocument.contentEntry.docType").value("space"))
             .andExpect(jsonPath("$.rootDocument.knowledgeBase").value(true))
             .andReturn()
             .getResponse()
@@ -197,6 +203,9 @@ class DocumentControllerIntegrationTests {
                 ))))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.document.parentId").value(rootDocumentId.toString()))
+            .andExpect(jsonPath("$.document.contentEntry.docType").value("folder"))
+            .andExpect(jsonPath("$.document.collaborationPermission.displayText", not(blankOrNullString())))
+            .andExpect(jsonPath("$.document.availableActions", hasItem("edit")))
             .andExpect(jsonPath("$.knowledgeContext.spaceId").value(spaceId.toString()))
             .andReturn()
             .getResponse()
@@ -214,6 +223,9 @@ class DocumentControllerIntegrationTests {
                 ))))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.document.parentId").value(folderId.toString()))
+            .andExpect(jsonPath("$.document.contentEntry.docType").value("markdown"))
+            .andExpect(jsonPath("$.document.collaborationPermission.displayText", not(blankOrNullString())))
+            .andExpect(jsonPath("$.document.availableActions", hasItem("comment")))
             .andExpect(jsonPath("$.knowledgeContext.spaceId").value(spaceId.toString()))
             .andExpect(jsonPath("$.knowledgeContext.pathText", containsString("M3 API Folder " + suffix)))
             .andReturn()
@@ -232,7 +244,138 @@ class DocumentControllerIntegrationTests {
                 .header("Authorization", "Bearer " + adminToken))
             .andExpect(status().isOk())
             .andExpect(content().string(containsString("M3 API Folder " + suffix)))
-            .andExpect(content().string(containsString("M3 API Runbook " + suffix)));
+            .andExpect(content().string(containsString("M3 API Runbook " + suffix)))
+            .andExpect(content().string(containsString("\"contentEntry\"")))
+            .andExpect(content().string(containsString("\"collaborationPermission\"")));
+
+        String objectRefResponse = mockMvc.perform(post("/api/knowledge-bases/" + spaceId + "/items")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "parentId", folderId.toString(),
+                    "title", "M3 Object Entry " + suffix,
+                    "docType", "object_ref",
+                    "content", "",
+                    "targetObjectType", "document",
+                    "targetObjectId", homeDocumentId.toString(),
+                    "targetRoute", "/knowledge-bases/" + spaceId + "/items/" + homeDocumentId,
+                    "displayMode", "preview",
+                    "targetTitleStrategy", "alias",
+                    "entryAlias", "Home Alias " + suffix
+                ))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.document.parentId").value(folderId.toString()))
+            .andExpect(jsonPath("$.document.docType").value("object_ref"))
+            .andExpect(jsonPath("$.document.nodeKind").value("object_ref"))
+            .andExpect(jsonPath("$.document.contentEntry.targetObjectType").value("document"))
+            .andExpect(jsonPath("$.document.targetObjectType").value("document"))
+            .andExpect(jsonPath("$.document.targetObjectId").value(homeDocumentId.toString()))
+            .andExpect(jsonPath("$.document.targetRoute").value("/knowledge-bases/" + spaceId + "/items/" + homeDocumentId))
+            .andExpect(jsonPath("$.document.displayMode").value("preview"))
+            .andExpect(jsonPath("$.document.targetTitleStrategy").value("alias"))
+            .andExpect(jsonPath("$.document.entryAlias").value("Home Alias " + suffix))
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+        UUID objectRefId = UUID.fromString(objectMapper.readTree(objectRefResponse).get("document").get("id").asText());
+
+        String secondObjectRefResponse = mockMvc.perform(post("/api/knowledge-bases/" + spaceId + "/items")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "parentId", homeDocumentId.toString(),
+                    "title", "M3 Object Entry Copy " + suffix,
+                    "docType", "object_ref",
+                    "targetObjectType", "document",
+                    "targetObjectId", homeDocumentId.toString(),
+                    "targetRoute", "/knowledge-bases/" + spaceId + "/items/" + homeDocumentId
+                ))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.document.targetObjectId").value(homeDocumentId.toString()))
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+        UUID secondObjectRefId = UUID.fromString(objectMapper.readTree(secondObjectRefResponse).get("document").get("id").asText());
+
+        JsonNode base = createBase(adminToken, "M5 Knowledge Base " + suffix, "Knowledge directory base reference");
+        UUID baseId = UUID.fromString(base.get("base").get("id").asText());
+        JsonNode baseTable = createBaseTable(adminToken, baseId, "M5 Directory View " + suffix);
+        UUID baseTableId = UUID.fromString(baseTable.get("table").get("id").asText());
+        UUID baseViewId = createBaseView(adminToken, baseId, baseTableId, "M5 Default View " + suffix);
+        String baseRoute = "/bases/" + baseId + "/tables/" + baseTableId + "?viewId=" + baseViewId;
+        String baseObjectRefResponse = mockMvc.perform(post("/api/knowledge-bases/" + spaceId + "/items")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "parentId", folderId.toString(),
+                    "title", "M5 Base Entry " + suffix,
+                    "docType", "object_ref",
+                    "targetObjectType", "base",
+                    "targetObjectId", baseId.toString(),
+                    "targetRoute", baseRoute,
+                    "displayMode", "inline",
+                    "targetTitleStrategy", "alias",
+                    "entryAlias", "M5 Base Alias " + suffix
+                ))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.document.docType").value("object_ref"))
+            .andExpect(jsonPath("$.document.targetObjectType").value("base"))
+            .andExpect(jsonPath("$.document.targetObjectId").value(baseId.toString()))
+            .andExpect(jsonPath("$.document.targetRoute").value(baseRoute))
+            .andExpect(jsonPath("$.document.displayMode").value("inline"))
+            .andExpect(jsonPath("$.document.targetSummary.objectType").value("base"))
+            .andExpect(jsonPath("$.document.targetSummary.accessState").value("available"))
+            .andExpect(jsonPath("$.document.targetSummary.title").value("M5 Knowledge Base " + suffix))
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+        UUID baseObjectRefId = UUID.fromString(objectMapper.readTree(baseObjectRefResponse).get("document").get("id").asText());
+
+        mockMvc.perform(post("/api/knowledge-bases/" + spaceId + "/items")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "parentId", folderId.toString(),
+                    "title", "M3 External Link " + suffix,
+                    "docType", "external_link",
+                    "targetRoute", "https://example.com/kb/" + suffix,
+                    "displayMode", "link"
+                ))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.document.docType").value("external_link"))
+            .andExpect(jsonPath("$.document.nodeKind").value("external_link"))
+            .andExpect(jsonPath("$.document.targetObjectType").value("external_link"))
+            .andExpect(jsonPath("$.document.targetRoute").value("https://example.com/kb/" + suffix))
+            .andExpect(jsonPath("$.document.displayMode").value("link"));
+
+        String missingTargetResponse = mockMvc.perform(post("/api/knowledge-bases/" + spaceId + "/items")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "parentId", folderId.toString(),
+                    "title", "M3 Missing Target " + suffix,
+                    "docType", "object_ref",
+                    "targetObjectType", "document",
+                    "targetObjectId", UUID.randomUUID().toString(),
+                    "targetRoute", "/docs/missing-" + suffix
+                ))))
+            .andExpect(status().isOk())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+        UUID missingTargetRefId = UUID.fromString(objectMapper.readTree(missingTargetResponse).get("document").get("id").asText());
+
+        mockMvc.perform(post("/api/knowledge-bases/" + spaceId + "/items")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "parentId", folderId.toString(),
+                    "title", "M3 Invalid Object Entry " + suffix,
+                    "docType", "object_ref",
+                    "targetObjectType", "document",
+                    "targetRoute", "/knowledge-bases/" + spaceId + "/items/" + homeDocumentId
+                ))))
+            .andExpect(status().isBadRequest());
 
         String templateResponse = mockMvc.perform(post("/api/knowledge-bases/" + spaceId + "/templates")
                 .header("Authorization", "Bearer " + adminToken)
@@ -293,6 +436,50 @@ class DocumentControllerIntegrationTests {
                 .header("Authorization", "Bearer " + adminToken))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.document.archived").value(false));
+
+        mockMvc.perform(post("/api/knowledge-bases/" + spaceId + "/items/" + objectRefId + "/archive")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.document.archived").value(true));
+
+        mockMvc.perform(get("/api/docs/" + homeDocumentId)
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.document.archived").value(false));
+
+        mockMvc.perform(get("/api/knowledge-bases/" + spaceId + "/items/tree?includeArchived=true")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(content().string(containsString(secondObjectRefId.toString())))
+            .andExpect(content().string(containsString(baseObjectRefId.toString())))
+            .andExpect(content().string(containsString("\"objectType\":\"base\"")))
+            .andExpect(content().string(containsString("M5 Knowledge Base " + suffix)))
+            .andExpect(content().string(containsString("\"targetSummary\"")))
+            .andExpect(content().string(containsString("\"accessState\":\"available\"")));
+
+        mockMvc.perform(get("/api/search")
+                .param("q", "M5 Base Entry " + suffix)
+                .param("knowledgeBaseId", spaceId.toString())
+                .param("docType", "object_ref")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.items[0].docType").value("object_ref"))
+            .andExpect(jsonPath("$.items[0].knowledgeBaseId").value(spaceId.toString()))
+            .andExpect(jsonPath("$.items[0].directoryPath", containsString("M3 API Folder " + suffix)));
+
+        mockMvc.perform(get("/api/knowledge-bases/" + spaceId + "/items?includeArchived=true")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(content().string(containsString(missingTargetRefId.toString())))
+            .andExpect(content().string(containsString("不存在对象入口")))
+            .andExpect(content().string(containsString("\"contentEntry\"")))
+            .andExpect(content().string(containsString("\"collaborationPermission\"")))
+            .andExpect(content().string(containsString("\"accessState\":\"not_found\"")));
+
+        mockMvc.perform(get("/api/admin/audit-logs?action=knowledge.node.created&targetType=document&targetId=" + objectRefId)
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(content().string(containsString("knowledge.node.created")));
     }
 
     @Test
@@ -682,6 +869,8 @@ class DocumentControllerIntegrationTests {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.spaceSubscribed").value(true))
             .andExpect(jsonPath("$.recentAccessed[*].id", hasItem(docId.toString())))
+            .andExpect(jsonPath("$.recentAccessed[?(@.id == '" + docId + "')].collaborationPermission.displayText", hasItem(not(blankOrNullString()))))
+            .andExpect(jsonPath("$.recentAccessed[?(@.id == '" + docId + "')].contentEntry.docType", hasItem("markdown")))
             .andExpect(jsonPath("$.favorites[*].id", hasItem(docId.toString())))
             .andExpect(jsonPath("$.subscribedDocuments[*].id", hasItem(docId.toString())))
             .andExpect(jsonPath("$.recommended[*].id", hasItem(docId.toString())));
@@ -888,6 +1077,18 @@ class DocumentControllerIntegrationTests {
             .andExpect(jsonPath("$.risks[*].ruleCode", hasItem("knowledge_base_broad_visibility")))
             .andExpect(jsonPath("$.accessStats.visitorCount", greaterThanOrEqualTo(1)))
             .andExpect(jsonPath("$.accessStats.noResultTerms[*].query", hasItem("NoSuchM7Term" + suffix)));
+
+        mockMvc.perform(get("/api/admin/knowledge-bases/" + spaceId + "/governance")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.space.id").value(spaceId.toString()))
+            .andExpect(jsonPath("$.space.governance.status").value("active"))
+            .andExpect(jsonPath("$.space.auditScope.targetType").value("knowledge_base"))
+            .andExpect(jsonPath("$.health.documentCount", greaterThanOrEqualTo(2)))
+            .andExpect(jsonPath("$.severityBuckets.high", greaterThanOrEqualTo(1)))
+            .andExpect(jsonPath("$.risks[*].ruleCode", hasItem("document_without_maintainer")))
+            .andExpect(jsonPath("$.accessStats.noResultTerms[*].query", hasItem("NoSuchM7Term" + suffix)))
+            .andExpect(jsonPath("$.bulkActions", hasItem("request_review")));
 
         mockMvc.perform(get("/api/admin/permission-governance/risks?knowledgeBaseId=" + spaceId)
                 .header("Authorization", "Bearer " + adminToken))
@@ -1164,6 +1365,8 @@ class DocumentControllerIntegrationTests {
                 .header("Authorization", "Bearer " + adminToken))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$[0].blockType").value("heading"))
+            .andExpect(jsonPath("$[0].schemaVersion").value(2))
+            .andExpect(jsonPath("$[0].plainText").value("Plan"))
             .andExpect(jsonPath("$[1].content").value("First step"));
 
         String blocksResponse = mockMvc.perform(patch("/api/docs/" + documentId + "/blocks")
@@ -1185,11 +1388,86 @@ class DocumentControllerIntegrationTests {
             .andExpect(jsonPath("$.content").value("# Block Plan\n- [ ] Ship API"))
             .andExpect(jsonPath("$.blocks[1].blockType").value("task"))
             .andExpect(jsonPath("$.blocks[1].sortOrder").value(1))
+            .andExpect(jsonPath("$.blocks[1].anchorId", not(blankOrNullString())))
+            .andExpect(jsonPath("$.blocks[1].plainText").value("Ship API"))
             .andReturn()
             .getResponse()
             .getContentAsString();
         JsonNode blocksJson = objectMapper.readTree(blocksResponse);
+        UUID headingBlockId = UUID.fromString(blocksJson.get("blocks").get(0).get("id").asText());
         UUID taskBlockId = UUID.fromString(blocksJson.get("blocks").get(1).get("id").asText());
+
+        mockMvc.perform(post("/api/docs/" + documentId + "/blocks")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "baseVersionNo", 2,
+                    "block", Map.of(
+                        "blockType", "todo",
+                        "content", "Todo alias"
+                    )
+                ))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.document.currentVersionNo").value(3))
+            .andExpect(jsonPath("$.blocks[2].blockType").value("task_item"));
+
+        String updateResponse = mockMvc.perform(patch("/api/docs/" + documentId + "/blocks/" + taskBlockId)
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "baseVersionNo", 3,
+                    "block", Map.of(
+                        "content", "Ship API today",
+                        "plainText", "M6PartialBlockUpdate"
+                    )
+                ))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.document.currentVersionNo").value(4))
+            .andExpect(jsonPath("$.blocks[1].id").value(taskBlockId.toString()))
+            .andExpect(jsonPath("$.blocks[1].content").value("Ship API today"))
+            .andExpect(jsonPath("$.blocks[1].plainText").value("M6PartialBlockUpdate"))
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+        blocksJson = objectMapper.readTree(updateResponse);
+
+        mockMvc.perform(post("/api/docs/" + documentId + "/blocks/reorder")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "baseVersionNo", 4,
+                    "blockIds", List.of(taskBlockId.toString(), headingBlockId.toString())
+                ))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.document.currentVersionNo").value(5))
+            .andExpect(jsonPath("$.blocks[0].id").value(taskBlockId.toString()))
+            .andExpect(jsonPath("$.blocks[0].sortOrder").value(0));
+
+        String insertResponse = mockMvc.perform(post("/api/docs/" + documentId + "/blocks")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "baseVersionNo", 5,
+                    "afterSortOrder", 0,
+                    "block", Map.of(
+                        "blockType", "quote",
+                        "content", "Inserted block"
+                    )
+                ))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.document.currentVersionNo").value(6))
+            .andExpect(jsonPath("$.blocks[1].blockType").value("quote"))
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+        UUID insertedBlockId = UUID.fromString(objectMapper.readTree(insertResponse).get("blocks").get(1).get("id").asText());
+
+        mockMvc.perform(delete("/api/docs/" + documentId + "/blocks/" + insertedBlockId)
+                .param("baseVersionNo", "6")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.document.currentVersionNo").value(7))
+            .andExpect(jsonPath("$.blocks[*].id", not(hasItem(insertedBlockId.toString()))));
 
         String commentResponse = mockMvc.perform(post("/api/docs/" + documentId + "/comments")
                 .header("Authorization", "Bearer " + adminToken)
@@ -1719,6 +1997,111 @@ class DocumentControllerIntegrationTests {
     }
 
     @Test
+    void knowledgeBaseBlockV2VersionImportExportAndGovernanceFlow() throws Exception {
+        String adminToken = login("admin", "admin123456", "kb-ux-m11-admin-device-" + UUID.randomUUID());
+        String suffix = UUID.randomUUID().toString().substring(0, 8);
+        UUID documentId = createDocument(adminToken, null, "M11 Block v2 " + suffix, "markdown", "# Before\nLegacy content");
+
+        String blockResponse = mockMvc.perform(patch("/api/docs/" + documentId + "/blocks")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "baseVersionNo", 1,
+                    "blocks", List.of(
+                        Map.of("blockType", "heading", "content", "M11 Block v2"),
+                        Map.of("blockType", "paragraph", "content", "Version summary body"),
+                        Map.of("blockType", "base_view", "content", objectMapper.writeValueAsString(Map.of(
+                            "objectType", "base_table",
+                            "objectId", "00000000-0000-0000-0000-000000000000",
+                            "fallback", "Base placeholder"
+                        )))
+                    )
+                ))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.document.currentVersionNo").value(2))
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+        JsonNode blockJson = objectMapper.readTree(blockResponse);
+
+        mockMvc.perform(get("/api/docs/" + documentId + "/versions")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$[0].summary", containsString("新增")))
+            .andExpect(jsonPath("$[0].summary", containsString("删除")))
+            .andExpect(jsonPath("$[0].summary", containsString("修改")))
+            .andExpect(jsonPath("$[0].summary", containsString("移动")))
+            .andExpect(jsonPath("$[0].summary", containsString("类型转换")));
+
+        mockMvc.perform(get("/api/docs/" + documentId + "/export/markdown")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(content().string(containsString("::object-card{objectType=\"base_table\"")))
+            .andExpect(content().string(containsString("Version summary body")));
+
+        mockMvc.perform(get("/api/docs/" + documentId + "/export/html")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(content().string(containsString("doc-export-embed")))
+            .andExpect(content().string(containsString("Version summary body")));
+
+        String htmlImportResponse = mockMvc.perform(post("/api/docs/" + documentId + "/import/html")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "title", "M11 HTML Import " + suffix,
+                    "html", "<h1>HTML Heading</h1><p>HTML paragraph</p><ul><li>HTML item</li></ul>"
+                ))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.document.title").value("M11 HTML Import " + suffix))
+            .andExpect(jsonPath("$.blocks[*].blockType", hasItem("heading")))
+            .andExpect(jsonPath("$.blocks[*].blockType", hasItem("bullet_list")))
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+        JsonNode htmlImport = objectMapper.readTree(htmlImportResponse);
+
+        mockMvc.perform(post("/api/docs/" + documentId + "/import/html")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "html", "<script>alert(1)</script><p>Unsafe</p>"
+                ))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.blocks[0].blockType").value("legacy_html"))
+            .andExpect(jsonPath("$.blocks[0].content", containsString("unsafe HTML omitted")));
+
+        JsonNode space = createKnowledgeBaseSpace(adminToken, "M11 Governance " + suffix, "m11-gov-" + suffix);
+        UUID spaceId = UUID.fromString(space.get("space").get("id").asText());
+        UUID rootDocumentId = UUID.fromString(space.get("space").get("rootDocumentId").asText());
+        mockMvc.perform(post("/api/knowledge-bases/" + spaceId + "/items")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "parentId", rootDocumentId.toString(),
+                    "title", "Governance Block " + suffix,
+                    "docType", "markdown",
+                    "content", "# Governance\nBlock coverage"
+                ))))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/knowledge-bases/" + spaceId + "/governance")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.health.blockCoverageGapCount").value(0))
+            .andExpect(jsonPath("$.health.emptyBlockCount").value(0))
+            .andExpect(jsonPath("$.health.invalidEmbedBlockCount").value(0))
+            .andExpect(jsonPath("$.health.blockCoveragePercent").value(100.0));
+
+        mockMvc.perform(get("/api/docs/" + documentId + "/versions/diff?fromVersionNo=2&toVersionNo=" + htmlImport.get("document").get("currentVersionNo").asInt())
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.lines[*].scope", hasItem("block")));
+
+        org.hamcrest.MatcherAssert.assertThat(blockJson.get("blocks").size(), greaterThanOrEqualTo(3));
+    }
+
+    @Test
     void crossModuleMessageDocumentIssueAndReverseReferenceFlow() throws Exception {
         String adminToken = login("admin", "admin123456", "doc-m48-admin-device-" + UUID.randomUUID());
         String teammateUsername = "dm48" + UUID.randomUUID().toString().substring(0, 8);
@@ -2027,6 +2410,24 @@ class DocumentControllerIntegrationTests {
             .getResponse()
             .getContentAsString();
         return objectMapper.readTree(response);
+    }
+
+    private UUID createBaseView(String token, UUID baseId, UUID tableId, String name) throws Exception {
+        String response = mockMvc.perform(post("/api/bases/" + baseId + "/tables/" + tableId + "/views")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "name", name,
+                    "filters", List.of(),
+                    "sorts", List.of(),
+                    "visibleFieldIds", List.of()
+                ))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.name").value(name))
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+        return UUID.fromString(objectMapper.readTree(response).get("id").asText());
     }
 
     private UUID createDocument(String token, UUID parentId, String title, String docType, String content) throws Exception {

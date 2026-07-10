@@ -15,8 +15,11 @@ import type { DataNode } from 'antd/es/tree'
 import type { ColumnsType } from 'antd/es/table'
 import { useMemo, useState } from 'react'
 
+import { EntityAvatar } from '../../../shared/components/EntityAvatar'
+import { SoftBadge } from '../../../shared/components/SoftBadge'
+import { StatusBadge } from '../../../shared/components/StatusBadge'
+import { TableEmptyState } from '../../../shared/components/TableEmptyState'
 import { listMembers } from '../api/adminUsersApi'
-import { AdminModuleNav } from '../components/AdminModuleNav'
 import {
   addDepartmentManager,
   addDepartmentMember,
@@ -205,7 +208,7 @@ export function AdminDepartmentsPage() {
       dataIndex: 'displayName',
       render: (_, record) => (
         <Space size={12} className="admin-table-entity">
-          <span className="admin-entity-avatar">{entityInitial(record.displayName || record.username)}</span>
+          <EntityAvatar className="admin-entity-avatar" value={record.displayName || record.username} />
           <Space orientation="vertical" size={0}>
             <Typography.Text strong>{record.displayName}</Typography.Text>
             <Typography.Text type="secondary">{record.username}</Typography.Text>
@@ -223,16 +226,16 @@ export function AdminDepartmentsPage() {
       dataIndex: 'relationType',
       width: 100,
       render: (value) => (
-        <span className={`admin-soft-badge ${value === 'primary' ? 'purple' : 'gray'}`}>
+        <SoftBadge tone={value === 'primary' ? 'purple' : 'gray'}>
           {value === 'primary' ? '主部门' : '成员'}
-        </span>
+        </SoftBadge>
       ),
     },
     {
       title: '状态',
       dataIndex: 'status',
       width: 100,
-      render: (status) => <span className={`admin-status-pill ${status === 'active' ? 'active' : 'disabled'}`}>{status}</span>,
+      render: (status) => <StatusBadge status={status} />,
     },
     {
       title: '操作',
@@ -258,7 +261,7 @@ export function AdminDepartmentsPage() {
       dataIndex: 'displayName',
       render: (_, record) => (
         <Space size={12} className="admin-table-entity">
-          <span className="admin-entity-avatar">{entityInitial(record.displayName || record.username)}</span>
+          <EntityAvatar className="admin-entity-avatar" value={record.displayName || record.username} />
           <Space orientation="vertical" size={0}>
             <Typography.Text strong>{record.displayName}</Typography.Text>
             <Typography.Text type="secondary">{record.username}</Typography.Text>
@@ -276,9 +279,9 @@ export function AdminDepartmentsPage() {
       dataIndex: 'managerType',
       width: 100,
       render: (value) => (
-        <span className={`admin-soft-badge ${value === 'primary' ? 'purple' : 'gray'}`}>
+        <SoftBadge tone={value === 'primary' ? 'purple' : 'gray'}>
           {value === 'primary' ? '主管' : '副主管'}
-        </span>
+        </SoftBadge>
       ),
     },
     {
@@ -307,16 +310,6 @@ export function AdminDepartmentsPage() {
 
   return (
     <Space orientation="vertical" size={16} className="page-stack admin-org-page admin-departments-page">
-      <Space className="page-toolbar admin-saas-toolbar" wrap>
-        <Space size={12}>
-          <span className="admin-page-icon">
-            <ApartmentOutlined />
-          </span>
-          <Typography.Title level={2}>组织架构</Typography.Title>
-        </Space>
-        <AdminModuleNav />
-      </Space>
-
       <div className="admin-org-grid admin-departments-layout">
         <div className="admin-org-panel admin-org-tree-panel admin-department-tree-card">
           <div className="admin-sidebar-action-row">
@@ -359,9 +352,7 @@ export function AdminDepartmentsPage() {
                   <div className="admin-group-hero-copy">
                     <Space className="admin-group-hero-title-row" size={12} align="center" wrap>
                       <Typography.Title level={3}>{selectedDepartment.name}</Typography.Title>
-                      <span className={`admin-status-pill ${selectedDepartment.status === 'active' ? 'active' : 'disabled'}`}>
-                        {selectedDepartment.status}
-                      </span>
+                      <StatusBadge status={selectedDepartment.status} />
                       <Typography.Text type="secondary">{selectedDepartment.code}</Typography.Text>
                     </Space>
                     <div className="admin-group-meta-grid">
@@ -589,19 +580,8 @@ function buildTreeData(nodes: DepartmentTreeNode[]): DataNode[] {
   }))
 }
 
-function entityInitial(value: string) {
-  return (value || '?').trim().slice(0, 1).toUpperCase()
-}
-
 function AdminTableEmpty() {
-  return (
-    <div className="admin-table-empty">
-      <span className="admin-empty-icon">
-        <ApartmentOutlined />
-      </span>
-      <Typography.Text type="secondary">No data</Typography.Text>
-    </div>
-  )
+  return <TableEmptyState icon={<ApartmentOutlined />} />
 }
 
 function findDepartmentNode(nodes: DepartmentTreeNode[], departmentId: string): DepartmentTreeNode | undefined {

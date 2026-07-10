@@ -106,6 +106,8 @@ class WorkspaceControllerIntegrationTests {
             .andExpect(jsonPath("$.length()", greaterThanOrEqualTo(1)))
             .andExpect(jsonPath("$[0].targetType").value("issue"))
             .andExpect(jsonPath("$[0].sourceType").value("issue"))
+            .andExpect(jsonPath("$[0].reminder.unread").value(true))
+            .andExpect(jsonPath("$[0].availableActions", hasItem("mark_read")))
             .andReturn()
             .getResponse()
             .getContentAsString();
@@ -121,7 +123,9 @@ class WorkspaceControllerIntegrationTests {
             .andExpect(jsonPath("$.recentDocuments[*].id").value(hasItem(documentId.toString())))
             .andExpect(jsonPath("$.recentBases[*].id").value(hasItem(baseId.toString())))
             .andExpect(jsonPath("$.recentObjects[*].objectType").value(hasItem("issue")))
-            .andExpect(jsonPath("$.favoriteObjects[*].objectId").value(hasItem(issueId.toString())));
+            .andExpect(jsonPath("$.favoriteObjects[*].objectId").value(hasItem(issueId.toString())))
+            .andExpect(jsonPath("$.navigationSummary.issueCount", greaterThanOrEqualTo(1)))
+            .andExpect(jsonPath("$.availableActions", hasItem("open_notifications")));
 
         mockMvc.perform(post("/api/notifications/read-batch")
                 .header("Authorization", "Bearer " + viewerToken)
@@ -147,6 +151,8 @@ class WorkspaceControllerIntegrationTests {
                 ))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.conversationId", not(blankOrNullString())))
+            .andExpect(jsonPath("$.collaboration.displayText").value("可协作"))
+            .andExpect(jsonPath("$.availableActions", hasItem("create_issue")))
             .andReturn()
             .getResponse()
             .getContentAsString();

@@ -1,4 +1,4 @@
-import { AuditOutlined, SearchOutlined } from '@ant-design/icons'
+import { SearchOutlined } from '@ant-design/icons'
 import { useQuery } from '@tanstack/react-query'
 import { Button, Form, Input, Select, Space, Table, Tag, Typography } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
@@ -7,7 +7,6 @@ import { useSearchParams } from 'react-router-dom'
 
 import { objectTypeText } from '../../platform/objectTypeLabels'
 import { listAuditLogs, type AuditLogEntry, type AuditLogFilters } from '../api/auditLogsApi'
-import { AdminModuleNav } from '../components/AdminModuleNav'
 
 const targetTypeOptions = [
   { label: '全部对象', value: '' },
@@ -79,16 +78,6 @@ export function AdminAuditLogsPage() {
 
   return (
     <Space orientation="vertical" size={16} className="page-stack admin-org-page admin-audit-logs-page">
-      <Space className="page-toolbar admin-saas-toolbar" wrap>
-        <Space size={12}>
-          <span className="admin-page-icon">
-            <AuditOutlined />
-          </span>
-          <Typography.Title level={2}>审计日志</Typography.Title>
-        </Space>
-        <AdminModuleNav />
-      </Space>
-
       <Form
         form={form}
         layout="inline"

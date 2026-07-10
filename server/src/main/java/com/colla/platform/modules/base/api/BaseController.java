@@ -1,6 +1,9 @@
 package com.colla.platform.modules.base.api;
 
 import com.colla.platform.modules.base.application.BaseService;
+import com.colla.platform.modules.base.api.UserBaseDtos.UserBaseDetailView;
+import com.colla.platform.modules.base.api.UserBaseDtos.UserBaseRecordPageView;
+import com.colla.platform.modules.base.api.UserBaseDtos.UserBaseView;
 import com.colla.platform.modules.base.domain.BaseModels.BaseDetail;
 import com.colla.platform.modules.base.domain.BaseModels.BaseFilter;
 import com.colla.platform.modules.base.domain.BaseModels.BaseCalendarView;
@@ -8,9 +11,7 @@ import com.colla.platform.modules.base.domain.BaseModels.BaseImportResult;
 import com.colla.platform.modules.base.domain.BaseModels.BaseKanbanView;
 import com.colla.platform.modules.base.domain.BaseModels.BaseRecord;
 import com.colla.platform.modules.base.domain.BaseModels.BaseRecordDetail;
-import com.colla.platform.modules.base.domain.BaseModels.BaseRecordPage;
 import com.colla.platform.modules.base.domain.BaseModels.BaseSort;
-import com.colla.platform.modules.base.domain.BaseModels.BaseSummary;
 import com.colla.platform.modules.base.domain.BaseModels.BaseTableDetail;
 import com.colla.platform.modules.base.domain.BaseModels.BaseView;
 import com.colla.platform.shared.auth.CurrentUser;
@@ -45,28 +46,30 @@ public class BaseController {
     }
 
     @GetMapping("/bases")
-    public List<BaseSummary> bases(Authentication authentication) {
-        return baseService.listBases(currentUser(authentication));
+    public List<UserBaseView> bases(Authentication authentication) {
+        return baseService.listBases(currentUser(authentication)).stream()
+            .map(UserBaseDtos::base)
+            .toList();
     }
 
     @PostMapping("/bases")
-    public BaseDetail createBase(@Valid @RequestBody CreateBaseRequest request, Authentication authentication) {
-        return baseService.createBase(currentUser(authentication), request.name(), request.description());
+    public UserBaseDetailView createBase(@Valid @RequestBody CreateBaseRequest request, Authentication authentication) {
+        return UserBaseDtos.detail(baseService.createBase(currentUser(authentication), request.name(), request.description()));
     }
 
     @GetMapping("/bases/{baseId}")
-    public BaseDetail base(@PathVariable UUID baseId, Authentication authentication) {
-        return baseService.getBase(currentUser(authentication), baseId);
+    public UserBaseDetailView base(@PathVariable UUID baseId, Authentication authentication) {
+        return UserBaseDtos.detail(baseService.getBase(currentUser(authentication), baseId));
     }
 
     @PatchMapping("/bases/{baseId}")
-    public BaseDetail updateBase(@PathVariable UUID baseId, @Valid @RequestBody UpdateBaseRequest request, Authentication authentication) {
-        return baseService.updateBase(currentUser(authentication), baseId, request.name(), request.description());
+    public UserBaseDetailView updateBase(@PathVariable UUID baseId, @Valid @RequestBody UpdateBaseRequest request, Authentication authentication) {
+        return UserBaseDtos.detail(baseService.updateBase(currentUser(authentication), baseId, request.name(), request.description()));
     }
 
     @PostMapping("/bases/{baseId}/members")
-    public BaseDetail grantPermission(@PathVariable UUID baseId, @Valid @RequestBody GrantPermissionRequest request, Authentication authentication) {
-        return baseService.grantPermission(currentUser(authentication), baseId, request.userId(), request.permissionLevel());
+    public UserBaseDetailView grantPermission(@PathVariable UUID baseId, @Valid @RequestBody GrantPermissionRequest request, Authentication authentication) {
+        return UserBaseDtos.detail(baseService.grantPermission(currentUser(authentication), baseId, request.userId(), request.permissionLevel()));
     }
 
     @PostMapping("/bases/{baseId}/tables")
@@ -108,14 +111,14 @@ public class BaseController {
     }
 
     @GetMapping("/bases/{baseId}/tables/{tableId}/records")
-    public BaseRecordPage records(
+    public UserBaseRecordPageView records(
         @PathVariable UUID baseId,
         @PathVariable UUID tableId,
         @RequestParam(defaultValue = "50") int limit,
         @RequestParam(defaultValue = "0") int offset,
         Authentication authentication
     ) {
-        return baseService.listRecords(currentUser(authentication), baseId, tableId, List.of(), List.of(), limit, offset);
+        return UserBaseDtos.recordPage(baseService.listRecords(currentUser(authentication), baseId, tableId, List.of(), List.of(), limit, offset));
     }
 
     @GetMapping(value = "/bases/{baseId}/tables/{tableId}/export.csv", produces = "text/csv")
@@ -137,14 +140,14 @@ public class BaseController {
     }
 
     @PostMapping("/bases/{baseId}/tables/{tableId}/records/query")
-    public BaseRecordPage queryRecords(
+    public UserBaseRecordPageView queryRecords(
         @PathVariable UUID baseId,
         @PathVariable UUID tableId,
         @RequestBody(required = false) QueryRecordsRequest request,
         Authentication authentication
     ) {
         QueryRecordsRequest query = request == null ? new QueryRecordsRequest(List.of(), List.of(), 50, 0) : request;
-        return baseService.listRecords(
+        return UserBaseDtos.recordPage(baseService.listRecords(
             currentUser(authentication),
             baseId,
             tableId,
@@ -152,7 +155,7 @@ public class BaseController {
             query.sorts(),
             query.limit() == null ? 50 : query.limit(),
             query.offset() == null ? 0 : query.offset()
-        );
+        ));
     }
 
     @GetMapping("/bases/{baseId}/tables/{tableId}/views/kanban")

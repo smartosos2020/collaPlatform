@@ -1,6 +1,7 @@
 package com.colla.platform.config;
 
 import com.colla.platform.shared.auth.CurrentUser;
+import com.colla.platform.shared.request.RequestBoundaryContext;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -27,6 +28,7 @@ public class RequestLoggingFilter extends OncePerRequestFilter {
         response.setHeader(REQUEST_ID_HEADER, requestId);
 
         try {
+            RequestBoundaryContext.bind(request);
             filterChain.doFilter(request, response);
         } finally {
             long durationMs = (System.nanoTime() - startedAt) / 1_000_000;
@@ -40,6 +42,7 @@ public class RequestLoggingFilter extends OncePerRequestFilter {
                 valueOrDash(request.getHeader("X-Colla-Client")),
                 currentUsername()
             );
+            RequestBoundaryContext.clear();
         }
     }
 

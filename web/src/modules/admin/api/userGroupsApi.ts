@@ -1,6 +1,6 @@
 import { apiDelete, apiGet, apiPatch, apiPost } from '../../../shared/api/httpClient'
 
-export type UserGroupSummary = {
+export type AdminUserGroupView = {
   id: string
   code: string
   name: string
@@ -11,9 +11,31 @@ export type UserGroupSummary = {
   expandedMemberCount: number
   createdAt: string
   updatedAt: string
+  memberExpansion?: {
+    directMemberCount: number
+    expandedMemberCount: number
+  }
+  authorizationSubject?: {
+    subjectType: 'user_group'
+    subjectId: string
+    subjectName: string
+    subjectDetail?: string | null
+  }
+  governance?: {
+    status: 'active' | 'disabled'
+    managedObjectType: string
+    managedObjectId: string
+  }
+  audit?: {
+    createdAt: string
+    updatedAt: string
+  }
+  availableActions?: string[]
 }
 
-export type UserGroupMember = {
+export type UserGroupSummary = AdminUserGroupView
+
+export type AdminUserGroupMemberView = {
   id: string
   groupId: string
   subjectType: 'user' | 'department'
@@ -22,9 +44,23 @@ export type UserGroupMember = {
   subjectDetail?: string | null
   subjectStatus: 'active' | 'disabled'
   createdAt: string
+  authorizationSubject?: {
+    subjectType: 'user' | 'department'
+    subjectId: string
+    subjectName: string
+    subjectDetail?: string | null
+  }
+  governance?: {
+    status: 'active' | 'disabled'
+    managedObjectType: string
+    managedObjectId: string
+  }
+  availableActions?: string[]
 }
 
-export type ExpandedUserGroupMember = {
+export type UserGroupMember = AdminUserGroupMemberView
+
+export type AdminExpandedUserGroupMemberView = {
   userId: string
   username: string
   displayName: string
@@ -33,7 +69,25 @@ export type ExpandedUserGroupMember = {
   sourceType: 'user' | 'department'
   sourceId: string
   sourceName: string
+  profile?: {
+    userId: string
+    displayName: string
+    avatarFileId?: string | null
+    email?: string | null
+  }
+  expansionSource?: {
+    sourceType: 'user' | 'department'
+    sourceId: string
+    sourceName: string
+  }
+  governance?: {
+    status: 'active' | 'disabled'
+    managedObjectType: string
+    managedObjectId: string
+  }
 }
+
+export type ExpandedUserGroupMember = AdminExpandedUserGroupMemberView
 
 export type UserGroupRequest = {
   code: string
@@ -47,20 +101,20 @@ export type AddUserGroupMemberRequest = {
   subjectId: string
 }
 
-export async function listUserGroups(options: { activeOnly?: boolean } = {}): Promise<UserGroupSummary[]> {
+export async function listUserGroups(options: { activeOnly?: boolean } = {}): Promise<AdminUserGroupView[]> {
   const params = new URLSearchParams()
   if (options.activeOnly) {
     params.set('activeOnly', 'true')
   }
-  return apiGet<UserGroupSummary[]>(`/admin/user-groups${params.size ? `?${params}` : ''}`)
+  return apiGet<AdminUserGroupView[]>(`/admin/user-groups${params.size ? `?${params}` : ''}`)
 }
 
-export async function createUserGroup(request: UserGroupRequest): Promise<UserGroupSummary> {
-  return apiPost<UserGroupSummary>('/admin/user-groups', request)
+export async function createUserGroup(request: UserGroupRequest): Promise<AdminUserGroupView> {
+  return apiPost<AdminUserGroupView>('/admin/user-groups', request)
 }
 
-export async function updateUserGroup(groupId: string, request: UserGroupRequest): Promise<UserGroupSummary> {
-  return apiPatch<UserGroupSummary>(`/admin/user-groups/${groupId}`, request)
+export async function updateUserGroup(groupId: string, request: UserGroupRequest): Promise<AdminUserGroupView> {
+  return apiPatch<AdminUserGroupView>(`/admin/user-groups/${groupId}`, request)
 }
 
 export async function disableUserGroup(groupId: string): Promise<void> {
@@ -75,18 +129,18 @@ export async function deleteUserGroup(groupId: string): Promise<void> {
   return apiDelete<void>(`/admin/user-groups/${groupId}`)
 }
 
-export async function listUserGroupMembers(groupId: string): Promise<UserGroupMember[]> {
-  return apiGet<UserGroupMember[]>(`/admin/user-groups/${groupId}/members`)
+export async function listUserGroupMembers(groupId: string): Promise<AdminUserGroupMemberView[]> {
+  return apiGet<AdminUserGroupMemberView[]>(`/admin/user-groups/${groupId}/members`)
 }
 
-export async function addUserGroupMember(groupId: string, request: AddUserGroupMemberRequest): Promise<UserGroupMember> {
-  return apiPost<UserGroupMember>(`/admin/user-groups/${groupId}/members`, request)
+export async function addUserGroupMember(groupId: string, request: AddUserGroupMemberRequest): Promise<AdminUserGroupMemberView> {
+  return apiPost<AdminUserGroupMemberView>(`/admin/user-groups/${groupId}/members`, request)
 }
 
 export async function removeUserGroupMember(groupId: string, memberId: string): Promise<void> {
   return apiDelete<void>(`/admin/user-groups/${groupId}/members/${memberId}`)
 }
 
-export async function listExpandedUserGroupMembers(groupId: string): Promise<ExpandedUserGroupMember[]> {
-  return apiGet<ExpandedUserGroupMember[]>(`/admin/user-groups/${groupId}/expanded-members`)
+export async function listExpandedUserGroupMembers(groupId: string): Promise<AdminExpandedUserGroupMemberView[]> {
+  return apiGet<AdminExpandedUserGroupMemberView[]>(`/admin/user-groups/${groupId}/expanded-members`)
 }

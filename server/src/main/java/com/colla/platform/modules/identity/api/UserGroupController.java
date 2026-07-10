@@ -1,9 +1,9 @@
 package com.colla.platform.modules.identity.api;
 
 import com.colla.platform.modules.identity.application.UserGroupService;
-import com.colla.platform.modules.identity.domain.UserGroupModels.ExpandedUserGroupMember;
-import com.colla.platform.modules.identity.domain.UserGroupModels.UserGroupMember;
-import com.colla.platform.modules.identity.domain.UserGroupModels.UserGroupSummary;
+import com.colla.platform.modules.identity.api.AdminIdentityDtos.AdminExpandedUserGroupMemberView;
+import com.colla.platform.modules.identity.api.AdminIdentityDtos.AdminUserGroupMemberView;
+import com.colla.platform.modules.identity.api.AdminIdentityDtos.AdminUserGroupView;
 import com.colla.platform.shared.auth.CurrentUser;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -31,43 +31,45 @@ public class UserGroupController {
     }
 
     @GetMapping
-    public List<UserGroupSummary> list(
+    public List<AdminUserGroupView> list(
         @RequestParam(defaultValue = "false") boolean activeOnly,
         Authentication authentication
     ) {
-        return userGroupService.listGroups(currentUser(authentication), activeOnly);
+        return userGroupService.listGroups(currentUser(authentication), activeOnly).stream()
+            .map(AdminIdentityDtos::userGroup)
+            .toList();
     }
 
     @GetMapping("/{groupId}")
-    public UserGroupSummary get(@PathVariable UUID groupId, Authentication authentication) {
-        return userGroupService.getGroup(currentUser(authentication), groupId);
+    public AdminUserGroupView get(@PathVariable UUID groupId, Authentication authentication) {
+        return AdminIdentityDtos.userGroup(userGroupService.getGroup(currentUser(authentication), groupId));
     }
 
     @PostMapping
-    public UserGroupSummary create(@Valid @RequestBody UserGroupRequest request, Authentication authentication) {
-        return userGroupService.createGroup(
+    public AdminUserGroupView create(@Valid @RequestBody UserGroupRequest request, Authentication authentication) {
+        return AdminIdentityDtos.userGroup(userGroupService.createGroup(
             currentUser(authentication),
             request.code(),
             request.name(),
             request.description(),
             request.groupType()
-        );
+        ));
     }
 
     @PatchMapping("/{groupId}")
-    public UserGroupSummary update(
+    public AdminUserGroupView update(
         @PathVariable UUID groupId,
         @Valid @RequestBody UserGroupRequest request,
         Authentication authentication
     ) {
-        return userGroupService.updateGroup(
+        return AdminIdentityDtos.userGroup(userGroupService.updateGroup(
             currentUser(authentication),
             groupId,
             request.code(),
             request.name(),
             request.description(),
             request.groupType()
-        );
+        ));
     }
 
     @PostMapping("/{groupId}/disable")
@@ -86,17 +88,21 @@ public class UserGroupController {
     }
 
     @GetMapping("/{groupId}/members")
-    public List<UserGroupMember> members(@PathVariable UUID groupId, Authentication authentication) {
-        return userGroupService.listMembers(currentUser(authentication), groupId);
+    public List<AdminUserGroupMemberView> members(@PathVariable UUID groupId, Authentication authentication) {
+        return userGroupService.listMembers(currentUser(authentication), groupId).stream()
+            .map(AdminIdentityDtos::userGroupMember)
+            .toList();
     }
 
     @PostMapping("/{groupId}/members")
-    public UserGroupMember addMember(
+    public AdminUserGroupMemberView addMember(
         @PathVariable UUID groupId,
         @Valid @RequestBody UserGroupMemberRequest request,
         Authentication authentication
     ) {
-        return userGroupService.addMember(currentUser(authentication), groupId, request.subjectType(), request.subjectId());
+        return AdminIdentityDtos.userGroupMember(
+            userGroupService.addMember(currentUser(authentication), groupId, request.subjectType(), request.subjectId())
+        );
     }
 
     @DeleteMapping("/{groupId}/members/{memberId}")
@@ -109,8 +115,10 @@ public class UserGroupController {
     }
 
     @GetMapping("/{groupId}/expanded-members")
-    public List<ExpandedUserGroupMember> expandedMembers(@PathVariable UUID groupId, Authentication authentication) {
-        return userGroupService.listExpandedMembers(currentUser(authentication), groupId);
+    public List<AdminExpandedUserGroupMemberView> expandedMembers(@PathVariable UUID groupId, Authentication authentication) {
+        return userGroupService.listExpandedMembers(currentUser(authentication), groupId).stream()
+            .map(AdminIdentityDtos::expandedUserGroupMember)
+            .toList();
     }
 
     private CurrentUser currentUser(Authentication authentication) {

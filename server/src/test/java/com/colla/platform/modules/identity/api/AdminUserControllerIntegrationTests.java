@@ -53,6 +53,10 @@ class AdminUserControllerIntegrationTests {
             .andExpect(jsonPath("$.username").value(username))
             .andExpect(jsonPath("$.status").value("active"))
             .andExpect(jsonPath("$.roles", hasItem("member")))
+            .andExpect(jsonPath("$.profile.displayName").value("Member User"))
+            .andExpect(jsonPath("$.account.username").value(username))
+            .andExpect(jsonPath("$.management.status").value("active"))
+            .andExpect(jsonPath("$.availableActions", hasItem("disable")))
             .andReturn()
             .getResponse()
             .getContentAsString();
@@ -64,7 +68,9 @@ class AdminUserControllerIntegrationTests {
         mockMvc.perform(get("/api/admin/users")
                 .header("Authorization", "Bearer " + adminToken))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$[*].username", hasItem(username)));
+            .andExpect(jsonPath("$[*].username", hasItem(username)))
+            .andExpect(jsonPath("$[*].profile.displayName", hasItem("Member User")))
+            .andExpect(jsonPath("$[*].management.status", hasItem("active")));
 
         mockMvc.perform(patch("/api/admin/users/" + memberId + "/avatar")
                 .header("Authorization", "Bearer " + adminToken)

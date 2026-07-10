@@ -1,6 +1,6 @@
 import { apiGet, apiPatch, apiPost } from '../../../shared/api/httpClient'
 
-export type MemberSummary = {
+export type AdminMemberView = {
   id: string
   username: string
   displayName: string
@@ -11,7 +11,33 @@ export type MemberSummary = {
   createdAt: string
   roles: string[]
   departments: MemberDepartment[]
+  profile?: {
+    userId: string
+    displayName: string
+    avatarFileId?: string | null
+    email?: string | null
+  }
+  account?: {
+    username: string
+    status: 'active' | 'disabled'
+    lastLoginAt?: string | null
+  }
+  organization?: {
+    primaryDepartmentId?: string | null
+    primaryDepartmentCode?: string | null
+    primaryDepartmentName?: string | null
+    departments: MemberDepartment[]
+  }
+  management?: {
+    status: 'active' | 'disabled'
+    roles: string[]
+    createdAt: string
+    lastLoginAt?: string | null
+  }
+  availableActions?: string[]
 }
+
+export type MemberSummary = AdminMemberView
 
 export type MemberDepartment = {
   departmentId: string
@@ -33,17 +59,17 @@ export type ListMembersFilters = {
   departmentId?: string
 }
 
-export async function listMembers(filters: ListMembersFilters = {}): Promise<MemberSummary[]> {
+export async function listMembers(filters: ListMembersFilters = {}): Promise<AdminMemberView[]> {
   const params = new URLSearchParams()
   if (filters.departmentId) {
     params.set('departmentId', filters.departmentId)
   }
   const query = params.toString()
-  return apiGet<MemberSummary[]>(`/admin/users${query ? `?${query}` : ''}`)
+  return apiGet<AdminMemberView[]>(`/admin/users${query ? `?${query}` : ''}`)
 }
 
-export async function createMember(request: CreateMemberRequest): Promise<MemberSummary> {
-  return apiPost<MemberSummary>('/admin/users', request)
+export async function createMember(request: CreateMemberRequest): Promise<AdminMemberView> {
+  return apiPost<AdminMemberView>('/admin/users', request)
 }
 
 export async function disableMember(userId: string): Promise<void> {

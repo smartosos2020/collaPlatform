@@ -1,9 +1,13 @@
 import {
   AppstoreAddOutlined,
+  ArrowDownOutlined,
+  ArrowUpOutlined,
   BoldOutlined,
   CheckSquareOutlined,
   CodeOutlined,
   CommentOutlined,
+  CopyOutlined,
+  DeleteOutlined,
   FileImageOutlined,
   FileOutlined,
   HolderOutlined,
@@ -18,7 +22,7 @@ import {
   TableOutlined,
   UnorderedListOutlined,
 } from '@ant-design/icons'
-import { Extension } from '@tiptap/core'
+import { Extension, Mark } from '@tiptap/core'
 import DragHandle from '@tiptap/extension-drag-handle-react'
 import Image from '@tiptap/extension-image'
 import { Table } from '@tiptap/extension-table'
@@ -39,6 +43,7 @@ import {
   useEditor,
 } from '@tiptap/react'
 import { BubbleMenu } from '@tiptap/react/menus'
+import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import StarterKit from '@tiptap/starter-kit'
@@ -75,6 +80,7 @@ export type DocEditorProps = {
     error?: string | null
   }
   commentAnchors?: DocEditorCommentAnchor[]
+  blockAnchors?: DocEditorBlockAnchor[]
   activeCommentId?: string | null
   onTitleChange: (value: string) => void
   onContentChange: (value: string) => void
@@ -92,6 +98,11 @@ export type DocEditorCommentAnchor = {
   anchorEnd?: number | null
   anchorText?: string | null
   resolved?: boolean
+}
+
+export type DocEditorBlockAnchor = {
+  id: string
+  anchorId?: string | null
 }
 
 export type DocEditorSelectionAnchor = {
@@ -115,8 +126,17 @@ type ObjectInsertState = {
 type SlashCommand = {
   key: string
   label: string
+  description: string
+  keywords: string[]
   icon: ReactNode
   run: () => void
+}
+
+type TopLevelBlock = {
+  index: number
+  from: number
+  to: number
+  node: ProseMirrorNode
 }
 
 const OBJECT_INSERT_TYPES = [
@@ -228,6 +248,24 @@ const FileCardNode = TiptapNode.create({
   },
 })
 
+const InlineObjectMark = Mark.create({
+  name: 'inlineObject',
+  addAttributes() {
+    return {
+      objectType: { default: 'text' },
+    }
+  },
+  parseHTML() {
+    return [{ tag: 'span[data-doc-inline-object]' }]
+  },
+  renderHTML({ HTMLAttributes }) {
+    return ['span', mergeAttributes(HTMLAttributes, {
+      'data-doc-inline-object': HTMLAttributes.objectType ?? 'text',
+      class: `doc-inline-object doc-inline-object-${HTMLAttributes.objectType ?? 'text'}`,
+    }), 0]
+  },
+})
+
 export function DocEditor({
   documentId,
   title,
@@ -245,6 +283,7 @@ export function DocEditor({
   saveActionDisabled = false,
   collaboration,
   commentAnchors = [],
+  blockAnchors = [],
   activeCommentId,
   onTitleChange,
   onContentChange,
@@ -412,6 +451,7 @@ export function DocEditor({
       Image.configure({ allowBase64: false }),
       ObjectCardNode,
       FileCardNode,
+      InlineObjectMark,
       CommentAnchorExtension,
     ],
     [],
@@ -534,6 +574,13 @@ export function DocEditor({
   }, [commentAnchors, editor])
 
   useEffect(() => {
+    if (!editor || editor.isDestroyed) {
+      return
+    }
+    syncEditorBlockDomAnchors(editor, blockAnchors)
+  }, [blockAnchors, editor, renderedContent])
+
+  useEffect(() => {
     if (!editor || !activeCommentId) {
       return
     }
@@ -543,6 +590,28 @@ export function DocEditor({
     }
     editor.chain().focus().setTextSelection({ from: anchor.anchorStart, to: anchor.anchorEnd }).scrollIntoView().run()
   }, [activeCommentId, commentAnchors, editor])
+
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) {
+      return
+    }
+    const hash = window.location.hash.replace(/^#/, '')
+    if (!hash.startsWith('doc-block-')) {
+      return
+    }
+    window.setTimeout(() => highlightEditorBlock(hash), 0)
+  }, [blockAnchors, editor, renderedContent])
+
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash.replace(/^#/, '')
+      if (hash.startsWith('doc-block-')) {
+        highlightEditorBlock(hash)
+      }
+    }
+    window.addEventListener('hashchange', handleHashChange)
+    return () => window.removeEventListener('hashchange', handleHashChange)
+  }, [])
 
   const fallbackStatus = saving ? 'saving' : conflictVisible ? 'conflict' : dirty ? 'dirty' : 'saved'
   const statusLabel = collaboration ? collaborationStatusText(collaboration.status) : statusText(fallbackStatus)
@@ -629,7 +698,7 @@ export function DocEditor({
       {collaboration?.error ? <Alert showIcon type="warning" message="协同异常" description={collaboration.error} /> : null}
 
       <div className="doc-editor-canvas">
-        <EditorToolbar editor={editor} canEdit={canEdit && fullEditorLoaded} onOpenSlash={() => setSlashOpen(true)} />
+        <EditorHoverInsertButton editor={editor} canEdit={canEdit && fullEditorLoaded} onOpenSlash={() => setSlashOpen(true)} />
         <TableToolbar editor={editor} canEdit={canEdit && fullEditorLoaded} />
         {collaboration?.remoteCursors.length ? <RemoteCursorStrip users={collaboration.remoteCursors} /> : null}
         <BlockDragHandle editor={editor} canEdit={canEdit} />
@@ -642,7 +711,7 @@ export function DocEditor({
             onInsertObject={(next) => setObjectInsert({ ...objectInsert, ...next, open: true })}
           />
         ) : null}
-        {editor && canEdit ? <InlineBubbleMenu editor={editor} /> : null}
+        {editor && canEdit && fullEditorLoaded ? <SelectionBubbleToolbar editor={editor} /> : null}
         <EditorContent editor={editor} />
       </div>
 
@@ -720,13 +789,61 @@ export function DocEditor({
   )
 }
 
-function EditorToolbar({ editor, canEdit, onOpenSlash }: { editor: Editor | null; canEdit: boolean; onOpenSlash: () => void }) {
+function EditorHoverInsertButton({
+  editor,
+  canEdit,
+  onOpenSlash,
+}: {
+  editor: Editor | null
+  canEdit: boolean
+  onOpenSlash: () => void
+}) {
+  if (!editor || !canEdit) {
+    return null
+  }
+  return (
+    <Tooltip title="插入块">
+      <Button
+        size="small"
+        className="doc-editor-hover-insert"
+        icon={<PlusOutlined />}
+        aria-label="插入块"
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={() => {
+          editor.chain().focus().run()
+          onOpenSlash()
+        }}
+      />
+    </Tooltip>
+  )
+}
+
+function SelectionBubbleToolbar({ editor }: { editor: Editor }) {
+  return (
+    <BubbleMenu
+      editor={editor}
+      className="doc-selection-toolbar"
+      options={{ placement: 'top-start', offset: 8, shift: true, flip: true }}
+      shouldShow={({ editor: currentEditor }) => currentEditor.isEditable && !currentEditor.state.selection.empty}
+    >
+      <Space size={4} className="doc-selection-toolbar-inner">
+        <Tooltip title="评论选区">
+          <Button
+            size="small"
+            icon={<CommentOutlined />}
+            onClick={() => document.querySelector<HTMLElement>('.doc-comment-composer')?.focus()}
+          />
+        </Tooltip>
+        <EditorToolbar editor={editor} canEdit={editor.isEditable} />
+      </Space>
+    </BubbleMenu>
+  )
+}
+
+function EditorToolbar({ editor, canEdit }: { editor: Editor | null; canEdit: boolean }) {
   return (
     <div className="doc-editor-toolbar" role="toolbar" aria-label="文档编辑工具栏">
       <Space wrap size={4}>
-        <Tooltip title="插入块">
-          <Button size="small" disabled={!canEdit || !editor} icon={<PlusOutlined />} onClick={onOpenSlash} />
-        </Tooltip>
         <ToolbarButton
           title="正文"
           active={Boolean(editor?.isActive('paragraph'))}
@@ -836,11 +953,17 @@ function EditorToolbar({ editor, canEdit, onOpenSlash }: { editor: Editor | null
 }
 
 function TableToolbar({ editor, canEdit }: { editor: Editor | null; canEdit: boolean }) {
-  if (!editor?.isActive('table')) {
+  if (!editor || !canEdit) {
     return null
   }
   return (
-    <div className="doc-table-editor-toolbar" role="toolbar" aria-label="表格编辑工具栏">
+    <BubbleMenu
+      editor={editor}
+      pluginKey="docTableToolbar"
+      className="doc-table-editor-toolbar"
+      options={{ placement: 'top-start', offset: 8, shift: true, flip: true }}
+      shouldShow={({ editor: currentEditor }) => currentEditor.isEditable && currentEditor.isActive('table')}
+    >
       <Space wrap size={4}>
         <Button size="small" disabled={!canEdit} onClick={() => editor.chain().focus().addColumnAfter().run()}>
           加列
@@ -858,7 +981,7 @@ function TableToolbar({ editor, canEdit }: { editor: Editor | null; canEdit: boo
           删除表格
         </Button>
       </Space>
-    </div>
+    </BubbleMenu>
   )
 }
 
@@ -884,16 +1007,29 @@ function BlockDragHandle({ editor, canEdit }: { editor: Editor | null; canEdit: 
         trigger={['click']}
         menu={{
           items: [
+            { key: 'move-up', label: '上移', icon: <ArrowUpOutlined /> },
+            { key: 'move-down', label: '下移', icon: <ArrowDownOutlined /> },
+            { key: 'copy', label: '复制块', icon: <CopyOutlined /> },
             { key: 'paragraph', label: '转为正文' },
             { key: 'heading', label: '转为标题' },
             { key: 'bullet', label: '转为列表' },
             { key: 'task', label: '转为任务' },
             { key: 'quote', label: '转为引用' },
             { key: 'code', label: '转为代码块' },
-            { key: 'delete', label: '删除块', danger: true },
+            { key: 'divider', label: '转为分割线' },
+            { key: 'delete', label: '删除块', icon: <DeleteOutlined />, danger: true },
           ],
           onClick: ({ key }) => {
             focusBlock()
+            if (key === 'move-up') {
+              moveSelectedTopLevelBlock(editor, -1)
+            }
+            if (key === 'move-down') {
+              moveSelectedTopLevelBlock(editor, 1)
+            }
+            if (key === 'copy') {
+              duplicateSelectedTopLevelBlock(editor)
+            }
             if (key === 'paragraph') {
               editor.chain().focus().setParagraph().run()
             }
@@ -912,6 +1048,9 @@ function BlockDragHandle({ editor, canEdit }: { editor: Editor | null; canEdit: 
             if (key === 'code') {
               editor.chain().focus().toggleCodeBlock().run()
             }
+            if (key === 'divider') {
+              editor.chain().focus().setHorizontalRule().run()
+            }
             if (key === 'delete') {
               editor.chain().focus().deleteNode(editor.state.selection.$from.parent.type.name).run()
             }
@@ -924,6 +1063,48 @@ function BlockDragHandle({ editor, canEdit }: { editor: Editor | null; canEdit: 
       </Dropdown>
     </DragHandle>
   )
+}
+
+function getSelectedTopLevelBlock(editor: Editor) {
+  const { doc, selection } = editor.state
+  const position = selection.$from.before(1)
+  let found: TopLevelBlock | undefined
+  doc.forEach((node, offset, index) => {
+    const from = offset
+    const to = offset + node.nodeSize
+    if (position >= from && position <= to) {
+      found = { index, from, to, node }
+    }
+  })
+  return found
+}
+
+function duplicateSelectedTopLevelBlock(editor: Editor) {
+  const block = getSelectedTopLevelBlock(editor)
+  if (!block?.node) {
+    return false
+  }
+  const transaction = editor.state.tr.insert(block.to, block.node.copy(block.node.content))
+  editor.view.dispatch(transaction.scrollIntoView())
+  return true
+}
+
+function moveSelectedTopLevelBlock(editor: Editor, direction: -1 | 1) {
+  const block = getSelectedTopLevelBlock(editor)
+  if (!block?.node) {
+    return false
+  }
+  const targetIndex = block.index + direction
+  if (targetIndex < 0 || targetIndex >= editor.state.doc.childCount) {
+    return false
+  }
+  const targetNode = editor.state.doc.child(targetIndex)
+  const targetFrom = direction < 0 ? block.from - targetNode.nodeSize : block.to
+  const transaction = editor.state.tr.delete(block.from, block.to)
+  const insertAt = direction < 0 ? targetFrom : targetFrom - block.node.nodeSize
+  transaction.insert(insertAt, block.node)
+  editor.view.dispatch(transaction.scrollIntoView())
+  return true
 }
 
 function SlashMenu({
@@ -939,54 +1120,89 @@ function SlashMenu({
   onPickFile: () => void
   onInsertObject: (state: Partial<ObjectInsertState>) => void
 }) {
+  const [query, setQuery] = useState('')
   const runCommand = (command: () => void) => {
     removeSlashBeforeCursor(editor)
     command()
     onClose()
+    setQuery('')
   }
   const commands: SlashCommand[] = [
-    { key: 'paragraph', label: '文本', icon: <span>T</span>, run: () => editor.chain().focus().setParagraph().run() },
-    { key: 'heading', label: '标题', icon: <span>H</span>, run: () => editor.chain().focus().toggleHeading({ level: 2 }).run() },
-    { key: 'task', label: '任务', icon: <CheckSquareOutlined />, run: () => editor.chain().focus().toggleTaskList().run() },
-    { key: 'bullet', label: '列表', icon: <UnorderedListOutlined />, run: () => editor.chain().focus().toggleBulletList().run() },
-    { key: 'quote', label: '引用', icon: <span>&gt;</span>, run: () => editor.chain().focus().toggleBlockquote().run() },
-    { key: 'code', label: '代码', icon: <CodeOutlined />, run: () => editor.chain().focus().toggleCodeBlock().run() },
-    { key: 'table', label: '表格', icon: <TableOutlined />, run: () => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: false }).run() },
-    { key: 'image', label: '图片', icon: <FileImageOutlined />, run: onPickImage },
-    { key: 'file', label: '文件', icon: <FileOutlined />, run: onPickFile },
+    { key: 'paragraph', label: '文本', description: '普通段落', keywords: ['text', 'paragraph', '正文', '段落'], icon: <span>T</span>, run: () => editor.chain().focus().setParagraph().run() },
+    { key: 'heading', label: '标题', description: '二级标题', keywords: ['heading', 'title', '标题'], icon: <span>H</span>, run: () => editor.chain().focus().toggleHeading({ level: 2 }).run() },
+    { key: 'task', label: '任务', description: '待办清单', keywords: ['task', 'todo', 'check', '任务', '待办'], icon: <CheckSquareOutlined />, run: () => editor.chain().focus().toggleTaskList().run() },
+    { key: 'bullet', label: '列表', description: '项目符号列表', keywords: ['list', 'bullet', '列表'], icon: <UnorderedListOutlined />, run: () => editor.chain().focus().toggleBulletList().run() },
+    { key: 'quote', label: '引用', description: '引用块', keywords: ['quote', '引用'], icon: <span>&gt;</span>, run: () => editor.chain().focus().toggleBlockquote().run() },
+    { key: 'code', label: '代码', description: '代码块', keywords: ['code', '代码'], icon: <CodeOutlined />, run: () => editor.chain().focus().toggleCodeBlock().run() },
+    { key: 'table', label: '表格', description: '基础表格', keywords: ['table', '表格'], icon: <TableOutlined />, run: () => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: false }).run() },
+    { key: 'divider', label: '分割线', description: '水平分割线', keywords: ['divider', 'hr', 'line', '分割线'], icon: <span>--</span>, run: () => editor.chain().focus().setHorizontalRule().run() },
+    { key: 'image', label: '图片', description: '上传图片', keywords: ['image', 'picture', '图片'], icon: <FileImageOutlined />, run: onPickImage },
+    { key: 'file', label: '文件', description: '上传附件', keywords: ['file', 'attachment', '文件', '附件'], icon: <FileOutlined />, run: onPickFile },
     {
       key: 'base-view',
       label: 'Base 视图',
+      description: '嵌入多维表格视图',
+      keywords: ['base', 'table', 'view', '多维表格', '视图'],
       icon: <AppstoreAddOutlined />,
       run: () => onInsertObject({ mode: 'object', objectType: 'base_table', objectId: '', viewId: '' }),
     },
     {
       key: 'issue',
       label: '项目事项',
+      description: '嵌入事项或 Bug',
+      keywords: ['issue', 'project', '事项', '项目'],
       icon: <AppstoreAddOutlined />,
       run: () => onInsertObject({ mode: 'object', objectType: 'issue', objectId: '', viewId: '' }),
     },
     {
       key: 'message',
       label: '消息',
+      description: '嵌入会话消息',
+      keywords: ['message', 'im', '消息'],
       icon: <AppstoreAddOutlined />,
       run: () => onInsertObject({ mode: 'object', objectType: 'message', objectId: '', viewId: '' }),
     },
     {
       key: 'link',
       label: '内部链接',
+      description: '粘贴系统链接并解析',
+      keywords: ['link', 'url', '链接'],
       icon: <LinkOutlined />,
       run: () => onInsertObject({ mode: 'link', link: '' }),
     },
   ]
+  const normalizedQuery = query.trim().toLowerCase()
+  const visibleCommands = normalizedQuery
+    ? commands.filter((command) =>
+        [command.label, command.description, ...command.keywords].some((value) => value.toLowerCase().includes(normalizedQuery)),
+      )
+    : commands
   return (
     <div className="doc-slash-menu">
-      {commands.map((command) => (
+      <Input
+        className="doc-slash-menu-search"
+        autoFocus
+        allowClear
+        size="small"
+        placeholder="搜索块、对象或文件"
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
+        onPressEnter={() => {
+          if (visibleCommands[0]) {
+            runCommand(visibleCommands[0].run)
+          }
+        }}
+      />
+      {visibleCommands.map((command) => (
         <button key={command.key} type="button" onClick={() => runCommand(command.run)}>
           <span className="doc-slash-menu-icon">{command.icon}</span>
-          <span>{command.label}</span>
+          <span>
+            <strong>{command.label}</strong>
+            <small>{command.description}</small>
+          </span>
         </button>
       ))}
+      {visibleCommands.length === 0 ? <Typography.Text type="secondary">没有匹配命令</Typography.Text> : null}
     </div>
   )
 }
@@ -1038,6 +1254,8 @@ function ObjectInsertModal({
 function ObjectCardNodeView({ node }: NodeViewProps) {
   const objectType = String(node.attrs.objectType ?? '')
   const objectId = String(node.attrs.objectId ?? '')
+  const viewId = String(node.attrs.viewId ?? '')
+  const needsConfiguration = objectType === 'base_table' && !objectId.trim()
   const objectQuery = useQuery({
     queryKey: ['docs', 'object-card', objectType, objectId],
     queryFn: () => getObjectNavigation(objectType, objectId),
@@ -1052,18 +1270,27 @@ function ObjectCardNodeView({ node }: NodeViewProps) {
     status: String(node.attrs.status || ''),
     webPath: String(node.attrs.webPath || ''),
     deepLink: null,
-    metadata: node.attrs.viewId ? { viewId: node.attrs.viewId } : {},
+    metadata: viewId ? { viewId } : {},
   }
   const summary = objectQuery.data?.summary ?? fallbackSummary
 
   return (
     <NodeViewWrapper className="doc-object-card-node">
-      {objectQuery.isError ? (
-        <Alert type="warning" showIcon message="对象不可用" description={`${objectTypeText[objectType] ?? objectType}: ${objectId}`} />
+      {needsConfiguration ? (
+        <Alert
+          type="info"
+          showIcon
+          message="请选择数据表"
+          description="Base 视图块需要绑定一个具体数据表，可选绑定默认视图。"
+        />
+      ) : objectQuery.isError ? (
+        <Alert type="warning" showIcon message="对象不可用" description={objectTypeText[objectType] ?? '协作对象'} />
+      ) : summary.accessState !== 'available' ? (
+        <Alert type="warning" showIcon message="对象不可访问" description={objectTypeText[summary.objectType] ?? '协作对象'} />
       ) : (
         <ObjectSummaryCard summary={summary} />
       )}
-      {node.attrs.viewId ? <Tag className="doc-object-view-tag">视图 {String(node.attrs.viewId)}</Tag> : null}
+      {viewId ? <Tag className="doc-object-view-tag">视图 {viewId}</Tag> : null}
     </NodeViewWrapper>
   )
 }
@@ -1179,44 +1406,42 @@ function RemoteCursorStrip({ users }: { users: DocumentCollaborator[] }) {
   )
 }
 
-function InlineBubbleMenu({ editor }: { editor: Editor }) {
-  return (
-    <BubbleMenu editor={editor} className="doc-bubble-menu">
-      <Space size={2}>
-        <Tooltip title="评论选区">
-          <Button
-            size="small"
-            icon={<CommentOutlined />}
-            onClick={() => document.querySelector<HTMLElement>('.doc-comment-composer')?.focus()}
-          />
-        </Tooltip>
-        <Button
-          size="small"
-          type={editor.isActive('bold') ? 'primary' : 'default'}
-          icon={<BoldOutlined />}
-          onClick={() => editor.chain().focus().toggleBold().run()}
-        />
-        <Button
-          size="small"
-          type={editor.isActive('italic') ? 'primary' : 'default'}
-          icon={<ItalicOutlined />}
-          onClick={() => editor.chain().focus().toggleItalic().run()}
-        />
-        <Button
-          size="small"
-          type={editor.isActive('strike') ? 'primary' : 'default'}
-          icon={<StrikethroughOutlined />}
-          onClick={() => editor.chain().focus().toggleStrike().run()}
-        />
-        <Button
-          size="small"
-          type={editor.isActive('link') ? 'primary' : 'default'}
-          icon={<LinkOutlined />}
-          onClick={() => toggleLink(editor)}
-        />
-      </Space>
-    </BubbleMenu>
-  )
+function syncEditorBlockDomAnchors(editor: Editor, blockAnchors: DocEditorBlockAnchor[]) {
+  const root = editor.view.dom
+  Array.from(root.children).forEach((child, index) => {
+    const anchor = blockAnchors[index]
+    if (!(child instanceof HTMLElement)) {
+      return
+    }
+    child.classList.remove('doc-editor-block-highlight')
+    if (!anchor?.id) {
+      child.removeAttribute('id')
+      child.removeAttribute('data-doc-block-id')
+      child.removeAttribute('data-doc-block-anchor')
+      return
+    }
+    child.id = `doc-block-${anchor.id}`
+    child.dataset.docBlockId = anchor.id
+    if (anchor.anchorId) {
+      child.dataset.docBlockAnchor = anchor.anchorId
+    } else {
+      child.removeAttribute('data-doc-block-anchor')
+    }
+  })
+  const hash = window.location.hash.replace(/^#/, '')
+  if (hash.startsWith('doc-block-')) {
+    highlightEditorBlock(hash)
+  }
+}
+
+function highlightEditorBlock(elementId: string) {
+  document.querySelectorAll('.doc-editor-block-highlight').forEach((element) => element.classList.remove('doc-editor-block-highlight'))
+  const target = document.getElementById(elementId)
+  if (!target) {
+    return
+  }
+  target.classList.add('doc-editor-block-highlight')
+  target.scrollIntoView({ block: 'center', behavior: 'smooth' })
 }
 
 function ToolbarButton({
@@ -1326,6 +1551,12 @@ function markdownToTiptapDocument(markdown: string): JSONContent {
   while (index < lines.length) {
     const line = lines[index]
     if (!line.trim()) {
+      index += 1
+      continue
+    }
+
+    if (line.trim() === '---') {
+      content.push({ type: 'horizontalRule' })
       index += 1
       continue
     }
@@ -1494,7 +1725,7 @@ function parseInlineMarkdown(value: string): JSONContent[] | undefined {
 
   while ((match = tokenPattern.exec(value)) !== null) {
     if (match.index > cursor) {
-      nodes.push(textNode(value.slice(cursor, match.index)))
+      pushPlainTextWithInlineObjects(nodes, value.slice(cursor, match.index))
     }
     if (match[2]) {
       nodes.push(textNode(match[2], [{ type: 'bold' }]))
@@ -1511,9 +1742,32 @@ function parseInlineMarkdown(value: string): JSONContent[] | undefined {
   }
 
   if (cursor < value.length) {
-    nodes.push(textNode(value.slice(cursor)))
+    pushPlainTextWithInlineObjects(nodes, value.slice(cursor))
   }
   return nodes.length > 0 ? nodes : undefined
+}
+
+function pushPlainTextWithInlineObjects(nodes: JSONContent[], value: string) {
+  const tokenPattern = /(@[a-zA-Z0-9_.-]{2,32}|#[\p{L}\p{N}_-]{1,32}|(?:20\d{2})[-/](?:0[1-9]|1[0-2])[-/](?:0[1-9]|[12]\d|3[01]))/gu
+  let cursor = 0
+  let match: RegExpExecArray | null
+  while ((match = tokenPattern.exec(value)) !== null) {
+    if (match.index > cursor) {
+      nodes.push(textNode(value.slice(cursor, match.index)))
+    }
+    const token = match[0]
+    nodes.push(textNode(token, [{ type: 'inlineObject', attrs: { objectType: inlineObjectType(token) } }]))
+    cursor = match.index + token.length
+  }
+  if (cursor < value.length) {
+    nodes.push(textNode(value.slice(cursor)))
+  }
+}
+
+function inlineObjectType(token: string) {
+  if (token.startsWith('@')) return 'mention'
+  if (token.startsWith('#')) return 'tag'
+  return 'date'
 }
 
 function textNode(text: string, marks?: JSONContent['marks']): JSONContent {

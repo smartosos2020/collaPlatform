@@ -1,7 +1,7 @@
 package com.colla.platform.modules.audit.api;
 
 import com.colla.platform.modules.audit.application.AuditService;
-import com.colla.platform.modules.audit.domain.AuditModels.AuditLogEntry;
+import com.colla.platform.modules.audit.api.AdminAuditDtos.AdminAuditLogEntryView;
 import com.colla.platform.shared.auth.CurrentUser;
 import java.util.List;
 import java.util.UUID;
@@ -21,7 +21,7 @@ public class AuditController {
     }
 
     @GetMapping
-    public List<AuditLogEntry> list(
+    public List<AdminAuditLogEntryView> list(
         @RequestParam(required = false) String action,
         @RequestParam(required = false) String targetType,
         @RequestParam(required = false) UUID targetId,
@@ -29,7 +29,9 @@ public class AuditController {
         @RequestParam(defaultValue = "100") int limit,
         Authentication authentication
     ) {
-        return auditService.list(currentUser(authentication), action, targetType, targetId, actorId, limit);
+        return auditService.list(currentUser(authentication), action, targetType, targetId, actorId, limit).stream()
+            .map(AdminAuditDtos::auditLog)
+            .toList();
     }
 
     private CurrentUser currentUser(Authentication authentication) {

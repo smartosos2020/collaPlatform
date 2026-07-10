@@ -1,11 +1,15 @@
 package com.colla.platform.modules.search.application;
 
 import com.colla.platform.modules.audit.application.AuditService;
+import com.colla.platform.modules.doc.domain.DocumentModels.DocumentSummary;
+import com.colla.platform.modules.doc.infrastructure.DocumentRepository;
 import com.colla.platform.modules.platform.application.PlatformObjectResolverRegistry;
 import com.colla.platform.modules.platform.domain.PlatformModels.ObjectAccessState;
 import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectSummary;
 import com.colla.platform.modules.permission.application.PermissionService;
 import com.colla.platform.modules.search.domain.SearchModels.SearchResponse;
+import com.colla.platform.modules.search.domain.SearchModels.AdminGovernanceSearchResponse;
+import com.colla.platform.modules.search.domain.SearchModels.AdminGovernanceSearchResult;
 import com.colla.platform.modules.search.domain.SearchModels.SearchFilters;
 import com.colla.platform.modules.search.domain.SearchModels.SearchResult;
 import com.colla.platform.modules.search.infrastructure.SearchRepository;
@@ -28,6 +32,7 @@ public class SearchService {
     private final SearchRepository searchRepository;
     private final SearchIndexService searchIndexService;
     private final PlatformObjectResolverRegistry objectResolverRegistry;
+    private final DocumentRepository documentRepository;
     private final PermissionService permissionService;
     private final AuditService auditService;
 
@@ -35,12 +40,14 @@ public class SearchService {
         SearchRepository searchRepository,
         SearchIndexService searchIndexService,
         PlatformObjectResolverRegistry objectResolverRegistry,
+        DocumentRepository documentRepository,
         PermissionService permissionService,
         AuditService auditService
     ) {
         this.searchRepository = searchRepository;
         this.searchIndexService = searchIndexService;
         this.objectResolverRegistry = objectResolverRegistry;
+        this.documentRepository = documentRepository;
         this.permissionService = permissionService;
         this.auditService = auditService;
     }
@@ -75,6 +82,7 @@ public class SearchService {
         );
         searchIndexService.refreshWorkspaceIndex(currentUser.workspaceId());
         List<SearchResult> items = searchRepository.search(currentUser.workspaceId(), currentUser.id(), normalizedQuery, filters, boundedLimit).stream()
+            .filter(result -> isUserContentResult(result.objectType()))
             .map(result -> hydrateResult(currentUser, result))
             .limit(boundedLimit)
             .toList();
@@ -87,12 +95,28 @@ public class SearchService {
                 Map.of("query", normalizedQuery)
             );
         }
-        return new SearchResponse(normalizedQuery, items);
+        return new SearchResponse(normalizedQuery, "user_content", items);
     }
 
     public void reindex(CurrentUser currentUser) {
         permissionService.requireManageUsers(currentUser);
         searchIndexService.refreshWorkspaceIndex(currentUser.workspaceId());
+    }
+
+    public AdminGovernanceSearchResponse searchGovernance(CurrentUser currentUser, String query, int limit) {
+        if (!permissionService.canAccessAdmin(currentUser)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Admin governance search permission required");
+        }
+        String normalizedQuery = query == null ? "" : query.trim().toLowerCase(Locale.ROOT);
+        int boundedLimit = Math.max(1, Math.min(limit, 50));
+        List<AdminGovernanceSearchResult> items = governanceCatalog().stream()
+            .filter(item -> normalizedQuery.isBlank()
+                || item.title().toLowerCase(Locale.ROOT).contains(normalizedQuery)
+                || item.description().toLowerCase(Locale.ROOT).contains(normalizedQuery)
+                || item.governanceType().toLowerCase(Locale.ROOT).contains(normalizedQuery))
+            .limit(boundedLimit)
+            .toList();
+        return new AdminGovernanceSearchResponse(normalizedQuery, "admin_governance", items);
     }
 
     private SearchResult hydrateResult(CurrentUser currentUser, SearchResult result) {
@@ -121,6 +145,36 @@ public class SearchService {
                 null
             );
         }
+        if ("document".equals(result.objectType())) {
+            DocumentSummary document = documentRepository.findDocument(currentUser.workspaceId(), result.objectId()).orElse(null);
+            if (document != null && "object_ref".equals(document.docType()) && document.targetObjectType() != null && document.targetObjectId() != null) {
+                PlatformObjectSummary targetSummary = objectResolverRegistry.resolve(currentUser, document.targetObjectType(), document.targetObjectId());
+                if (targetSummary.accessState() != ObjectAccessState.available) {
+                    return new SearchResult(
+                        result.objectType(),
+                        result.objectId(),
+                        unavailableTitle(targetSummary.accessState()),
+                        null,
+                        null,
+                        null,
+                        result.score(),
+                        result.updatedAt(),
+                        targetSummary.accessState().name(),
+                        "对象入口目标当前为 " + targetSummary.accessState().name() + " 状态，搜索结果不展示原始内容。",
+                        result.knowledgeBaseId(),
+                        result.knowledgeBaseName(),
+                        result.parentDocumentId(),
+                        result.directoryPath(),
+                        List.of(),
+                        null,
+                        null,
+                        null,
+                        result.docType(),
+                        result.hitSource()
+                    );
+                }
+            }
+        }
         return new SearchResult(
             result.objectType(),
             result.objectId(),
@@ -145,12 +199,26 @@ public class SearchService {
         );
     }
 
+    private boolean isUserContentResult(String objectType) {
+        return List.of("issue", "document", "base", "base_table", "base_record", "message", "approval").contains(objectType);
+    }
+
+    private List<AdminGovernanceSearchResult> governanceCatalog() {
+        return List.of(
+            new AdminGovernanceSearchResult("permission", "权限排查", "按成员、资源和动作排查权限来源、风险和缺口。", "/admin/permission-governance", "high"),
+            new AdminGovernanceSearchResult("audit", "审计日志", "按来源 UI、动作、对象和操作者查询后台与用户侧审计。", "/admin/audit-logs", "medium"),
+            new AdminGovernanceSearchResult("application", "应用治理", "Base、项目、消息和审批的策略、风险和治理深链。", "/admin/app-governance", "medium"),
+            new AdminGovernanceSearchResult("knowledge", "知识库治理", "知识空间、内容状态、订阅、权限和知识风险治理。", "/admin/knowledge-bases", "medium"),
+            new AdminGovernanceSearchResult("identity", "组织与成员", "组织架构、成员、用户组和角色权限管理。", "/admin/users", "high")
+        );
+    }
+
     private String normalizeDocType(String docType) {
         if (docType == null || docType.isBlank()) {
             return null;
         }
         String normalized = docType.trim().toLowerCase(Locale.ROOT);
-        if (!List.of("space", "folder", "markdown").contains(normalized)) {
+        if (!List.of("space", "folder", "markdown", "object_ref", "external_link").contains(normalized)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid document type filter");
         }
         return normalized;

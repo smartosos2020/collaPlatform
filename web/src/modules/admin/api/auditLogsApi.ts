@@ -1,6 +1,6 @@
 import { apiGet } from '../../../shared/api/httpClient'
 
-export type AuditLogEntry = {
+export type AdminAuditLogEntryView = {
   id: string
   workspaceId: string
   actorId?: string | null
@@ -12,7 +12,25 @@ export type AuditLogEntry = {
   userAgent?: string | null
   metadata: Record<string, unknown>
   createdAt: string
+  actor?: {
+    actorId?: string | null
+    actorName?: string | null
+    ipAddress?: string | null
+    userAgent?: string | null
+  }
+  target?: {
+    targetType: string
+    targetId?: string | null
+  }
+  context?: {
+    action: string
+    metadata: Record<string, unknown>
+  }
+  riskTag?: 'low' | 'medium' | 'high'
+  quickFilters?: string[]
 }
+
+export type AuditLogEntry = AdminAuditLogEntryView
 
 export type AuditLogFilters = {
   action?: string
@@ -30,5 +48,5 @@ export function listAuditLogs(filters: AuditLogFilters = {}) {
     }
   })
   const query = params.toString()
-  return apiGet<AuditLogEntry[]>(query ? `/admin/audit-logs?${query}` : '/admin/audit-logs')
+  return apiGet<AdminAuditLogEntryView[]>(query ? `/admin/audit-logs?${query}` : '/admin/audit-logs')
 }

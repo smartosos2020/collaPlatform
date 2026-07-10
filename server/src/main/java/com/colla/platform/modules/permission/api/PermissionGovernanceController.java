@@ -1,8 +1,8 @@
 package com.colla.platform.modules.permission.api;
 
 import com.colla.platform.modules.permission.application.PermissionGovernanceService;
-import com.colla.platform.modules.permission.domain.PermissionGovernanceModels.PermissionInspectionResult;
-import com.colla.platform.modules.permission.domain.PermissionGovernanceModels.PermissionRiskSummary;
+import com.colla.platform.modules.permission.api.AdminPermissionDtos.AdminPermissionInspectionView;
+import com.colla.platform.modules.permission.api.AdminPermissionDtos.AdminPermissionRiskSummaryView;
 import com.colla.platform.shared.auth.CurrentUser;
 import java.util.UUID;
 import org.springframework.http.MediaType;
@@ -22,22 +22,24 @@ public class PermissionGovernanceController {
     }
 
     @GetMapping("/inspect")
-    public PermissionInspectionResult inspect(
+    public AdminPermissionInspectionView inspect(
         @RequestParam UUID userId,
         @RequestParam String resourceType,
         @RequestParam UUID resourceId,
         @RequestParam(defaultValue = "view") String action,
         Authentication authentication
     ) {
-        return permissionGovernanceService.inspect(currentUser(authentication), userId, resourceType, resourceId, action);
+        return AdminPermissionDtos.inspection(
+            permissionGovernanceService.inspect(currentUser(authentication), userId, resourceType, resourceId, action)
+        );
     }
 
     @GetMapping("/risks")
-    public PermissionRiskSummary risks(
+    public AdminPermissionRiskSummaryView risks(
         @RequestParam(required = false) UUID knowledgeBaseId,
         Authentication authentication
     ) {
-        return permissionGovernanceService.risks(currentUser(authentication), knowledgeBaseId);
+        return AdminPermissionDtos.riskSummary(permissionGovernanceService.risks(currentUser(authentication), knowledgeBaseId));
     }
 
     @GetMapping(value = "/risks/export", produces = "text/csv")

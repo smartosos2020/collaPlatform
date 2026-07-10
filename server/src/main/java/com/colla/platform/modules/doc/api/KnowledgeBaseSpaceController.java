@@ -14,6 +14,12 @@ import com.colla.platform.modules.doc.domain.DocumentModels.KnowledgeBaseGoverna
 import com.colla.platform.modules.doc.domain.DocumentModels.KnowledgeBaseSpaceDetail;
 import com.colla.platform.modules.doc.domain.DocumentModels.KnowledgeBaseSpaceSummary;
 import com.colla.platform.modules.doc.domain.DocumentModels.KnowledgeBaseSubscription;
+import com.colla.platform.modules.doc.api.UserKnowledgeDtos.UserKnowledgeContentDetailView;
+import com.colla.platform.modules.doc.api.UserKnowledgeDtos.UserKnowledgeContentView;
+import com.colla.platform.modules.doc.api.UserKnowledgeDtos.UserKnowledgeDiscoveryView;
+import com.colla.platform.modules.doc.api.UserKnowledgeDtos.UserKnowledgeSpaceDetailView;
+import com.colla.platform.modules.doc.api.UserKnowledgeDtos.UserKnowledgeSpaceView;
+import com.colla.platform.modules.doc.api.UserKnowledgeDtos.UserKnowledgeTreeNodeView;
 import com.colla.platform.shared.auth.CurrentUser;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -52,19 +58,21 @@ public class KnowledgeBaseSpaceController {
     }
 
     @GetMapping
-    public List<KnowledgeBaseSpaceSummary> listSpaces(
+    public List<UserKnowledgeSpaceView> listSpaces(
         @RequestParam(defaultValue = "false") boolean includeArchived,
         Authentication authentication
     ) {
-        return knowledgeBaseSpaceService.listSpaces(currentUser(authentication), includeArchived);
+        return knowledgeBaseSpaceService.listSpaces(currentUser(authentication), includeArchived).stream()
+            .map(UserKnowledgeDtos::space)
+            .toList();
     }
 
     @PostMapping
-    public KnowledgeBaseSpaceDetail createSpace(
+    public UserKnowledgeSpaceDetailView createSpace(
         @Valid @RequestBody CreateKnowledgeBaseSpaceRequest request,
         Authentication authentication
     ) {
-        return knowledgeBaseSpaceService.createSpace(
+        return UserKnowledgeDtos.spaceDetail(knowledgeBaseSpaceService.createSpace(
             currentUser(authentication),
             request.name(),
             request.code(),
@@ -73,81 +81,93 @@ public class KnowledgeBaseSpaceController {
             request.coverUrl(),
             request.visibility(),
             request.defaultPermissionLevel()
-        );
+        ));
     }
 
     @GetMapping("/{spaceId}")
-    public KnowledgeBaseSpaceDetail getSpace(@PathVariable UUID spaceId, Authentication authentication) {
-        return knowledgeBaseSpaceService.getSpace(currentUser(authentication), spaceId);
+    public UserKnowledgeSpaceDetailView getSpace(@PathVariable UUID spaceId, Authentication authentication) {
+        return UserKnowledgeDtos.spaceDetail(knowledgeBaseSpaceService.getSpace(currentUser(authentication), spaceId));
     }
 
     @GetMapping("/{spaceId}/items")
-    public List<DocumentSummary> listItems(
+    public List<UserKnowledgeContentView> listItems(
         @PathVariable UUID spaceId,
         @RequestParam(defaultValue = "false") boolean includeArchived,
         Authentication authentication
     ) {
-        return knowledgeBaseSpaceService.listItems(currentUser(authentication), spaceId, includeArchived);
+        return knowledgeBaseSpaceService.listItems(currentUser(authentication), spaceId, includeArchived).stream()
+            .map(UserKnowledgeDtos::content)
+            .toList();
     }
 
     @GetMapping("/{spaceId}/items/tree")
-    public List<DocumentTreeNode> itemTree(
+    public List<UserKnowledgeTreeNodeView> itemTree(
         @PathVariable UUID spaceId,
         @RequestParam(defaultValue = "false") boolean includeArchived,
         Authentication authentication
     ) {
-        return knowledgeBaseSpaceService.itemTree(currentUser(authentication), spaceId, includeArchived);
+        return knowledgeBaseSpaceService.itemTree(currentUser(authentication), spaceId, includeArchived).stream()
+            .map(UserKnowledgeDtos::treeNode)
+            .toList();
     }
 
     @PostMapping("/{spaceId}/items")
-    public DocumentDetail createItem(
+    public UserKnowledgeContentDetailView createItem(
         @PathVariable UUID spaceId,
         @Valid @RequestBody CreateKnowledgeBaseItemRequest request,
         Authentication authentication
     ) {
-        return knowledgeBaseSpaceService.createItem(
+        return UserKnowledgeDtos.contentDetail(knowledgeBaseSpaceService.createItem(
             currentUser(authentication),
             spaceId,
             request.parentId(),
             request.title(),
             request.docType(),
-            request.content()
-        );
+            request.content(),
+            request.targetObjectType(),
+            request.targetObjectId(),
+            request.targetRoute(),
+            request.displayMode(),
+            request.targetTitleStrategy(),
+            request.entryAlias()
+        ));
     }
 
     @PostMapping("/{spaceId}/items/from-template")
-    public DocumentDetail createItemFromTemplate(
+    public UserKnowledgeContentDetailView createItemFromTemplate(
         @PathVariable UUID spaceId,
         @Valid @RequestBody CreateKnowledgeBaseItemFromTemplateRequest request,
         Authentication authentication
     ) {
-        return knowledgeBaseSpaceService.createItemFromTemplate(
+        return UserKnowledgeDtos.contentDetail(knowledgeBaseSpaceService.createItemFromTemplate(
             currentUser(authentication),
             spaceId,
             request.templateId(),
             request.parentId(),
             request.title()
-        );
+        ));
     }
 
     @PostMapping("/{spaceId}/items/{documentId}/move")
-    public DocumentDetail moveItem(
+    public UserKnowledgeContentDetailView moveItem(
         @PathVariable UUID spaceId,
         @PathVariable UUID documentId,
         @RequestBody MoveKnowledgeBaseItemRequest request,
         Authentication authentication
     ) {
-        return knowledgeBaseSpaceService.moveItem(currentUser(authentication), spaceId, documentId, request.parentId(), request.sortOrder());
+        return UserKnowledgeDtos.contentDetail(
+            knowledgeBaseSpaceService.moveItem(currentUser(authentication), spaceId, documentId, request.parentId(), request.sortOrder())
+        );
     }
 
     @PostMapping("/{spaceId}/items/{documentId}/archive")
-    public DocumentDetail archiveItem(@PathVariable UUID spaceId, @PathVariable UUID documentId, Authentication authentication) {
-        return knowledgeBaseSpaceService.archiveItem(currentUser(authentication), spaceId, documentId);
+    public UserKnowledgeContentDetailView archiveItem(@PathVariable UUID spaceId, @PathVariable UUID documentId, Authentication authentication) {
+        return UserKnowledgeDtos.contentDetail(knowledgeBaseSpaceService.archiveItem(currentUser(authentication), spaceId, documentId));
     }
 
     @PostMapping("/{spaceId}/items/{documentId}/restore")
-    public DocumentDetail restoreItem(@PathVariable UUID spaceId, @PathVariable UUID documentId, Authentication authentication) {
-        return knowledgeBaseSpaceService.restoreItem(currentUser(authentication), spaceId, documentId);
+    public UserKnowledgeContentDetailView restoreItem(@PathVariable UUID spaceId, @PathVariable UUID documentId, Authentication authentication) {
+        return UserKnowledgeDtos.contentDetail(knowledgeBaseSpaceService.restoreItem(currentUser(authentication), spaceId, documentId));
     }
 
     @GetMapping("/{spaceId}/templates")
@@ -188,8 +208,8 @@ public class KnowledgeBaseSpaceController {
     }
 
     @GetMapping("/{spaceId}/discovery")
-    public KnowledgeBaseDiscovery discovery(@PathVariable UUID spaceId, Authentication authentication) {
-        return knowledgeBaseSpaceService.discovery(currentUser(authentication), spaceId);
+    public UserKnowledgeDiscoveryView discovery(@PathVariable UUID spaceId, Authentication authentication) {
+        return UserKnowledgeDtos.discovery(knowledgeBaseSpaceService.discovery(currentUser(authentication), spaceId));
     }
 
     @GetMapping("/{spaceId}/governance")
@@ -222,12 +242,12 @@ public class KnowledgeBaseSpaceController {
     }
 
     @PatchMapping("/{spaceId}")
-    public KnowledgeBaseSpaceDetail updateSpace(
+    public UserKnowledgeSpaceDetailView updateSpace(
         @PathVariable UUID spaceId,
         @Valid @RequestBody UpdateKnowledgeBaseSpaceRequest request,
         Authentication authentication
     ) {
-        return knowledgeBaseSpaceService.updateSpace(
+        return UserKnowledgeDtos.spaceDetail(knowledgeBaseSpaceService.updateSpace(
             currentUser(authentication),
             spaceId,
             request.name(),
@@ -238,27 +258,27 @@ public class KnowledgeBaseSpaceController {
             request.visibility(),
             request.homeDocumentId(),
             request.defaultPermissionLevel()
-        );
+        ));
     }
 
     @PostMapping("/{spaceId}/disable")
-    public KnowledgeBaseSpaceDetail disableSpace(@PathVariable UUID spaceId, Authentication authentication) {
-        return knowledgeBaseSpaceService.disableSpace(currentUser(authentication), spaceId);
+    public UserKnowledgeSpaceDetailView disableSpace(@PathVariable UUID spaceId, Authentication authentication) {
+        return UserKnowledgeDtos.spaceDetail(knowledgeBaseSpaceService.disableSpace(currentUser(authentication), spaceId));
     }
 
     @PostMapping("/{spaceId}/restore")
-    public KnowledgeBaseSpaceDetail restoreSpace(@PathVariable UUID spaceId, Authentication authentication) {
-        return knowledgeBaseSpaceService.restoreSpace(currentUser(authentication), spaceId);
+    public UserKnowledgeSpaceDetailView restoreSpace(@PathVariable UUID spaceId, Authentication authentication) {
+        return UserKnowledgeDtos.spaceDetail(knowledgeBaseSpaceService.restoreSpace(currentUser(authentication), spaceId));
     }
 
     @PostMapping("/{spaceId}/archive")
-    public KnowledgeBaseSpaceDetail archiveSpace(@PathVariable UUID spaceId, Authentication authentication) {
-        return knowledgeBaseSpaceService.archiveSpace(currentUser(authentication), spaceId);
+    public UserKnowledgeSpaceDetailView archiveSpace(@PathVariable UUID spaceId, Authentication authentication) {
+        return UserKnowledgeDtos.spaceDetail(knowledgeBaseSpaceService.archiveSpace(currentUser(authentication), spaceId));
     }
 
     @DeleteMapping("/{spaceId}")
-    public KnowledgeBaseSpaceDetail deleteSpace(@PathVariable UUID spaceId, Authentication authentication) {
-        return knowledgeBaseSpaceService.archiveSpace(currentUser(authentication), spaceId);
+    public UserKnowledgeSpaceDetailView deleteSpace(@PathVariable UUID spaceId, Authentication authentication) {
+        return UserKnowledgeDtos.spaceDetail(knowledgeBaseSpaceService.archiveSpace(currentUser(authentication), spaceId));
     }
 
     @PostMapping("/{spaceId}/subscriptions")
@@ -313,7 +333,13 @@ public class KnowledgeBaseSpaceController {
         UUID parentId,
         @NotBlank @Size(max = 255) String title,
         String docType,
-        String content
+        String content,
+        @Size(max = 64) String targetObjectType,
+        UUID targetObjectId,
+        @Size(max = 1024) String targetRoute,
+        @Size(max = 32) String displayMode,
+        @Size(max = 32) String targetTitleStrategy,
+        @Size(max = 255) String entryAlias
     ) {
     }
 

@@ -1,5 +1,6 @@
 package com.colla.platform.modules.permission.api;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
 import static org.hamcrest.Matchers.hasItem;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -42,17 +43,23 @@ class RoleControllerIntegrationTests {
                 .header("Authorization", "Bearer " + adminToken))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$[*].code", hasItem("role.manage")))
-            .andExpect(jsonPath("$[*].code", hasItem("permission.inspect")));
+            .andExpect(jsonPath("$[*].code", hasItem("permission.inspect")))
+            .andExpect(jsonPath("$[*].category.module", hasItem("identity")))
+            .andExpect(jsonPath("$[*].risk.level", hasItem("high")));
 
         JsonNode role = createRole(adminToken, "org_viewer_" + suffix, "Org Viewer " + suffix);
         UUID roleId = UUID.fromString(role.get("id").asText());
+        assertThat(role.get("roleClassification").get("category").asText()).isEqualTo("business_collaboration");
+        assertThat(role.get("permissionMatrix").get("permissionCount").asInt()).isEqualTo(0);
 
         mockMvc.perform(put("/api/admin/roles/" + roleId + "/permissions")
                 .header("Authorization", "Bearer " + adminToken)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(Map.of("permissionCodes", List.of("org.view")))))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.permissions[*].code", hasItem("org.view")));
+            .andExpect(jsonPath("$.permissions[*].code", hasItem("org.view")))
+            .andExpect(jsonPath("$.permissionMatrix[*].module", hasItem("identity")))
+            .andExpect(jsonPath("$.governance.permissionCount").value(1));
 
         mockMvc.perform(post("/api/admin/role-assignments")
                 .header("Authorization", "Bearer " + adminToken)
@@ -63,7 +70,9 @@ class RoleControllerIntegrationTests {
                     "subjectId", departmentId
                 ))))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.subjectType").value("department"));
+            .andExpect(jsonPath("$.subjectType").value("department"))
+            .andExpect(jsonPath("$.subject.subjectType").value("department"))
+            .andExpect(jsonPath("$.lifecycle.status").value("active"));
 
         mockMvc.perform(get("/api/admin/departments/tree")
                 .header("Authorization", "Bearer " + memberToken))
@@ -142,12 +151,15 @@ class RoleControllerIntegrationTests {
                     "confirmHighRisk", true
                 ))))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.permissions[*].code", hasItem("role.manage")));
+            .andExpect(jsonPath("$.permissions[*].code", hasItem("role.manage")))
+            .andExpect(jsonPath("$.permissionMatrix[*].highRiskCount", hasItem(1)));
 
         mockMvc.perform(get("/api/admin/audit-logs?action=role.permissions.updated&targetType=role&targetId=" + roleId)
                 .header("Authorization", "Bearer " + adminToken))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.length()", greaterThanOrEqualTo(1)));
+            .andExpect(jsonPath("$.length()", greaterThanOrEqualTo(1)))
+            .andExpect(jsonPath("$[*].riskTag", hasItem("high")))
+            .andExpect(jsonPath("$[*].context.action", hasItem("role.permissions.updated")));
     }
 
     @Test
@@ -180,6 +192,7 @@ class RoleControllerIntegrationTests {
                 ))))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.code").value(code))
+            .andExpect(jsonPath("$.roleClassification.scope").value("workspace"))
             .andReturn()
             .getResponse()
             .getContentAsString();

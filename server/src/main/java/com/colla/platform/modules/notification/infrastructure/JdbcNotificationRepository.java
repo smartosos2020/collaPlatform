@@ -25,6 +25,8 @@ public class JdbcNotificationRepository implements NotificationRepository {
                 select id, notification_type, title, body, target_type, target_id, web_path, read_at, created_at
                 from notifications
                 where workspace_id = ? and recipient_id = ?
+                  and notification_type not like 'admin_%'
+                  and notification_type not like 'governance_%'
                 """);
         List<Object> args = new ArrayList<>();
         args.add(workspaceId);
@@ -54,7 +56,13 @@ public class JdbcNotificationRepository implements NotificationRepository {
     @Override
     public long unreadCount(UUID workspaceId, UUID recipientId) {
         Long count = jdbcTemplate.queryForObject(
-            "select count(*) from notifications where workspace_id = ? and recipient_id = ? and read_at is null",
+            """
+                select count(*)
+                from notifications
+                where workspace_id = ? and recipient_id = ? and read_at is null
+                  and notification_type not like 'admin_%'
+                  and notification_type not like 'governance_%'
+                """,
             Long.class,
             workspaceId,
             recipientId
@@ -152,6 +160,7 @@ public class JdbcNotificationRepository implements NotificationRepository {
             rs.getObject("id", UUID.class),
             rs.getString("notification_type"),
             sourceType(rs.getString("notification_type")),
+            notificationScope(rs.getString("notification_type")),
             rs.getString("title"),
             rs.getString("body"),
             rs.getString("target_type"),
@@ -171,5 +180,14 @@ public class JdbcNotificationRepository implements NotificationRepository {
             separator = notificationType.indexOf('.');
         }
         return separator > 0 ? notificationType.substring(0, separator) : notificationType;
+    }
+
+    private String notificationScope(String notificationType) {
+        if (notificationType == null) {
+            return "user_collaboration";
+        }
+        return notificationType.startsWith("admin_") || notificationType.startsWith("governance_")
+            ? "admin_governance"
+            : "user_collaboration";
     }
 }

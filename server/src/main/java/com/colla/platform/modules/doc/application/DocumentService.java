@@ -53,6 +53,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Matcher;
@@ -75,18 +76,32 @@ public class DocumentService {
         "paragraph",
         "heading",
         "list",
+        "bullet_list",
+        "bulleted_list",
+        "ordered_list",
         "task",
+        "todo",
+        "task_item",
         "quote",
         "code",
+        "code_block",
         "table",
+        "image",
+        "file",
         "embed",
+        "embed_object",
         "base_view",
         "issue_embed",
         "message_embed",
         "file_embed",
-        "link"
+        "link",
+        "link_card",
+        "legacy_html",
+        "divider",
+        "callout",
+        "toc"
     );
-    private static final Set<String> EMBED_BLOCK_TYPES = Set.of("embed", "base_view", "issue_embed", "message_embed", "file_embed", "link");
+    private static final Set<String> EMBED_BLOCK_TYPES = Set.of("embed", "embed_object", "base_view", "issue_embed", "message_embed", "file_embed", "link", "link_card");
     private static final TypeReference<Map<String, Object>> STRING_OBJECT_MAP = new TypeReference<>() {
     };
 
@@ -306,44 +321,32 @@ public class DocumentService {
 
     public String exportMarkdown(CurrentUser currentUser, UUID documentId) {
         requireView(currentUser, documentId);
+        List<DocumentBlock> blocks = documentRepository.listBlocks(currentUser.workspaceId(), documentId);
+        if (!blocks.isEmpty()) {
+            return exportMarkdownFromBlocks(blocks);
+        }
         return documentRepository.findContent(currentUser.workspaceId(), documentId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Document not found"));
     }
 
     public String exportHtml(CurrentUser currentUser, UUID documentId) {
         DocumentSummary document = requireView(currentUser, documentId);
-        String content = documentRepository.findContent(currentUser.workspaceId(), documentId)
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Document not found"));
+        List<DocumentBlock> blocks = documentRepository.listBlocks(currentUser.workspaceId(), documentId);
+        String content = blocks.isEmpty()
+            ? documentRepository.findContent(currentUser.workspaceId(), documentId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Document not found"))
+            : exportMarkdownFromBlocks(blocks);
         StringBuilder html = new StringBuilder();
         html.append("<!doctype html>\n<html><head><meta charset=\"utf-8\"><title>")
             .append(escapeHtml(document.title()))
             .append("</title></head><body><article class=\"doc-export\">\n");
         html.append("<h1>").append(escapeHtml(document.title())).append("</h1>\n");
-        for (String line : content.split("\\R")) {
-            String trimmed = line.trim();
-            if (trimmed.isBlank()) {
-                continue;
+        if (!blocks.isEmpty()) {
+            for (DocumentBlock block : blocks) {
+                html.append(exportHtmlBlock(block));
             }
-            if (trimmed.startsWith("### ")) {
-                html.append("<h3>").append(escapeHtml(trimmed.substring(4))).append("</h3>\n");
-            } else if (trimmed.startsWith("## ")) {
-                html.append("<h2>").append(escapeHtml(trimmed.substring(3))).append("</h2>\n");
-            } else if (trimmed.startsWith("# ")) {
-                html.append("<h1>").append(escapeHtml(trimmed.substring(2))).append("</h1>\n");
-            } else if (trimmed.startsWith("- [ ] ") || trimmed.startsWith("- [x] ") || trimmed.startsWith("- [X] ")) {
-                boolean checked = trimmed.startsWith("- [x] ") || trimmed.startsWith("- [X] ");
-                html.append("<p><input type=\"checkbox\" disabled")
-                    .append(checked ? " checked" : "")
-                    .append("> ")
-                    .append(escapeHtml(trimmed.substring(6)))
-                    .append("</p>\n");
-            } else if (trimmed.startsWith("- ")) {
-                html.append("<p>&bull; ").append(escapeHtml(trimmed.substring(2))).append("</p>\n");
-            } else if (trimmed.startsWith("> ")) {
-                html.append("<blockquote>").append(escapeHtml(trimmed.substring(2))).append("</blockquote>\n");
-            } else {
-                html.append("<p>").append(escapeHtml(trimmed)).append("</p>\n");
-            }
+        } else {
+            html.append(exportHtmlFromMarkdown(content));
         }
         html.append("</article></body></html>");
         return html.toString();
@@ -671,7 +674,10 @@ public class DocumentService {
         export.append("# ").append(space.name()).append("\n\n");
         export.append("> 导出时间：").append(Instant.now()).append("\n\n");
         for (DocumentSummary document : documents) {
-            String content = documentRepository.findContent(currentUser.workspaceId(), document.id()).orElse("");
+            List<DocumentBlock> blocks = documentRepository.listBlocks(currentUser.workspaceId(), document.id());
+            String content = blocks.isEmpty()
+                ? documentRepository.findContent(currentUser.workspaceId(), document.id()).orElse("")
+                : exportMarkdownFromBlocks(blocks);
             export.append("\n---\n\n");
             export.append("# ").append(document.title()).append("\n\n");
             if (document.category() != null || !document.tags().isEmpty() || document.reviewDueAt() != null) {
@@ -858,6 +864,51 @@ public class DocumentService {
         return getDocument(currentUser, documentId);
     }
 
+    @Transactional
+    public DocumentDetail importHtml(CurrentUser currentUser, UUID documentId, String title, String html) {
+        DocumentSummary before = requireEdit(currentUser, documentId);
+        String normalizedHtml = html == null ? "" : html;
+        String normalizedTitle = title == null || title.isBlank() ? before.title() : title.trim();
+        List<DocumentBlockDraft> importedBlocks = normalizeBlocks(blocksFromHtml(normalizedHtml));
+        String normalizedContent = contentFromBlocks(importedBlocks);
+        int nextVersionNo = before.currentVersionNo() + 1;
+        documentRepository.updateDocument(
+            currentUser.workspaceId(),
+            documentId,
+            before.parentId(),
+            normalizedTitle,
+            normalizedContent,
+            nextVersionNo,
+            currentUser.id()
+        );
+        documentRepository.addVersion(
+            currentUser.workspaceId(),
+            documentId,
+            nextVersionNo,
+            normalizedTitle,
+            normalizedContent,
+            currentUser.id(),
+            "HTML 导入",
+            "import",
+            "从 HTML 导入并转换为块",
+            before.currentVersionNo(),
+            blockSnapshot(importedBlocks)
+        );
+        documentRepository.replaceBlocks(currentUser.workspaceId(), documentId, importedBlocks, currentUser.id());
+        reanchorSelectionComments(currentUser.workspaceId(), documentId, normalizedContent);
+        registerDocumentObject(currentUser.workspaceId(), documentId, normalizedTitle);
+        eventRepository.append(
+            currentUser.workspaceId(),
+            "document.html.imported",
+            "document",
+            documentId,
+            currentUser.id(),
+            Map.of("documentId", documentId.toString(), "versionNo", Integer.toString(nextVersionNo)),
+            "document.html.imported:" + documentId + ":" + nextVersionNo
+        );
+        return getDocument(currentUser, documentId);
+    }
+
     public List<DocumentBlock> listBlocks(CurrentUser currentUser, UUID documentId) {
         requireView(currentUser, documentId);
         return hydrateBlocks(currentUser, documentRepository.listBlocks(currentUser.workspaceId(), documentId));
@@ -869,8 +920,10 @@ public class DocumentService {
         if (baseVersionNo != before.currentVersionNo()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Document version conflict");
         }
+        List<DocumentBlock> previousBlocks = documentRepository.listBlocks(currentUser.workspaceId(), documentId);
         List<DocumentBlockDraft> normalizedBlocks = normalizeBlocks(blocks);
         String normalizedContent = contentFromBlocks(normalizedBlocks);
+        String versionSummary = blockChangeSummary(previousBlocks, normalizedBlocks);
         int nextVersionNo = before.currentVersionNo() + 1;
         documentRepository.updateDocument(
             currentUser.workspaceId(),
@@ -890,7 +943,7 @@ public class DocumentService {
             currentUser.id(),
             null,
             "auto_snapshot",
-            "块保存自动快照",
+            versionSummary,
             before.currentVersionNo(),
             blockSnapshot(normalizedBlocks)
         );
@@ -907,6 +960,72 @@ public class DocumentService {
             "document.blocks.updated:" + documentId + ":" + nextVersionNo
         );
         return getDocument(currentUser, documentId);
+    }
+
+    @Transactional
+    public DocumentDetail insertBlock(CurrentUser currentUser, UUID documentId, int baseVersionNo, DocumentBlockDraft block, Integer afterSortOrder) {
+        List<DocumentBlockDraft> current = documentRepository.listBlocks(currentUser.workspaceId(), documentId).stream()
+            .map(this::draftFromStoredBlock)
+            .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
+        int insertAt = afterSortOrder == null ? current.size() : Math.min(Math.max(afterSortOrder + 1, 0), current.size());
+        current.add(insertAt, block == null ? new DocumentBlockDraft("paragraph", "", insertAt) : block);
+        return saveBlocks(currentUser, documentId, baseVersionNo, current);
+    }
+
+    @Transactional
+    public DocumentDetail updateBlock(CurrentUser currentUser, UUID documentId, UUID blockId, int baseVersionNo, DocumentBlockDraft patch) {
+        List<DocumentBlockDraft> current = documentRepository.listBlocks(currentUser.workspaceId(), documentId).stream()
+            .map(this::draftFromStoredBlock)
+            .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
+        boolean found = false;
+        for (int index = 0; index < current.size(); index++) {
+            DocumentBlockDraft existing = current.get(index);
+            if (blockId.equals(existing.id())) {
+                current.set(index, mergeBlockDraft(existing, patch));
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Document block not found");
+        }
+        return saveBlocks(currentUser, documentId, baseVersionNo, current);
+    }
+
+    @Transactional
+    public DocumentDetail reorderBlocks(CurrentUser currentUser, UUID documentId, int baseVersionNo, List<UUID> blockIds) {
+        if (blockIds == null || blockIds.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Block order is required");
+        }
+        List<DocumentBlockDraft> current = documentRepository.listBlocks(currentUser.workspaceId(), documentId).stream()
+            .map(this::draftFromStoredBlock)
+            .toList();
+        Map<UUID, DocumentBlockDraft> byId = new HashMap<>();
+        for (DocumentBlockDraft block : current) {
+            byId.put(block.id(), block);
+        }
+        List<DocumentBlockDraft> reordered = new ArrayList<>();
+        for (UUID blockId : blockIds) {
+            DocumentBlockDraft block = byId.remove(blockId);
+            if (block == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Block order contains unknown block id");
+            }
+            reordered.add(block);
+        }
+        reordered.addAll(byId.values());
+        return saveBlocks(currentUser, documentId, baseVersionNo, reordered);
+    }
+
+    @Transactional
+    public DocumentDetail deleteBlock(CurrentUser currentUser, UUID documentId, UUID blockId, int baseVersionNo) {
+        List<DocumentBlockDraft> remaining = documentRepository.listBlocks(currentUser.workspaceId(), documentId).stream()
+            .filter(block -> !block.id().equals(blockId))
+            .map(this::draftFromStoredBlock)
+            .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
+        if (remaining.size() == documentRepository.listBlocks(currentUser.workspaceId(), documentId).size()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Document block not found");
+        }
+        return saveBlocks(currentUser, documentId, baseVersionNo, remaining);
     }
 
     public DocumentVersionDiff diffVersions(CurrentUser currentUser, UUID documentId, int fromVersionNo, int toVersionNo) {
@@ -1430,10 +1549,19 @@ public class DocumentService {
                 return new DocumentBlock(
                     block.id(),
                     block.documentId(),
+                    block.parentId(),
                     block.blockType(),
                     block.content(),
                     block.sortOrder(),
+                    block.schemaVersion(),
+                    block.attrs(),
+                    block.richContent(),
+                    block.plainText(),
+                    block.anchorId(),
+                    block.blockVersion(),
+                    block.createdBy(),
                     block.createdAt(),
+                    block.updatedBy(),
                     block.updatedAt(),
                     summary,
                     metadata
@@ -1443,10 +1571,19 @@ public class DocumentService {
     }
 
     private Map<String, Object> parseStructuredBlockMetadata(DocumentBlock block) {
-        if (!"table".equals(block.blockType()) && !EMBED_BLOCK_TYPES.contains(block.blockType())) {
-            return Map.of();
+        Map<String, Object> metadata = new HashMap<>();
+        if ("table".equals(block.blockType()) || EMBED_BLOCK_TYPES.contains(block.blockType())) {
+            metadata.putAll(parseJsonObject(block.content()).orElseGet(() -> Map.of("parseError", "invalid_json")));
         }
-        return parseJsonObject(block.content()).orElseGet(() -> Map.of("parseError", "invalid_json"));
+        metadata.putAll(block.attrs() == null ? Map.of() : block.attrs());
+        metadata.put("schemaVersion", block.schemaVersion());
+        if (block.parentId() != null) {
+            metadata.put("parentId", block.parentId().toString());
+        }
+        if (block.anchorId() != null && !block.anchorId().isBlank()) {
+            metadata.put("anchorId", block.anchorId());
+        }
+        return metadata;
     }
 
     private PlatformObjectSummary resolveEmbedSummary(CurrentUser currentUser, String blockType, Map<String, Object> metadata) {
@@ -1459,6 +1596,41 @@ public class DocumentService {
             return PlatformObjectSummary.unavailable(objectType.isBlank() ? "invalid" : objectType, new UUID(0L, 0L), ObjectAccessState.invalid);
         }
         return objectResolverRegistryProvider.getObject().resolve(currentUser, objectType, objectId);
+    }
+
+    private DocumentBlockDraft draftFromStoredBlock(DocumentBlock block) {
+        return new DocumentBlockDraft(
+            block.id(),
+            block.parentId(),
+            block.blockType(),
+            block.content(),
+            block.sortOrder(),
+            block.schemaVersion(),
+            block.attrs(),
+            block.richContent(),
+            block.plainText(),
+            block.anchorId(),
+            false
+        );
+    }
+
+    private DocumentBlockDraft mergeBlockDraft(DocumentBlockDraft existing, DocumentBlockDraft patch) {
+        if (patch == null) {
+            return existing;
+        }
+        return new DocumentBlockDraft(
+            existing.id(),
+            patch.parentId() == null ? existing.parentId() : patch.parentId(),
+            patch.blockType() == null ? existing.blockType() : patch.blockType(),
+            patch.content() == null ? existing.content() : patch.content(),
+            existing.sortOrder(),
+            patch.schemaVersion() == null ? existing.schemaVersion() : patch.schemaVersion(),
+            patch.attrs() == null || patch.attrs().isEmpty() ? existing.attrs() : patch.attrs(),
+            patch.richContent() == null || patch.richContent().isEmpty() ? existing.richContent() : patch.richContent(),
+            patch.plainText() == null ? existing.plainText() : patch.plainText(),
+            patch.anchorId() == null ? existing.anchorId() : patch.anchorId(),
+            false
+        );
     }
 
     private String normalizeEmbedObjectType(String blockType, String objectType) {
@@ -1858,7 +2030,15 @@ public class DocumentService {
             document.category(),
             document.knowledgeStatus(),
             document.reviewDueAt(),
-            document.verifiedAt()
+            document.verifiedAt(),
+            document.nodeKind(),
+            document.targetObjectType(),
+            document.targetObjectId(),
+            document.targetRoute(),
+            document.displayMode(),
+            document.targetTitleStrategy(),
+            document.entryAlias(),
+            document.targetSummary()
         );
     }
 
@@ -1879,7 +2059,7 @@ public class DocumentService {
 
     private String normalizeDocType(String docType) {
         String type = docType == null || docType.isBlank() ? "markdown" : docType.toLowerCase();
-        if (!List.of("markdown", "folder", "space").contains(type)) {
+        if (!List.of("markdown", "folder", "space", "object_ref", "external_link").contains(type)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid document type");
         }
         return type;
@@ -2023,6 +2203,158 @@ public class DocumentService {
         }
     }
 
+    private String blockChangeSummary(List<DocumentBlock> previousBlocks, List<DocumentBlockDraft> nextBlocks) {
+        Map<UUID, DocumentBlock> previousById = new HashMap<>();
+        for (DocumentBlock block : previousBlocks) {
+            previousById.put(block.id(), block);
+        }
+        int added = 0;
+        int deleted = 0;
+        int modified = 0;
+        int moved = 0;
+        int typeChanged = 0;
+        Set<UUID> seen = new LinkedHashSet<>();
+        for (DocumentBlockDraft block : nextBlocks) {
+            if (block.id() == null || !previousById.containsKey(block.id())) {
+                added++;
+                continue;
+            }
+            seen.add(block.id());
+            DocumentBlock previous = previousById.get(block.id());
+            if (!Objects.equals(previous.blockType(), block.blockType())) {
+                typeChanged++;
+            }
+            if (previous.sortOrder() != (block.sortOrder() == null ? previous.sortOrder() : block.sortOrder())) {
+                moved++;
+            }
+            if (!Objects.equals(previous.content(), block.content())
+                || !Objects.equals(previous.plainText(), block.plainText())
+                || !Objects.equals(previous.attrs(), block.attrs())
+                || !Objects.equals(previous.richContent(), block.richContent())
+                || !Objects.equals(previous.parentId(), block.parentId())) {
+                modified++;
+            }
+        }
+        for (DocumentBlock block : previousBlocks) {
+            if (!seen.contains(block.id())) {
+                deleted++;
+            }
+        }
+        return "块变更：新增 " + added
+            + "，删除 " + deleted
+            + "，修改 " + modified
+            + "，移动 " + moved
+            + "，类型转换 " + typeChanged;
+    }
+
+    private String exportMarkdownFromBlocks(List<DocumentBlock> blocks) {
+        return blocks.stream()
+            .sorted(Comparator.comparingInt(DocumentBlock::sortOrder))
+            .map(this::exportMarkdownBlock)
+            .reduce((left, right) -> left + "\n" + right)
+            .orElse("");
+    }
+
+    private String exportMarkdownBlock(DocumentBlock block) {
+        return switch (block.blockType()) {
+            case "heading" -> "# " + safeExportText(block.content());
+            case "list", "bullet_list", "bulleted_list" -> "- " + safeExportText(block.content());
+            case "ordered_list" -> "1. " + safeExportText(block.content());
+            case "task", "todo", "task_item" -> "- [ ] " + safeExportText(block.content());
+            case "quote" -> "> " + safeExportText(block.content());
+            case "code", "code_block" -> "```\n" + (block.content() == null ? "" : block.content()) + "\n```";
+            case "table" -> exportTableMarkdown(block.content());
+            case "image", "file", "embed_object", "base_view", "issue_embed", "message_embed", "file_embed", "link_card" -> exportEmbedMarkdown(block);
+            case "divider" -> "---";
+            case "legacy_html" -> "<!-- legacy_html retained; review before final rich-text removal -->\n" + (block.content() == null ? "" : block.content());
+            default -> safeExportText(block.content());
+        };
+    }
+
+    private String exportTableMarkdown(String content) {
+        Map<String, Object> table = parseJsonObject(content).orElse(Map.of());
+        Object columns = table.get("columns");
+        if (columns instanceof List<?> columnList && !columnList.isEmpty()) {
+            String header = columnList.stream().map(String::valueOf).map(this::safeExportText).reduce((left, right) -> left + " | " + right).orElse("");
+            String divider = columnList.stream().map(column -> "---").reduce((left, right) -> left + " | " + right).orElse("---");
+            return "| " + header + " |\n| " + divider + " |\n<!-- table rows are preserved in block JSON when re-importing from the system export. -->";
+        }
+        return "[table] " + (content == null ? "{}" : content);
+    }
+
+    private String exportEmbedMarkdown(DocumentBlock block) {
+        Map<String, Object> data = parseJsonObject(block.content()).orElse(Map.of());
+        String objectType = normalizeEmbedObjectType(block.blockType(), asString(data.getOrDefault("objectType", data.get("targetType"))));
+        String objectId = asString(data.getOrDefault("objectId", data.get("targetId")));
+        if (objectType.isBlank() || objectId.isBlank()) {
+            return "[Unsupported embedded object]";
+        }
+        String directive = switch (block.blockType()) {
+            case "file", "file_embed" -> "file-card";
+            case "link_card" -> "link-card";
+            default -> "object-card";
+        };
+        return "::" + directive + "{objectType=\"" + escapeDirectiveValue(objectType)
+            + "\" objectId=\"" + escapeDirectiveValue(objectId)
+            + "\" fallback=\"Embedded " + escapeDirectiveValue(objectType) + "\"}";
+    }
+
+    private String exportHtmlBlock(DocumentBlock block) {
+        return switch (block.blockType()) {
+            case "heading" -> "<h1>" + escapeHtml(block.content()) + "</h1>\n";
+            case "list", "bullet_list", "bulleted_list" -> "<p>&bull; " + escapeHtml(block.content()) + "</p>\n";
+            case "ordered_list" -> "<p>1. " + escapeHtml(block.content()) + "</p>\n";
+            case "task", "todo", "task_item" -> "<p><input type=\"checkbox\" disabled> " + escapeHtml(block.content()) + "</p>\n";
+            case "quote" -> "<blockquote>" + escapeHtml(block.content()) + "</blockquote>\n";
+            case "code", "code_block" -> "<pre><code>" + escapeHtml(block.content()) + "</code></pre>\n";
+            case "divider" -> "<hr>\n";
+            case "table" -> "<pre data-block-type=\"table\">" + escapeHtml(block.content()) + "</pre>\n";
+            case "image", "file", "embed_object", "base_view", "issue_embed", "message_embed", "file_embed", "link_card" ->
+                "<p class=\"doc-export-embed\">" + escapeHtml(exportEmbedMarkdown(block)) + "</p>\n";
+            case "legacy_html" -> "<div data-block-type=\"legacy_html\">" + (block.content() == null ? "" : block.content()) + "</div>\n";
+            default -> "<p>" + escapeHtml(block.content()) + "</p>\n";
+        };
+    }
+
+    private String exportHtmlFromMarkdown(String content) {
+        StringBuilder html = new StringBuilder();
+        for (String line : content.split("\\R")) {
+            String trimmed = line.trim();
+            if (trimmed.isBlank()) {
+                continue;
+            }
+            if (trimmed.startsWith("### ")) {
+                html.append("<h3>").append(escapeHtml(trimmed.substring(4))).append("</h3>\n");
+            } else if (trimmed.startsWith("## ")) {
+                html.append("<h2>").append(escapeHtml(trimmed.substring(3))).append("</h2>\n");
+            } else if (trimmed.startsWith("# ")) {
+                html.append("<h1>").append(escapeHtml(trimmed.substring(2))).append("</h1>\n");
+            } else if (trimmed.startsWith("- [ ] ") || trimmed.startsWith("- [x] ") || trimmed.startsWith("- [X] ")) {
+                boolean checked = trimmed.startsWith("- [x] ") || trimmed.startsWith("- [X] ");
+                html.append("<p><input type=\"checkbox\" disabled")
+                    .append(checked ? " checked" : "")
+                    .append("> ")
+                    .append(escapeHtml(trimmed.substring(6)))
+                    .append("</p>\n");
+            } else if (trimmed.startsWith("- ")) {
+                html.append("<p>&bull; ").append(escapeHtml(trimmed.substring(2))).append("</p>\n");
+            } else if (trimmed.startsWith("> ")) {
+                html.append("<blockquote>").append(escapeHtml(trimmed.substring(2))).append("</blockquote>\n");
+            } else {
+                html.append("<p>").append(escapeHtml(trimmed)).append("</p>\n");
+            }
+        }
+        return html.toString();
+    }
+
+    private String safeExportText(String value) {
+        return value == null ? "" : value.replace("\r", "").trim();
+    }
+
+    private String escapeDirectiveValue(String value) {
+        return value == null ? "" : value.replace("\\", "\\\\").replace("\"", "\\\"");
+    }
+
     private String normalizeTargetType(String targetType) {
         String type = targetType == null ? "" : targetType.toLowerCase();
         if (!List.of("issue", "base", "base_table", "base_record", "file", "message", "approval", "document").contains(type)) {
@@ -2039,12 +2371,89 @@ public class DocumentService {
             if (trimmed.isBlank()) {
                 continue;
             }
-            blocks.add(new DocumentBlockDraft(inferBlockType(trimmed), normalizeBlockContent(trimmed), blocks.size()));
+            String blockType = inferBlockType(trimmed);
+            String blockContent = normalizeBlockContent(trimmed);
+            blocks.add(new DocumentBlockDraft(
+                null,
+                null,
+                blockType,
+                blockContent,
+                blocks.size(),
+                2,
+                defaultAttrs(blockType, blockContent),
+                defaultRichContent(blockType, blockContent),
+                plainTextForBlock(blockType, blockContent),
+                null,
+                false
+            ));
         }
         if (blocks.isEmpty()) {
-            blocks.add(new DocumentBlockDraft("paragraph", "", 0));
+            blocks.add(defaultBlockDraft("paragraph", "", 0));
         }
         return blocks;
+    }
+
+    List<DocumentBlockDraft> blocksFromHtml(String html) {
+        String value = html == null ? "" : html.trim();
+        if (value.isBlank()) {
+            return List.of(defaultBlockDraft("paragraph", "", 0));
+        }
+        String lower = value.toLowerCase(Locale.ROOT);
+        if (lower.contains("<script") || lower.contains("<style")) {
+            return List.of(defaultBlockDraft("legacy_html", "<!-- unsafe HTML omitted during import -->", 0));
+        }
+        if (Pattern.compile("(?is)<(table|iframe|video|svg|canvas|form)\\b").matcher(value).find()) {
+            return List.of(defaultBlockDraft("legacy_html", value, 0));
+        }
+        List<DocumentBlockDraft> blocks = new ArrayList<>();
+        Matcher matcher = Pattern.compile("(?is)<(h[1-6]|p|li|blockquote|pre)[^>]*>(.*?)</\\1>|<hr\\b[^>]*>").matcher(value);
+        while (matcher.find()) {
+            String tag = matcher.group(1) == null ? "hr" : matcher.group(1).toLowerCase(Locale.ROOT);
+            String body = matcher.group(2) == null ? "" : htmlToPlainText(matcher.group(2));
+            String blockType = switch (tag) {
+                case "h1", "h2", "h3", "h4", "h5", "h6" -> "heading";
+                case "li" -> "bullet_list";
+                case "blockquote" -> "quote";
+                case "pre" -> "code_block";
+                case "hr" -> "divider";
+                default -> "paragraph";
+            };
+            blocks.add(new DocumentBlockDraft(blockType, "divider".equals(blockType) ? "" : body, blocks.size()));
+        }
+        if (blocks.isEmpty()) {
+            String plainText = htmlToPlainText(value);
+            return plainText.isBlank() ? List.of(defaultBlockDraft("legacy_html", value, 0)) : blocksFromContent(plainText);
+        }
+        return blocks;
+    }
+
+    private DocumentBlockDraft defaultBlockDraft(String blockType, String content, int sortOrder) {
+        return new DocumentBlockDraft(
+            null,
+            null,
+            blockType,
+            content,
+            sortOrder,
+            2,
+            defaultAttrs(blockType, content),
+            defaultRichContent(blockType, content),
+            plainTextForBlock(blockType, content),
+            null,
+            false
+        );
+    }
+
+    private String htmlToPlainText(String html) {
+        return html
+            .replaceAll("(?is)<br\\s*/?>", "\n")
+            .replaceAll("(?is)<[^>]+>", "")
+            .replace("&nbsp;", " ")
+            .replace("&amp;", "&")
+            .replace("&lt;", "<")
+            .replace("&gt;", ">")
+            .replace("&quot;", "\"")
+            .replace("&#39;", "'")
+            .trim();
     }
 
     private List<DocumentBlockDraft> normalizeBlocks(List<DocumentBlockDraft> blocks) {
@@ -2053,11 +2462,28 @@ public class DocumentService {
         }
         List<DocumentBlockDraft> normalized = new ArrayList<>();
         for (DocumentBlockDraft block : blocks) {
+            if (Boolean.TRUE.equals(block.deleted())) {
+                continue;
+            }
             String blockType = normalizeBlockType(block.blockType());
             String content = normalizeDraftBlockContent(blockType, block.content());
-            normalized.add(new DocumentBlockDraft(blockType, content, normalized.size()));
+            int sortOrder = normalized.size();
+            String plainText = normalizePlainText(blockType, content, block.plainText());
+            normalized.add(new DocumentBlockDraft(
+                block.id(),
+                block.parentId(),
+                blockType,
+                content,
+                sortOrder,
+                block.schemaVersion() == null ? 2 : Math.max(1, block.schemaVersion()),
+                normalizeJsonMap(block.attrs(), defaultAttrs(blockType, content)),
+                normalizeJsonMap(block.richContent(), defaultRichContent(blockType, content)),
+                plainText,
+                normalizeAnchorId(block.anchorId(), block.id(), sortOrder),
+                false
+            ));
         }
-        return normalized;
+        return normalized.isEmpty() ? List.of(new DocumentBlockDraft("paragraph", "", 0)) : normalized;
     }
 
     private String normalizeDraftBlockContent(String blockType, String content) {
@@ -2088,19 +2514,24 @@ public class DocumentService {
             normalized.remove("targetId");
             return writeJson(normalized);
         }
-        return blockType.equals("code") ? content == null ? "" : content : value;
+        return blockType.equals("code") || blockType.equals("code_block") || blockType.equals("legacy_html")
+            ? content == null ? "" : content
+            : value;
     }
 
     private String contentFromBlocks(List<DocumentBlockDraft> blocks) {
         return blocks.stream()
             .map(block -> switch (block.blockType()) {
                 case "heading" -> "# " + block.content();
-                case "list" -> "- " + block.content();
-                case "task" -> "- [ ] " + block.content();
+                case "list", "bullet_list", "bulleted_list" -> "- " + block.content();
+                case "ordered_list" -> "1. " + block.content();
+                case "task", "todo", "task_item" -> "- [ ] " + block.content();
                 case "quote" -> "> " + block.content();
-                case "code" -> "```\n" + block.content() + "\n```";
+                case "code", "code_block" -> "```\n" + block.content() + "\n```";
                 case "table" -> "[table] " + block.content();
-                case "embed", "base_view", "issue_embed", "message_embed", "file_embed", "link" -> "[" + block.blockType() + "] " + block.content();
+                case "image", "file", "embed", "embed_object", "base_view", "issue_embed", "message_embed", "file_embed", "link", "link_card" -> "[" + block.blockType() + "] " + block.content();
+                case "divider" -> "---";
+                case "legacy_html" -> block.content();
                 default -> block.content();
             })
             .toList()
@@ -2126,7 +2557,7 @@ public class DocumentService {
         if (line.startsWith("```")) {
             return "code";
         }
-        Matcher enhancedBlock = Pattern.compile("^\\[(table|embed|base_view|issue_embed|message_embed|file_embed|link)]\\s+.*$").matcher(line);
+        Matcher enhancedBlock = Pattern.compile("^\\[(table|image|file|embed|embed_object|base_view|issue_embed|message_embed|file_embed|link|link_card|legacy_html)]\\s+.*$").matcher(line);
         if (enhancedBlock.matches()) {
             return enhancedBlock.group(1);
         }
@@ -2135,7 +2566,7 @@ public class DocumentService {
 
     private String normalizeBlockContent(String line) {
         return line
-            .replaceFirst("^\\[(table|embed|base_view|issue_embed|message_embed|file_embed|link)]\\s+", "")
+            .replaceFirst("^\\[(table|image|file|embed|embed_object|base_view|issue_embed|message_embed|file_embed|link|link_card|legacy_html)]\\s+", "")
             .replaceFirst("^#{1,6}\\s*", "")
             .replaceFirst("^- \\[[ xX]\\]\\s*", "")
             .replaceFirst("^-\\s+", "")
@@ -2144,10 +2575,73 @@ public class DocumentService {
 
     private String normalizeBlockType(String blockType) {
         String type = blockType == null ? "" : blockType.toLowerCase();
+        if ("bulleted_list".equals(type)) {
+            type = "bullet_list";
+        } else if ("numbered_list".equals(type)) {
+            type = "ordered_list";
+        } else if ("todo".equals(type)) {
+            type = "task_item";
+        } else if ("code".equals(type)) {
+            type = "code_block";
+        } else if ("embed".equals(type)) {
+            type = "embed_object";
+        } else if ("link".equals(type)) {
+            type = "link_card";
+        }
         if (!BLOCK_TYPES.contains(type)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid document block type");
         }
         return type;
+    }
+
+    private Map<String, Object> normalizeJsonMap(Map<String, Object> value, Map<String, Object> fallback) {
+        if (value == null || value.isEmpty()) {
+            return fallback;
+        }
+        return new HashMap<>(value);
+    }
+
+    private String normalizePlainText(String blockType, String content, String plainText) {
+        String value = plainText == null ? "" : plainText.trim();
+        return value.isBlank() ? plainTextForBlock(blockType, content) : value;
+    }
+
+    private String plainTextForBlock(String blockType, String content) {
+        if ("table".equals(blockType) || EMBED_BLOCK_TYPES.contains(blockType)) {
+            return parseJsonObject(content).map(map -> String.join(" ", map.values().stream().map(String::valueOf).toList())).orElse("");
+        }
+        if ("divider".equals(blockType)) {
+            return "";
+        }
+        return content == null ? "" : content.trim();
+    }
+
+    private Map<String, Object> defaultAttrs(String blockType, String content) {
+        Map<String, Object> attrs = new HashMap<>();
+        attrs.put("type", blockType);
+        if ("heading".equals(blockType)) {
+            attrs.put("level", 1);
+        }
+        return attrs;
+    }
+
+    private Map<String, Object> defaultRichContent(String blockType, String content) {
+        Map<String, Object> rich = new HashMap<>();
+        rich.put("type", blockType);
+        if ("table".equals(blockType) || EMBED_BLOCK_TYPES.contains(blockType)) {
+            rich.put("data", parseJsonObject(content).orElse(Map.of("raw", content == null ? "" : content)));
+        } else {
+            rich.put("text", content == null ? "" : content);
+        }
+        return rich;
+    }
+
+    private String normalizeAnchorId(String anchorId, UUID blockId, int sortOrder) {
+        String value = anchorId == null ? "" : anchorId.trim();
+        if (!value.isBlank()) {
+            return value.length() > 128 ? value.substring(0, 128) : value;
+        }
+        return blockId == null ? "block-" + sortOrder : "block-" + blockId;
     }
 
     private java.util.Optional<Map<String, Object>> parseJsonObject(String content) {

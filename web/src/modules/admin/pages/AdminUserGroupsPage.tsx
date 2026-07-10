@@ -12,8 +12,10 @@ import { App as AntdApp, Button, Form, Input, Modal, Radio, Select, Space, Table
 import type { ColumnsType } from 'antd/es/table'
 import { useMemo, useState } from 'react'
 
+import { EntityAvatar } from '../../../shared/components/EntityAvatar'
+import { SoftBadge } from '../../../shared/components/SoftBadge'
+import { StatusBadge } from '../../../shared/components/StatusBadge'
 import { listMembers } from '../api/adminUsersApi'
-import { AdminModuleNav } from '../components/AdminModuleNav'
 import { flattenDepartmentTree, listDepartmentTree } from '../api/departmentsApi'
 import {
   addUserGroupMember,
@@ -156,9 +158,7 @@ export function AdminUserGroupsPage() {
       dataIndex: 'subjectName',
       render: (_, record) => (
         <Space size={12}>
-          <span className={`admin-entity-avatar ${record.subjectType === 'department' ? 'department' : ''}`}>
-            {entityInitial(record.subjectName)}
-          </span>
+          <EntityAvatar className={`admin-entity-avatar ${record.subjectType === 'department' ? 'department' : ''}`} value={record.subjectName} />
           <Space orientation="vertical" size={0}>
             <Typography.Text strong>{record.subjectName}</Typography.Text>
             <Typography.Text type="secondary">{record.subjectDetail}</Typography.Text>
@@ -170,13 +170,13 @@ export function AdminUserGroupsPage() {
       title: '类型',
       dataIndex: 'subjectType',
       width: 110,
-      render: (value) => <span className={`admin-soft-badge ${value === 'department' ? 'purple' : 'gray'}`}>{value === 'department' ? '部门' : '成员'}</span>,
+      render: (value) => <SoftBadge tone={value === 'department' ? 'purple' : 'gray'}>{value === 'department' ? '部门' : '成员'}</SoftBadge>,
     },
     {
       title: '状态',
       dataIndex: 'subjectStatus',
       width: 100,
-      render: (value) => <span className={`admin-status-pill ${value === 'active' ? 'active' : 'disabled'}`}>{value}</span>,
+      render: (value) => <StatusBadge status={value} />,
     },
     {
       title: '操作',
@@ -203,7 +203,7 @@ export function AdminUserGroupsPage() {
       dataIndex: 'displayName',
       render: (_, record) => (
         <Space size={12}>
-          <span className="admin-entity-avatar">{entityInitial(record.displayName)}</span>
+          <EntityAvatar className="admin-entity-avatar" value={record.displayName} />
           <Space orientation="vertical" size={0}>
             <Typography.Text strong>{record.displayName}</Typography.Text>
             <Typography.Text type="secondary">{record.username}</Typography.Text>
@@ -216,9 +216,9 @@ export function AdminUserGroupsPage() {
       dataIndex: 'sourceName',
       render: (_, record) => (
         <Space>
-          <span className={`admin-soft-badge ${record.sourceType === 'department' ? 'purple' : 'gray'}`}>
+          <SoftBadge tone={record.sourceType === 'department' ? 'purple' : 'gray'}>
             {record.sourceType === 'department' ? '部门' : '直加'}
-          </span>
+          </SoftBadge>
           <Typography.Text>{record.sourceName}</Typography.Text>
         </Space>
       ),
@@ -227,22 +227,12 @@ export function AdminUserGroupsPage() {
       title: '状态',
       dataIndex: 'status',
       width: 100,
-      render: (value) => <span className={`admin-status-pill ${value === 'active' ? 'active' : 'disabled'}`}>{value}</span>,
+      render: (value) => <StatusBadge status={value} />,
     },
   ]
 
   return (
     <Space orientation="vertical" size={18} className="page-stack admin-org-page admin-user-groups-page">
-      <Space className="page-toolbar admin-saas-toolbar" wrap>
-        <Space size={12}>
-          <span className="admin-page-icon">
-            <TeamOutlined />
-          </span>
-          <Typography.Title level={2}>用户组</Typography.Title>
-        </Space>
-        <AdminModuleNav />
-      </Space>
-
       <div className="admin-org-grid admin-user-groups-layout">
         <div className="admin-org-panel admin-user-groups-sidebar">
           <Button block type="primary" className="admin-sidebar-create admin-sidebar-create-top" icon={<PlusOutlined />} onClick={openCreateGroup}>
@@ -271,7 +261,7 @@ export function AdminUserGroupsPage() {
                   <span className="admin-group-card-title">
                     <strong>{group.name}</strong>
                     <span className="admin-group-card-side">
-                      <span className={`admin-status-pill ${group.status === 'active' ? 'active' : 'disabled'}`}>{group.status}</span>
+                      <StatusBadge status={group.status} />
                       <small className="admin-group-card-count">{group.expandedMemberCount}</small>
                     </span>
                   </span>
@@ -298,7 +288,7 @@ export function AdminUserGroupsPage() {
                   <div className="admin-group-hero-copy">
                     <Space className="admin-group-hero-title-row" size={10} align="center" wrap>
                       <Typography.Title level={3}>{selectedGroup.name}</Typography.Title>
-                      <span className={`admin-status-pill ${selectedGroup.status === 'active' ? 'active' : 'disabled'}`}>{selectedGroup.status}</span>
+                      <StatusBadge status={selectedGroup.status} />
                       <Typography.Text type="secondary">{selectedGroup.code}</Typography.Text>
                     </Space>
                     <div className="admin-group-meta-grid">
@@ -480,10 +470,6 @@ export function AdminUserGroupsPage() {
       onOk: () => deleteMutation.mutateAsync(group.id),
     })
   }
-}
-
-function entityInitial(value?: string | null) {
-  return (value?.trim()?.[0] ?? '?').toUpperCase()
 }
 
 function formatDateTime(value?: string | null) {

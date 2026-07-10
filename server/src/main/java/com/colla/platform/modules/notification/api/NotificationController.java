@@ -1,8 +1,8 @@
 package com.colla.platform.modules.notification.api;
 
 import com.colla.platform.modules.notification.application.NotificationService;
+import com.colla.platform.modules.notification.api.UserNotificationDtos.UserNotificationView;
 import com.colla.platform.modules.notification.domain.NotificationModels.NotificationBatchResult;
-import com.colla.platform.modules.notification.domain.NotificationModels.NotificationItem;
 import com.colla.platform.modules.notification.domain.NotificationModels.UnreadCount;
 import com.colla.platform.shared.auth.CurrentUser;
 import java.util.List;
@@ -26,7 +26,7 @@ public class NotificationController {
     }
 
     @GetMapping
-    public List<NotificationItem> list(
+    public List<UserNotificationView> list(
         @RequestParam(defaultValue = "false") boolean unreadOnly,
         @RequestParam(required = false) String source,
         @RequestParam(required = false) String status,
@@ -34,7 +34,9 @@ public class NotificationController {
         @RequestParam(defaultValue = "50") int limit,
         Authentication authentication
     ) {
-        return notificationService.list(currentUser(authentication), unreadOnly, source, status, targetType, limit);
+        return notificationService.list(currentUser(authentication), unreadOnly, source, status, targetType, limit).stream()
+            .map(UserNotificationDtos::notification)
+            .toList();
     }
 
     @GetMapping("/unread-count")

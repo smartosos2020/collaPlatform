@@ -27,7 +27,7 @@ export type MessageLink = {
   summary?: PlatformObjectSummary | null
 }
 
-export type MessageSummary = {
+export type UserMessageView = {
   id: string
   conversationId: string
   senderId: string
@@ -44,9 +44,12 @@ export type MessageSummary = {
   mentions: MessageMention[]
   links: MessageLink[]
   reactions: Array<{ emoji: string; count: number; reactedByMe: boolean }>
+  availableActions?: string[]
 }
 
-export type ConversationSummary = {
+export type MessageSummary = UserMessageView
+
+export type UserConversationView = {
   id: string
   conversationType: string
   title: string
@@ -57,16 +60,28 @@ export type ConversationSummary = {
   unreadCount: number
   lastMessageAt?: string | null
   createdAt: string
+  reminder?: {
+    unreadCount: number
+    muted: boolean
+    pinned: boolean
+  }
+  availableActions?: string[]
 }
 
-export type ConversationDetail = ConversationSummary & {
+export type ConversationSummary = UserConversationView
+
+export type UserConversationDetailView = UserConversationView & {
   members: ConversationMember[]
 }
 
-export type MessagePage = {
-  items: MessageSummary[]
+export type ConversationDetail = UserConversationDetailView
+
+export type UserMessagePageView = {
+  items: UserMessageView[]
   nextCursor?: string | null
 }
+
+export type MessagePage = UserMessagePageView
 
 export type ConvertMessageToIssueRequest = {
   projectId: string
@@ -93,23 +108,23 @@ export type MemberSummary = {
 }
 
 export function listConversations() {
-  return apiGet<ConversationSummary[]>('/conversations')
+  return apiGet<UserConversationView[]>('/conversations')
 }
 
 export function createConversation(request: { conversationType: string; title?: string; memberIds: string[] }) {
-  return apiPost<ConversationDetail>('/conversations', request)
+  return apiPost<UserConversationDetailView>('/conversations', request)
 }
 
 export function getConversation(conversationId: string) {
-  return apiGet<ConversationDetail>(`/conversations/${conversationId}`)
+  return apiGet<UserConversationDetailView>(`/conversations/${conversationId}`)
 }
 
 export function addConversationMembers(conversationId: string, memberIds: string[]) {
-  return apiPost<ConversationDetail>(`/conversations/${conversationId}/members`, { memberIds })
+  return apiPost<UserConversationDetailView>(`/conversations/${conversationId}/members`, { memberIds })
 }
 
 export function removeConversationMember(conversationId: string, memberId: string) {
-  return apiDelete<ConversationDetail>(`/conversations/${conversationId}/members/${memberId}`)
+  return apiDelete<UserConversationDetailView>(`/conversations/${conversationId}/members/${memberId}`)
 }
 
 export function leaveConversation(conversationId: string) {
@@ -121,11 +136,11 @@ export function closeConversation(conversationId: string) {
 }
 
 export function muteConversation(conversationId: string, muted: boolean) {
-  return apiPost<ConversationDetail>(`/conversations/${conversationId}/mute`, { muted })
+  return apiPost<UserConversationDetailView>(`/conversations/${conversationId}/mute`, { muted })
 }
 
 export function pinConversation(conversationId: string, pinned: boolean) {
-  return apiPost<ConversationDetail>(`/conversations/${conversationId}/pin`, { pinned })
+  return apiPost<UserConversationDetailView>(`/conversations/${conversationId}/pin`, { pinned })
 }
 
 export function listMessages(conversationId: string, beforeId?: string | null, afterSeq?: number | null) {
@@ -136,11 +151,11 @@ export function listMessages(conversationId: string, beforeId?: string | null, a
   if (afterSeq !== undefined && afterSeq !== null) {
     params.set('afterSeq', String(afterSeq))
   }
-  return apiGet<MessagePage>(`/conversations/${conversationId}/messages?${params}`)
+  return apiGet<UserMessagePageView>(`/conversations/${conversationId}/messages?${params}`)
 }
 
 export function listMessageContext(conversationId: string, messageId: string) {
-  return apiGet<MessagePage>(`/conversations/${conversationId}/messages/${messageId}/context?limit=50`)
+  return apiGet<UserMessagePageView>(`/conversations/${conversationId}/messages/${messageId}/context?limit=50`)
 }
 
 export function searchConversationMessages(
@@ -154,11 +169,11 @@ export function searchConversationMessages(
   if (request.targetType) {
     params.set('targetType', request.targetType)
   }
-  return apiGet<MessagePage>(`/conversations/${conversationId}/messages/search?${params}`)
+  return apiGet<UserMessagePageView>(`/conversations/${conversationId}/messages/search?${params}`)
 }
 
 export function sendMessage(conversationId: string, content: string, clientMessageId: string = crypto.randomUUID()) {
-  return apiPost<MessageSummary>(`/conversations/${conversationId}/messages`, {
+  return apiPost<UserMessageView>(`/conversations/${conversationId}/messages`, {
     clientMessageId,
     messageType: 'text',
     content,
@@ -182,19 +197,19 @@ export function convertMessageToDocument(
 }
 
 export function editMessage(conversationId: string, messageId: string, content: string) {
-  return apiPatch<MessageSummary>(`/conversations/${conversationId}/messages/${messageId}`, { content })
+  return apiPatch<UserMessageView>(`/conversations/${conversationId}/messages/${messageId}`, { content })
 }
 
 export function revokeMessage(conversationId: string, messageId: string) {
-  return apiPost<MessageSummary>(`/conversations/${conversationId}/messages/${messageId}/revoke`, {})
+  return apiPost<UserMessageView>(`/conversations/${conversationId}/messages/${messageId}/revoke`, {})
 }
 
 export function pinMessage(conversationId: string, messageId: string, pinned: boolean) {
-  return apiPost<MessageSummary>(`/conversations/${conversationId}/messages/${messageId}/pin`, { pinned })
+  return apiPost<UserMessageView>(`/conversations/${conversationId}/messages/${messageId}/pin`, { pinned })
 }
 
 export function toggleReaction(conversationId: string, messageId: string, emoji: string) {
-  return apiPost<MessageSummary>(`/conversations/${conversationId}/messages/${messageId}/reactions`, { emoji })
+  return apiPost<UserMessageView>(`/conversations/${conversationId}/messages/${messageId}/reactions`, { emoji })
 }
 
 export function markConversationRead(conversationId: string, messageId?: string) {

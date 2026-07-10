@@ -30,7 +30,10 @@ import {
 import type { ColumnsType } from 'antd/es/table'
 import { useMemo, useState } from 'react'
 
-import { AdminModuleNav } from '../components/AdminModuleNav'
+import { EntityAvatar } from '../../../shared/components/EntityAvatar'
+import { SoftBadge } from '../../../shared/components/SoftBadge'
+import { StatusBadge } from '../../../shared/components/StatusBadge'
+import { TableEmptyState } from '../../../shared/components/TableEmptyState'
 import { listMembers } from '../api/adminUsersApi'
 import { flattenDepartmentTree, listDepartmentTree } from '../api/departmentsApi'
 import {
@@ -200,7 +203,7 @@ export function AdminRolesPage() {
       dataIndex: 'subjectName',
       render: (_, record) => (
         <Space size={12} className="admin-table-entity">
-          <span className="admin-entity-avatar">{entityInitial(record.subjectName ?? record.subjectId)}</span>
+          <EntityAvatar className="admin-entity-avatar" value={record.subjectName ?? record.subjectId} />
           <Space orientation="vertical" size={0}>
             <Typography.Text strong>{record.subjectName ?? record.subjectId}</Typography.Text>
             <Typography.Text type="secondary">
@@ -213,12 +216,12 @@ export function AdminRolesPage() {
     {
       title: '范围',
       dataIndex: 'scopeType',
-      render: (scopeType) => <span className="admin-soft-badge gray">{scopeType}</span>,
+      render: (scopeType) => <SoftBadge>{scopeType}</SoftBadge>,
     },
     {
       title: '状态',
       dataIndex: 'status',
-      render: (status) => <span className={`admin-status-pill ${status === 'active' ? 'active' : 'disabled'}`}>{status}</span>,
+      render: (status) => <StatusBadge status={status} />,
     },
     {
       title: '操作',
@@ -307,16 +310,6 @@ export function AdminRolesPage() {
 
   return (
     <Space orientation="vertical" size={16} className="page-stack admin-org-page admin-roles-page">
-      <Space className="page-toolbar admin-saas-toolbar" wrap>
-        <Space size={12}>
-          <span className="admin-page-icon">
-            <SafetyCertificateOutlined />
-          </span>
-          <Typography.Title level={2}>角色与权限</Typography.Title>
-        </Space>
-        <AdminModuleNav />
-      </Space>
-
       <div className="admin-roles-layout">
         <aside className="admin-org-panel admin-role-sidebar">
           <Button block type="primary" icon={<PlusOutlined />} className="admin-sidebar-create admin-sidebar-create-top" onClick={openCreateRole}>
@@ -364,8 +357,8 @@ export function AdminRolesPage() {
                     </span>
                     <small>{role.code}</small>
                     <span className="admin-role-card-badges">
-                      <span className={`admin-status-pill ${role.status === 'active' ? 'active' : 'disabled'}`}>{role.status}</span>
-                      {role.builtin ? <span className="admin-soft-badge blue">built-in</span> : null}
+                      <StatusBadge status={role.status} />
+                      {role.builtin ? <SoftBadge tone="blue">built-in</SoftBadge> : null}
                     </span>
                   </span>
                   <Button
@@ -400,7 +393,7 @@ export function AdminRolesPage() {
                   <div className="admin-group-hero-copy">
                     <Space className="admin-group-hero-title-row" size={10} align="center" wrap>
                       <Typography.Title level={3}>{selectedRole.name}</Typography.Title>
-                      {selectedRole.builtin ? <span className="admin-soft-badge blue">built-in</span> : null}
+                      {selectedRole.builtin ? <SoftBadge tone="blue">built-in</SoftBadge> : null}
                       <Typography.Text type="secondary">{selectedRole.code}</Typography.Text>
                     </Space>
                     <Typography.Paragraph className="admin-role-description" type="secondary">
@@ -627,17 +620,6 @@ function subjectTypeLabel(subjectType: RoleAssignmentSubjectType) {
   return '成员'
 }
 
-function entityInitial(value: string) {
-  return (value || '?').trim().slice(0, 1).toUpperCase()
-}
-
 function AdminTableEmpty() {
-  return (
-    <div className="admin-table-empty">
-      <span className="admin-empty-icon">
-        <SafetyCertificateOutlined />
-      </span>
-      <Typography.Text type="secondary">No data</Typography.Text>
-    </div>
-  )
+  return <TableEmptyState icon={<SafetyCertificateOutlined />} />
 }

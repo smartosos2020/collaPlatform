@@ -119,6 +119,19 @@ public interface DocumentRepository {
         UUID actorId
     );
 
+    void updateKnowledgeNodeMetadata(
+        UUID workspaceId,
+        UUID documentId,
+        String nodeKind,
+        String targetObjectType,
+        UUID targetObjectId,
+        String targetRoute,
+        String displayMode,
+        String targetTitleStrategy,
+        String entryAlias,
+        UUID actorId
+    );
+
     List<DocumentSummary> listKnowledgeBaseDocuments(UUID workspaceId, UUID rootDocumentId);
 
     List<DocumentSummary> listDueForReview(UUID workspaceId, LocalDate beforeDate, int limit);

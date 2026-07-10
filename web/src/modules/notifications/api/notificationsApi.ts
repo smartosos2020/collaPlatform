@@ -1,9 +1,10 @@
 import { apiGet, apiPost } from '../../../shared/api/httpClient'
 
-export type NotificationItem = {
+export type UserNotificationView = {
   id: string
   notificationType: string
   sourceType: string
+  notificationScope?: 'user_collaboration' | 'admin_governance'
   title: string
   body?: string | null
   targetType?: string | null
@@ -11,7 +12,14 @@ export type NotificationItem = {
   webPath?: string | null
   readAt?: string | null
   createdAt: string
+  reminder?: {
+    unread: boolean
+    webPath?: string | null
+  }
+  availableActions?: string[]
 }
+
+export type NotificationItem = UserNotificationView
 
 export type UnreadCount = {
   count: number
@@ -47,7 +55,7 @@ export function listNotifications(filters: NotificationFilters = {}) {
     params.set('limit', String(filters.limit))
   }
   const query = params.toString()
-  return apiGet<NotificationItem[]>(query ? `/notifications?${query}` : '/notifications')
+  return apiGet<UserNotificationView[]>(query ? `/notifications?${query}` : '/notifications')
 }
 
 export function getUnreadCount() {

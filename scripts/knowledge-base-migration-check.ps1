@@ -353,6 +353,124 @@ join search_index_documents si
 where si.knowledge_base_id is distinct from kd.knowledge_base_id;
 "@
 
+Invoke-CountCheck `
+    -Key "block-coverage-gap" `
+    -Name "Active markdown content nodes without active blocks" `
+    -Sql @"
+select count(*)
+from documents d
+where d.deleted_at is null
+  and d.archived_at is null
+  and d.doc_type = 'markdown'
+  and coalesce(d.content, '') <> ''
+  and not exists (
+      select 1
+      from document_blocks b
+      where b.workspace_id = d.workspace_id
+        and b.document_id = d.id
+        and b.deleted_at is null
+  );
+"@ `
+    -EvidenceSuffix "New content should be readable from document_blocks; content-only rows require projection before block editor cutover."
+
+Invoke-CountCheck `
+    -Key "legacy-html-blocks" `
+    -Name "Legacy HTML blocks requiring manual review" `
+    -Sql @"
+select count(*)
+from document_blocks b
+join documents d on d.workspace_id = b.workspace_id and d.id = b.document_id
+where b.deleted_at is null
+  and d.deleted_at is null
+  and b.block_type = 'legacy_html';
+"@ `
+    -EvidenceSuffix "legacy_html preserves unconverted content but should trend down before final removal of old rich-text compatibility."
+
+Invoke-CountCheck `
+    -Key "empty-content-blocks" `
+    -Name "Non-structural blocks with empty text and empty JSON payload" `
+    -Sql @"
+select count(*)
+from document_blocks b
+join documents d on d.workspace_id = b.workspace_id and d.id = b.document_id
+where b.deleted_at is null
+  and d.deleted_at is null
+  and b.block_type not in ('divider', 'toc')
+  and coalesce(b.plain_text, '') = ''
+  and coalesce(b.content, '') = ''
+  and coalesce(b.rich_content, '{}'::jsonb) = '{}'::jsonb;
+"@
+
+Invoke-CountCheck `
+    -Key "orphan-document-block-parent" `
+    -Name "Blocks whose parent_id does not point to an active block in the same document" `
+    -Sql @"
+select count(*)
+from document_blocks b
+where b.deleted_at is null
+  and b.parent_id is not null
+  and not exists (
+      select 1
+      from document_blocks p
+      where p.workspace_id = b.workspace_id
+        and p.document_id = b.document_id
+        and p.id = b.parent_id
+        and p.deleted_at is null
+  );
+"@
+
+Invoke-CountCheck `
+    -Key "document-block-sort-conflict" `
+    -Name "Active blocks sharing the same parent and sort order" `
+    -Sql @"
+select count(*)
+from (
+    select workspace_id, document_id, parent_id, sort_order
+    from document_blocks
+    where deleted_at is null
+    group by workspace_id, document_id, parent_id, sort_order
+    having count(*) > 1
+) conflicts;
+"@
+
+Invoke-CountCheck `
+    -Key "invalid-embedded-object-blocks" `
+    -Name "Embedded object blocks missing normalized object type or object id" `
+    -Sql @"
+select count(*)
+from document_blocks b
+join documents d on d.workspace_id = b.workspace_id and d.id = b.document_id
+where b.deleted_at is null
+  and d.deleted_at is null
+  and b.block_type in ('embed', 'embed_object', 'base_view', 'issue_embed', 'message_embed', 'file_embed', 'link', 'link_card')
+  and (
+      coalesce(b.content, '') !~ '"objectType"\s*:'
+      or coalesce(b.content, '') !~ '"objectId"\s*:'
+  );
+"@ `
+    -EvidenceSuffix "Embedded blocks must degrade safely during export and must not point to unknown targets after migration."
+
+Invoke-CountCheck `
+    -Key "old-rich-text-active-coverage" `
+    -Name "Active markdown content nodes still carrying old rich text alongside blocks" `
+    -Sql @"
+select count(*)
+from documents d
+where d.deleted_at is null
+  and d.archived_at is null
+  and d.doc_type = 'markdown'
+  and coalesce(d.content, '') <> ''
+  and exists (
+      select 1
+      from document_blocks b
+      where b.workspace_id = d.workspace_id
+        and b.document_id = d.id
+        and b.deleted_at is null
+  );
+"@ `
+    -Expectation "nonzero-pass" `
+    -EvidenceSuffix "This tracks rollback coverage while blocks become primary; remove only after v2 freeze approves old content retirement."
+
 $failureCount = @($Checks | Where-Object { $_.Status -eq "FAIL" }).Count
 $warningCount = @($Checks | Where-Object { $_.Status -eq "WARN" }).Count
 $skipCount = @($Checks | Where-Object { $_.Status -eq "SKIP" }).Count
@@ -405,6 +523,17 @@ where d.workspace_id = :'workspace_id'::uuid
   );
 
 -- Keep search_index_documents and resource_permissions intact unless a separate audited cleanup is approved.
+
+-- Optional block rollback preview: regenerate active blocks from document content for documents edited during cutover.
+-- This is a destructive replacement and must not run without a tested projection script.
+select d.id, d.title, count(b.id) active_block_count
+from documents d
+left join document_blocks b on b.workspace_id = d.workspace_id and b.document_id = d.id and b.deleted_at is null
+where d.workspace_id = :'workspace_id'::uuid
+  and d.updated_at >= :'cutover_started_at'::timestamptz
+group by d.id, d.title
+order by d.title;
+
 rollback;
 "@
 Set-Content -LiteralPath $RollbackPath -Value $rollbackSql -Encoding UTF8

@@ -11,6 +11,9 @@ import com.colla.platform.modules.doc.domain.DocumentModels.DocumentShareLink;
 import com.colla.platform.modules.doc.domain.DocumentModels.DocumentSummary;
 import com.colla.platform.modules.doc.domain.DocumentModels.DocumentTemplate;
 import com.colla.platform.modules.doc.domain.DocumentModels.DocumentVersion;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -37,6 +40,9 @@ public class JdbcDocumentRepository implements DocumentRepository {
      * compatibility, not as an independent document product model.
      */
     private final JdbcTemplate jdbcTemplate;
+    private final ObjectMapper objectMapper = new ObjectMapper();
+    private static final TypeReference<Map<String, Object>> STRING_OBJECT_MAP = new TypeReference<>() {
+    };
 
     public JdbcDocumentRepository(JdbcTemplate jdbcTemplate) {
         this.jdbcTemplate = jdbcTemplate;
@@ -321,19 +327,37 @@ public class JdbcDocumentRepository implements DocumentRepository {
             jdbcTemplate.update(
                 """
                     insert into document_blocks
-                        (id, workspace_id, document_id, block_type, content, sort_order,
-                         schema_version, attrs, rich_content, plain_text,
+                        (id, workspace_id, document_id, parent_id, block_type, content, sort_order,
+                         schema_version, attrs, rich_content, plain_text, anchor_id, block_version,
                          created_by, created_at, updated_by, updated_at)
-                    values (?, ?, ?, ?, ?, ?, 2, '{}'::jsonb, jsonb_build_object('type', 'text', 'text', ?), ?, ?, now(), ?, now())
+                    values (?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, ?, ?, 1, ?, now(), ?, now())
+                    on conflict (id) do update
+                    set parent_id = excluded.parent_id,
+                        block_type = excluded.block_type,
+                        content = excluded.content,
+                        sort_order = excluded.sort_order,
+                        schema_version = excluded.schema_version,
+                        attrs = excluded.attrs,
+                        rich_content = excluded.rich_content,
+                        plain_text = excluded.plain_text,
+                        anchor_id = excluded.anchor_id,
+                        block_version = document_blocks.block_version + 1,
+                        updated_by = excluded.updated_by,
+                        updated_at = now(),
+                        deleted_at = null
                     """,
-                UUID.randomUUID(),
+                block.id() == null ? UUID.randomUUID() : block.id(),
                 workspaceId,
                 documentId,
+                block.parentId(),
                 block.blockType(),
                 block.content(),
                 block.sortOrder(),
-                block.content(),
-                block.content(),
+                block.schemaVersion() == null ? 2 : block.schemaVersion(),
+                writeJson(block.attrs()),
+                writeJson(block.richContent()),
+                block.plainText(),
+                block.anchorId(),
                 actorId,
                 actorId
             );
@@ -344,7 +368,9 @@ public class JdbcDocumentRepository implements DocumentRepository {
     public List<DocumentBlock> listBlocks(UUID workspaceId, UUID documentId) {
         return jdbcTemplate.query(
             """
-                select id, document_id, block_type, content, sort_order, created_at, updated_at
+                select id, document_id, parent_id, block_type, content, sort_order,
+                       schema_version, attrs::text attrs, rich_content::text rich_content, plain_text,
+                       anchor_id, block_version, created_by, created_at, updated_by, updated_at
                 from document_blocks
                 where workspace_id = ? and document_id = ? and deleted_at is null
                 order by sort_order, created_at
@@ -352,10 +378,19 @@ public class JdbcDocumentRepository implements DocumentRepository {
             (rs, rowNum) -> new DocumentBlock(
                 rs.getObject("id", UUID.class),
                 rs.getObject("document_id", UUID.class),
+                rs.getObject("parent_id", UUID.class),
                 rs.getString("block_type"),
                 rs.getString("content"),
                 rs.getInt("sort_order"),
+                rs.getInt("schema_version"),
+                readJsonMap(rs.getString("attrs")),
+                readJsonMap(rs.getString("rich_content")),
+                rs.getString("plain_text"),
+                rs.getString("anchor_id"),
+                rs.getInt("block_version"),
+                rs.getObject("created_by", UUID.class),
                 rs.getTimestamp("created_at").toInstant(),
+                rs.getObject("updated_by", UUID.class),
                 rs.getTimestamp("updated_at").toInstant(),
                 null,
                 Map.of()
@@ -493,7 +528,9 @@ public class JdbcDocumentRepository implements DocumentRepository {
                        d.sort_order, d.description, d.cover_url, d.default_permission_level, d.knowledge_base,
                        d.archived_at is not null archived,
                        d.maintainer_id, coalesce(mu.display_name, mu.username) maintainer_name,
-                       d.tags, d.category, d.knowledge_status, d.review_due_at, d.verified_at
+                       d.tags, d.category, d.knowledge_status, d.review_due_at, d.verified_at,
+                       d.node_kind, d.target_object_type, d.target_object_id, d.target_route,
+                       d.display_mode, d.target_title_strategy, d.entry_alias
                 from documents d
                 join users cu on cu.id = d.created_by
                 join users uu on uu.id = d.updated_by
@@ -533,7 +570,9 @@ public class JdbcDocumentRepository implements DocumentRepository {
                            d.sort_order, d.description, d.cover_url, d.default_permission_level, d.knowledge_base,
                            d.archived_at is not null archived,
                            d.maintainer_id, coalesce(mu.display_name, mu.username) maintainer_name,
-                           d.tags, d.category, d.knowledge_status, d.review_due_at, d.verified_at
+                           d.tags, d.category, d.knowledge_status, d.review_due_at, d.verified_at,
+                           d.node_kind, d.target_object_type, d.target_object_id, d.target_route,
+                           d.display_mode, d.target_title_strategy, d.entry_alias
                     from documents d
                     join users cu on cu.id = d.created_by
                     join users uu on uu.id = d.updated_by
@@ -1630,6 +1669,46 @@ public class JdbcDocumentRepository implements DocumentRepository {
     }
 
     @Override
+    public void updateKnowledgeNodeMetadata(
+        UUID workspaceId,
+        UUID documentId,
+        String nodeKind,
+        String targetObjectType,
+        UUID targetObjectId,
+        String targetRoute,
+        String displayMode,
+        String targetTitleStrategy,
+        String entryAlias,
+        UUID actorId
+    ) {
+        jdbcTemplate.update(
+            """
+                update documents
+                set node_kind = ?,
+                    target_object_type = ?,
+                    target_object_id = ?,
+                    target_route = ?,
+                    display_mode = ?,
+                    target_title_strategy = ?,
+                    entry_alias = ?,
+                    updated_by = ?,
+                    updated_at = now()
+                where workspace_id = ? and id = ? and deleted_at is null
+                """,
+            nodeKind,
+            targetObjectType,
+            targetObjectId,
+            targetRoute,
+            displayMode,
+            targetTitleStrategy,
+            entryAlias,
+            actorId,
+            workspaceId,
+            documentId
+        );
+    }
+
+    @Override
     public List<DocumentSummary> listKnowledgeBaseDocuments(UUID workspaceId, UUID rootDocumentId) {
         return jdbcTemplate.query(
             """
@@ -1650,7 +1729,9 @@ public class JdbcDocumentRepository implements DocumentRepository {
                        d.sort_order, d.description, d.cover_url, d.default_permission_level, d.knowledge_base,
                        d.archived_at is not null archived,
                        d.maintainer_id, coalesce(mu.display_name, mu.username) maintainer_name,
-                       d.tags, d.category, d.knowledge_status, d.review_due_at, d.verified_at
+                       d.tags, d.category, d.knowledge_status, d.review_due_at, d.verified_at,
+                       d.node_kind, d.target_object_type, d.target_object_id, d.target_route,
+                       d.display_mode, d.target_title_strategy, d.entry_alias
                 from documents d
                 join subtree on subtree.id = d.id
                 join users cu on cu.id = d.created_by
@@ -1676,7 +1757,9 @@ public class JdbcDocumentRepository implements DocumentRepository {
                        d.sort_order, d.description, d.cover_url, d.default_permission_level, d.knowledge_base,
                        d.archived_at is not null archived,
                        d.maintainer_id, coalesce(mu.display_name, mu.username) maintainer_name,
-                       d.tags, d.category, d.knowledge_status, d.review_due_at, d.verified_at
+                       d.tags, d.category, d.knowledge_status, d.review_due_at, d.verified_at,
+                       d.node_kind, d.target_object_type, d.target_object_id, d.target_route,
+                       d.display_mode, d.target_title_strategy, d.entry_alias
                 from documents d
                 join users cu on cu.id = d.created_by
                 join users uu on uu.id = d.updated_by
@@ -1742,7 +1825,15 @@ public class JdbcDocumentRepository implements DocumentRepository {
             rs.getString("category"),
             rs.getString("knowledge_status"),
             rs.getObject("review_due_at", LocalDate.class),
-            rs.getTimestamp("verified_at") == null ? null : rs.getTimestamp("verified_at").toInstant()
+            rs.getTimestamp("verified_at") == null ? null : rs.getTimestamp("verified_at").toInstant(),
+            rs.getString("node_kind"),
+            rs.getString("target_object_type"),
+            rs.getObject("target_object_id", UUID.class),
+            rs.getString("target_route"),
+            rs.getString("display_mode"),
+            rs.getString("target_title_strategy"),
+            rs.getString("entry_alias"),
+            null
         );
     }
 
@@ -1872,5 +1963,24 @@ public class JdbcDocumentRepository implements DocumentRepository {
             comment.createdAt(),
             replies
         );
+    }
+
+    private String writeJson(Map<String, Object> value) {
+        try {
+            return objectMapper.writeValueAsString(value == null ? Map.of() : value);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalArgumentException("Invalid block json metadata", exception);
+        }
+    }
+
+    private Map<String, Object> readJsonMap(String value) {
+        if (value == null || value.isBlank()) {
+            return Map.of();
+        }
+        try {
+            return objectMapper.readValue(value, STRING_OBJECT_MAP);
+        } catch (JsonProcessingException exception) {
+            return Map.of("parseError", "invalid_json");
+        }
     }
 }

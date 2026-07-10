@@ -172,7 +172,7 @@ public class JdbcSearchRepository implements SearchRepository {
                       and db.workspace_id = s.workspace_id
                       and db.document_id = s.object_id
                       and db.deleted_at is null
-                      and lower(coalesce(db.content, '')) like ?
+                      and lower(coalesce(nullif(db.plain_text, ''), db.content, '')) like ?
                     order by db.sort_order
                     limit 1
                 ) document_block on true
@@ -447,7 +447,9 @@ public class JdbcSearchRepository implements SearchRepository {
                 left join lateral (
                     select string_agg(
                         case
-                            when db.block_type in ('table', 'embed', 'base_view', 'issue_embed', 'message_embed', 'file_embed', 'link')
+                            when coalesce(db.plain_text, '') <> ''
+                                then db.plain_text
+                            when db.block_type in ('table', 'embed', 'embed_object', 'base_view', 'issue_embed', 'message_embed', 'file_embed', 'link', 'link_card')
                                 then translate(coalesce(db.content, ''), '{}[]":,', '       ')
                             else coalesce(db.content, '')
                         end,

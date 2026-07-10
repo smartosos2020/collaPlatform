@@ -1,9 +1,9 @@
 package com.colla.platform.modules.identity.api;
 
 import com.colla.platform.modules.identity.application.OrganizationService;
-import com.colla.platform.modules.identity.domain.OrganizationModels.DepartmentMember;
-import com.colla.platform.modules.identity.domain.OrganizationModels.DepartmentSummary;
-import com.colla.platform.modules.identity.domain.OrganizationModels.DepartmentTreeNode;
+import com.colla.platform.modules.identity.api.AdminIdentityDtos.AdminDepartmentMemberView;
+import com.colla.platform.modules.identity.api.AdminIdentityDtos.AdminDepartmentTreeNode;
+import com.colla.platform.modules.identity.api.AdminIdentityDtos.AdminDepartmentView;
 import com.colla.platform.shared.auth.CurrentUser;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -31,43 +31,47 @@ public class OrganizationController {
     }
 
     @GetMapping("/tree")
-    public List<DepartmentTreeNode> tree(Authentication authentication) {
-        return organizationService.tree(currentUser(authentication));
+    public List<AdminDepartmentTreeNode> tree(Authentication authentication) {
+        return organizationService.tree(currentUser(authentication)).stream()
+            .map(AdminIdentityDtos::treeNode)
+            .toList();
     }
 
     @PostMapping
-    public DepartmentSummary create(@Valid @RequestBody DepartmentRequest request, Authentication authentication) {
-        return organizationService.createDepartment(
+    public AdminDepartmentView create(@Valid @RequestBody DepartmentRequest request, Authentication authentication) {
+        return AdminIdentityDtos.department(organizationService.createDepartment(
             currentUser(authentication),
             request.parentId(),
             request.code(),
             request.name(),
             request.sortOrder()
-        );
+        ));
     }
 
     @PatchMapping("/{departmentId}")
-    public DepartmentSummary update(
+    public AdminDepartmentView update(
         @PathVariable UUID departmentId,
         @Valid @RequestBody DepartmentRequest request,
         Authentication authentication
     ) {
-        return organizationService.updateDepartment(
+        return AdminIdentityDtos.department(organizationService.updateDepartment(
             currentUser(authentication),
             departmentId,
             request.code(),
             request.name(),
             request.sortOrder()
-        );
+        ));
     }
 
     @PostMapping("/{departmentId}/move")
-    public DepartmentSummary move(
+    public AdminDepartmentView move(
         @PathVariable UUID departmentId,
         @Valid @RequestBody MoveDepartmentRequest request,
         Authentication authentication
     ) {
-        return organizationService.moveDepartment(currentUser(authentication), departmentId, request.parentId(), request.sortOrder());
+        return AdminIdentityDtos.department(
+            organizationService.moveDepartment(currentUser(authentication), departmentId, request.parentId(), request.sortOrder())
+        );
     }
 
     @PostMapping("/{departmentId}/disable")
@@ -86,8 +90,10 @@ public class OrganizationController {
     }
 
     @GetMapping("/{departmentId}/members")
-    public List<DepartmentMember> members(@PathVariable UUID departmentId, Authentication authentication) {
-        return organizationService.listMembers(currentUser(authentication), departmentId);
+    public List<AdminDepartmentMemberView> members(@PathVariable UUID departmentId, Authentication authentication) {
+        return organizationService.listMembers(currentUser(authentication), departmentId).stream()
+            .map(AdminIdentityDtos::departmentMember)
+            .toList();
     }
 
     @PostMapping("/{departmentId}/members")

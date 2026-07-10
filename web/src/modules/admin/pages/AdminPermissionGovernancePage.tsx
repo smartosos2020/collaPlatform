@@ -1,12 +1,11 @@
-import { DownloadOutlined, SafetyCertificateOutlined, SearchOutlined } from '@ant-design/icons'
+import { DownloadOutlined, SearchOutlined } from '@ant-design/icons'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { Alert, App as AntdApp, Button, Form, Input, Select, Space, Table, Tag, Typography } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { useState } from 'react'
 
+import { listAdminKnowledgeBases } from '../api/adminKnowledgeBasesApi'
 import { listMembers } from '../api/adminUsersApi'
-import { AdminModuleNav } from '../components/AdminModuleNav'
-import { listKnowledgeBases } from '../../knowledgeBases/api/knowledgeBasesApi'
 import {
   exportPermissionRisks,
   inspectPermission,
@@ -20,7 +19,7 @@ export function AdminPermissionGovernancePage() {
   const [form] = Form.useForm<InspectPermissionParams>()
   const [knowledgeBaseId, setKnowledgeBaseId] = useState<string | undefined>()
   const membersQuery = useQuery({ queryKey: ['admin', 'users'], queryFn: () => listMembers() })
-  const spacesQuery = useQuery({ queryKey: ['knowledge-bases', 'permission-governance'], queryFn: () => listKnowledgeBases({ includeArchived: true }) })
+  const spacesQuery = useQuery({ queryKey: ['admin', 'knowledge-bases', 'permission-governance'], queryFn: () => listAdminKnowledgeBases({ includeArchived: true }) })
   const risksQuery = useQuery({
     queryKey: ['admin', 'permission-governance', 'risks', knowledgeBaseId],
     queryFn: () => listPermissionRisks({ knowledgeBaseId }),
@@ -79,16 +78,6 @@ export function AdminPermissionGovernancePage() {
 
   return (
     <Space orientation="vertical" size={16} className="page-stack admin-org-page admin-permission-governance-page">
-      <Space className="page-toolbar admin-saas-toolbar" wrap>
-        <Space size={12}>
-          <span className="admin-page-icon">
-            <SafetyCertificateOutlined />
-          </span>
-          <Typography.Title level={2}>权限治理</Typography.Title>
-        </Space>
-        <AdminModuleNav />
-      </Space>
-
       <Form
         form={form}
         layout="inline"

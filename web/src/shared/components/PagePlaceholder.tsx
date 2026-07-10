@@ -7,10 +7,9 @@ type PagePlaceholderProps = {
 
 export function PagePlaceholder({ title, description }: PagePlaceholderProps) {
   return (
-    <Card className="page-card">
+    <Card className="page-card content-card">
       <Typography.Title level={3}>{title}</Typography.Title>
       <Typography.Paragraph type="secondary">{description}</Typography.Paragraph>
     </Card>
   )
 }
-

@@ -7,7 +7,7 @@ import type { NotificationItem } from '../../notifications/api/notificationsApi'
 import type { PlatformObjectSummary } from '../../platform/api/platformObjectsApi'
 import type { IssueSummary } from '../../projects/api/projectsApi'
 
-export type WorkspaceDashboard = {
+export type UserWorkspaceDashboardView = {
   myIssues: IssueSummary[]
   approvalTodos: ApprovalTaskSummary[]
   unreadMessageCount: number
@@ -19,8 +19,18 @@ export type WorkspaceDashboard = {
   recentBases: BaseSummary[]
   recentObjects: PlatformObjectSummary[]
   favoriteObjects: PlatformObjectSummary[]
+  navigationSummary?: {
+    issueCount: number
+    knowledgeContentCount: number
+    baseCount: number
+    unreadConversationCount: number
+    unreadNotificationCount: number
+  }
+  availableActions?: string[]
 }
 
+export type WorkspaceDashboard = UserWorkspaceDashboardView
+
 export function getWorkspaceDashboard() {
-  return apiGet<WorkspaceDashboard>('/workspace/dashboard')
+  return apiGet<UserWorkspaceDashboardView>('/workspace/dashboard')
 }

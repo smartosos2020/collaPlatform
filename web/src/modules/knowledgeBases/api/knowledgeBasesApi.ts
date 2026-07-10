@@ -1,7 +1,7 @@
 import { apiDelete, apiGet, apiGetText, apiPatch, apiPost } from '../../../shared/api/httpClient'
 import type { DocumentDetail, DocumentSummary, DocumentTemplate, DocumentTreeNode } from '../../docs/api/docsApi'
 
-export type KnowledgeBaseSpaceSummary = {
+export type UserKnowledgeSpaceView = {
   id: string
   name: string
   code: string
@@ -18,15 +18,30 @@ export type KnowledgeBaseSpaceSummary = {
   createdAt: string
   updatedAt?: string | null
   documentCount: number
+  navigation?: {
+    rootDocumentId: string
+    homeDocumentId: string
+    webPath: string
+  }
+  collaborationPermission?: {
+    level: 'view' | 'comment' | 'edit'
+    displayText: string
+    canEdit: boolean
+  }
+  availableActions?: string[]
 }
 
-export type KnowledgeBaseSpaceDetail = {
-  space: KnowledgeBaseSpaceSummary
+export type KnowledgeBaseSpaceSummary = UserKnowledgeSpaceView
+
+export type UserKnowledgeSpaceDetailView = {
+  space: UserKnowledgeSpaceView
   rootDocument: DocumentSummary
   homeDocument: DocumentSummary
 }
 
-export type KnowledgeBaseDiscovery = {
+export type KnowledgeBaseSpaceDetail = UserKnowledgeSpaceDetailView
+
+export type UserKnowledgeDiscoveryView = {
   spaceId: string
   recentAccessed: DocumentSummary[]
   favorites: DocumentSummary[]
@@ -37,6 +52,8 @@ export type KnowledgeBaseDiscovery = {
   subscribedDocuments: DocumentSummary[]
   spaceSubscribed: boolean
 }
+
+export type KnowledgeBaseDiscovery = UserKnowledgeDiscoveryView
 
 export type KnowledgeBaseSubscription = {
   targetType: 'knowledge_base' | 'document'
@@ -128,15 +145,15 @@ export function listKnowledgeBases(options: { includeArchived?: boolean } = {}) 
   if (options.includeArchived) {
     params.set('includeArchived', 'true')
   }
-  return apiGet<KnowledgeBaseSpaceSummary[]>(`/knowledge-bases${params.size ? `?${params}` : ''}`)
+  return apiGet<UserKnowledgeSpaceView[]>(`/knowledge-bases${params.size ? `?${params}` : ''}`)
 }
 
 export function createKnowledgeBase(request: KnowledgeBaseSpaceRequest) {
-  return apiPost<KnowledgeBaseSpaceDetail>('/knowledge-bases', request)
+  return apiPost<UserKnowledgeSpaceDetailView>('/knowledge-bases', request)
 }
 
 export function getKnowledgeBase(spaceId: string) {
-  return apiGet<KnowledgeBaseSpaceDetail>(`/knowledge-bases/${spaceId}`)
+  return apiGet<UserKnowledgeSpaceDetailView>(`/knowledge-bases/${spaceId}`)
 }
 
 export function listKnowledgeBaseItems(spaceId: string, options: { includeArchived?: boolean } = {}) {
@@ -178,6 +195,12 @@ export function createKnowledgeBaseItem(
     title: string
     docType?: DocumentSummary['docType']
     content?: string
+    targetObjectType?: string
+    targetObjectId?: string
+    targetRoute?: string
+    displayMode?: DocumentSummary['displayMode']
+    targetTitleStrategy?: DocumentSummary['targetTitleStrategy']
+    entryAlias?: string
   },
 ) {
   return apiPost<DocumentDetail>(`/knowledge-bases/${spaceId}/items`, request)
@@ -203,7 +226,7 @@ export function restoreKnowledgeBaseItem(spaceId: string, documentId: string) {
 }
 
 export function getKnowledgeBaseDiscovery(spaceId: string) {
-  return apiGet<KnowledgeBaseDiscovery>(`/knowledge-bases/${spaceId}/discovery`)
+  return apiGet<UserKnowledgeDiscoveryView>(`/knowledge-bases/${spaceId}/discovery`)
 }
 
 export function getKnowledgeBaseGovernance(spaceId: string) {
@@ -236,23 +259,23 @@ export function exportKnowledgeBaseMarkdown(spaceId: string) {
 }
 
 export function updateKnowledgeBase(spaceId: string, request: Partial<KnowledgeBaseSpaceRequest>) {
-  return apiPatch<KnowledgeBaseSpaceDetail>(`/knowledge-bases/${spaceId}`, request)
+  return apiPatch<UserKnowledgeSpaceDetailView>(`/knowledge-bases/${spaceId}`, request)
 }
 
 export function disableKnowledgeBase(spaceId: string) {
-  return apiPost<KnowledgeBaseSpaceDetail>(`/knowledge-bases/${spaceId}/disable`)
+  return apiPost<UserKnowledgeSpaceDetailView>(`/knowledge-bases/${spaceId}/disable`)
 }
 
 export function restoreKnowledgeBase(spaceId: string) {
-  return apiPost<KnowledgeBaseSpaceDetail>(`/knowledge-bases/${spaceId}/restore`)
+  return apiPost<UserKnowledgeSpaceDetailView>(`/knowledge-bases/${spaceId}/restore`)
 }
 
 export function archiveKnowledgeBase(spaceId: string) {
-  return apiPost<KnowledgeBaseSpaceDetail>(`/knowledge-bases/${spaceId}/archive`)
+  return apiPost<UserKnowledgeSpaceDetailView>(`/knowledge-bases/${spaceId}/archive`)
 }
 
 export function deleteKnowledgeBase(spaceId: string) {
-  return apiDelete<KnowledgeBaseSpaceDetail>(`/knowledge-bases/${spaceId}`)
+  return apiDelete<UserKnowledgeSpaceDetailView>(`/knowledge-bases/${spaceId}`)
 }
 
 export function subscribeKnowledgeTarget(spaceId: string, request: { targetType: 'knowledge_base' | 'document'; targetId?: string }) {

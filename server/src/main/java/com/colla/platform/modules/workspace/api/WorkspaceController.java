@@ -1,7 +1,7 @@
 package com.colla.platform.modules.workspace.api;
 
 import com.colla.platform.modules.workspace.application.WorkspaceDashboardService;
-import com.colla.platform.modules.workspace.domain.WorkspaceModels.WorkspaceDashboard;
+import com.colla.platform.modules.workspace.api.UserWorkspaceDtos.UserWorkspaceDashboardView;
 import com.colla.platform.shared.auth.CurrentUser;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -18,8 +18,8 @@ public class WorkspaceController {
     }
 
     @GetMapping("/dashboard")
-    public WorkspaceDashboard dashboard(Authentication authentication) {
-        return dashboardService.dashboard(currentUser(authentication));
+    public UserWorkspaceDashboardView dashboard(Authentication authentication) {
+        return UserWorkspaceDtos.dashboard(dashboardService.dashboard(currentUser(authentication)));
     }
 
     private CurrentUser currentUser(Authentication authentication) {

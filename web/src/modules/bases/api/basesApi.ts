@@ -1,6 +1,6 @@
 import { apiGet, apiGetText, apiPatch, apiPost } from '../../../shared/api/httpClient'
 
-export type BaseSummary = {
+export type UserBaseView = {
   id: string
   name: string
   description?: string | null
@@ -14,18 +14,33 @@ export type BaseSummary = {
   updatedBy: string
   updatedByName: string
   updatedAt: string
+  collaboration?: {
+    permissionLevel: 'view' | 'edit' | 'manage'
+    displayText: string
+    canEdit: boolean
+  }
+  availableActions?: string[]
 }
 
-export type BaseMember = {
+export type BaseSummary = UserBaseView
+
+export type UserBaseMemberView = {
   id: string
   userId: string
   username: string
   displayName: string
   permissionLevel: 'view' | 'edit' | 'manage'
   createdAt: string
+  collaboration?: {
+    permissionLevel: 'view' | 'edit' | 'manage'
+    displayText: string
+    canEdit: boolean
+  }
 }
 
-export type BaseTableSummary = {
+export type BaseMember = UserBaseMemberView
+
+export type UserBaseTableView = {
   id: string
   baseId: string
   name: string
@@ -34,13 +49,18 @@ export type BaseTableSummary = {
   recordCount: number
   createdAt: string
   updatedAt: string
+  availableActions?: string[]
 }
 
-export type BaseDetail = {
-  base: BaseSummary
-  tables: BaseTableSummary[]
-  members: BaseMember[]
+export type BaseTableSummary = UserBaseTableView
+
+export type UserBaseDetailView = {
+  base: UserBaseView
+  tables: UserBaseTableView[]
+  members: UserBaseMemberView[]
 }
+
+export type BaseDetail = UserBaseDetailView
 
 export type BaseFieldType =
   | 'text'
@@ -109,12 +129,15 @@ export type BaseRecord = {
   updatedAt: string
 }
 
-export type BaseRecordPage = {
+export type UserBaseRecordPageView = {
   items: BaseRecord[]
   total: number
   limit: number
   offset: number
+  collaborationHint?: string
 }
+
+export type BaseRecordPage = UserBaseRecordPageView
 
 export type PlatformObjectSummary = {
   objectType: string
@@ -191,23 +214,23 @@ export type CreateFieldRequest = {
 }
 
 export function listBases() {
-  return apiGet<BaseSummary[]>('/bases')
+  return apiGet<UserBaseView[]>('/bases')
 }
 
 export function createBase(request: { name: string; description?: string }) {
-  return apiPost<BaseDetail>('/bases', request)
+  return apiPost<UserBaseDetailView>('/bases', request)
 }
 
 export function getBase(baseId: string) {
-  return apiGet<BaseDetail>(`/bases/${baseId}`)
+  return apiGet<UserBaseDetailView>(`/bases/${baseId}`)
 }
 
 export function updateBase(baseId: string, request: { name?: string; description?: string }) {
-  return apiPatch<BaseDetail>(`/bases/${baseId}`, request)
+  return apiPatch<UserBaseDetailView>(`/bases/${baseId}`, request)
 }
 
 export function grantBasePermission(baseId: string, request: { userId: string; permissionLevel: string }) {
-  return apiPost<BaseDetail>(`/bases/${baseId}/members`, request)
+  return apiPost<UserBaseDetailView>(`/bases/${baseId}/members`, request)
 }
 
 export function createTable(baseId: string, request: { name: string }) {
@@ -223,7 +246,7 @@ export function createField(baseId: string, tableId: string, request: CreateFiel
 }
 
 export function listRecords(baseId: string, tableId: string) {
-  return apiGet<BaseRecordPage>(`/bases/${baseId}/tables/${tableId}/records?limit=50&offset=0`)
+  return apiGet<UserBaseRecordPageView>(`/bases/${baseId}/tables/${tableId}/records?limit=50&offset=0`)
 }
 
 export function queryRecords(
@@ -231,7 +254,7 @@ export function queryRecords(
   tableId: string,
   request: { filters: BaseFilter[]; sorts: BaseSort[]; limit?: number; offset?: number },
 ) {
-  return apiPost<BaseRecordPage>(`/bases/${baseId}/tables/${tableId}/records/query`, request)
+  return apiPost<UserBaseRecordPageView>(`/bases/${baseId}/tables/${tableId}/records/query`, request)
 }
 
 export function getKanbanView(baseId: string, tableId: string, groupFieldId: string) {

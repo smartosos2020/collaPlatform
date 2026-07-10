@@ -2,7 +2,7 @@ import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from '../../../shared/ap
 
 export type PermissionRiskLevel = 'low' | 'medium' | 'high' | 'critical'
 
-export type PermissionCatalogItem = {
+export type AdminPermissionCatalogItemView = {
   id: string
   code: string
   name: string
@@ -11,9 +11,18 @@ export type PermissionCatalogItem = {
   riskLevel: PermissionRiskLevel
   builtin: boolean
   displayOrder: number
+  category?: {
+    module: string
+  }
+  risk?: {
+    level: PermissionRiskLevel
+    weight: number
+  }
 }
 
-export type RoleSummary = {
+export type PermissionCatalogItem = AdminPermissionCatalogItemView
+
+export type AdminRoleView = {
   id: string
   code: string
   name: string
@@ -24,16 +33,46 @@ export type RoleSummary = {
   permissionCodes: string[]
   createdAt: string
   updatedAt: string
+  roleClassification?: {
+    category: 'system_management' | 'business_collaboration'
+    scope: string
+    builtin: boolean
+  }
+  permissionMatrix?: {
+    scope: string
+    permissionCount: number
+    permissionCodes: string[]
+  }
+  assignmentSummary?: {
+    total: number
+    subjectTypes: RoleAssignmentSubjectType[]
+  }
+  governance?: {
+    status: 'active' | 'disabled'
+    builtin: boolean
+    permissionCount: number
+  }
+  availableActions?: string[]
 }
 
-export type RoleDetail = Omit<RoleSummary, 'permissionCodes'> & {
-  permissions: PermissionCatalogItem[]
-  assignments: RoleAssignmentSummary[]
+export type RoleSummary = AdminRoleView
+
+export type AdminRoleDetailView = Omit<AdminRoleView, 'permissionCodes' | 'permissionMatrix'> & {
+  permissions: AdminPermissionCatalogItemView[]
+  assignments: AdminRoleAssignmentView[]
+  permissionMatrix?: {
+    module: string
+    permissions: AdminPermissionCatalogItemView[]
+    permissionCount: number
+    highRiskCount: number
+  }[]
 }
 
 export type RoleAssignmentSubjectType = 'user' | 'department' | 'user_group'
 
-export type RoleAssignmentSummary = {
+export type RoleDetail = AdminRoleDetailView
+
+export type AdminRoleAssignmentView = {
   id: string
   roleId: string
   roleCode: string
@@ -48,7 +87,25 @@ export type RoleAssignmentSummary = {
   expiresAt?: string | null
   status: 'active' | 'revoked'
   createdAt: string
+  subject?: {
+    subjectType: RoleAssignmentSubjectType
+    subjectId: string
+    subjectName?: string | null
+    subjectDetail?: string | null
+  }
+  scope?: {
+    scopeType: string
+    scopeId?: string | null
+  }
+  lifecycle?: {
+    status: 'active' | 'revoked'
+    effectiveAt: string
+    expiresAt?: string | null
+  }
+  availableActions?: string[]
 }
+
+export type RoleAssignmentSummary = AdminRoleAssignmentView
 
 export type RoleRequest = {
   code: string
@@ -80,39 +137,39 @@ export type RoleAssignmentRequest = {
   confirmHighRisk?: boolean
 }
 
-export async function listPermissions(): Promise<PermissionCatalogItem[]> {
-  return apiGet<PermissionCatalogItem[]>('/admin/permissions')
+export async function listPermissions(): Promise<AdminPermissionCatalogItemView[]> {
+  return apiGet<AdminPermissionCatalogItemView[]>('/admin/permissions')
 }
 
-export async function listRoles(): Promise<RoleSummary[]> {
-  return apiGet<RoleSummary[]>('/admin/roles')
+export async function listRoles(): Promise<AdminRoleView[]> {
+  return apiGet<AdminRoleView[]>('/admin/roles')
 }
 
-export async function getRole(roleId: string): Promise<RoleDetail> {
-  return apiGet<RoleDetail>(`/admin/roles/${roleId}`)
+export async function getRole(roleId: string): Promise<AdminRoleDetailView> {
+  return apiGet<AdminRoleDetailView>(`/admin/roles/${roleId}`)
 }
 
-export async function createRole(request: RoleRequest): Promise<RoleSummary> {
-  return apiPost<RoleSummary>('/admin/roles', request)
+export async function createRole(request: RoleRequest): Promise<AdminRoleView> {
+  return apiPost<AdminRoleView>('/admin/roles', request)
 }
 
-export async function updateRole(roleId: string, request: UpdateRoleRequest): Promise<RoleSummary> {
-  return apiPatch<RoleSummary>(`/admin/roles/${roleId}`, request)
+export async function updateRole(roleId: string, request: UpdateRoleRequest): Promise<AdminRoleView> {
+  return apiPatch<AdminRoleView>(`/admin/roles/${roleId}`, request)
 }
 
 export async function replaceRolePermissions(
   roleId: string,
   request: ReplaceRolePermissionsRequest,
-): Promise<RoleDetail> {
-  return apiPut<RoleDetail>(`/admin/roles/${roleId}/permissions`, request)
+): Promise<AdminRoleDetailView> {
+  return apiPut<AdminRoleDetailView>(`/admin/roles/${roleId}/permissions`, request)
 }
 
-export async function listRoleAssignments(roleId?: string): Promise<RoleAssignmentSummary[]> {
-  return apiGet<RoleAssignmentSummary[]>(`/admin/role-assignments${roleId ? `?roleId=${roleId}` : ''}`)
+export async function listRoleAssignments(roleId?: string): Promise<AdminRoleAssignmentView[]> {
+  return apiGet<AdminRoleAssignmentView[]>(`/admin/role-assignments${roleId ? `?roleId=${roleId}` : ''}`)
 }
 
-export async function createRoleAssignment(request: RoleAssignmentRequest): Promise<RoleAssignmentSummary> {
-  return apiPost<RoleAssignmentSummary>('/admin/role-assignments', request)
+export async function createRoleAssignment(request: RoleAssignmentRequest): Promise<AdminRoleAssignmentView> {
+  return apiPost<AdminRoleAssignmentView>('/admin/role-assignments', request)
 }
 
 export async function revokeRoleAssignment(assignmentId: string): Promise<void> {

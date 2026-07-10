@@ -30,6 +30,8 @@ import { getTable, queryRecords, type BaseField, type BaseRecord } from '../../b
 import { objectTypeText } from '../../platform/objectTypeLabels'
 import { useAuthStore } from '../../auth/authStore'
 import { DocEditor, type DocEditorSelectionAnchor } from '../components/DocEditor'
+import { KnowledgeContentEditor } from '../components/KnowledgeContentEditor'
+import { blocksToMarkdown } from '../editor/knowledgeContentAdapter'
 import { useDocumentCollaboration } from '../hooks/useDocumentCollaboration'
 import {
   addObjectFavorite,
@@ -53,7 +55,6 @@ import {
   createNamedDocumentVersion,
   diffDocumentVersions,
   getDocument,
-  getDocumentAcceptanceReport,
   getDocumentPath,
   importDocumentMarkdown,
   grantDocumentPermission,
@@ -72,7 +73,6 @@ import {
   setDocumentShareLinkEnabled,
   updateDocumentKnowledgeMetadata,
   updateDocumentShareLink,
-  type DocumentAcceptanceReport,
   type DocumentBlockDraft,
   type DocumentComment,
   type DocumentDetail,
@@ -161,7 +161,7 @@ type DocListMode = 'all' | 'recent' | 'favorites'
 type CommentFilter = 'open' | 'mentions' | 'current' | 'all'
 
 type BlockDraftState = DocumentBlockDraft & {
-  id?: string
+  id?: string | null
 }
 
 type TableBlockContent = {
@@ -249,7 +249,6 @@ export function DocsPage() {
   })
   const projectsQuery = useQuery({ queryKey: ['projects'], queryFn: listProjects })
   const templatesQuery = useQuery({ queryKey: ['docs', 'templates'], queryFn: () => listDocumentTemplates() })
-  const acceptanceQuery = useQuery({ queryKey: ['docs', 'acceptance', 'v1'], queryFn: getDocumentAcceptanceReport })
   const recentObjectsQuery = useQuery({ queryKey: ['platform', 'recent', 'docs'], queryFn: () => listRecentObjects(30) })
   const favoriteObjectsQuery = useQuery({ queryKey: ['platform', 'favorites', 'docs'], queryFn: () => listFavoriteObjects(50) })
   const activeDocId = docId ?? selectedDocId ?? docsQuery.data?.[0]?.id ?? null
@@ -328,9 +327,15 @@ export function DocsPage() {
       setBlockDraftVersionNo(detail.document.currentVersionNo)
       setBlockDrafts(detail.blocks.map((block) => ({
         id: block.id,
+        parentId: block.parentId,
         blockType: block.blockType,
         content: block.content,
         sortOrder: block.sortOrder,
+        schemaVersion: block.schemaVersion,
+        attrs: block.attrs,
+        richContent: block.richContent,
+        plainText: block.plainText,
+        anchorId: block.anchorId,
       })))
       setCommentBlockId(undefined)
     }, 0)
@@ -673,9 +678,17 @@ export function DocsPage() {
       saveDocumentBlocks(activeDocId || '', {
         baseVersionNo: blockDraftVersionNo || baseVersionNo,
         blocks: blockDrafts.map((block, index) => ({
+          id: block.id,
+          parentId: block.parentId,
           blockType: block.blockType,
           content: block.content,
           sortOrder: index,
+          schemaVersion: block.schemaVersion,
+          attrs: block.attrs,
+          richContent: block.richContent,
+          plainText: block.plainText,
+          anchorId: block.anchorId,
+          deleted: block.deleted,
         })),
       }),
     onSuccess: async (detail) => {
@@ -1034,7 +1047,6 @@ export function DocsPage() {
             canEdit={canEdit}
             canManage={canManage}
             conflictVisible={conflictDocId === activeDocId}
-            acceptanceReport={acceptanceQuery.data}
             versions={versionsQuery.data ?? []}
             blockDrafts={blockDraftDocId === activeDocId ? blockDrafts : []}
             saving={docQuery.data.document.docType === 'markdown' ? checkpointMutation.isPending : saveMutation.isPending}
@@ -1047,6 +1059,10 @@ export function DocsPage() {
             activeCommentId={activeCommentId}
             onTitleChange={(value) => updateDraft({ title: value })}
             onContentChange={(value) => updateDraft({ content: value })}
+            onBlocksDraftChange={(blocks) => {
+              setBlockDrafts(blocks.map((block, index) => ({ ...block, sortOrder: index })))
+              updateDraft({ content: blocksToMarkdown(blocks) })
+            }}
             onBlockChange={updateBlockDraft}
             onAddBlock={addBlockDraft}
             onRemoveBlock={removeBlockDraft}
@@ -1473,7 +1489,6 @@ function DocumentEditor({
   canEdit,
   canManage,
   conflictVisible,
-  acceptanceReport,
   versions,
   blockDrafts,
   saving,
@@ -1486,6 +1501,7 @@ function DocumentEditor({
   activeCommentId,
   onTitleChange,
   onContentChange,
+  onBlocksDraftChange,
   onBlockChange,
   onAddBlock,
   onRemoveBlock,
@@ -1525,7 +1541,6 @@ function DocumentEditor({
   canEdit: boolean
   canManage: boolean
   conflictVisible: boolean
-  acceptanceReport?: DocumentAcceptanceReport
   versions: DocumentVersion[]
   blockDrafts: BlockDraftState[]
   saving: boolean
@@ -1538,6 +1553,7 @@ function DocumentEditor({
   activeCommentId: string | null
   onTitleChange: (value: string) => void
   onContentChange: (value: string) => void
+  onBlocksDraftChange: (blocks: BlockDraftState[]) => void
   onBlockChange: (index: number, next: Partial<BlockDraftState>) => void
   onAddBlock: () => void
   onRemoveBlock: (index: number) => void
@@ -1572,24 +1588,42 @@ function DocumentEditor({
 }) {
   const currentUser = useAuthStore((state) => state.currentUser)
   const [commentFilter, setCommentFilter] = useState<CommentFilter>('open')
+  const [blockEditorEnabled, setBlockEditorEnabled] = useState(() => localStorage.getItem('colla.kb.block-editor.mode') !== 'legacy')
+  const checkpointMode = detail.document.docType === 'markdown'
+  const useBlockEditor = checkpointMode && blockEditorEnabled
   const handleRemoteSnapshot = useCallback((snapshot: { title: string; content: string }) => {
+    if (useBlockEditor) {
+      return
+    }
     onTitleChange(snapshot.title)
     onContentChange(snapshot.content)
-  }, [onContentChange, onTitleChange])
+  }, [onContentChange, onTitleChange, useBlockEditor])
   const collaboration = useDocumentCollaboration({
     documentId: detail.document.id,
     title: titleDraft,
     content: contentDraft,
     versionNo: detail.document.currentVersionNo,
     canEdit,
-    enabled: detail.document.docType === 'markdown',
+    enabled: checkpointMode && !useBlockEditor,
     onRemoteSnapshot: handleRemoteSnapshot,
   })
-  const checkpointMode = detail.document.docType === 'markdown'
   const checkpointReady = ['joined', 'synced'].includes(collaboration.status)
-  const checkpointWaiting = checkpointMode && !checkpointReady
-  const saveActionLabel = checkpointMode ? '生成版本' : '保存'
+  const checkpointWaiting = checkpointMode && !useBlockEditor && !checkpointReady
+  const saveActionLabel = useBlockEditor ? '保存块' : checkpointMode ? '生成版本' : '保存'
   const saveActionHint = checkpointWaiting ? '等待自动保存完成后生成版本' : saveActionLabel
+  const effectiveBlockDrafts = blockDrafts.length > 0 ? blockDrafts : detail.blocks.map((block) => ({
+    id: block.id,
+    parentId: block.parentId,
+    blockType: block.blockType,
+    content: block.content,
+    sortOrder: block.sortOrder,
+    schemaVersion: block.schemaVersion,
+    attrs: block.attrs,
+    richContent: block.richContent,
+    plainText: block.plainText,
+    anchorId: block.anchorId,
+  }))
+  const blockContentDirty = blocksToMarkdown(effectiveBlockDrafts) !== blocksToMarkdown(detail.blocks)
   const commentAnchors = useMemo(
     () =>
       detail.comments
@@ -1655,39 +1689,94 @@ function DocumentEditor({
 
   return (
     <div className="doc-editor">
-      <DocEditor
-        documentId={detail.document.id}
-        title={titleDraft}
-        content={contentDraft}
-        versionNo={detail.document.currentVersionNo}
-        permissionLevel={detail.document.permissionLevel}
-        updatedAt={detail.document.updatedAt}
-        canEdit={canEdit}
-        canManage={canManage}
-        dirty={titleDraft !== detail.document.title || contentDraft !== detail.content}
-        saving={saving}
-        conflictVisible={conflictVisible}
-        saveActionLabel={saveActionLabel}
-        saveActionHint={saveActionHint}
-        saveActionDisabled={checkpointWaiting}
-        collaboration={{
-          status: collaboration.status,
-          onlineUsers: collaboration.onlineUsers,
-          remoteCursors: collaboration.remoteCursors,
-          lastSavedAt: collaboration.lastSavedAt,
-          error: collaboration.error,
-        }}
-        commentAnchors={commentAnchors}
-        activeCommentId={activeCommentId}
-        onTitleChange={onTitleChange}
-        onContentChange={onContentChange}
-        onSelectionChange={collaboration.sendAwareness}
-        onCommentAnchorChange={onCommentAnchorChange}
-        onSave={onSave}
-        onRefresh={onRefresh}
-        onOpenPermission={onOpenPermission}
-        onOpenRelation={onOpenRelation}
-      />
+      {checkpointMode ? (
+        <div className="doc-editor-mode-bar">
+          <span>{useBlockEditor ? '块编辑器' : '兼容编辑器'}</span>
+          <Button
+            size="small"
+            onClick={() => {
+              const next = !blockEditorEnabled
+              setBlockEditorEnabled(next)
+              localStorage.setItem('colla.kb.block-editor.mode', next ? 'blocks' : 'legacy')
+            }}
+          >
+            切换到{useBlockEditor ? '兼容编辑器' : '块编辑器'}
+          </Button>
+        </div>
+      ) : null}
+
+      {useBlockEditor ? (
+        <KnowledgeContentEditor
+          documentId={detail.document.id}
+          title={titleDraft}
+          blocks={effectiveBlockDrafts}
+          fallbackContent={contentDraft}
+          versionNo={detail.document.currentVersionNo}
+          permissionLevel={detail.document.permissionLevel}
+          updatedAt={detail.document.updatedAt}
+          canEdit={canEdit}
+          canManage={canManage}
+          dirty={titleDraft !== detail.document.title || blockContentDirty}
+          saving={savingBlocks}
+          conflictVisible={conflictVisible}
+          saveActionLabel={saveActionLabel}
+          saveActionHint={saveActionHint}
+          saveActionDisabled={false}
+          collaboration={{
+            status: collaboration.status,
+            onlineUsers: collaboration.onlineUsers,
+            remoteCursors: collaboration.remoteCursors,
+            lastSavedAt: collaboration.lastSavedAt,
+            error: collaboration.error,
+          }}
+          commentAnchors={commentAnchors}
+          blockAnchors={detail.blocks.map((block) => ({ id: block.id, anchorId: block.anchorId }))}
+          activeCommentId={activeCommentId}
+          onTitleChange={onTitleChange}
+          onBlocksChange={onBlocksDraftChange}
+          onSelectionChange={collaboration.sendAwareness}
+          onCommentAnchorChange={onCommentAnchorChange}
+          onSave={onSaveBlocks}
+          onRefresh={onRefresh}
+          onOpenPermission={onOpenPermission}
+          onOpenRelation={onOpenRelation}
+        />
+      ) : (
+        <DocEditor
+          documentId={detail.document.id}
+          title={titleDraft}
+          content={contentDraft}
+          versionNo={detail.document.currentVersionNo}
+          permissionLevel={detail.document.permissionLevel}
+          updatedAt={detail.document.updatedAt}
+          canEdit={canEdit}
+          canManage={canManage}
+          dirty={titleDraft !== detail.document.title || contentDraft !== detail.content}
+          saving={saving}
+          conflictVisible={conflictVisible}
+          saveActionLabel={saveActionLabel}
+          saveActionHint={saveActionHint}
+          saveActionDisabled={checkpointWaiting}
+          collaboration={{
+            status: collaboration.status,
+            onlineUsers: collaboration.onlineUsers,
+            remoteCursors: collaboration.remoteCursors,
+            lastSavedAt: collaboration.lastSavedAt,
+            error: collaboration.error,
+          }}
+          commentAnchors={commentAnchors}
+          blockAnchors={detail.blocks.map((block) => ({ id: block.id, anchorId: block.anchorId }))}
+          activeCommentId={activeCommentId}
+          onTitleChange={onTitleChange}
+          onContentChange={onContentChange}
+          onSelectionChange={collaboration.sendAwareness}
+          onCommentAnchorChange={onCommentAnchorChange}
+          onSave={onSave}
+          onRefresh={onRefresh}
+          onOpenPermission={onOpenPermission}
+          onOpenRelation={onOpenRelation}
+        />
+      )}
 
       {!canEdit ? (
         <Alert
@@ -1707,8 +1796,6 @@ function DocumentEditor({
       </div>
 
       <section className="doc-meta-grid">
-        <DocumentAcceptancePanel report={acceptanceReport} />
-
         {detail.knowledgeContext ? (
           <div className="doc-panel doc-knowledge-context">
             <Typography.Title level={5}>知识库位置</Typography.Title>
@@ -1947,7 +2034,7 @@ function DocumentEditor({
                 <Tag>默认 {permissionText(detail.document.defaultPermissionLevel)}</Tag>
               </Space>
               <Typography.Text type="secondary">
-                知识库空间的名称、封面、成员、首页和治理设置请在知识库入口维护。
+                知识库空间的名称、封面、成员和首页请在知识库入口的空间设置中维护。
               </Typography.Text>
               {detail.document.description ? <Typography.Paragraph>{detail.document.description}</Typography.Paragraph> : null}
               {detail.document.coverUrl ? <Typography.Text type="secondary">{detail.document.coverUrl}</Typography.Text> : null}
@@ -2116,58 +2203,6 @@ function DocumentEditor({
           </Space>
         </div>
       </section>
-    </div>
-  )
-}
-
-function DocumentAcceptancePanel({ report }: { report?: DocumentAcceptanceReport }) {
-  if (!report) {
-    return null
-  }
-  const readyGates = report.gates.filter((gate) => gate.status !== 'blocked').length
-  return (
-    <div className="doc-panel doc-acceptance-panel">
-      <Space className="doc-panel-title">
-        <Typography.Title level={5}>
-          <CheckCircleOutlined /> v1 验收
-        </Typography.Title>
-        <Tag color={report.frozen ? 'green' : 'blue'}>{report.frozen ? '已冻结' : report.status}</Tag>
-      </Space>
-      <Space wrap size={6}>
-        <Tag>场景 {report.scenarios.length}</Tag>
-        <Tag>验收门 {readyGates}/{report.gates.length}</Tag>
-        <Tag color={report.openP0 === 0 ? 'green' : 'red'}>P0 {report.openP0}</Tag>
-        <Tag color={report.openP1 === 0 ? 'green' : 'orange'}>P1 {report.openP1}</Tag>
-      </Space>
-      <Typography.Paragraph className="doc-acceptance-criteria" type="secondary">
-        {report.frozenCriteria}
-      </Typography.Paragraph>
-      <Space orientation="vertical" size={6} className="doc-panel-list">
-        {report.gates.map((gate) => (
-          <div className="doc-acceptance-row" key={gate.key}>
-            <span>
-              <strong>{gate.label}</strong>
-              <small>{gate.evidence}</small>
-            </span>
-            <Tag color={acceptanceStatusColor(gate.status)}>{acceptanceStatusText(gate.status)}</Tag>
-          </div>
-        ))}
-      </Space>
-      <details className="doc-acceptance-scenarios">
-        <summary>10 个真实场景</summary>
-        <Space orientation="vertical" size={6} className="doc-panel-list">
-          {report.scenarios.map((scenario) => (
-            <div className="doc-acceptance-row" key={scenario.key}>
-              <span>
-                <strong>{scenario.title}</strong>
-                <small>{scenario.workflow}</small>
-                <small>{scenario.evidence}</small>
-              </span>
-              <Tag color={acceptanceStatusColor(scenario.status)}>{acceptanceStatusText(scenario.status)}</Tag>
-            </div>
-          ))}
-        </Space>
-      </details>
     </div>
   )
 }
@@ -2487,7 +2522,7 @@ function permissionText(permission: string) {
 }
 
 function docTypeText(docType: string) {
-  return { space: '根目录', folder: '文件夹', markdown: '内容页' }[docType] ?? docType
+  return { space: '根目录', folder: '文件夹', markdown: '内容页', object_ref: '对象入口', external_link: '外部链接' }[docType] ?? docType
 }
 
 function versionTypeText(versionType: string) {
@@ -2498,24 +2533,6 @@ function versionTypeText(versionType: string) {
     restore: '恢复版本',
     import: '导入版本',
   }[versionType] ?? versionType
-}
-
-function acceptanceStatusText(status: string) {
-  return {
-    ready: '可试运行',
-    'trial-ready': '待真人试运行',
-    frozen: '已冻结',
-    blocked: '阻塞',
-  }[status] ?? status
-}
-
-function acceptanceStatusColor(status: string) {
-  return {
-    ready: 'green',
-    'trial-ready': 'blue',
-    frozen: 'purple',
-    blocked: 'red',
-  }[status] ?? 'default'
 }
 
 function templateCategoryText(category: string) {

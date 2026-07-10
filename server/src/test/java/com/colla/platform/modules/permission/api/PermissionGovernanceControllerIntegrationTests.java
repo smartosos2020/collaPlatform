@@ -45,7 +45,10 @@ class PermissionGovernanceControllerIntegrationTests {
                 .header("Authorization", "Bearer " + adminToken))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.allowed").value(true))
-            .andExpect(jsonPath("$.currentLevel").value("view"));
+            .andExpect(jsonPath("$.currentLevel").value("view"))
+            .andExpect(jsonPath("$.risk.level").value("low"))
+            .andExpect(jsonPath("$.impactScope.resourceType").value("document"))
+            .andExpect(jsonPath("$.suggestedAction").value("monitor"));
 
         mockMvc.perform(get("/api/admin/permission-governance/risks/export")
                 .header("Authorization", "Bearer " + adminToken))
@@ -69,7 +72,10 @@ class PermissionGovernanceControllerIntegrationTests {
                 .header("Authorization", "Bearer " + adminToken))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.items[*].ruleCode", hasItem("disabled_user_group_active_permission")))
-            .andExpect(jsonPath("$.items[*].ruleCode", hasItem("high_risk_broad_permission")));
+            .andExpect(jsonPath("$.items[*].ruleCode", hasItem("high_risk_broad_permission")))
+            .andExpect(jsonPath("$.items[*].impactScope.resourceType", hasItem("base")))
+            .andExpect(jsonPath("$.items[*].suggestedAction", hasItem("reduce_or_revoke_permission")))
+            .andExpect(jsonPath("$.severityBuckets.high").exists());
     }
 
     private void grantResource(String token, String resourceType, UUID resourceId, String subjectType, UUID subjectId, String level, boolean confirm) throws Exception {

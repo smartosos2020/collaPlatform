@@ -1,16 +1,22 @@
 package com.colla.platform.modules.platform.application;
 
 import com.colla.platform.modules.platform.domain.PlatformModels.ObjectAccessState;
+import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectAction;
+import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectCard;
 import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectNavigation;
 import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectReference;
 import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectSummary;
 import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectTypeRule;
+import com.colla.platform.modules.permission.application.PermissionService;
 import com.colla.platform.modules.permission.application.PermissionDecisionService;
 import com.colla.platform.modules.permission.domain.PermissionModels.PermissionDecision;
 import com.colla.platform.modules.permission.domain.PermissionModels.PermissionExplanation;
+import com.colla.platform.modules.permission.domain.PermissionModels.PermissionActionCategory;
 import com.colla.platform.modules.platform.infrastructure.PlatformObjectRepository;
 import com.colla.platform.shared.auth.CurrentUser;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 
@@ -19,15 +25,18 @@ public class PlatformObjectService {
     private final PlatformObjectResolverRegistry resolverRegistry;
     private final PlatformObjectRepository objectRepository;
     private final PermissionDecisionService permissionDecisionService;
+    private final PermissionService permissionService;
 
     public PlatformObjectService(
         PlatformObjectResolverRegistry resolverRegistry,
         PlatformObjectRepository objectRepository,
-        PermissionDecisionService permissionDecisionService
+        PermissionDecisionService permissionDecisionService,
+        PermissionService permissionService
     ) {
         this.resolverRegistry = resolverRegistry;
         this.objectRepository = objectRepository;
         this.permissionDecisionService = permissionDecisionService;
+        this.permissionService = permissionService;
     }
 
     public PlatformObjectNavigation navigation(CurrentUser currentUser, String objectType, UUID objectId) {
@@ -52,12 +61,34 @@ public class PlatformObjectService {
         return summary;
     }
 
-    public PermissionExplanation explainPermission(CurrentUser currentUser, String objectType, UUID objectId, String action) {
+    public PlatformObjectCard card(CurrentUser currentUser, String objectType, UUID objectId, String context) {
+        PlatformObjectSummary summary = resolverRegistry.resolve(currentUser, objectType, objectId);
+        String presentationContext = normalizePresentationContext(context);
+        boolean adminContextAllowed = "admin".equals(presentationContext) && permissionService.canAccessAdmin(currentUser);
+        if ("admin".equals(presentationContext) && !adminContextAllowed) {
+            presentationContext = "user";
+        }
+        return new PlatformObjectCard(
+            summary,
+            presentationContext,
+            cardActions(summary, presentationContext, adminContextAllowed),
+            permissionHint(summary, presentationContext)
+        );
+    }
+
+    public PermissionExplanation explainPermission(CurrentUser currentUser, String objectType, UUID objectId, String action, String context) {
         String normalizedAction = action == null || action.isBlank() ? "view" : action.trim().toLowerCase();
+        String presentationContext = normalizePresentationContext(context);
+        boolean adminContextAllowed = "admin".equals(presentationContext) && permissionService.canAccessAdmin(currentUser);
+        if ("admin".equals(presentationContext) && !adminContextAllowed) {
+            presentationContext = "user";
+        }
+        PermissionActionCategory actionCategory = permissionService.categorizeAction(objectType, normalizedAction);
         PlatformObjectSummary summary = resolverRegistry.resolve(currentUser, objectType, objectId);
         PermissionDecision resourceDecision = permissionDecisionService.decide(currentUser, objectType, objectId, normalizedAction);
         if (resourceDecision.permissionId() != null) {
-            return permissionDecisionService.explain(currentUser, objectType, objectId, normalizedAction, summary.accessState().name());
+            PermissionExplanation explanation = permissionDecisionService.explain(currentUser, objectType, objectId, normalizedAction, summary.accessState().name());
+            return contextualExplanation(explanation, actionCategory, presentationContext);
         }
         String currentLevel = currentLevel(summary);
         String requiredLevel = requiredLevel(normalizedAction);
@@ -66,9 +97,13 @@ public class PlatformObjectService {
             summary.objectType(),
             summary.objectId(),
             normalizedAction,
+            actionCategory,
+            presentationContext,
             allowed,
             summary.accessState().name(),
             reason(summary, normalizedAction, currentLevel, requiredLevel, allowed),
+            allowed ? "可以继续操作。" : "请联系对象负责人或提交权限申请。",
+            "admin".equals(presentationContext) ? source(summary) + " -> " + currentLevel + " >= " + requiredLevel : "",
             currentLevel,
             requiredLevel,
             source(summary)
@@ -115,6 +150,70 @@ public class PlatformObjectService {
 
     private PlatformObjectSummary resolveReference(CurrentUser currentUser, PlatformObjectReference reference) {
         return resolverRegistry.resolve(currentUser, reference.objectType(), reference.objectId());
+    }
+
+    private List<PlatformObjectAction> cardActions(PlatformObjectSummary summary, String presentationContext, boolean adminContextAllowed) {
+        List<PlatformObjectAction> actions = new ArrayList<>();
+        if (summary.accessState() == ObjectAccessState.available && summary.webPath() != null) {
+            actions.add(new PlatformObjectAction("open", "打开", summary.webPath(), "primary"));
+        }
+        if (summary.accessState() != ObjectAccessState.available) {
+            actions.add(new PlatformObjectAction("request_permission", "申请权限", null, "default"));
+        }
+        if ("admin".equals(presentationContext) && adminContextAllowed) {
+            actions.add(new PlatformObjectAction(
+                "inspect_permissions",
+                "权限排查",
+                "/admin/permission-governance?resourceType=" + summary.objectType() + "&resourceId=" + summary.objectId(),
+                "default"
+            ));
+            actions.add(new PlatformObjectAction(
+                "audit_logs",
+                "审计日志",
+                "/admin/audit-logs?targetType=" + summary.objectType() + "&targetId=" + summary.objectId(),
+                "default"
+            ));
+        }
+        return actions;
+    }
+
+    private String permissionHint(PlatformObjectSummary summary, String presentationContext) {
+        if ("admin".equals(presentationContext)) {
+            return "后台上下文展示治理入口、权限排查和审计深链。";
+        }
+        return summary.accessState() == ObjectAccessState.available
+            ? "用户上下文只展示打开、协作和可执行动作。"
+            : "用户上下文不暴露后台治理入口。";
+    }
+
+    private PermissionExplanation contextualExplanation(
+        PermissionExplanation explanation,
+        PermissionActionCategory actionCategory,
+        String presentationContext
+    ) {
+        return new PermissionExplanation(
+            explanation.objectType(),
+            explanation.objectId(),
+            explanation.action(),
+            actionCategory,
+            presentationContext,
+            explanation.allowed(),
+            explanation.accessState(),
+            explanation.reason(),
+            explanation.allowed() ? "可以继续操作。" : "请联系对象负责人或提交权限申请。",
+            "admin".equals(presentationContext) ? explanation.source() : "",
+            explanation.currentLevel(),
+            explanation.requiredLevel(),
+            explanation.source()
+        );
+    }
+
+    private String normalizePresentationContext(String context) {
+        if (context == null || context.isBlank()) {
+            return "user";
+        }
+        String normalized = context.trim().toLowerCase(Locale.ROOT);
+        return "admin".equals(normalized) ? "admin" : "user";
     }
 
     private void recordAccess(CurrentUser currentUser, PlatformObjectSummary summary) {

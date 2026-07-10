@@ -37,7 +37,15 @@ public final class DocumentModels {
         String category,
         String knowledgeStatus,
         LocalDate reviewDueAt,
-        Instant verifiedAt
+        Instant verifiedAt,
+        String nodeKind,
+        String targetObjectType,
+        UUID targetObjectId,
+        String targetRoute,
+        String displayMode,
+        String targetTitleStrategy,
+        String entryAlias,
+        PlatformObjectSummary targetSummary
     ) {
     }
 
@@ -86,17 +94,41 @@ public final class DocumentModels {
     public record DocumentBlock(
         UUID id,
         UUID documentId,
+        UUID parentId,
         String blockType,
         String content,
         int sortOrder,
+        int schemaVersion,
+        Map<String, Object> attrs,
+        Map<String, Object> richContent,
+        String plainText,
+        String anchorId,
+        int blockVersion,
+        UUID createdBy,
         Instant createdAt,
+        UUID updatedBy,
         Instant updatedAt,
         PlatformObjectSummary embedSummary,
         Map<String, Object> metadata
     ) {
     }
 
-    public record DocumentBlockDraft(String blockType, String content, int sortOrder) {
+    public record DocumentBlockDraft(
+        UUID id,
+        UUID parentId,
+        String blockType,
+        String content,
+        Integer sortOrder,
+        Integer schemaVersion,
+        Map<String, Object> attrs,
+        Map<String, Object> richContent,
+        String plainText,
+        String anchorId,
+        Boolean deleted
+    ) {
+        public DocumentBlockDraft(String blockType, String content, int sortOrder) {
+            this(null, null, blockType, content, sortOrder, 2, Map.of(), Map.of(), null, null, false);
+        }
     }
 
     public record DocumentVersion(
@@ -401,7 +433,11 @@ public final class DocumentModels {
         long outdatedDocumentCount,
         long unmaintainedDocumentCount,
         long ownerlessDocumentCount,
-        long highRiskPermissionCount
+        long highRiskPermissionCount,
+        long blockCoverageGapCount,
+        long emptyBlockCount,
+        long invalidEmbedBlockCount,
+        double blockCoveragePercent
     ) {
     }
 

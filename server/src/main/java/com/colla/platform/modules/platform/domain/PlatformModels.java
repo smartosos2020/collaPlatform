@@ -1,6 +1,7 @@
 package com.colla.platform.modules.platform.domain;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -81,6 +82,22 @@ public final class PlatformModels {
         String webPath,
         String deepLink,
         String mobileFallbackPath
+    ) {
+    }
+
+    public record PlatformObjectCard(
+        PlatformObjectSummary summary,
+        String presentationContext,
+        List<PlatformObjectAction> actions,
+        String permissionHint
+    ) {
+    }
+
+    public record PlatformObjectAction(
+        String key,
+        String label,
+        String href,
+        String tone
     ) {
     }
 }

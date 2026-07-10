@@ -3,6 +3,10 @@ package com.colla.platform.modules.im.api;
 import com.colla.platform.modules.doc.application.DocumentService;
 import com.colla.platform.modules.doc.domain.DocumentModels.DocumentDetail;
 import com.colla.platform.modules.im.application.ImService;
+import com.colla.platform.modules.im.api.UserImDtos.UserConversationDetailView;
+import com.colla.platform.modules.im.api.UserImDtos.UserConversationView;
+import com.colla.platform.modules.im.api.UserImDtos.UserMessagePageView;
+import com.colla.platform.modules.im.api.UserImDtos.UserMessageView;
 import com.colla.platform.modules.im.domain.ImModels.ConversationDetail;
 import com.colla.platform.modules.im.domain.ImModels.ConversationMember;
 import com.colla.platform.modules.im.domain.ImModels.ConversationSummary;
@@ -43,23 +47,25 @@ public class ImController {
     }
 
     @GetMapping
-    public List<ConversationSummary> list(Authentication authentication) {
-        return imService.listConversations(currentUser(authentication));
+    public List<UserConversationView> list(Authentication authentication) {
+        return imService.listConversations(currentUser(authentication)).stream()
+            .map(UserImDtos::conversation)
+            .toList();
     }
 
     @PostMapping
-    public ConversationDetail create(@Valid @RequestBody CreateConversationRequest request, Authentication authentication) {
-        return imService.createConversation(
+    public UserConversationDetailView create(@Valid @RequestBody CreateConversationRequest request, Authentication authentication) {
+        return UserImDtos.conversationDetail(imService.createConversation(
             currentUser(authentication),
             request.conversationType(),
             request.title(),
             request.memberIds()
-        );
+        ));
     }
 
     @GetMapping("/{conversationId}")
-    public ConversationDetail detail(@PathVariable UUID conversationId, Authentication authentication) {
-        return imService.getConversation(currentUser(authentication), conversationId);
+    public UserConversationDetailView detail(@PathVariable UUID conversationId, Authentication authentication) {
+        return UserImDtos.conversationDetail(imService.getConversation(currentUser(authentication), conversationId));
     }
 
     @GetMapping("/{conversationId}/members")
@@ -68,21 +74,21 @@ public class ImController {
     }
 
     @PostMapping("/{conversationId}/members")
-    public ConversationDetail addMembers(
+    public UserConversationDetailView addMembers(
         @PathVariable UUID conversationId,
         @Valid @RequestBody AddMembersRequest request,
         Authentication authentication
     ) {
-        return imService.addMembers(currentUser(authentication), conversationId, request.memberIds());
+        return UserImDtos.conversationDetail(imService.addMembers(currentUser(authentication), conversationId, request.memberIds()));
     }
 
     @DeleteMapping("/{conversationId}/members/{memberId}")
-    public ConversationDetail removeMember(
+    public UserConversationDetailView removeMember(
         @PathVariable UUID conversationId,
         @PathVariable UUID memberId,
         Authentication authentication
     ) {
-        return imService.removeMember(currentUser(authentication), conversationId, memberId);
+        return UserImDtos.conversationDetail(imService.removeMember(currentUser(authentication), conversationId, memberId));
     }
 
     @PostMapping("/{conversationId}/leave")
@@ -96,68 +102,68 @@ public class ImController {
     }
 
     @PostMapping("/{conversationId}/mute")
-    public ConversationDetail mute(
+    public UserConversationDetailView mute(
         @PathVariable UUID conversationId,
         @RequestBody ConversationMutedRequest request,
         Authentication authentication
     ) {
-        return imService.setConversationMuted(currentUser(authentication), conversationId, request.muted());
+        return UserImDtos.conversationDetail(imService.setConversationMuted(currentUser(authentication), conversationId, request.muted()));
     }
 
     @PostMapping("/{conversationId}/pin")
-    public ConversationDetail pin(
+    public UserConversationDetailView pin(
         @PathVariable UUID conversationId,
         @RequestBody PinConversationRequest request,
         Authentication authentication
     ) {
-        return imService.setConversationPinned(currentUser(authentication), conversationId, request.pinned());
+        return UserImDtos.conversationDetail(imService.setConversationPinned(currentUser(authentication), conversationId, request.pinned()));
     }
 
     @GetMapping("/{conversationId}/messages")
-    public MessagePage messages(
+    public UserMessagePageView messages(
         @PathVariable UUID conversationId,
         @RequestParam(required = false) UUID beforeId,
         @RequestParam(required = false) Long afterSeq,
         @RequestParam(defaultValue = "50") int limit,
         Authentication authentication
     ) {
-        return imService.listMessages(currentUser(authentication), conversationId, beforeId, afterSeq, limit);
+        return UserImDtos.messagePage(imService.listMessages(currentUser(authentication), conversationId, beforeId, afterSeq, limit));
     }
 
     @GetMapping("/{conversationId}/messages/{messageId}/context")
-    public MessagePage messageContext(
+    public UserMessagePageView messageContext(
         @PathVariable UUID conversationId,
         @PathVariable UUID messageId,
         @RequestParam(defaultValue = "50") int limit,
         Authentication authentication
     ) {
-        return imService.listMessageContext(currentUser(authentication), conversationId, messageId, limit);
+        return UserImDtos.messagePage(imService.listMessageContext(currentUser(authentication), conversationId, messageId, limit));
     }
 
     @GetMapping("/{conversationId}/messages/search")
-    public MessagePage searchMessages(
+    public UserMessagePageView searchMessages(
         @PathVariable UUID conversationId,
         @RequestParam(required = false) String q,
         @RequestParam(required = false) String targetType,
         @RequestParam(defaultValue = "20") int limit,
         Authentication authentication
     ) {
-        return imService.searchMessages(currentUser(authentication), conversationId, q, targetType, limit);
+        return UserImDtos.messagePage(imService.searchMessages(currentUser(authentication), conversationId, q, targetType, limit));
     }
 
     @PostMapping("/{conversationId}/messages")
-    public MessageSummary sendMessage(
+    public UserMessageView sendMessage(
         @PathVariable UUID conversationId,
         @Valid @RequestBody SendMessageRequest request,
         Authentication authentication
     ) {
-        return imService.sendMessage(
+        return UserImDtos.message(imService.sendMessage(
             currentUser(authentication),
             conversationId,
             request.clientMessageId(),
             request.messageType(),
             request.content()
-        );
+        ));
     }
 
     @PostMapping("/{conversationId}/messages/{messageId}/convert-to-issue")
@@ -205,38 +211,38 @@ public class ImController {
     }
 
     @PatchMapping("/{conversationId}/messages/{messageId}")
-    public MessageSummary editMessage(
+    public UserMessageView editMessage(
         @PathVariable UUID conversationId,
         @PathVariable UUID messageId,
         @Valid @RequestBody EditMessageRequest request,
         Authentication authentication
     ) {
-        return imService.editMessage(currentUser(authentication), conversationId, messageId, request.content());
+        return UserImDtos.message(imService.editMessage(currentUser(authentication), conversationId, messageId, request.content()));
     }
 
     @PostMapping("/{conversationId}/messages/{messageId}/revoke")
-    public MessageSummary revokeMessage(@PathVariable UUID conversationId, @PathVariable UUID messageId, Authentication authentication) {
-        return imService.revokeMessage(currentUser(authentication), conversationId, messageId);
+    public UserMessageView revokeMessage(@PathVariable UUID conversationId, @PathVariable UUID messageId, Authentication authentication) {
+        return UserImDtos.message(imService.revokeMessage(currentUser(authentication), conversationId, messageId));
     }
 
     @PostMapping("/{conversationId}/messages/{messageId}/pin")
-    public MessageSummary pinMessage(
+    public UserMessageView pinMessage(
         @PathVariable UUID conversationId,
         @PathVariable UUID messageId,
         @RequestBody PinMessageRequest request,
         Authentication authentication
     ) {
-        return imService.pinMessage(currentUser(authentication), conversationId, messageId, request.pinned());
+        return UserImDtos.message(imService.pinMessage(currentUser(authentication), conversationId, messageId, request.pinned()));
     }
 
     @PostMapping("/{conversationId}/messages/{messageId}/reactions")
-    public MessageSummary toggleReaction(
+    public UserMessageView toggleReaction(
         @PathVariable UUID conversationId,
         @PathVariable UUID messageId,
         @Valid @RequestBody ToggleReactionRequest request,
         Authentication authentication
     ) {
-        return imService.toggleReaction(currentUser(authentication), conversationId, messageId, request.emoji());
+        return UserImDtos.message(imService.toggleReaction(currentUser(authentication), conversationId, messageId, request.emoji()));
     }
 
     @PostMapping("/{conversationId}/read")

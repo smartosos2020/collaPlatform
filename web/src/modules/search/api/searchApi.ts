@@ -25,6 +25,7 @@ export type SearchResult = {
 
 export type SearchResponse = {
   query: string
+  searchScope: 'user_content'
   items: SearchResult[]
 }
 
