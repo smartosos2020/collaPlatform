@@ -30,11 +30,6 @@ logs/
 *.sh
 *.bat
 *.cmd
-!/scripts/
-!/scripts/README.md
-!/scripts/knowledge-base-*.ps1
-!/scripts/ui-split-v1-browser-smoke.ps1
-
 # Java
 target/
 *.class
