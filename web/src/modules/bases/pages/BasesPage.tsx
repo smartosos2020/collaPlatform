@@ -829,7 +829,7 @@ export function BasesPage() {
           <Form.Item noStyle shouldUpdate={(prev, next) => prev.fieldType !== next.fieldType}>
             {({ getFieldValue }) =>
               getFieldValue('fieldType') === 'object_link' ? (
-                <Form.Item name="targetTypesText" label="目标类型" extra="可选，用英文逗号分隔，例如：issue,document,file">
+                <Form.Item name="targetTypesText" label="目标类型" extra="可选，用英文逗号分隔，例如：issue,knowledge_content,file">
                   <Input />
                 </Form.Item>
               ) : null
@@ -1020,7 +1020,7 @@ function BaseRecordDetail({
         <Form form={relationForm} layout="vertical" onFinish={(values) => relationMutation.mutate(values)}>
           <Space.Compact className="base-relation-form">
             <Form.Item name="targetType" noStyle rules={[{ required: true, message: '请输入类型' }]}>
-              <Input placeholder="document" disabled={!canEdit} />
+              <Input placeholder="knowledge_content" disabled={!canEdit} />
             </Form.Item>
             <Form.Item name="targetId" noStyle rules={[{ required: true, message: '请输入 ID' }]}>
               <Input placeholder="UUID" disabled={!canEdit} />

@@ -615,7 +615,7 @@ public class ImService {
             return null;
         }
         String type = targetType.trim().toLowerCase(Locale.ROOT);
-        if (!List.of("issue", "document", "base", "base_table", "base_record", "message", "approval", "file").contains(type)) {
+        if (!List.of("issue", "knowledge_content", "base", "base_table", "base_record", "message", "approval", "file").contains(type)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid message search target type");
         }
         return type;

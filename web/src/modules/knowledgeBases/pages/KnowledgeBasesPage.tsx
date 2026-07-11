@@ -125,7 +125,7 @@ export function KnowledgeBasesPage() {
       coverUrl: space.coverUrl ?? undefined,
       visibility: space.visibility,
       defaultPermissionLevel: space.defaultPermissionLevel,
-      homeDocumentId: space.homeDocumentId,
+      homeItemId: space.homeItemId,
     })
   }
 
@@ -190,7 +190,7 @@ export function KnowledgeBasesPage() {
                   <Tag>{space.code}</Tag>
                   <Tag>{visibilityText(space.visibility)}</Tag>
                   <Tag>{permissionText(space.defaultPermissionLevel)}</Tag>
-                  <Tag>{space.documentCount} 个内容节点</Tag>
+                  <Tag>{space.itemCount} 个内容节点</Tag>
                 </Space>
                 <div className="kb-card-footer">
                   <Typography.Text type="secondary">维护人 {space.ownerName}</Typography.Text>
@@ -199,7 +199,7 @@ export function KnowledgeBasesPage() {
                       <Button icon={<EyeOutlined />} onClick={() => navigate(`/knowledge-bases/${space.id}`)} />
                     </Tooltip>
                     <Tooltip title="打开首页内容">
-                      <Button icon={<FileTextOutlined />} onClick={() => navigate(`/knowledge-bases/${space.id}/items/${space.homeDocumentId}`)} />
+                      <Button icon={<FileTextOutlined />} onClick={() => navigate(`/knowledge-bases/${space.id}/items/${space.homeItemId}`)} />
                     </Tooltip>
                     <Tooltip title="编辑设置">
                       <Button icon={<EditOutlined />} onClick={() => openEdit(space)} />
@@ -272,7 +272,7 @@ export function KnowledgeBasesPage() {
             <Input maxLength={1024} />
           </Form.Item>
           {editingSpace ? (
-            <Form.Item name="homeDocumentId" label="首页内容 ID">
+            <Form.Item name="homeItemId" label="首页内容 ID">
               <Input />
             </Form.Item>
           ) : null}

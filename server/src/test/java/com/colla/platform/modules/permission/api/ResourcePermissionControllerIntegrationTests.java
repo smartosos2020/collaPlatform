@@ -28,15 +28,16 @@ class ResourcePermissionControllerIntegrationTests {
     private ObjectMapper objectMapper;
 
     @Test
-    void documentDepartmentGrantAndInheritedChildGrantAreVisible() throws Exception {
+    void knowledgeContentDepartmentGrantAndInheritedChildGrantAreVisible() throws Exception {
         String adminToken = login("admin", "admin123456", "resource-doc-admin-" + UUID.randomUUID());
         String suffix = UUID.randomUUID().toString().replace("-", "").substring(0, 10);
         UUID departmentId = createDepartment(adminToken, "rp_dept_" + suffix, "RP Dept " + suffix);
         createMember(adminToken, "rpdept" + suffix, "RP Department Member", departmentId);
         String memberToken = login("rpdept" + suffix, "member123456", "resource-doc-member-" + UUID.randomUUID());
-        UUID parentId = createDocument(adminToken, null, "RP Parent " + suffix);
+        KnowledgeSpaceFixture contentSpace = createKnowledgeSpace(adminToken, "RP Content " + suffix);
+        UUID parentId = createItem(adminToken, contentSpace.spaceId(), contentSpace.rootItemId(), "RP Parent " + suffix);
 
-        mockMvc.perform(post("/api/resource-permissions/document/" + parentId)
+        mockMvc.perform(post("/api/resource-permissions/knowledge_content/" + parentId)
                 .header("Authorization", "Bearer " + adminToken)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(Map.of(
@@ -48,14 +49,24 @@ class ResourcePermissionControllerIntegrationTests {
             .andExpect(jsonPath("$.subjectType").value("department"))
             .andExpect(jsonPath("$.permissionLevel").value("edit"));
 
-        UUID childId = createDocument(adminToken, parentId, "RP Child " + suffix);
+        mockMvc.perform(post("/api/resource-permissions/knowledge_base/" + contentSpace.spaceId())
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "subjectType", "department",
+                    "subjectId", departmentId,
+                    "permissionLevel", "view"
+                ))))
+            .andExpect(status().isOk());
 
-        mockMvc.perform(get("/api/docs/" + childId)
+        UUID childId = createItem(adminToken, contentSpace.spaceId(), parentId, "RP Child " + suffix);
+
+        mockMvc.perform(get(itemPath(contentSpace.spaceId(), childId))
                 .header("Authorization", "Bearer " + memberToken))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.document.permissionLevel").value("edit"));
+            .andExpect(jsonPath("$.item.permissionLevel").value("edit"));
 
-        String inheritedResponse = mockMvc.perform(get("/api/resource-permissions/document/" + childId)
+        String inheritedResponse = mockMvc.perform(get("/api/resource-permissions/knowledge_content/" + childId)
                 .header("Authorization", "Bearer " + adminToken))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$[*].sourceType", hasItem("inherited")))
@@ -163,7 +174,7 @@ class ResourcePermissionControllerIntegrationTests {
             .getContentAsString();
         JsonNode created = objectMapper.readTree(createResponse);
         UUID spaceId = UUID.fromString(created.get("space").get("id").asText());
-        UUID homeDocumentId = UUID.fromString(created.get("space").get("homeDocumentId").asText());
+        UUID homeItemId = UUID.fromString(created.get("space").get("homeItemId").asText());
 
         mockMvc.perform(get("/api/knowledge-bases/" + spaceId)
                 .header("Authorization", "Bearer " + viewerToken))
@@ -201,10 +212,10 @@ class ResourcePermissionControllerIntegrationTests {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.space.id").value(spaceId.toString()));
 
-        mockMvc.perform(get("/api/docs/" + homeDocumentId)
+        mockMvc.perform(get(itemPath(spaceId, homeItemId))
                 .header("Authorization", "Bearer " + viewerToken))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.document.permissionLevel").value("view"));
+            .andExpect(jsonPath("$.item.permissionLevel").value("view"));
 
         mockMvc.perform(post("/api/resource-permissions/knowledge_base/" + spaceId)
                 .header("Authorization", "Bearer " + adminToken)
@@ -217,34 +228,51 @@ class ResourcePermissionControllerIntegrationTests {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.subjectType").value("role"));
 
-        mockMvc.perform(post("/api/resource-permissions/document/" + homeDocumentId + "/inheritance/break")
+        mockMvc.perform(post("/api/resource-permissions/knowledge_content/" + homeItemId + "/inheritance/break")
                 .header("Authorization", "Bearer " + adminToken)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(Map.of("confirmHighRisk", true))))
             .andExpect(status().isOk());
 
-        mockMvc.perform(get("/api/docs/" + homeDocumentId)
+        mockMvc.perform(get(itemPath(spaceId, homeItemId))
                 .header("Authorization", "Bearer " + viewerToken))
             .andExpect(status().isForbidden());
 
-        mockMvc.perform(post("/api/resource-permissions/document/" + homeDocumentId + "/inheritance/restore")
+        mockMvc.perform(post("/api/resource-permissions/knowledge_content/" + homeItemId + "/inheritance/restore")
                 .header("Authorization", "Bearer " + adminToken))
             .andExpect(status().isOk());
 
-        mockMvc.perform(get("/api/docs/" + homeDocumentId)
+        mockMvc.perform(get(itemPath(spaceId, homeItemId))
                 .header("Authorization", "Bearer " + viewerToken))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.document.permissionLevel").value("view"));
+            .andExpect(jsonPath("$.item.permissionLevel").value("view"));
     }
 
-    private UUID createDocument(String token, UUID parentId, String title) throws Exception {
+    private KnowledgeSpaceFixture createKnowledgeSpace(String token, String name) throws Exception {
+        String response = mockMvc.perform(post("/api/knowledge-bases")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "name", name,
+                    "code", "rp-" + UUID.randomUUID().toString().substring(0, 8),
+                    "visibility", "private"
+                ))))
+            .andExpect(status().isOk())
+            .andReturn().getResponse().getContentAsString();
+        JsonNode space = objectMapper.readTree(response).get("space");
+        return new KnowledgeSpaceFixture(
+            UUID.fromString(space.get("id").asText()),
+            UUID.fromString(space.get("rootItemId").asText())
+        );
+    }
+
+    private UUID createItem(String token, UUID spaceId, UUID parentId, String title) throws Exception {
         Map<String, Object> request = new java.util.LinkedHashMap<>();
         request.put("title", title);
         request.put("content", "# " + title);
-        if (parentId != null) {
-            request.put("parentId", parentId.toString());
-        }
-        String response = mockMvc.perform(post("/api/docs")
+        request.put("contentType", "markdown");
+        request.put("parentId", parentId.toString());
+        String response = mockMvc.perform(post("/api/knowledge-bases/" + spaceId + "/items")
                 .header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request)))
@@ -252,7 +280,14 @@ class ResourcePermissionControllerIntegrationTests {
             .andReturn()
             .getResponse()
             .getContentAsString();
-        return UUID.fromString(objectMapper.readTree(response).get("document").get("id").asText());
+        return UUID.fromString(objectMapper.readTree(response).get("item").get("id").asText());
+    }
+
+    private String itemPath(UUID spaceId, UUID itemId) {
+        return "/api/knowledge-bases/" + spaceId + "/items/" + itemId;
+    }
+
+    private record KnowledgeSpaceFixture(UUID spaceId, UUID rootItemId) {
     }
 
     private UUID createBase(String token, String name) throws Exception {

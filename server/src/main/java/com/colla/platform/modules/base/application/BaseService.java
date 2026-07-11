@@ -66,7 +66,7 @@ public class BaseService {
     );
     private static final List<String> ALLOWED_RELATION_TARGET_TYPES = List.of(
         "issue",
-        "document",
+        "knowledge_content",
         "base",
         "base_table",
         "base_record",

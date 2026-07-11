@@ -1,5 +1,5 @@
 export { apiDelete, apiGet, apiPatch, apiPost } from '../api/httpClient'
-export { resolveNavigationPath, webPathFromDeepLink } from './deepLinks'
+export { normalizeKnowledgeContentPath, resolveNavigationPath, webPathFromDeepLink } from './deepLinks'
 export type { NavigationTarget } from './deepLinks'
 export { useWebSocketConnection } from '../websocket/useWebSocketConnection'
 export type { WebSocketStatus } from '../websocket/useWebSocketConnection'

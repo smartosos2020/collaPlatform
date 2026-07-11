@@ -3,7 +3,7 @@ import { Alert, Button, Card, Skeleton, Space, Tag, Typography } from 'antd'
 import { LinkOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 
-import { resolveNavigationPath } from '../../../shared/client/collaClient'
+import { normalizeKnowledgeContentPath, resolveNavigationPath } from '../../../shared/client/collaClient'
 import { getObjectNavigation, getPermissionExplanation, resolveInternalLink } from '../api/platformObjectsApi'
 import type { PlatformObjectSummary } from '../api/platformObjectsApi'
 import { objectTypeText } from '../objectTypeLabels'
@@ -63,8 +63,8 @@ export function ObjectSummaryCard({ summary, onOpen }: { summary: PlatformObject
   const canOpen = summary.accessState === 'available' && Boolean(summary.webPath || summary.objectId)
   const knowledgePath = metadataText(summary.metadata.knowledgePath)
   const knowledgeBaseName = metadataText(summary.metadata.knowledgeBaseName)
-  const displayTitle = summary.objectType === 'document' && knowledgePath ? knowledgePath : summary.title || '未命名对象'
-  const displaySubtitle = summary.objectType === 'document' && knowledgePath ? summary.title : summary.subtitle
+  const displayTitle = summary.objectType === 'knowledge_content' && knowledgePath ? knowledgePath : summary.title || '未命名对象'
+  const displaySubtitle = summary.objectType === 'knowledge_content' && knowledgePath ? summary.title : summary.subtitle
   const handleOpen = () => {
     if (onOpen) {
       onOpen()
@@ -92,10 +92,10 @@ export function ObjectSummaryCard({ summary, onOpen }: { summary: PlatformObject
           </Space>
         </Space>
         <Space size={4}>
-          {metadataText(summary.metadata.backReferencePath) ? <Button size="small" href={metadataText(summary.metadata.backReferencePath)}>回看引用</Button> : null}
+          {metadataText(summary.metadata.backReferencePath) ? <Button size="small" href={normalizeKnowledgeContentPath(metadataText(summary.metadata.backReferencePath))}>回看引用</Button> : null}
           {canOpen ? (
             <Button size="small" loading={openMutation.isPending} onClick={handleOpen}>
-              {summary.objectType === 'document' ? '打开知识内容' : '打开'}
+              {summary.objectType === 'knowledge_content' ? '打开知识内容' : '打开'}
             </Button>
           ) : null}
         </Space>

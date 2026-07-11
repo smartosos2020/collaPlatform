@@ -2,7 +2,6 @@ package com.colla.platform.modules.workspace.domain;
 
 import com.colla.platform.modules.base.domain.BaseModels.BaseSummary;
 import com.colla.platform.modules.approval.domain.ApprovalModels.ApprovalTaskSummary;
-import com.colla.platform.modules.doc.domain.DocumentModels.DocumentSummary;
 import com.colla.platform.modules.im.domain.ImModels.ConversationSummary;
 import com.colla.platform.modules.notification.domain.NotificationModels.NotificationItem;
 import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectSummary;
@@ -20,7 +19,6 @@ public final class WorkspaceModels {
         List<ConversationSummary> unreadConversations,
         long unreadNotificationCount,
         List<NotificationItem> latestNotifications,
-        List<DocumentSummary> recentDocuments,
         List<PlatformObjectSummary> recentKnowledgeContents,
         List<BaseSummary> recentBases,
         List<PlatformObjectSummary> recentObjects,

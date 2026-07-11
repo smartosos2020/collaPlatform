@@ -47,15 +47,15 @@ public class JdbcSearchRepository implements SearchRepository {
         if (filters != null && filters.directoryId() != null) {
             filterSql.append(
                 """
-                  and s.object_type = 'document'
+                  and s.object_type = 'knowledge_content'
                   and exists (
                       with recursive subtree(id) as (
                           select d.id
-                          from documents d
+                          from knowledge_base_items d
                           where d.workspace_id = s.workspace_id and d.id = ?
                           union all
                           select child.id
-                          from documents child
+                          from knowledge_base_items child
                           join subtree parent on parent.id = child.parent_id
                           where child.workspace_id = s.workspace_id and child.deleted_at is null
                       )
@@ -65,23 +65,23 @@ public class JdbcSearchRepository implements SearchRepository {
             );
             args.add(filters.directoryId());
         }
-        if (filters != null && filters.docType() != null) {
-            filterSql.append(" and s.object_type = 'document' and s.doc_type = ?\n");
-            args.add(filters.docType());
+        if (filters != null && filters.contentType() != null) {
+            filterSql.append(" and s.object_type = 'knowledge_content' and s.content_type = ?\n");
+            args.add(filters.contentType());
         }
         if (filters != null && filters.tags() != null && !filters.tags().isEmpty()) {
-            filterSql.append(" and s.object_type = 'document'\n");
+            filterSql.append(" and s.object_type = 'knowledge_content'\n");
             for (String tag : filters.tags()) {
                 filterSql.append(" and ? = any(s.tags)\n");
                 args.add(tag);
             }
         }
         if (filters != null && filters.maintainerId() != null) {
-            filterSql.append(" and s.object_type = 'document' and s.maintainer_id = ?\n");
+            filterSql.append(" and s.object_type = 'knowledge_content' and s.maintainer_id = ?\n");
             args.add(filters.maintainerId());
         }
         if (filters != null && filters.knowledgeStatus() != null) {
-            filterSql.append(" and s.object_type = 'document' and s.knowledge_status = ?\n");
+            filterSql.append(" and s.object_type = 'knowledge_content' and s.knowledge_status = ?\n");
             args.add(filters.knowledgeStatus());
         }
         if (filters != null && filters.updatedFrom() != null) {
@@ -103,24 +103,24 @@ public class JdbcSearchRepository implements SearchRepository {
                 select s.object_type, s.object_id, s.title, s.excerpt,
                        coalesce(
                            case
-                               when s.object_type = 'document' and s.knowledge_base_id is not null and document_comment.thread_id is not null
-                                   then '/knowledge-bases/' || s.knowledge_base_id::text || '?docId=' || s.object_id::text || '&commentId=' || document_comment.thread_id::text
+                               when s.object_type = 'knowledge_content' and s.knowledge_base_id is not null and document_comment.thread_id is not null
+                                   then '/knowledge-bases/' || s.knowledge_base_id::text || '/items/' || s.object_id::text || '?commentId=' || document_comment.thread_id::text
                            end,
                            case
-                               when s.object_type = 'document' and s.knowledge_base_id is not null and document_block.id is not null
-                                   then '/knowledge-bases/' || s.knowledge_base_id::text || '?docId=' || s.object_id::text || '#doc-block-' || document_block.id::text
+                               when s.object_type = 'knowledge_content' and s.knowledge_base_id is not null and document_block.id is not null
+                                   then '/knowledge-bases/' || s.knowledge_base_id::text || '/items/' || s.object_id::text || '#doc-block-' || document_block.id::text
                            end,
                            case
-                               when s.object_type = 'document' and s.knowledge_base_id is not null
-                                   then '/knowledge-bases/' || s.knowledge_base_id::text || '?docId=' || s.object_id::text
+                               when s.object_type = 'knowledge_content' and s.knowledge_base_id is not null
+                                   then '/knowledge-bases/' || s.knowledge_base_id::text || '/items/' || s.object_id::text
                            end,
                            case
-                               when s.object_type = 'document' and document_comment.thread_id is not null
-                                   then '/docs/' || s.object_id::text || '?commentId=' || document_comment.thread_id::text
+                               when s.object_type = 'knowledge_content' and document_comment.thread_id is not null
+                                   then '/knowledge-bases'
                            end,
                            case
-                               when s.object_type = 'document' and document_block.id is not null
-                                   then '/docs/' || s.object_id::text || '#doc-block-' || document_block.id::text
+                               when s.object_type = 'knowledge_content' and document_block.id is not null
+                                   then '/knowledge-bases'
                            end,
                            s.web_path
                        ) web_path,
@@ -130,13 +130,13 @@ public class JdbcSearchRepository implements SearchRepository {
                        s.updated_at,
                        s.knowledge_base_id,
                        kb.name knowledge_base_name,
-                       s.parent_document_id,
+                       s.parent_item_id,
                        s.directory_path,
                        s.tags,
                        s.maintainer_id,
                        coalesce(maintainer.display_name, maintainer.username) maintainer_name,
                        s.knowledge_status,
-                       s.doc_type,
+                       s.content_type,
                        case
                            when lower(s.title) like ? then 'title'
                            when lower(coalesce(array_to_string(s.tags, ' '), '')) like ? then 'tags'
@@ -145,17 +145,17 @@ public class JdbcSearchRepository implements SearchRepository {
                            when lower(coalesce(s.directory_path, '')) like ? then 'directory_path'
                            else s.hit_source
                        end hit_source
-                from search_index_documents s
+                from search_index_entries s
                 left join users maintainer on maintainer.id = s.maintainer_id and maintainer.workspace_id = s.workspace_id
                 left join knowledge_base_spaces kb on kb.id = s.knowledge_base_id
                     and kb.workspace_id = s.workspace_id
                     and kb.deleted_at is null
                 left join lateral (
                     select c.thread_id
-                    from document_comments c
-                    where s.object_type = 'document'
+                    from knowledge_content_comments c
+                    where s.object_type = 'knowledge_content'
                       and c.workspace_id = s.workspace_id
-                      and c.document_id = s.object_id
+                      and c.item_id = s.object_id
                       and c.deleted_at is null
                       and (
                           lower(c.content) like ?
@@ -166,11 +166,11 @@ public class JdbcSearchRepository implements SearchRepository {
                 ) document_comment on true
                 left join lateral (
                     select db.id
-                    from document_blocks db
-                    where s.object_type = 'document'
+                    from knowledge_content_blocks db
+                    where s.object_type = 'knowledge_content'
                       and document_comment.thread_id is null
                       and db.workspace_id = s.workspace_id
-                      and db.document_id = s.object_id
+                      and db.item_id = s.object_id
                       and db.deleted_at is null
                       and lower(coalesce(nullif(db.plain_text, ''), db.content, '')) like ?
                     order by db.sort_order
@@ -194,10 +194,10 @@ public class JdbcSearchRepository implements SearchRepository {
                           )
                       )
                       or (
-                          s.object_type = 'document'
+                          s.object_type = 'knowledge_content'
                           and exists (
                               select 1
-                              from documents d
+                              from knowledge_base_items d
                               where d.workspace_id = s.workspace_id and d.id = s.object_id and d.deleted_at is null
                                 and d.archived_at is null
                                 and (
@@ -206,7 +206,7 @@ public class JdbcSearchRepository implements SearchRepository {
                                         select 1
                                         from resource_permissions rp
                                         where rp.workspace_id = d.workspace_id
-                                          and rp.resource_type = 'document'
+                                          and rp.resource_type = 'knowledge_content'
                                           and rp.resource_id = d.id
                                           and rp.status = 'active'
                                           and (rp.expires_at is null or rp.expires_at > now())
@@ -330,7 +330,7 @@ public class JdbcSearchRepository implements SearchRepository {
     public synchronized void refreshWorkspaceIndex(UUID workspaceId) {
         // Serialize same-workspace rebuilds across bean instances and test contexts.
         jdbcTemplate.query("select pg_advisory_xact_lock(hashtext(?))", rs -> { }, "search-index:" + workspaceId);
-        jdbcTemplate.update("delete from search_index_documents where workspace_id = ?", workspaceId);
+        jdbcTemplate.update("delete from search_index_entries where workspace_id = ?", workspaceId);
         indexIssues(workspaceId);
         indexDocuments(workspaceId);
         indexBases(workspaceId);
@@ -342,7 +342,7 @@ public class JdbcSearchRepository implements SearchRepository {
     private void indexIssues(UUID workspaceId) {
         jdbcTemplate.update(
             """
-                insert into search_index_documents
+                insert into search_index_entries
                     (workspace_id, object_type, object_id, title, excerpt, web_path, deep_link, search_text, updated_at, indexed_at)
                 select i.workspace_id,
                        'issue',
@@ -372,23 +372,22 @@ public class JdbcSearchRepository implements SearchRepository {
     private void indexDocuments(UUID workspaceId) {
         jdbcTemplate.update(
             """
-                insert into search_index_documents
+                insert into search_index_entries
                     (workspace_id, object_type, object_id, title, excerpt, web_path, deep_link, search_text, updated_at, indexed_at,
-                     knowledge_base_id, parent_document_id, directory_path, tags, maintainer_id, knowledge_status, doc_type, hit_source)
+                     knowledge_base_id, parent_item_id, directory_path, tags, maintainer_id, knowledge_status, content_type, hit_source)
                 select d.workspace_id,
-                       'document',
+                       'knowledge_content',
                        d.id,
                        d.title,
-                       left(coalesce(nullif(blocks.block_text, ''), d.content, d.title), 240),
+                       left(coalesce(nullif(blocks.block_text, ''), d.title), 240),
                        case
-                           when kb.id is null then '/docs/' || d.id::text
-                           else '/knowledge-bases/' || kb.id::text || '?docId=' || d.id::text
+                           when kb.id is null then '/knowledge-bases'
+                           else '/knowledge-bases/' || kb.id::text || '/items/' || d.id::text
                        end,
-                       'colla://document/' || d.id::text,
+                       'colla://knowledge-content/' || d.id::text || case when kb.id is null then '' else '?spaceId=' || kb.id::text end,
                        coalesce(d.title, '') || ' ' ||
                            coalesce(kb.name, '') || ' ' ||
                            coalesce(d.description, '') || ' ' ||
-                           coalesce(d.content, '') || ' ' ||
                            coalesce(blocks.block_text, '') || ' ' ||
                            coalesce(comments.comment_text, '') || ' ' ||
                            coalesce(array_to_string(d.tags, ' '), '') || ' ' ||
@@ -403,9 +402,9 @@ public class JdbcSearchRepository implements SearchRepository {
                        d.tags,
                        d.maintainer_id,
                        d.knowledge_status,
-                       d.doc_type,
+                       d.content_type,
                        'title'
-                from documents d
+                from knowledge_base_items d
                 left join lateral (
                     select k.id, k.name
                     from knowledge_base_spaces k
@@ -414,13 +413,13 @@ public class JdbcSearchRepository implements SearchRepository {
                       and exists (
                           with recursive subtree(id) as (
                               select root.id
-                              from documents root
+                              from knowledge_base_items root
                               where root.workspace_id = k.workspace_id
-                                and root.id = k.root_document_id
+                                and root.id = k.root_item_id
                                 and root.deleted_at is null
                               union all
                               select child.id
-                              from documents child
+                              from knowledge_base_items child
                               join subtree parent on parent.id = child.parent_id
                               where child.workspace_id = k.workspace_id
                                 and child.deleted_at is null
@@ -433,11 +432,11 @@ public class JdbcSearchRepository implements SearchRepository {
                 left join lateral (
                     with recursive ancestors(id, parent_id, title, depth) as (
                         select current_doc.id, current_doc.parent_id, current_doc.title, 0
-                        from documents current_doc
+                        from knowledge_base_items current_doc
                         where current_doc.workspace_id = d.workspace_id and current_doc.id = d.id
                         union all
                         select parent.id, parent.parent_id, parent.title, ancestors.depth + 1
-                        from documents parent
+                        from knowledge_base_items parent
                         join ancestors on ancestors.parent_id = parent.id
                         where parent.workspace_id = d.workspace_id and parent.deleted_at is null
                     )
@@ -455,16 +454,16 @@ public class JdbcSearchRepository implements SearchRepository {
                         end,
                         ' ' order by db.sort_order
                     ) block_text
-                    from document_blocks db
+                    from knowledge_content_blocks db
                     where db.workspace_id = d.workspace_id
-                      and db.document_id = d.id
+                      and db.item_id = d.id
                       and db.deleted_at is null
                 ) blocks on true
                 left join lateral (
                     select string_agg(coalesce(c.content, '') || ' ' || coalesce(c.anchor_text, ''), ' ' order by c.created_at) comment_text
-                    from document_comments c
+                    from knowledge_content_comments c
                     where c.workspace_id = d.workspace_id
-                      and c.document_id = d.id
+                      and c.item_id = d.id
                       and c.deleted_at is null
                 ) comments on true
                 where d.workspace_id = ? and d.deleted_at is null and d.archived_at is null
@@ -476,12 +475,12 @@ public class JdbcSearchRepository implements SearchRepository {
                               search_text = excluded.search_text,
                               updated_at = excluded.updated_at,
                               knowledge_base_id = excluded.knowledge_base_id,
-                              parent_document_id = excluded.parent_document_id,
+                              parent_item_id = excluded.parent_item_id,
                               directory_path = excluded.directory_path,
                               tags = excluded.tags,
                               maintainer_id = excluded.maintainer_id,
                               knowledge_status = excluded.knowledge_status,
-                              doc_type = excluded.doc_type,
+                              content_type = excluded.content_type,
                               hit_source = excluded.hit_source,
                               indexed_at = now()
                 """,
@@ -492,7 +491,7 @@ public class JdbcSearchRepository implements SearchRepository {
     private void indexBaseRecords(UUID workspaceId) {
         jdbcTemplate.update(
             """
-                insert into search_index_documents
+                insert into search_index_entries
                     (workspace_id, object_type, object_id, title, excerpt, web_path, deep_link, search_text, updated_at, indexed_at)
                 select br.workspace_id,
                        'base_record',
@@ -527,7 +526,7 @@ public class JdbcSearchRepository implements SearchRepository {
     private void indexBases(UUID workspaceId) {
         jdbcTemplate.update(
             """
-                insert into search_index_documents
+                insert into search_index_entries
                     (workspace_id, object_type, object_id, title, excerpt, web_path, deep_link, search_text, updated_at, indexed_at)
                 select b.workspace_id,
                        'base',
@@ -557,7 +556,7 @@ public class JdbcSearchRepository implements SearchRepository {
     private void indexBaseTables(UUID workspaceId) {
         jdbcTemplate.update(
             """
-                insert into search_index_documents
+                insert into search_index_entries
                     (workspace_id, object_type, object_id, title, excerpt, web_path, deep_link, search_text, updated_at, indexed_at)
                 select bt.workspace_id,
                        'base_table',
@@ -588,7 +587,7 @@ public class JdbcSearchRepository implements SearchRepository {
     private void indexMessages(UUID workspaceId) {
         jdbcTemplate.update(
             """
-                insert into search_index_documents
+                insert into search_index_entries
                     (workspace_id, object_type, object_id, title, excerpt, web_path, deep_link, search_text, updated_at, indexed_at)
                 select m.workspace_id,
                        'message',
@@ -630,13 +629,13 @@ public class JdbcSearchRepository implements SearchRepository {
             "当前用户具备该对象的查看权限。",
             rs.getObject("knowledge_base_id", UUID.class),
             rs.getString("knowledge_base_name"),
-            rs.getObject("parent_document_id", UUID.class),
+            rs.getObject("parent_item_id", UUID.class),
             rs.getString("directory_path"),
             textArray(rs, "tags"),
             rs.getObject("maintainer_id", UUID.class),
             rs.getString("maintainer_name"),
             rs.getString("knowledge_status"),
-            rs.getString("doc_type"),
+            rs.getString("content_type"),
             rs.getString("hit_source")
         );
     }

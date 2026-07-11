@@ -2,6 +2,7 @@ package com.colla.platform.modules.search.application;
 
 import com.colla.platform.modules.event.domain.DomainEventModels.DomainEvent;
 import com.colla.platform.modules.search.infrastructure.SearchRepository;
+import com.colla.platform.modules.platform.domain.PlatformObjectTypes;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
@@ -10,7 +11,7 @@ import org.springframework.stereotype.Service;
 public class SearchIndexService {
     private static final Set<String> INDEXED_AGGREGATE_TYPES = Set.of(
         "issue",
-        "document",
+        "knowledge_content",
         "base",
         "base_table",
         "base_record",
@@ -28,7 +29,7 @@ public class SearchIndexService {
     }
 
     public void handleEvent(DomainEvent event) {
-        if (INDEXED_AGGREGATE_TYPES.contains(event.aggregateType())) {
+        if (INDEXED_AGGREGATE_TYPES.contains(PlatformObjectTypes.canonicalize(event.aggregateType()))) {
             refreshWorkspaceIndex(event.workspaceId());
         }
     }

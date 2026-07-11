@@ -83,9 +83,9 @@ export function AdminKnowledgeBasesPage() {
     },
   })
   const bulkReviewMutation = useMutation({
-    mutationFn: (documentIds: string[]) =>
+    mutationFn: (itemIds: string[]) =>
       bulkGovernAdminKnowledgeBase(effectiveSpaceId as string, {
-        documentIds,
+        itemIds,
         requestReview: true,
         reviewDueAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
       }),
@@ -100,7 +100,7 @@ export function AdminKnowledgeBasesPage() {
   const selectedRiskDocuments = useMemo(
     () =>
       risks
-        .filter((risk) => selectedRiskIds.includes(risk.id) && risk.resourceType === 'document')
+        .filter((risk) => selectedRiskIds.includes(risk.id) && risk.resourceType === 'knowledge_content')
         .map((risk) => risk.resourceId),
     [risks, selectedRiskIds],
   )
@@ -186,7 +186,7 @@ export function AdminKnowledgeBasesPage() {
                   <small>{space.code}</small>
                   <Space size={6} wrap>
                     <StatusBadge status={space.status} />
-                    <Tag>{space.documentCount} 内容</Tag>
+                    <Tag>{space.itemCount} 内容</Tag>
                   </Space>
                 </span>
               </button>
@@ -210,7 +210,7 @@ export function AdminKnowledgeBasesPage() {
                   <Space wrap className="admin-kb-hero-tags">
                     <Tag>维护人 {selectedSpace.ownerName || '-'}</Tag>
                     <Tag>默认权限 {selectedSpace.defaultPermissionLevel}</Tag>
-                    <Tag>首页 {selectedSpace.homeDocumentId}</Tag>
+                    <Tag>首页 {selectedSpace.homeItemId}</Tag>
                   </Space>
                 ) : null}
               </div>
@@ -261,10 +261,10 @@ export function AdminKnowledgeBasesPage() {
 
           <section className="admin-kb-health-grid">
             <Card loading={loading}>
-              <Statistic title="内容节点" value={health?.activeDocumentCount ?? 0} suffix={`/ ${health?.documentCount ?? 0}`} />
+              <Statistic title="内容节点" value={health?.activeItemCount ?? 0} suffix={`/ ${health?.itemCount ?? 0}`} />
             </Card>
             <Card loading={loading}>
-              <Statistic title="维护缺口" value={(health?.unmaintainedDocumentCount ?? 0) + (health?.ownerlessDocumentCount ?? 0)} />
+              <Statistic title="维护缺口" value={(health?.unmaintainedItemCount ?? 0) + (health?.ownerlessItemCount ?? 0)} />
             </Card>
             <Card loading={loading}>
               <Statistic title="高风险权限" value={health?.highRiskPermissionCount ?? 0} prefix={<ExclamationCircleOutlined />} />
@@ -299,7 +299,7 @@ export function AdminKnowledgeBasesPage() {
                 rowSelection={{
                   selectedRowKeys: selectedRiskIds,
                   onChange: setSelectedRiskIds,
-                  getCheckboxProps: (risk) => ({ disabled: risk.resourceType !== 'document' }),
+                  getCheckboxProps: (risk) => ({ disabled: risk.resourceType !== 'knowledge_content' }),
                 }}
                 locale={{ emptyText: <TableEmptyState icon={<SafetyCertificateOutlined />} description="暂无治理风险" /> }}
                 pagination={{ pageSize: 6, showSizeChanger: false }}
@@ -315,11 +315,11 @@ export function AdminKnowledgeBasesPage() {
                 <Card size="small" title="低访问内容">
                   <List
                     size="small"
-                    dataSource={governanceQuery.data?.accessStats.lowAccessDocuments ?? []}
+                    dataSource={governanceQuery.data?.accessStats.lowAccessItems ?? []}
                     locale={{ emptyText: <TableEmptyState description="暂无低访问内容" /> }}
                     renderItem={(item) => (
                       <List.Item>
-                        <List.Item.Meta title={item.document.title} description={`访问 ${item.accessCount} · 访客 ${item.visitorCount}`} />
+                        <List.Item.Meta title={item.item.title} description={`访问 ${item.accessCount} · 访客 ${item.visitorCount}`} />
                       </List.Item>
                     )}
                   />

@@ -2,6 +2,7 @@ package com.colla.platform.modules.platform.application;
 
 import com.colla.platform.modules.platform.domain.PlatformModels.ParsedInternalLink;
 import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectSummary;
+import com.colla.platform.modules.platform.domain.PlatformObjectTypes;
 import com.colla.platform.modules.platform.infrastructure.PlatformObjectRepository;
 import com.colla.platform.shared.auth.CurrentUser;
 import java.net.URI;
@@ -16,6 +17,9 @@ public class InternalLinkService {
     private static final Pattern WEB_OBJECT_PATTERN = Pattern.compile("^/(issues|docs|bases|approvals)/([0-9a-fA-F-]{36})(?:/.*)?$");
     private static final Pattern IM_MESSAGE_PATTERN = Pattern.compile("^/im\\?(?:.*&)?messageId=([0-9a-fA-F-]{36})(?:&.*)?$");
     private static final Pattern COLLA_OBJECT_PATTERN = Pattern.compile("^colla://([a-zA-Z_-]+)/([0-9a-fA-F-]{36})(?:/.*)?$");
+    private static final Pattern KNOWLEDGE_CONTENT_PATTERN = Pattern.compile(
+        "^/knowledge-bases/[0-9a-fA-F-]{36}/items/([0-9a-fA-F-]{36})(?:[?#].*)?$"
+    );
 
     private final PlatformObjectRepository objectRepository;
     private final PlatformObjectResolverRegistry resolverRegistry;
@@ -45,6 +49,11 @@ public class InternalLinkService {
         Matcher imMessageMatcher = IM_MESSAGE_PATTERN.matcher(normalized);
         if (imMessageMatcher.matches()) {
             return toParsed(currentUser, source, "message", UUID.fromString(imMessageMatcher.group(1)));
+        }
+
+        Matcher knowledgeMatcher = KNOWLEDGE_CONTENT_PATTERN.matcher(normalized);
+        if (knowledgeMatcher.matches()) {
+            return toParsed(currentUser, source, PlatformObjectTypes.KNOWLEDGE_CONTENT, UUID.fromString(knowledgeMatcher.group(1)));
         }
 
         Matcher deepMatcher = COLLA_OBJECT_PATTERN.matcher(normalized);
@@ -79,7 +88,7 @@ public class InternalLinkService {
     private String webType(String segment) {
         return switch (segment) {
             case "issues" -> "issue";
-            case "docs" -> "document";
+            case "docs" -> PlatformObjectTypes.KNOWLEDGE_CONTENT;
             case "bases" -> "base";
             case "approvals" -> "approval";
             default -> segment;
@@ -87,6 +96,6 @@ public class InternalLinkService {
     }
 
     private String deepType(String type) {
-        return type.replace("-", "_");
+        return PlatformObjectTypes.canonicalize(type);
     }
 }

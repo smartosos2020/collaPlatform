@@ -65,15 +65,15 @@ export function SearchPage() {
                       <Space wrap>
                         <Tag>{objectTypeText[item.objectType] ?? item.objectType}</Tag>
                         {item.accessState === 'available' ? <Tag color="green">可访问</Tag> : <Tag color="orange">{item.accessState}</Tag>}
-                        {item.objectType === 'document' && item.docType ? <Tag>{docTypeText(item.docType)}</Tag> : null}
-                        {item.objectType === 'document' && item.knowledgeBaseName ? <Tag color="purple">{item.knowledgeBaseName}</Tag> : null}
+                        {item.objectType === 'knowledge_content' && item.contentType ? <Tag>{contentTypeText(item.contentType)}</Tag> : null}
+                        {item.objectType === 'knowledge_content' && item.knowledgeBaseName ? <Tag color="purple">{item.knowledgeBaseName}</Tag> : null}
                         <Typography.Text strong>{resultTitle(item)}</Typography.Text>
                       </Space>
-                      {item.objectType === 'document' && item.directoryPath ? (
+                      {item.objectType === 'knowledge_content' && item.directoryPath ? (
                         <Typography.Text type="secondary">路径：{item.directoryPath}</Typography.Text>
                       ) : null}
                       <Typography.Paragraph type="secondary">{item.excerpt || item.permissionExplanation || item.webPath}</Typography.Paragraph>
-                      {item.objectType === 'document' && item.tags?.length ? (
+                      {item.objectType === 'knowledge_content' && item.tags?.length ? (
                         <Space wrap size={4}>
                           {item.tags.map((tag) => <Tag key={tag}>{tag}</Tag>)}
                         </Space>
@@ -82,7 +82,7 @@ export function SearchPage() {
                     </div>
                     {item.accessState === 'available' && (item.webPath || item.deepLink) ? (
                       <Button type="link" onClick={() => navigate(resolveNavigationPath(item) ?? item.webPath ?? '/')}>
-                        {item.objectType === 'document' ? '打开知识内容' : '打开'}
+                        {item.objectType === 'knowledge_content' ? '打开知识内容' : '打开'}
                       </Button>
                     ) : null}
                   </div>
@@ -97,7 +97,6 @@ export function SearchPage() {
     </div>
   )
 }
-
 function groupResults(items: SearchResult[]) {
   return items.reduce<Record<string, SearchResult[]>>((acc, item) => {
     acc[item.objectType] = acc[item.objectType] ?? []
@@ -110,13 +109,13 @@ function resultTitle(item: SearchResult) {
   if (item.accessState !== 'available') {
     return '不可访问对象'
   }
-  if (item.objectType === 'document' && item.directoryPath) {
+  if (item.objectType === 'knowledge_content' && item.directoryPath) {
     return item.directoryPath
   }
   return item.title || '未命名对象'
 }
 
-function docTypeText(value: SearchResult['docType']) {
+function contentTypeText(value: SearchResult['contentType']) {
   if (!value) return ''
   return ({
     space: '知识库根',

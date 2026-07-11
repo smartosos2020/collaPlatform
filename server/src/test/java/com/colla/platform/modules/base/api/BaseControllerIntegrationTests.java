@@ -64,10 +64,10 @@ class BaseControllerIntegrationTests {
         UUID statusFieldId = createField(adminToken, baseId, tableId, "状态", "status", Map.of("options", List.of("未开始", "进行中", "完成")), false);
         UUID tagsFieldId = createField(adminToken, baseId, tableId, "标签", "multi_select", Map.of("options", List.of("产品", "后端", "前端")), false);
         UUID urlFieldId = createField(adminToken, baseId, tableId, "官网", "url", Map.of(), false);
-        UUID objectLinkFieldId = createField(adminToken, baseId, tableId, "关联文档", "object_link", Map.of("targetTypes", List.of("document")), false);
+        UUID objectLinkFieldId = createField(adminToken, baseId, tableId, "关联知识内容", "object_link", Map.of("targetTypes", List.of("knowledge_content")), false);
         UUID fileId = createFile(adminToken, baseId);
         UUID attachmentFieldId = createField(adminToken, baseId, tableId, "附件", "attachment", Map.of(), false);
-        UUID docId = createDocument(adminToken);
+        KnowledgeFixture content = createItem(adminToken);
 
         mockMvc.perform(post("/api/bases/" + baseId + "/tables/" + tableId + "/records")
                 .header("Authorization", "Bearer " + adminToken)
@@ -86,7 +86,7 @@ class BaseControllerIntegrationTests {
         values.put(statusFieldId.toString(), "进行中");
         values.put(tagsFieldId.toString(), List.of("产品", "后端"));
         values.put(urlFieldId.toString(), "https://example.com/login");
-        values.put(objectLinkFieldId.toString(), Map.of("objectType", "document", "objectId", docId.toString()));
+        values.put(objectLinkFieldId.toString(), Map.of("objectType", "knowledge_content", "objectId", content.itemId().toString()));
         values.put(attachmentFieldId.toString(), fileId.toString());
         JsonNode record = createRecord(adminToken, baseId, tableId, values);
         UUID recordId = UUID.fromString(record.get("id").asText());
@@ -94,7 +94,7 @@ class BaseControllerIntegrationTests {
         mockMvc.perform(get("/api/base-records/" + recordId + "/detail")
                 .header("Authorization", "Bearer " + adminToken))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.relations[0].targetType").value("document"))
+            .andExpect(jsonPath("$.relations[0].targetType").value("knowledge_content"))
             .andExpect(jsonPath("$.activities[0].action").value("base.record.created"));
 
         mockMvc.perform(post("/api/base-records/" + recordId + "/comments")
@@ -176,7 +176,7 @@ class BaseControllerIntegrationTests {
             .andExpect(jsonPath("$.title").value("Login Case"))
             .andExpect(jsonPath("$.webPath").value("/bases/" + baseId + "/tables/" + tableId + "/records/" + recordId));
 
-        mockMvc.perform(post("/api/docs/" + docId + "/relations")
+        mockMvc.perform(post(itemPath(content) + "/relations")
                 .header("Authorization", "Bearer " + adminToken)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"targetType\":\"base_record\",\"targetId\":\"" + recordId + "\"}"))
@@ -285,16 +285,30 @@ class BaseControllerIntegrationTests {
         return UUID.fromString(objectMapper.readTree(response).get("uploadId").asText());
     }
 
-    private UUID createDocument(String token) throws Exception {
-        String response = mockMvc.perform(post("/api/docs")
+    private KnowledgeFixture createItem(String token) throws Exception {
+        String suffix = UUID.randomUUID().toString().substring(0, 8);
+        String spaceResponse = mockMvc.perform(post("/api/knowledge-bases")
                 .header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"title\":\"Base Relation Note\",\"content\":\"M6\"}"))
+                .content("{\"name\":\"Base Relation Knowledge\",\"code\":\"base-rel-" + suffix + "\"}"))
             .andExpect(status().isOk())
-            .andReturn()
-            .getResponse()
-            .getContentAsString();
-        return UUID.fromString(objectMapper.readTree(response).get("document").get("id").asText());
+            .andReturn().getResponse().getContentAsString();
+        JsonNode space = objectMapper.readTree(spaceResponse).get("space");
+        UUID spaceId = UUID.fromString(space.get("id").asText());
+        String response = mockMvc.perform(post("/api/knowledge-bases/" + spaceId + "/items")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"parentId\":\"" + space.get("rootItemId").asText() + "\",\"title\":\"Base Relation Note\",\"contentType\":\"markdown\",\"content\":\"M6\"}"))
+            .andExpect(status().isOk())
+            .andReturn().getResponse().getContentAsString();
+        return new KnowledgeFixture(spaceId, UUID.fromString(objectMapper.readTree(response).get("item").get("id").asText()));
+    }
+
+    private String itemPath(KnowledgeFixture fixture) {
+        return "/api/knowledge-bases/" + fixture.spaceId() + "/items/" + fixture.itemId();
+    }
+
+    private record KnowledgeFixture(UUID spaceId, UUID itemId) {
     }
 
     private UUID createConversation(String token, UUID memberId) throws Exception {

@@ -86,7 +86,7 @@ export function ResourcePermissionsModal({ open, resourceType, resourceId, resou
   const refresh = async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['resource-permissions', resourceType, resourceId] }),
-      queryClient.invalidateQueries({ queryKey: ['docs'] }),
+      queryClient.invalidateQueries({ queryKey: ['knowledge-content'] }),
       queryClient.invalidateQueries({ queryKey: ['bases'] }),
       queryClient.invalidateQueries({ queryKey: ['projects'] }),
       queryClient.invalidateQueries({ queryKey: ['knowledge-bases'] }),
@@ -265,7 +265,7 @@ export function ResourcePermissionsModal({ open, resourceType, resourceId, resou
       footer={null}
     >
       <Space orientation="vertical" size={16} className="page-stack">
-        {resourceType === 'document' ? (
+        {resourceType === 'knowledge_content' ? (
           <Space wrap>
             <Button danger loading={breakInheritanceMutation.isPending} onClick={confirmBreakInheritance}>
               断开继承

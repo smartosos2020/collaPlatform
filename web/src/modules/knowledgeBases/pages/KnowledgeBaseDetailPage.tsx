@@ -24,11 +24,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 
 import {
-  getDocumentCollaborationHealth,
-  type DocumentSummary,
-  type DocumentTemplate,
-  type DocumentTreeNode,
-} from '../../docs/api/docsApi'
+  getKnowledgeContentCollaborationHealth,
+  type KnowledgeBaseItem,
+  type KnowledgeContentTemplate,
+  type KnowledgeBaseItemTreeNode,
+} from '../../knowledgeBases/content/api/knowledgeContentApi'
 import { searchAll, type SearchResult } from '../../search/api/searchApi'
 import { ResourcePermissionsModal } from '../../permissions/components/ResourcePermissionsModal'
 import { requestResourcePermission, type ManagedResourceType } from '../../permissions/api/resourcePermissionsApi'
@@ -52,13 +52,13 @@ import {
 
 type CreateNodeForm = {
   title: string
-  docType: 'markdown' | 'folder' | 'object_ref' | 'external_link'
+  contentType: 'markdown' | 'folder' | 'object_ref' | 'external_link'
   parentId?: string
   targetObjectType?: string
   targetObjectId?: string
   targetRoute?: string
-  displayMode?: DocumentSummary['displayMode']
-  targetTitleStrategy?: DocumentSummary['targetTitleStrategy']
+  displayMode?: KnowledgeBaseItem['displayMode']
+  targetTitleStrategy?: KnowledgeBaseItem['targetTitleStrategy']
   entryAlias?: string
   targetBaseMode?: 'existing' | 'new'
   targetBaseId?: string
@@ -102,7 +102,7 @@ export function KnowledgeBaseDetailPage() {
   const [kbSearchStatus, setKbSearchStatus] = useState<string | undefined>()
   const [kbSearchUpdatedFrom, setKbSearchUpdatedFrom] = useState('')
   const [kbSearchUpdatedTo, setKbSearchUpdatedTo] = useState('')
-  const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null)
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
   const [templateOpen, setTemplateOpen] = useState(false)
   const [moveOpen, setMoveOpen] = useState(false)
@@ -113,28 +113,24 @@ export function KnowledgeBaseDetailPage() {
   const [moveForm] = Form.useForm<MoveNodeForm>()
   const [accessRequestForm] = Form.useForm<{ reason?: string }>()
   const mainScrollRef = useRef<HTMLElement | null>(null)
-  const createDocType = Form.useWatch('docType', createForm)
+  const createContentType = Form.useWatch('contentType', createForm)
   const createTargetObjectType = Form.useWatch('targetObjectType', createForm)
   const createTargetBaseMode = Form.useWatch('targetBaseMode', createForm)
   const createTargetBaseId = Form.useWatch('targetBaseId', createForm)
   const createTargetBaseTableId = Form.useWatch('targetBaseTableId', createForm)
-  const contentPath = useCallback((documentId: string) => `/knowledge-bases/${spaceId}/items/${documentId}`, [spaceId])
+  const contentPath = useCallback((itemId: string) => `/knowledge-bases/${spaceId}/items/${itemId}`, [spaceId])
   const directoryPath = useCallback(
-    (documentId: string, view = 'directory') => {
+    (itemId: string, view = 'directory') => {
       const params = new URLSearchParams()
-      params.set('docId', documentId)
+      params.set('itemId', itemId)
       params.set('view', view)
       return `/knowledge-bases/${spaceId}?${params.toString()}`
     },
     [spaceId],
   )
-  const normalizeKnowledgePath = useCallback(
-    (path: string) => {
-      const match = path.match(/^\/docs\/([^/?#]+)(.*)$/)
-      return match ? `${contentPath(match[1])}${match[2] ?? ''}` : path
-    },
-    [contentPath],
-  )
+  const normalizeKnowledgePath = useCallback((path: string) => {
+    return path
+  }, [])
 
   const spacesQuery = useQuery({ queryKey: ['knowledge-bases', false], queryFn: () => listKnowledgeBases() })
   const spaceQuery = useQuery({
@@ -160,12 +156,12 @@ export function KnowledgeBaseDetailPage() {
   const createTargetBaseQuery = useQuery({
     queryKey: ['bases', createTargetBaseId, 'kb-object-picker'],
     queryFn: () => getBase(createTargetBaseId || ''),
-    enabled: Boolean(createOpen && createDocType === 'object_ref' && createTargetObjectType === 'base' && createTargetBaseId),
+    enabled: Boolean(createOpen && createContentType === 'object_ref' && createTargetObjectType === 'base' && createTargetBaseId),
   })
   const createTargetBaseTableQuery = useQuery({
     queryKey: ['bases', createTargetBaseId, 'tables', createTargetBaseTableId, 'kb-object-picker'],
     queryFn: () => getTable(createTargetBaseId || '', createTargetBaseTableId || ''),
-    enabled: Boolean(createOpen && createDocType === 'object_ref' && createTargetObjectType === 'base' && createTargetBaseId && createTargetBaseTableId),
+    enabled: Boolean(createOpen && createContentType === 'object_ref' && createTargetObjectType === 'base' && createTargetBaseId && createTargetBaseTableId),
   })
   const favoriteObjectsQuery = useQuery({ queryKey: ['platform', 'favorites', 'kb-detail'], queryFn: () => listFavoriteObjects(50) })
   const discoveryQuery = useQuery({
@@ -174,134 +170,134 @@ export function KnowledgeBaseDetailPage() {
     enabled: Boolean(spaceId),
   })
   const space = spaceQuery.data?.space ?? null
-  const rootDocumentId = space?.rootDocumentId ?? null
-  const homeDocumentId = space?.homeDocumentId ?? null
+  const rootItemId = space?.rootItemId ?? null
+  const homeItemId = space?.homeItemId ?? null
   const rootNode = useMemo(
-    () => (rootDocumentId ? findTreeNode(treeQuery.data ?? [], rootDocumentId) : null),
-    [rootDocumentId, treeQuery.data],
+    () => (rootItemId ? findTreeNode(treeQuery.data ?? [], rootItemId) : null),
+    [rootItemId, treeQuery.data],
   )
   const flatNodes = useMemo(() => flattenTree(rootNode), [rootNode])
-  const documents = useMemo(() => flatNodes.map((node) => node.document), [flatNodes])
+  const items = useMemo(() => flatNodes.map((node) => node.item), [flatNodes])
   const queryState = useMemo(() => {
     const params = new URLSearchParams(location.search)
     return {
-      documentId: params.get('docId'),
+      itemId: params.get('itemId'),
       view: params.get('view') ?? 'directory',
       mode: params.get('mode') ?? 'browse',
       blockId: params.get('blockId'),
       commentId: params.get('commentId'),
     }
   }, [location.search])
-  const queryDocumentId = queryState.documentId
-  const queryDocumentMissing = Boolean(queryDocumentId && documents.length > 0 && !documents.some((document) => document.id === queryDocumentId))
-  const activeDocumentId =
-    selectedDocumentId && documents.some((document) => document.id === selectedDocumentId)
-      ? selectedDocumentId
-      : queryDocumentId && documents.some((document) => document.id === queryDocumentId)
-        ? queryDocumentId
-        : homeDocumentId
-  const selectedDocument = documents.find((document) => document.id === activeDocumentId) ?? spaceQuery.data?.homeDocument ?? null
+  const queryItemId = queryState.itemId
+  const queryItemMissing = Boolean(queryItemId && items.length > 0 && !items.some((document) => document.id === queryItemId))
+  const activeItemId =
+    selectedItemId && items.some((document) => document.id === selectedItemId)
+      ? selectedItemId
+      : queryItemId && items.some((document) => document.id === queryItemId)
+        ? queryItemId
+        : homeItemId
+  const selectedItem = items.find((document) => document.id === activeItemId) ?? spaceQuery.data?.homeItem ?? null
   const collaborationHealthQuery = useQuery({
-    queryKey: ['docs', activeDocumentId, 'collaboration', 'health', 'kb-detail'],
-    queryFn: () => getDocumentCollaborationHealth(activeDocumentId || ''),
-    enabled: Boolean(activeDocumentId && selectedDocument?.docType === 'markdown'),
+    queryKey: ['knowledge-content', activeItemId, 'collaboration', 'health', 'kb-detail'],
+    queryFn: () => getKnowledgeContentCollaborationHealth(spaceId, activeItemId || ''),
+    enabled: Boolean(activeItemId && selectedItem?.contentType === 'markdown'),
     refetchInterval: 15000,
   })
   const expandedKeys = spaceId ? expandedKeysBySpace[spaceId] ?? readExpandedKeys(spaceId) : []
   const selectedDirectoryId =
-    selectedDocument?.docType === 'folder' || selectedDocument?.docType === 'space'
-      ? selectedDocument.id
-      : selectedDocument?.parentId ?? rootDocumentId ?? undefined
-  const favoriteDocumentIds = useMemo(
+    selectedItem?.contentType === 'folder' || selectedItem?.contentType === 'space'
+      ? selectedItem.id
+      : selectedItem?.parentId ?? rootItemId ?? undefined
+  const favoriteItemIds = useMemo(
     () =>
       new Set(
         (favoriteObjectsQuery.data ?? [])
-          .filter((item) => item.objectType === 'document' && item.accessState === 'available')
+          .filter((item) => item.objectType === 'knowledge_content' && item.accessState === 'available')
           .map((item) => item.objectId),
       ),
     [favoriteObjectsQuery.data],
   )
   const treeData = useMemo(
-    () => buildKbTreeData(rootNode ? [rootNode] : [], directorySearch, selectedDocument?.id ?? null, favoriteDocumentIds),
-    [directorySearch, favoriteDocumentIds, rootNode, selectedDocument?.id],
+    () => buildKbTreeData(rootNode ? [rootNode] : [], directorySearch, selectedItem?.id ?? null, favoriteItemIds),
+    [directorySearch, favoriteItemIds, rootNode, selectedItem?.id],
   )
   const directoryOptions = useMemo(
     () =>
-      documents
-        .filter((document) => ['space', 'folder'].includes(document.docType) && !document.archived)
-        .sort(documentSort)
-        .map((document) => ({ label: `${docTypeText(document.docType)} / ${document.title}`, value: document.id })),
-    [documents],
+      items
+        .filter((document) => ['space', 'folder'].includes(document.contentType) && !document.archived)
+        .sort(knowledgeItemSort)
+        .map((document) => ({ label: `${contentTypeText(document.contentType)} / ${document.title}`, value: document.id })),
+    [items],
   )
   const movableDirectoryOptions = useMemo(
     () =>
       directoryOptions.filter((option) => {
-        if (!selectedDocument || option.value === selectedDocument.id) {
+        if (!selectedItem || option.value === selectedItem.id) {
           return false
         }
-        return !isDescendantDocument(documents, selectedDocument.id, option.value)
+        return !isDescendantDocument(items, selectedItem.id, option.value)
       }),
-    [directoryOptions, documents, selectedDocument],
+    [directoryOptions, items, selectedItem],
   )
-  const recentDocuments = useMemo(
+  const recentItems = useMemo(
     () =>
-      documents
-        .filter((document) => document.docType === 'markdown' && !document.archived)
+      items
+        .filter((document) => document.contentType === 'markdown' && !document.archived)
         .sort((left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime())
         .slice(0, 6),
-    [documents],
+    [items],
   )
   const pinnedDocuments = useMemo(
     () =>
-      documents
-        .filter((document) => document.parentId === rootDocumentId && !document.archived)
-        .sort(documentSort)
+      items
+        .filter((document) => document.parentId === rootItemId && !document.archived)
+        .sort(knowledgeItemSort)
         .slice(0, 4),
-    [documents, rootDocumentId],
+    [items, rootItemId],
   )
   const commonDirectories = useMemo(
     () =>
-      documents
-        .filter((document) => document.docType === 'folder' && !document.archived)
-        .sort(documentSort)
+      items
+        .filter((document) => document.contentType === 'folder' && !document.archived)
+        .sort(knowledgeItemSort)
         .slice(0, 6),
-    [documents],
+    [items],
   )
-  const favoriteDocuments = useMemo(
-    () => documents.filter((document) => favoriteDocumentIds.has(document.id) && !document.archived).slice(0, 6),
-    [documents, favoriteDocumentIds],
+  const favoriteItems = useMemo(
+    () => items.filter((document) => favoriteItemIds.has(document.id) && !document.archived).slice(0, 6),
+    [items, favoriteItemIds],
   )
   const activeSiblings = useMemo(() => {
-    if (!selectedDocument) {
+    if (!selectedItem) {
       return []
     }
-    return documents
-      .filter((document) => (document.parentId ?? null) === (selectedDocument.parentId ?? null) && !document.archived)
-      .sort(documentSort)
-  }, [documents, selectedDocument])
-  const activeSiblingIndex = selectedDocument ? activeSiblings.findIndex((document) => document.id === selectedDocument.id) : -1
+    return items
+      .filter((document) => (document.parentId ?? null) === (selectedItem.parentId ?? null) && !document.archived)
+      .sort(knowledgeItemSort)
+  }, [items, selectedItem])
+  const activeSiblingIndex = selectedItem ? activeSiblings.findIndex((document) => document.id === selectedItem.id) : -1
   const selectedDirectoryChildren = useMemo(() => {
     if (!selectedDirectoryId) {
       return []
     }
-    return documents
+    return items
       .filter((document) => document.parentId === selectedDirectoryId && !document.archived)
-      .sort(documentSort)
-  }, [documents, selectedDirectoryId])
+      .sort(knowledgeItemSort)
+  }, [items, selectedDirectoryId])
   const maintainerOptions = useMemo(
     () =>
       Array.from(
         new Map(
-          documents
+          items
             .filter((document) => document.maintainerId)
             .map((document) => [document.maintainerId, { value: document.maintainerId || '', label: document.maintainerName || document.maintainerId || '' }]),
         ).values(),
       ),
-    [documents],
+    [items],
   )
   const knowledgeTags = useMemo(
-    () => Array.from(new Set(documents.flatMap((document) => document.tags ?? []))).sort().map((tag) => ({ value: tag, label: tag })),
-    [documents],
+    () => Array.from(new Set(items.flatMap((document) => document.tags ?? []))).sort().map((tag) => ({ value: tag, label: tag })),
+    [items],
   )
   const parsedSearchTags = useMemo(
     () => kbSearchTagText.split(',').map((tag) => tag.trim()).filter(Boolean),
@@ -326,7 +322,7 @@ export function KnowledgeBaseDetailPage() {
       searchAll(kbSearchText, 30, {
         knowledgeBaseId: spaceId,
         directoryId: kbSearchScope === 'directory' ? selectedDirectoryId : undefined,
-        docType: kbSearchDocType,
+        contentType: kbSearchDocType,
         tags: parsedSearchTags,
         maintainerId: kbSearchMaintainerId,
         knowledgeStatus: kbSearchStatus,
@@ -336,33 +332,33 @@ export function KnowledgeBaseDetailPage() {
     enabled: Boolean(spaceId) && kbSearchText.trim().length >= 2,
   })
 
-  const refresh = async (documentId = selectedDocument?.id) => {
+  const refresh = async (itemId = selectedItem?.id) => {
     await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ['docs'] }),
+      queryClient.invalidateQueries({ queryKey: ['knowledge-content'] }),
       queryClient.invalidateQueries({ queryKey: ['knowledge-bases'] }),
       queryClient.invalidateQueries({ queryKey: ['knowledge-bases', spaceId, 'discovery'] }),
-      documentId ? queryClient.invalidateQueries({ queryKey: ['docs', documentId] }) : Promise.resolve(),
+      itemId ? queryClient.invalidateQueries({ queryKey: ['knowledge-content', itemId] }) : Promise.resolve(),
     ])
   }
 
-  const openDocumentOrDirectory = useCallback(
-    (documentId: string, options?: { replace?: boolean }) => {
-      const document = documents.find((item) => item.id === documentId)
+  const openItemOrDirectory = useCallback(
+    (itemId: string, options?: { replace?: boolean }) => {
+      const document = items.find((item) => item.id === itemId)
       if (!document) {
         return
       }
-      setSelectedDocumentId(documentId)
-      if (document.docType === 'markdown') {
-        navigate(contentPath(documentId), { replace: options?.replace })
+      setSelectedItemId(itemId)
+      if (document.contentType === 'markdown') {
+        navigate(contentPath(itemId), { replace: options?.replace })
         return
       }
-      if (document.docType === 'object_ref') {
+      if (document.contentType === 'object_ref') {
         if (document.targetSummary && document.targetSummary.accessState !== 'available') {
           message.warning(targetAccessText(document.targetSummary.accessState))
           return
         }
         if (document.targetObjectType === 'base') {
-          navigate(directoryPath(documentId), { replace: options?.replace })
+          navigate(directoryPath(itemId), { replace: options?.replace })
           return
         }
         if (!document.targetRoute) {
@@ -372,20 +368,20 @@ export function KnowledgeBaseDetailPage() {
         navigate(normalizeKnowledgePath(document.targetRoute), { replace: options?.replace })
         return
       }
-      if (document.docType === 'external_link' && document.targetRoute) {
+      if (document.contentType === 'external_link' && document.targetRoute) {
         window.open(document.targetRoute, '_blank', 'noopener,noreferrer')
         return
       }
-      navigate(directoryPath(documentId), { replace: options?.replace })
+      navigate(directoryPath(itemId), { replace: options?.replace })
     },
-    [contentPath, directoryPath, documents, message, navigate, normalizeKnowledgePath],
+    [contentPath, directoryPath, items, message, navigate, normalizeKnowledgePath],
   )
 
   const setManagementView = useCallback(
     (open: boolean) => {
       const params = new URLSearchParams(location.search)
-      if (selectedDocument?.docType !== 'markdown' && selectedDocument?.id) {
-        params.set('docId', selectedDocument.id)
+      if (selectedItem?.contentType !== 'markdown' && selectedItem?.id) {
+        params.set('itemId', selectedItem.id)
       }
       if (open) {
         params.set('view', 'management')
@@ -395,12 +391,12 @@ export function KnowledgeBaseDetailPage() {
       const search = params.toString()
       navigate(`/knowledge-bases/${spaceId}${search ? `?${search}` : ''}`, { replace: false })
     },
-    [location.search, navigate, selectedDocument, spaceId],
+    [location.search, navigate, selectedItem, spaceId],
   )
 
   const createMutation = useMutation({
     mutationFn: async (values: CreateNodeForm) => {
-      if (values.docType === 'object_ref' && values.targetObjectType === 'base') {
+      if (values.contentType === 'object_ref' && values.targetObjectType === 'base') {
         let baseId = values.targetBaseId || values.targetObjectId
         let baseName = values.title
         if (values.targetBaseMode === 'new') {
@@ -417,7 +413,7 @@ export function KnowledgeBaseDetailPage() {
         return createKnowledgeBaseItem(spaceId, {
           parentId: normalizeParentId(values.parentId),
           title: values.title || baseName,
-          docType: 'object_ref',
+          contentType: 'object_ref',
           content: '',
           targetObjectType: 'base',
           targetObjectId: baseId,
@@ -430,8 +426,8 @@ export function KnowledgeBaseDetailPage() {
       return createKnowledgeBaseItem(spaceId, {
         parentId: normalizeParentId(values.parentId),
         title: values.title,
-        docType: values.docType,
-        content: values.docType === 'markdown' ? `# ${values.title}` : '',
+        contentType: values.contentType,
+        content: values.contentType === 'markdown' ? `# ${values.title}` : '',
         targetObjectType: values.targetObjectType,
         targetObjectId: values.targetObjectId,
         targetRoute: values.targetRoute,
@@ -443,14 +439,14 @@ export function KnowledgeBaseDetailPage() {
     onSuccess: async (detail) => {
       setCreateOpen(false)
       createForm.resetFields()
-      setSelectedDocumentId(detail.document.id)
+      setSelectedItemId(detail.item.id)
       message.success('已创建')
       await queryClient.invalidateQueries({ queryKey: ['bases'] })
-      await refresh(detail.document.id)
-      if (detail.document.docType === 'external_link') {
-        navigate(directoryPath(detail.document.parentId ?? detail.document.id), { replace: true })
+      await refresh(detail.item.id)
+      if (detail.item.contentType === 'external_link') {
+        navigate(directoryPath(detail.item.parentId ?? detail.item.id), { replace: true })
       } else {
-        openDocumentOrDirectory(detail.document.id)
+        openItemOrDirectory(detail.item.id)
       }
     },
     onError: () => message.error('创建失败'),
@@ -466,32 +462,32 @@ export function KnowledgeBaseDetailPage() {
     onSuccess: async (detail) => {
       setTemplateOpen(false)
       templateForm.resetFields()
-      setSelectedDocumentId(detail.document.id)
+      setSelectedItemId(detail.item.id)
       message.success('已从模板创建')
-      await refresh(detail.document.id)
-      openDocumentOrDirectory(detail.document.id)
+      await refresh(detail.item.id)
+      openItemOrDirectory(detail.item.id)
     },
     onError: () => message.error('模板创建失败'),
   })
 
   const moveMutation = useMutation({
-    mutationFn: ({ documentId, parentId, sortOrder }: { documentId: string; parentId?: string | null; sortOrder?: number }) =>
-      moveKnowledgeBaseItem(spaceId, documentId, { parentId, sortOrder }),
+    mutationFn: ({ itemId, parentId, sortOrder }: { itemId: string; parentId?: string | null; sortOrder?: number }) =>
+      moveKnowledgeBaseItem(spaceId, itemId, { parentId, sortOrder }),
     onSuccess: async (detail) => {
       setMoveOpen(false)
       moveForm.resetFields()
-      setSelectedDocumentId(detail.document.id)
+      setSelectedItemId(detail.item.id)
       message.success('目录已更新')
-      await refresh(detail.document.id)
-      if (detail.document.docType !== 'markdown') {
-        navigate(directoryPath(detail.document.id), { replace: true })
+      await refresh(detail.item.id)
+      if (detail.item.contentType !== 'markdown') {
+        navigate(directoryPath(detail.item.id), { replace: true })
       }
     },
     onError: () => message.error('移动或排序失败'),
   })
 
   const homeMutation = useMutation({
-    mutationFn: (documentId: string) => updateKnowledgeBase(spaceId, { homeDocumentId: documentId }),
+    mutationFn: (itemId: string) => updateKnowledgeBase(spaceId, { homeItemId: itemId }),
     onSuccess: async () => {
       message.success('首页已更新')
       await refresh()
@@ -509,7 +505,7 @@ export function KnowledgeBaseDetailPage() {
     onError: () => message.error('访问申请提交失败'),
   })
   const subscriptionMutation = useMutation({
-    mutationFn: ({ subscribed, targetType, targetId }: { subscribed: boolean; targetType: 'knowledge_base' | 'document'; targetId?: string }) =>
+    mutationFn: ({ subscribed, targetType, targetId }: { subscribed: boolean; targetType: 'knowledge_base' | 'knowledge_content'; targetId?: string }) =>
       subscribed
         ? unsubscribeKnowledgeTarget(spaceId, { targetType, targetId })
         : subscribeKnowledgeTarget(spaceId, { targetType, targetId }),
@@ -519,13 +515,13 @@ export function KnowledgeBaseDetailPage() {
     },
     onError: () => message.error('关注状态更新失败'),
   })
-  const openCreate = (docType: CreateNodeForm['docType'], targetObjectType?: string) => {
+  const openCreate = (contentType: CreateNodeForm['contentType'], targetObjectType?: string) => {
     createForm.setFieldsValue({
-      docType,
-      parentId: selectedDirectoryId ?? rootDocumentId ?? undefined,
-      displayMode: docType === 'external_link' ? 'link' : targetObjectType === 'base' ? 'inline' : 'default',
-      targetTitleStrategy: docType === 'object_ref' ? 'alias' : 'manual',
-      targetObjectType: docType === 'external_link' ? 'external_link' : targetObjectType,
+      contentType,
+      parentId: selectedDirectoryId ?? rootItemId ?? undefined,
+      displayMode: contentType === 'external_link' ? 'link' : targetObjectType === 'base' ? 'inline' : 'default',
+      targetTitleStrategy: contentType === 'object_ref' ? 'alias' : 'manual',
+      targetObjectType: contentType === 'external_link' ? 'external_link' : targetObjectType,
       targetObjectId: undefined,
       targetRoute: undefined,
       entryAlias: undefined,
@@ -540,20 +536,20 @@ export function KnowledgeBaseDetailPage() {
   }
 
   const openTemplate = () => {
-    templateForm.setFieldsValue({ parentId: selectedDirectoryId ?? rootDocumentId ?? undefined })
+    templateForm.setFieldsValue({ parentId: selectedDirectoryId ?? rootItemId ?? undefined })
     setTemplateOpen(true)
   }
 
   const openMove = () => {
-    if (!selectedDocument) {
+    if (!selectedItem) {
       return
     }
-    moveForm.setFieldsValue({ parentId: selectedDocument.parentId ?? ROOT_PARENT_VALUE })
+    moveForm.setFieldsValue({ parentId: selectedItem.parentId ?? ROOT_PARENT_VALUE })
     setMoveOpen(true)
   }
 
   const reorderSelected = (direction: -1 | 1) => {
-    if (!selectedDocument || activeSiblingIndex < 0) {
+    if (!selectedItem || activeSiblingIndex < 0) {
       return
     }
     const target = activeSiblings[activeSiblingIndex + direction]
@@ -561,8 +557,8 @@ export function KnowledgeBaseDetailPage() {
       return
     }
     moveMutation.mutate({
-      documentId: selectedDocument.id,
-      parentId: selectedDocument.parentId ?? null,
+      itemId: selectedItem.id,
+      parentId: selectedItem.parentId ?? null,
       sortOrder: target.sortOrder,
     })
   }
@@ -579,27 +575,27 @@ export function KnowledgeBaseDetailPage() {
     if (!spaceId || spaceQuery.isLoading || treeQuery.isLoading) {
       return
     }
-    if (queryDocumentId) {
-      const queryDocument = documents.find((document) => document.id === queryDocumentId)
-      if (!queryDocument) {
+    if (queryItemId) {
+      const queryItem = items.find((document) => document.id === queryItemId)
+      if (!queryItem) {
         return
       }
-      if (queryDocument.docType === 'markdown') {
-        navigate(contentPath(queryDocument.id), { replace: true })
+      if (queryItem.contentType === 'markdown') {
+        navigate(contentPath(queryItem.id), { replace: true })
       }
       return
     }
-    if (queryState.view !== 'management' && !selectedDocumentId && homeDocumentId && documents.some((document) => document.id === homeDocumentId)) {
-      navigate(contentPath(homeDocumentId), { replace: true })
+    if (queryState.view !== 'management' && !selectedItemId && homeItemId && items.some((document) => document.id === homeItemId)) {
+      navigate(contentPath(homeItemId), { replace: true })
     }
   }, [
     contentPath,
-    documents,
-    homeDocumentId,
+    items,
+    homeItemId,
     navigate,
-    queryDocumentId,
+    queryItemId,
     queryState.view,
-    selectedDocumentId,
+    selectedItemId,
     spaceId,
     spaceQuery.isLoading,
     treeQuery.isLoading,
@@ -610,7 +606,7 @@ export function KnowledgeBaseDetailPage() {
     if (!element || !spaceId) {
       return
     }
-    const key = scrollStorageKey(spaceId, queryDocumentId ?? selectedDocument?.id ?? 'home', queryState.view)
+    const key = scrollStorageKey(spaceId, queryItemId ?? selectedItem?.id ?? 'home', queryState.view)
     const saved = sessionStorage.getItem(key)
     element.scrollTop = saved ? Number(saved) : 0
     const saveScroll = () => sessionStorage.setItem(key, String(element.scrollTop))
@@ -619,7 +615,7 @@ export function KnowledgeBaseDetailPage() {
       saveScroll()
       element.removeEventListener('scroll', saveScroll)
     }
-  }, [queryDocumentId, queryState.view, selectedDocument?.id, spaceId])
+  }, [queryItemId, queryState.view, selectedItem?.id, spaceId])
 
   if (!spaceId) {
     return <Empty description="知识库不存在" />
@@ -690,7 +686,7 @@ export function KnowledgeBaseDetailPage() {
           <Tooltip title="上移">
             <Button
               icon={<ArrowUpOutlined />}
-              disabled={activeSiblingIndex <= 0 || selectedDocument?.id === rootDocumentId}
+              disabled={activeSiblingIndex <= 0 || selectedItem?.id === rootItemId}
               loading={moveMutation.isPending}
               onClick={() => reorderSelected(-1)}
             />
@@ -701,7 +697,7 @@ export function KnowledgeBaseDetailPage() {
               disabled={
                 activeSiblingIndex < 0 ||
                 activeSiblingIndex >= activeSiblings.length - 1 ||
-                selectedDocument?.id === rootDocumentId
+                selectedItem?.id === rootItemId
               }
               loading={moveMutation.isPending}
               onClick={() => reorderSelected(1)}
@@ -710,16 +706,16 @@ export function KnowledgeBaseDetailPage() {
           <Tooltip title="移动到">
             <Button
               icon={<FolderOpenOutlined />}
-              disabled={!selectedDocument || selectedDocument.id === rootDocumentId}
+              disabled={!selectedItem || selectedItem.id === rootItemId}
               onClick={openMove}
             />
           </Tooltip>
           <Tooltip title="设为首页">
             <Button
               icon={<HomeOutlined />}
-              disabled={!selectedDocument || selectedDocument.docType !== 'markdown' || selectedDocument.id === homeDocumentId}
+              disabled={!selectedItem || selectedItem.contentType !== 'markdown' || selectedItem.id === homeItemId}
               loading={homeMutation.isPending}
-              onClick={() => selectedDocument && homeMutation.mutate(selectedDocument.id)}
+              onClick={() => selectedItem && homeMutation.mutate(selectedItem.id)}
             />
           </Tooltip>
         </Space>
@@ -729,13 +725,13 @@ export function KnowledgeBaseDetailPage() {
             expandedKeys={directorySearch.trim() ? undefined : expandedKeys}
             autoExpandParent={Boolean(directorySearch.trim())}
             defaultExpandAll={Boolean(directorySearch.trim())}
-            selectedKeys={selectedDocument?.id ? [selectedDocument.id] : []}
+            selectedKeys={selectedItem?.id ? [selectedItem.id] : []}
             treeData={treeData}
             onExpand={persistExpandedKeys}
             onSelect={(keys) => {
               const key = String(keys[0] ?? '')
               if (key) {
-                openDocumentOrDirectory(key)
+                openItemOrDirectory(key)
               }
             }}
           />
@@ -747,40 +743,40 @@ export function KnowledgeBaseDetailPage() {
         <section className="kb-content-first-card">
           <Space align="start" className="kb-content-first-heading">
             <span className="kb-content-first-icon">
-              {nodeIcon(selectedDocument)}
+              {nodeIcon(selectedItem)}
             </span>
             <div>
               <Space wrap>
-                <Typography.Title level={2}>{selectedDocument?.title ?? space?.name ?? '知识库'}</Typography.Title>
-                {selectedDocument ? <Tag>{docTypeText(selectedDocument.docType)}</Tag> : null}
+                <Typography.Title level={2}>{selectedItem?.title ?? space?.name ?? '知识库'}</Typography.Title>
+                {selectedItem ? <Tag>{contentTypeText(selectedItem.contentType)}</Tag> : null}
                 {space ? <Tag color={statusColor(space.status)}>{statusText(space.status)}</Tag> : null}
               </Space>
               <Typography.Paragraph type="secondary">
-                {queryDocumentMissing
+                {queryItemMissing
                   ? '目标节点不存在、已被移除或当前账号无法访问。'
-                  : selectedDocument?.description ||
-                  (selectedDocument
-                    ? `更新于 ${formatDate(selectedDocument.updatedAt)}`
-                    : homeDocumentId
+                  : selectedItem?.description ||
+                  (selectedItem
+                    ? `更新于 ${formatDate(selectedItem.updatedAt)}`
+                    : homeItemId
                       ? '正在打开知识库首页内容...'
                       : '这个知识库还没有首页内容，请创建内容页或选择目录。')}
               </Typography.Paragraph>
               <Space wrap size={6}>
-                {selectedDocument ? <Tag>{permissionText(selectedDocument.permissionLevel)}</Tag> : null}
-                {selectedDocument?.archived ? <Tag color="default">已归档</Tag> : null}
-                {selectedDocument ? <Tag>子内容 {selectedDirectoryChildren.length}</Tag> : null}
+                {selectedItem ? <Tag>{permissionText(selectedItem.permissionLevel)}</Tag> : null}
+                {selectedItem?.archived ? <Tag color="default">已归档</Tag> : null}
+                {selectedItem ? <Tag>子内容 {selectedDirectoryChildren.length}</Tag> : null}
                 {space ? <Tag>{visibilityText(space.visibility)}</Tag> : null}
               </Space>
             </div>
           </Space>
           <Space wrap>
-            {homeDocumentId ? (
-              <Button icon={<HomeOutlined />} onClick={() => openDocumentOrDirectory(homeDocumentId)}>
+            {homeItemId ? (
+              <Button icon={<HomeOutlined />} onClick={() => openItemOrDirectory(homeItemId)}>
                 打开首页
               </Button>
             ) : null}
-            {selectedDocument?.docType === 'markdown' ? (
-              <Button type="primary" icon={<FileTextOutlined />} onClick={() => openDocumentOrDirectory(selectedDocument.id)}>
+            {selectedItem?.contentType === 'markdown' ? (
+              <Button type="primary" icon={<FileTextOutlined />} onClick={() => openItemOrDirectory(selectedItem.id)}>
                 打开正文
               </Button>
             ) : (
@@ -890,9 +886,9 @@ export function KnowledgeBaseDetailPage() {
         <section className="kb-directory-content-card">
           <Space className="kb-directory-toolbar" align="center" wrap>
             <div>
-              <Typography.Title level={4}>{selectedDocument?.docType === 'markdown' ? '当前内容' : '目录内容'}</Typography.Title>
+              <Typography.Title level={4}>{selectedItem?.contentType === 'markdown' ? '当前内容' : '目录内容'}</Typography.Title>
               <Typography.Text type="secondary">
-                {selectedDocument?.docType === 'markdown' ? '内容页会直接进入正文编辑/阅读路由；这里保留为刷新恢复兜底。' : '点击内容页直接打开正文；目录节点继续展示子内容。'}
+                {selectedItem?.contentType === 'markdown' ? '内容页会直接进入正文编辑/阅读路由；这里保留为刷新恢复兜底。' : '点击内容页直接打开正文；目录节点继续展示子内容。'}
               </Typography.Text>
             </div>
             <Space wrap>
@@ -903,27 +899,27 @@ export function KnowledgeBaseDetailPage() {
               <Button icon={<LinkOutlined />} onClick={() => openCreate('external_link')}>外部链接</Button>
             </Space>
           </Space>
-          {queryDocumentMissing ? (
+          {queryItemMissing ? (
             <div className="kb-directory-empty">
               <Empty description="节点不存在或已无权限" />
               <Space wrap>
-                {homeDocumentId ? <Button type="primary" onClick={() => openDocumentOrDirectory(homeDocumentId)}>返回首页内容</Button> : null}
+                {homeItemId ? <Button type="primary" onClick={() => openItemOrDirectory(homeItemId)}>返回首页内容</Button> : null}
                 <Button onClick={() => navigate(`/knowledge-bases/${spaceId}`)}>返回知识库</Button>
               </Space>
             </div>
-          ) : selectedDocument?.docType === 'markdown' ? (
+          ) : selectedItem?.contentType === 'markdown' ? (
             <div className="kb-content-fallback">
               <FileTextOutlined />
-              <Typography.Title level={4}>{selectedDocument.title}</Typography.Title>
+              <Typography.Title level={4}>{selectedItem.title}</Typography.Title>
               <Typography.Paragraph type="secondary">如未自动跳转，可直接打开正文内容。</Typography.Paragraph>
-              <Button type="primary" onClick={() => openDocumentOrDirectory(selectedDocument.id)}>打开正文</Button>
+              <Button type="primary" onClick={() => openItemOrDirectory(selectedItem.id)}>打开正文</Button>
             </div>
-          ) : isBaseObjectEntry(selectedDocument) ? (
-            <KnowledgeBaseBasePreview document={selectedDocument} onOpenFull={(path) => navigate(path)} />
+          ) : isBaseObjectEntry(selectedItem) ? (
+            <KnowledgeBaseBasePreview document={selectedItem} onOpenFull={(path) => navigate(path)} />
           ) : selectedDirectoryChildren.length > 0 ? (
             <div className="kb-directory-grid">
               {selectedDirectoryChildren.map((document) => (
-                <button className="kb-directory-item" key={document.id} type="button" onClick={() => openDocumentOrDirectory(document.id)}>
+                <button className="kb-directory-item" key={document.id} type="button" onClick={() => openItemOrDirectory(document.id)}>
                   <span className="kb-directory-item-icon">{nodeIcon(document)}</span>
                   <span>
                     <strong>{document.title}</strong>
@@ -993,46 +989,46 @@ export function KnowledgeBaseDetailPage() {
               </Space>
             </div>
             <div className="kb-selected-summary">
-              <Tag>{selectedDocument ? docTypeText(selectedDocument.docType) : '未选择'}</Tag>
-              <Typography.Title level={4}>{selectedDocument?.title ?? '选择一个目录节点'}</Typography.Title>
+              <Tag>{selectedItem ? contentTypeText(selectedItem.contentType) : '未选择'}</Tag>
+              <Typography.Title level={4}>{selectedItem?.title ?? '选择一个目录节点'}</Typography.Title>
               <Space wrap size={6}>
-                {selectedDocument ? <Tag>{permissionText(selectedDocument.permissionLevel)}</Tag> : null}
-                {selectedDocument?.archived ? <Tag color="default">已归档</Tag> : null}
-                {selectedDocument ? <Tag>更新 {formatDate(selectedDocument.updatedAt)}</Tag> : null}
+                {selectedItem ? <Tag>{permissionText(selectedItem.permissionLevel)}</Tag> : null}
+                {selectedItem?.archived ? <Tag color="default">已归档</Tag> : null}
+                {selectedItem ? <Tag>更新 {formatDate(selectedItem.updatedAt)}</Tag> : null}
               </Space>
-              {selectedDocument ? (
+              {selectedItem ? (
                 <Space wrap>
                   <Button
                     icon={<BellOutlined />}
                     loading={subscriptionMutation.isPending}
                     onClick={() =>
-                      selectedDocument &&
+                      selectedItem &&
                       subscriptionMutation.mutate({
-                        subscribed: (discoveryQuery.data?.subscribedDocuments ?? []).some((document) => document.id === selectedDocument.id),
-                        targetType: 'document',
-                        targetId: selectedDocument.id,
+                        subscribed: (discoveryQuery.data?.subscribedItems ?? []).some((document) => document.id === selectedItem.id),
+                        targetType: 'knowledge_content',
+                        targetId: selectedItem.id,
                       })
                     }
                   >
-                    {(discoveryQuery.data?.subscribedDocuments ?? []).some((document) => document.id === selectedDocument.id) ? '取消关注' : '关注节点'}
+                    {(discoveryQuery.data?.subscribedItems ?? []).some((document) => document.id === selectedItem.id) ? '取消关注' : '关注节点'}
                   </Button>
                   <Button
                     icon={<SafetyCertificateOutlined />}
                     onClick={() =>
-                      setPermissionTarget({ resourceType: 'document', resourceId: selectedDocument.id, resourceName: `${selectedDocument.title} 节点权限` })
+                      setPermissionTarget({ resourceType: 'knowledge_content', resourceId: selectedItem.id, resourceName: `${selectedItem.title} 节点权限` })
                     }
                   >
                     节点权限
                   </Button>
                 </Space>
               ) : null}
-              {selectedDocument?.docType === 'markdown' ? (
+              {selectedItem?.contentType === 'markdown' ? (
                 <CollaborationHealthCard
                   dirty={Boolean(collaborationHealthQuery.data?.dirty)}
                   onlineCount={collaborationHealthQuery.data?.activeUsers ?? 0}
                   serverClock={collaborationHealthQuery.data?.serverClock ?? 0}
                   lastSavedAt={collaborationHealthQuery.data?.lastSavedAt}
-                  onOpen={() => openDocumentOrDirectory(selectedDocument.id)}
+                  onOpen={() => openItemOrDirectory(selectedItem.id)}
                   onRefresh={() => collaborationHealthQuery.refetch()}
                 />
               ) : null}
@@ -1041,20 +1037,20 @@ export function KnowledgeBaseDetailPage() {
         </details>
 
         <section className="kb-section-grid kb-discovery-grid">
-          <KnowledgeList title="置顶" items={pinnedDocuments} onOpen={openDocumentOrDirectory} onSelect={openDocumentOrDirectory} />
-          <KnowledgeList title="最近访问" items={discoveryQuery.data?.recentAccessed ?? recentDocuments} onOpen={openDocumentOrDirectory} onSelect={openDocumentOrDirectory} />
-          <KnowledgeList title="我维护的内容" items={discoveryQuery.data?.maintainedByMe ?? []} onOpen={openDocumentOrDirectory} onSelect={openDocumentOrDirectory} />
-          <KnowledgeList title="待复核" items={discoveryQuery.data?.dueForReview ?? []} onOpen={openDocumentOrDirectory} onSelect={openDocumentOrDirectory} />
-          <KnowledgeList title="收藏" items={discoveryQuery.data?.favorites ?? favoriteDocuments} onOpen={openDocumentOrDirectory} onSelect={openDocumentOrDirectory} />
-          <KnowledgeList title="热门知识" items={discoveryQuery.data?.popular ?? []} onOpen={openDocumentOrDirectory} onSelect={openDocumentOrDirectory} />
-          <KnowledgeList title="推荐阅读" items={discoveryQuery.data?.recommended ?? []} onOpen={openDocumentOrDirectory} onSelect={openDocumentOrDirectory} />
-          <KnowledgeList title="我的关注" items={discoveryQuery.data?.subscribedDocuments ?? []} onOpen={openDocumentOrDirectory} onSelect={openDocumentOrDirectory} />
-          <KnowledgeList title="常用目录" items={commonDirectories} onOpen={openDocumentOrDirectory} onSelect={openDocumentOrDirectory} />
+          <KnowledgeList title="置顶" items={pinnedDocuments} onOpen={openItemOrDirectory} onSelect={openItemOrDirectory} />
+          <KnowledgeList title="最近访问" items={discoveryQuery.data?.recentAccessed ?? recentItems} onOpen={openItemOrDirectory} onSelect={openItemOrDirectory} />
+          <KnowledgeList title="我维护的内容" items={discoveryQuery.data?.maintainedByMe ?? []} onOpen={openItemOrDirectory} onSelect={openItemOrDirectory} />
+          <KnowledgeList title="待复核" items={discoveryQuery.data?.dueForReview ?? []} onOpen={openItemOrDirectory} onSelect={openItemOrDirectory} />
+          <KnowledgeList title="收藏" items={discoveryQuery.data?.favorites ?? favoriteItems} onOpen={openItemOrDirectory} onSelect={openItemOrDirectory} />
+          <KnowledgeList title="热门知识" items={discoveryQuery.data?.popular ?? []} onOpen={openItemOrDirectory} onSelect={openItemOrDirectory} />
+          <KnowledgeList title="推荐阅读" items={discoveryQuery.data?.recommended ?? []} onOpen={openItemOrDirectory} onSelect={openItemOrDirectory} />
+          <KnowledgeList title="我的关注" items={discoveryQuery.data?.subscribedItems ?? []} onOpen={openItemOrDirectory} onSelect={openItemOrDirectory} />
+          <KnowledgeList title="常用目录" items={commonDirectories} onOpen={openItemOrDirectory} onSelect={openItemOrDirectory} />
           <TemplateList templates={templatesQuery.data ?? []} onUse={(template) => {
             templateForm.setFieldsValue({
               templateId: template.id,
               title: template.title,
-              parentId: selectedDirectoryId ?? rootDocumentId ?? undefined,
+              parentId: selectedDirectoryId ?? rootItemId ?? undefined,
             })
             setTemplateOpen(true)
           }} />
@@ -1076,7 +1072,7 @@ export function KnowledgeBaseDetailPage() {
           <Form.Item name="title" label="名称" rules={[{ required: true, message: '请输入名称' }]}>
             <Input maxLength={255} />
           </Form.Item>
-          <Form.Item name="docType" label="类型" rules={[{ required: true }]}>
+          <Form.Item name="contentType" label="类型" rules={[{ required: true }]}>
             <Select options={[
               { value: 'markdown', label: '内容页' },
               { value: 'folder', label: '目录' },
@@ -1087,12 +1083,12 @@ export function KnowledgeBaseDetailPage() {
           <Form.Item name="parentId" label="位置">
             <Select options={directoryOptions} />
           </Form.Item>
-          {createDocType === 'object_ref' ? (
+          {createContentType === 'object_ref' ? (
             <>
               <Form.Item name="targetObjectType" label="目标类型" rules={[{ required: true, message: '请选择目标类型' }]}>
                 <Select
                   options={[
-                    { value: 'document', label: '文档' },
+                    { value: 'knowledge_content', label: '知识内容' },
                     { value: 'base', label: '多维表格' },
                     { value: 'file', label: '文件' },
                     { value: 'project', label: '项目' },
@@ -1210,7 +1206,7 @@ export function KnowledgeBaseDetailPage() {
               </Form.Item>
             </>
           ) : null}
-          {createDocType === 'external_link' ? (
+          {createContentType === 'external_link' ? (
             <>
               <Form.Item name="targetRoute" label="链接地址" rules={[{ required: true, message: '请输入链接地址' }]}>
                 <Input placeholder="https://example.com" maxLength={1024} />
@@ -1265,13 +1261,13 @@ export function KnowledgeBaseDetailPage() {
           form={moveForm}
           layout="vertical"
           onFinish={(values) => {
-            if (!selectedDocument) {
+            if (!selectedItem) {
               return
             }
             moveMutation.mutate({
-              documentId: selectedDocument.id,
+              itemId: selectedItem.id,
               parentId: normalizeParentId(values.parentId),
-              sortOrder: selectedDocument.sortOrder,
+              sortOrder: selectedItem.sortOrder,
             })
           }}
         >
@@ -1332,7 +1328,7 @@ function CollaborationHealthCard({
   )
 }
 
-function KnowledgeBaseBasePreview({ document, onOpenFull }: { document: DocumentSummary; onOpenFull: (path: string) => void }) {
+function KnowledgeBaseBasePreview({ document, onOpenFull }: { document: KnowledgeBaseItem; onOpenFull: (path: string) => void }) {
   const target = parseBaseTargetRoute(document)
   const baseId = document.targetObjectId ?? target.baseId
   const canOpen = !document.targetSummary || document.targetSummary.accessState === 'available'
@@ -1510,9 +1506,9 @@ function KnowledgeList({
   onSelect,
 }: {
   title: string
-  items: DocumentSummary[]
-  onOpen: (documentId: string) => void
-  onSelect: (documentId: string) => void
+  items: KnowledgeBaseItem[]
+  onOpen: (itemId: string) => void
+  onSelect: (itemId: string) => void
 }) {
   return (
     <div className="kb-panel">
@@ -1533,7 +1529,7 @@ function KnowledgeList({
   )
 }
 
-function TemplateList({ templates, onUse }: { templates: DocumentTemplate[]; onUse: (template: DocumentTemplate) => void }) {
+function TemplateList({ templates, onUse }: { templates: KnowledgeContentTemplate[]; onUse: (template: KnowledgeContentTemplate) => void }) {
   return (
     <div className="kb-panel">
       <Typography.Title level={5}>模板</Typography.Title>
@@ -1553,55 +1549,55 @@ function TemplateList({ templates, onUse }: { templates: DocumentTemplate[]; onU
 }
 
 function buildKbTreeData(
-  nodes: DocumentTreeNode[],
+  nodes: KnowledgeBaseItemTreeNode[],
   search: string,
-  activeDocumentId: string | null,
-  favoriteDocumentIds: Set<string>,
+  activeItemId: string | null,
+  favoriteItemIds: Set<string>,
 ): DataNode[] {
   const normalizedSearch = search.trim().toLowerCase()
   return nodes
-    .map((node) => buildKbTreeNode(node, normalizedSearch, activeDocumentId, favoriteDocumentIds))
+    .map((node) => buildKbTreeNode(node, normalizedSearch, activeItemId, favoriteItemIds))
     .filter(Boolean) as DataNode[]
 }
 
 function buildKbTreeNode(
-  node: DocumentTreeNode,
+  node: KnowledgeBaseItemTreeNode,
   search: string,
-  activeDocumentId: string | null,
-  favoriteDocumentIds: Set<string>,
+  activeItemId: string | null,
+  favoriteItemIds: Set<string>,
 ): DataNode | null {
   const childNodes = node.children
-    .map((child) => buildKbTreeNode(child, search, activeDocumentId, favoriteDocumentIds))
+    .map((child) => buildKbTreeNode(child, search, activeItemId, favoriteItemIds))
     .filter(Boolean) as DataNode[]
-  const matched = !search || node.document.title.toLowerCase().includes(search)
+  const matched = !search || node.item.title.toLowerCase().includes(search)
   if (!matched && childNodes.length === 0) {
     return null
   }
   return {
-    key: node.document.id,
+    key: node.item.id,
     title: (
-      <span className={`kb-tree-title${node.document.id === activeDocumentId ? ' active' : ''}${node.document.archived ? ' archived' : ''}`}>
-        {nodeIcon(node.document)}
-        <span>{node.document.title}</span>
-        <Tag>{docTypeText(node.document.docType)}</Tag>
-        {node.document.targetObjectType ? <Tag color="blue">{targetObjectTypeText(node.document.targetObjectType)}</Tag> : null}
-        {node.document.targetSummary && node.document.targetSummary.accessState !== 'available' ? <Tag color="default">{targetAccessText(node.document.targetSummary.accessState)}</Tag> : null}
-        <Tag>{permissionText(node.document.permissionLevel)}</Tag>
-        {favoriteDocumentIds.has(node.document.id) ? <StarFilled className="kb-tree-star" /> : null}
-        {node.document.archived ? <Tag color="default">归档</Tag> : null}
-        <small>{formatDate(node.document.updatedAt)}</small>
+      <span className={`kb-tree-title${node.item.id === activeItemId ? ' active' : ''}${node.item.archived ? ' archived' : ''}`}>
+        {nodeIcon(node.item)}
+        <span>{node.item.title}</span>
+        <Tag>{contentTypeText(node.item.contentType)}</Tag>
+        {node.item.targetObjectType ? <Tag color="blue">{targetObjectTypeText(node.item.targetObjectType)}</Tag> : null}
+        {node.item.targetSummary && node.item.targetSummary.accessState !== 'available' ? <Tag color="default">{targetAccessText(node.item.targetSummary.accessState)}</Tag> : null}
+        <Tag>{permissionText(node.item.permissionLevel)}</Tag>
+        {favoriteItemIds.has(node.item.id) ? <StarFilled className="kb-tree-star" /> : null}
+        {node.item.archived ? <Tag color="default">归档</Tag> : null}
+        <small>{formatDate(node.item.updatedAt)}</small>
       </span>
     ) as ReactNode,
     children: childNodes,
   }
 }
 
-function findTreeNode(nodes: DocumentTreeNode[], documentId: string): DocumentTreeNode | null {
+function findTreeNode(nodes: KnowledgeBaseItemTreeNode[], itemId: string): KnowledgeBaseItemTreeNode | null {
   for (const node of nodes) {
-    if (node.document.id === documentId) {
+    if (node.item.id === itemId) {
       return node
     }
-    const child = findTreeNode(node.children, documentId)
+    const child = findTreeNode(node.children, itemId)
     if (child) {
       return child
     }
@@ -1609,27 +1605,27 @@ function findTreeNode(nodes: DocumentTreeNode[], documentId: string): DocumentTr
   return null
 }
 
-function flattenTree(root: DocumentTreeNode | null): DocumentTreeNode[] {
+function flattenTree(root: KnowledgeBaseItemTreeNode | null): KnowledgeBaseItemTreeNode[] {
   if (!root) {
     return []
   }
   return [root, ...root.children.flatMap(flattenTree)]
 }
 
-function documentSort(left: DocumentSummary, right: DocumentSummary) {
+function knowledgeItemSort(left: KnowledgeBaseItem, right: KnowledgeBaseItem) {
   if (left.sortOrder !== right.sortOrder) {
     return left.sortOrder - right.sortOrder
   }
   return left.title.localeCompare(right.title)
 }
 
-function isDescendantDocument(documents: DocumentSummary[], ancestorId: string, candidateId: string) {
-  let current = documents.find((document) => document.id === candidateId)
+function isDescendantDocument(items: KnowledgeBaseItem[], ancestorId: string, candidateId: string) {
+  let current = items.find((document) => document.id === candidateId)
   while (current?.parentId) {
     if (current.parentId === ancestorId) {
       return true
     }
-    current = documents.find((document) => document.id === current?.parentId)
+    current = items.find((document) => document.id === current?.parentId)
   }
   return false
 }
@@ -1638,8 +1634,8 @@ function normalizeParentId(value?: string | null) {
   return !value || value === ROOT_PARENT_VALUE ? null : value
 }
 
-function isBaseObjectEntry(document?: DocumentSummary | null): document is DocumentSummary {
-  return document?.docType === 'object_ref' && document.targetObjectType === 'base'
+function isBaseObjectEntry(document?: KnowledgeBaseItem | null): document is KnowledgeBaseItem {
+  return document?.contentType === 'object_ref' && document.targetObjectType === 'base'
 }
 
 function baseTargetRoute(baseId: string, tableId?: string, viewId?: string) {
@@ -1650,7 +1646,7 @@ function baseTargetRoute(baseId: string, tableId?: string, viewId?: string) {
   return `${path}?${new URLSearchParams({ viewId }).toString()}`
 }
 
-function parseBaseTargetRoute(document: DocumentSummary) {
+function parseBaseTargetRoute(document: KnowledgeBaseItem) {
   const route = document.targetRoute ?? ''
   const [path, search = ''] = route.split('?')
   const match = path.match(/^\/bases\/([^/?#]+)(?:\/tables\/([^/?#]+))?/)
@@ -1701,8 +1697,8 @@ function expandedStorageKey(spaceId: string) {
   return `kb-expanded-${spaceId}`
 }
 
-function scrollStorageKey(spaceId: string, documentId: string, view: string) {
-  return `kb-scroll-${spaceId}-${documentId}-${view}`
+function scrollStorageKey(spaceId: string, itemId: string, view: string) {
+  return `knowledge-content-scroll-${spaceId}-${itemId}-${view}`
 }
 
 function readExpandedKeys(spaceId: string) {
@@ -1739,13 +1735,14 @@ function permissionText(permission?: string | null) {
   }[permission ?? 'view'] ?? permission
 }
 
-function docTypeText(docType: DocumentSummary['docType']) {
-  return { space: '根目录', folder: '目录', markdown: '内容页', object_ref: '对象入口', external_link: '外部链接' }[docType]
+function contentTypeText(contentType: KnowledgeBaseItem['contentType']) {
+  return { space: '根目录', folder: '目录', markdown: '内容页', object_ref: '对象入口', external_link: '外部链接' }[contentType]
 }
 
 function targetObjectTypeText(targetObjectType?: string | null) {
   return {
-    document: '文档',
+    knowledge_content: '知识内容',
+    document: '知识内容',
     base: '多维表格',
     file: '文件',
     project: '项目',
@@ -1753,26 +1750,26 @@ function targetObjectTypeText(targetObjectType?: string | null) {
   }[targetObjectType ?? ''] ?? targetObjectType
 }
 
-function nodeMetaText(document: DocumentSummary) {
+function nodeMetaText(document: KnowledgeBaseItem) {
   const target = targetObjectTypeText(document.targetObjectType)
   const targetTitle = document.targetSummary?.accessState === 'available' && document.targetSummary.title ? ` · ${document.targetSummary.title}` : ''
-  return target ? `${docTypeText(document.docType)} · ${target}${targetTitle}` : docTypeText(document.docType)
+  return target ? `${contentTypeText(document.contentType)} · ${target}${targetTitle}` : contentTypeText(document.contentType)
 }
 
-function nodeIcon(document?: DocumentSummary | null) {
+function nodeIcon(document?: KnowledgeBaseItem | null) {
   if (!document) {
     return <BookOutlined />
   }
-  if (document.docType === 'markdown') {
+  if (document.contentType === 'markdown') {
     return <FileTextOutlined />
   }
-  if (document.docType === 'object_ref') {
+  if (document.contentType === 'object_ref') {
     if (document.targetObjectType === 'base') {
       return <TableOutlined />
     }
     return <AppstoreOutlined />
   }
-  if (document.docType === 'external_link') {
+  if (document.contentType === 'external_link') {
     return <LinkOutlined />
   }
   return <FolderOutlined />

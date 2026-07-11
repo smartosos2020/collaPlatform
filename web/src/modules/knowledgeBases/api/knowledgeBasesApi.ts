@@ -1,5 +1,5 @@
 import { apiDelete, apiGet, apiGetText, apiPatch, apiPost } from '../../../shared/api/httpClient'
-import type { DocumentDetail, DocumentSummary, DocumentTemplate, DocumentTreeNode } from '../../docs/api/docsApi'
+import type { KnowledgeContentDetail, KnowledgeBaseItem, KnowledgeContentTemplate, KnowledgeBaseItemTreeNode } from '../content/api/knowledgeContentApi'
 
 export type UserKnowledgeSpaceView = {
   id: string
@@ -10,17 +10,17 @@ export type UserKnowledgeSpaceView = {
   coverUrl?: string | null
   status: 'active' | 'disabled' | 'archived'
   visibility: 'private' | 'workspace'
-  rootDocumentId: string
-  homeDocumentId: string
+  rootItemId: string
+  homeItemId: string
   ownerId: string
   ownerName: string
   defaultPermissionLevel: 'view' | 'comment' | 'edit'
   createdAt: string
   updatedAt?: string | null
-  documentCount: number
+  itemCount: number
   navigation?: {
-    rootDocumentId: string
-    homeDocumentId: string
+    rootItemId: string
+    homeItemId: string
     webPath: string
   }
   collaborationPermission?: {
@@ -35,38 +35,38 @@ export type KnowledgeBaseSpaceSummary = UserKnowledgeSpaceView
 
 export type UserKnowledgeSpaceDetailView = {
   space: UserKnowledgeSpaceView
-  rootDocument: DocumentSummary
-  homeDocument: DocumentSummary
+  rootItem: KnowledgeBaseItem
+  homeItem: KnowledgeBaseItem
 }
 
 export type KnowledgeBaseSpaceDetail = UserKnowledgeSpaceDetailView
 
 export type UserKnowledgeDiscoveryView = {
   spaceId: string
-  recentAccessed: DocumentSummary[]
-  favorites: DocumentSummary[]
-  maintainedByMe: DocumentSummary[]
-  dueForReview: DocumentSummary[]
-  popular: DocumentSummary[]
-  recommended: DocumentSummary[]
-  subscribedDocuments: DocumentSummary[]
+  recentAccessed: KnowledgeBaseItem[]
+  favorites: KnowledgeBaseItem[]
+  maintainedByMe: KnowledgeBaseItem[]
+  dueForReview: KnowledgeBaseItem[]
+  popular: KnowledgeBaseItem[]
+  recommended: KnowledgeBaseItem[]
+  subscribedItems: KnowledgeBaseItem[]
   spaceSubscribed: boolean
 }
 
 export type KnowledgeBaseDiscovery = UserKnowledgeDiscoveryView
 
 export type KnowledgeBaseSubscription = {
-  targetType: 'knowledge_base' | 'document'
+  targetType: 'knowledge_base' | 'knowledge_content'
   targetId: string
   subscribed: boolean
 }
 
 export type KnowledgeBaseHealthMetrics = {
-  documentCount: number
-  activeDocumentCount: number
-  outdatedDocumentCount: number
-  unmaintainedDocumentCount: number
-  ownerlessDocumentCount: number
+  itemCount: number
+  activeItemCount: number
+  outdatedItemCount: number
+  unmaintainedItemCount: number
+  ownerlessItemCount: number
   highRiskPermissionCount: number
 }
 
@@ -85,8 +85,8 @@ export type KnowledgeBaseGovernanceRisk = {
   actionPath?: string | null
 }
 
-export type KnowledgeBaseAccessDocumentStat = {
-  document: DocumentSummary
+export type KnowledgeBaseAccessItemStat = {
+  item: KnowledgeBaseItem
   visitorCount: number
   accessCount: number
   lastAccessedAt?: string | null
@@ -101,8 +101,8 @@ export type KnowledgeBaseSearchTermStat = {
 export type KnowledgeBaseAccessStats = {
   visitorCount: number
   accessCount: number
-  popularDocuments: KnowledgeBaseAccessDocumentStat[]
-  lowAccessDocuments: KnowledgeBaseAccessDocumentStat[]
+  popularItems: KnowledgeBaseAccessItemStat[]
+  lowAccessItems: KnowledgeBaseAccessItemStat[]
   noResultTerms: KnowledgeBaseSearchTermStat[]
 }
 
@@ -114,7 +114,7 @@ export type KnowledgeBaseGovernanceDashboard = {
 }
 
 export type KnowledgeBaseBulkGovernanceRequest = {
-  documentIds: string[]
+  itemIds: string[]
   maintainerId?: string
   tags?: string[]
   replaceTags?: boolean
@@ -137,7 +137,7 @@ export type KnowledgeBaseSpaceRequest = {
   coverUrl?: string
   visibility?: KnowledgeBaseSpaceSummary['visibility']
   defaultPermissionLevel?: KnowledgeBaseSpaceSummary['defaultPermissionLevel']
-  homeDocumentId?: string
+  homeItemId?: string
 }
 
 export function listKnowledgeBases(options: { includeArchived?: boolean } = {}) {
@@ -161,7 +161,7 @@ export function listKnowledgeBaseItems(spaceId: string, options: { includeArchiv
   if (options.includeArchived) {
     params.set('includeArchived', 'true')
   }
-  return apiGet<DocumentSummary[]>(`/knowledge-bases/${spaceId}/items${params.size ? `?${params}` : ''}`)
+  return apiGet<KnowledgeBaseItem[]>(`/knowledge-bases/${spaceId}/items${params.size ? `?${params}` : ''}`)
 }
 
 export function listKnowledgeBaseItemTree(spaceId: string, options: { includeArchived?: boolean } = {}) {
@@ -169,11 +169,11 @@ export function listKnowledgeBaseItemTree(spaceId: string, options: { includeArc
   if (options.includeArchived) {
     params.set('includeArchived', 'true')
   }
-  return apiGet<DocumentTreeNode[]>(`/knowledge-bases/${spaceId}/items/tree${params.size ? `?${params}` : ''}`)
+  return apiGet<KnowledgeBaseItemTreeNode[]>(`/knowledge-bases/${spaceId}/items/tree${params.size ? `?${params}` : ''}`)
 }
 
 export function listKnowledgeBaseTemplates(spaceId: string) {
-  return apiGet<DocumentTemplate[]>(`/knowledge-bases/${spaceId}/templates`)
+  return apiGet<KnowledgeContentTemplate[]>(`/knowledge-bases/${spaceId}/templates`)
 }
 
 export function createKnowledgeBaseTemplate(
@@ -185,7 +185,7 @@ export function createKnowledgeBaseTemplate(
     content?: string
   },
 ) {
-  return apiPost<DocumentTemplate>(`/knowledge-bases/${spaceId}/templates`, request)
+  return apiPost<KnowledgeContentTemplate>(`/knowledge-bases/${spaceId}/templates`, request)
 }
 
 export function createKnowledgeBaseItem(
@@ -193,36 +193,36 @@ export function createKnowledgeBaseItem(
   request: {
     parentId?: string | null
     title: string
-    docType?: DocumentSummary['docType']
+    contentType?: KnowledgeBaseItem['contentType']
     content?: string
     targetObjectType?: string
     targetObjectId?: string
     targetRoute?: string
-    displayMode?: DocumentSummary['displayMode']
-    targetTitleStrategy?: DocumentSummary['targetTitleStrategy']
+    displayMode?: KnowledgeBaseItem['displayMode']
+    targetTitleStrategy?: KnowledgeBaseItem['targetTitleStrategy']
     entryAlias?: string
   },
 ) {
-  return apiPost<DocumentDetail>(`/knowledge-bases/${spaceId}/items`, request)
+  return apiPost<KnowledgeContentDetail>(`/knowledge-bases/${spaceId}/items`, request)
 }
 
 export function createKnowledgeBaseItemFromTemplate(
   spaceId: string,
   request: { templateId: string; parentId?: string | null; title?: string },
 ) {
-  return apiPost<DocumentDetail>(`/knowledge-bases/${spaceId}/items/from-template`, request)
+  return apiPost<KnowledgeContentDetail>(`/knowledge-bases/${spaceId}/items/from-template`, request)
 }
 
-export function moveKnowledgeBaseItem(spaceId: string, documentId: string, request: { parentId?: string | null; sortOrder?: number }) {
-  return apiPost<DocumentDetail>(`/knowledge-bases/${spaceId}/items/${documentId}/move`, request)
+export function moveKnowledgeBaseItem(spaceId: string, itemId: string, request: { parentId?: string | null; sortOrder?: number }) {
+  return apiPost<KnowledgeContentDetail>(`/knowledge-bases/${spaceId}/items/${itemId}/move`, request)
 }
 
-export function archiveKnowledgeBaseItem(spaceId: string, documentId: string) {
-  return apiPost<DocumentDetail>(`/knowledge-bases/${spaceId}/items/${documentId}/archive`)
+export function archiveKnowledgeBaseItem(spaceId: string, itemId: string) {
+  return apiPost<KnowledgeContentDetail>(`/knowledge-bases/${spaceId}/items/${itemId}/archive`)
 }
 
-export function restoreKnowledgeBaseItem(spaceId: string, documentId: string) {
-  return apiPost<DocumentDetail>(`/knowledge-bases/${spaceId}/items/${documentId}/restore`)
+export function restoreKnowledgeBaseItem(spaceId: string, itemId: string) {
+  return apiPost<KnowledgeContentDetail>(`/knowledge-bases/${spaceId}/items/${itemId}/restore`)
 }
 
 export function getKnowledgeBaseDiscovery(spaceId: string) {
@@ -248,7 +248,7 @@ export function importKnowledgeBaseMarkdownBatch(
     items: Array<{ title: string; content: string; category?: string; tags?: string[] }>
   },
 ) {
-  return apiPost<{ spaceId: string; importedCount: number; documents: DocumentSummary[] }>(
+  return apiPost<{ spaceId: string; importedCount: number; items: KnowledgeBaseItem[] }>(
     `/knowledge-bases/${spaceId}/import/markdown-batch`,
     request,
   )
@@ -278,10 +278,10 @@ export function deleteKnowledgeBase(spaceId: string) {
   return apiDelete<UserKnowledgeSpaceDetailView>(`/knowledge-bases/${spaceId}`)
 }
 
-export function subscribeKnowledgeTarget(spaceId: string, request: { targetType: 'knowledge_base' | 'document'; targetId?: string }) {
+export function subscribeKnowledgeTarget(spaceId: string, request: { targetType: 'knowledge_base' | 'knowledge_content'; targetId?: string }) {
   return apiPost<KnowledgeBaseSubscription>(`/knowledge-bases/${spaceId}/subscriptions`, request)
 }
 
-export function unsubscribeKnowledgeTarget(spaceId: string, request: { targetType: 'knowledge_base' | 'document'; targetId?: string }) {
+export function unsubscribeKnowledgeTarget(spaceId: string, request: { targetType: 'knowledge_base' | 'knowledge_content'; targetId?: string }) {
   return apiPost<KnowledgeBaseSubscription>(`/knowledge-bases/${spaceId}/subscriptions/remove`, request)
 }

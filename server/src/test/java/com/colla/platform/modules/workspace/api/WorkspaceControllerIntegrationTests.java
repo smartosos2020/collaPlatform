@@ -68,8 +68,8 @@ class WorkspaceControllerIntegrationTests {
             .andExpect(status().isOk());
         domainEventWorker.processPendingEvents();
 
-        UUID documentId = createDocument(adminToken, viewerId);
-        mockMvc.perform(post("/api/docs/" + documentId + "/relations")
+        KnowledgeFixture content = createItem(adminToken, viewerId);
+        mockMvc.perform(post(itemPath(content) + "/relations")
                 .header("Authorization", "Bearer " + adminToken)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"targetType\":\"issue\",\"targetId\":\"" + issueId + "\"}"))
@@ -120,7 +120,7 @@ class WorkspaceControllerIntegrationTests {
             .andExpect(jsonPath("$.unreadMessageCount", greaterThanOrEqualTo(1)))
             .andExpect(jsonPath("$.unreadNotificationCount", greaterThanOrEqualTo(1)))
             .andExpect(jsonPath("$.latestNotifications.length()", greaterThanOrEqualTo(1)))
-            .andExpect(jsonPath("$.recentDocuments[*].id").value(hasItem(documentId.toString())))
+            .andExpect(jsonPath("$.recentKnowledgeContents[*].objectId").value(hasItem(content.itemId().toString())))
             .andExpect(jsonPath("$.recentBases[*].id").value(hasItem(baseId.toString())))
             .andExpect(jsonPath("$.recentObjects[*].objectType").value(hasItem("issue")))
             .andExpect(jsonPath("$.favoriteObjects[*].objectId").value(hasItem(issueId.toString())))
@@ -180,22 +180,38 @@ class WorkspaceControllerIntegrationTests {
         return UUID.fromString(objectMapper.readTree(response).get("issue").get("id").asText());
     }
 
-    private UUID createDocument(String token, UUID viewerId) throws Exception {
-        String response = mockMvc.perform(post("/api/docs")
+    private KnowledgeFixture createItem(String token, UUID viewerId) throws Exception {
+        String suffix = UUID.randomUUID().toString().substring(0, 8);
+        String spaceResponse = mockMvc.perform(post("/api/knowledge-bases")
                 .header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"title\":\"M7 Design Doc\",\"content\":\"M7\"}"))
+                .content("{\"name\":\"M7 Knowledge\",\"code\":\"m7-" + suffix + "\"}"))
             .andExpect(status().isOk())
-            .andReturn()
-            .getResponse()
-            .getContentAsString();
-        UUID documentId = UUID.fromString(objectMapper.readTree(response).get("document").get("id").asText());
-        mockMvc.perform(post("/api/docs/" + documentId + "/permissions")
+            .andReturn().getResponse().getContentAsString();
+        JsonNode space = objectMapper.readTree(spaceResponse).get("space");
+        UUID spaceId = UUID.fromString(space.get("id").asText());
+        UUID rootItemId = UUID.fromString(space.get("rootItemId").asText());
+        String response = mockMvc.perform(post("/api/knowledge-bases/" + spaceId + "/items")
                 .header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"userId\":\"" + viewerId + "\",\"permissionLevel\":\"view\"}"))
+                .content("{\"parentId\":\"" + rootItemId + "\",\"title\":\"M7 Design Knowledge\",\"contentType\":\"markdown\",\"content\":\"M7\"}"))
+            .andExpect(status().isOk())
+            .andReturn().getResponse().getContentAsString();
+        UUID itemId = UUID.fromString(objectMapper.readTree(response).get("item").get("id").asText());
+        KnowledgeFixture fixture = new KnowledgeFixture(spaceId, itemId);
+        mockMvc.perform(post(itemPath(fixture) + "/permissions")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"subjectType\":\"user\",\"subjectId\":\"" + viewerId + "\",\"permissionLevel\":\"view\"}"))
             .andExpect(status().isOk());
-        return documentId;
+        return fixture;
+    }
+
+    private String itemPath(KnowledgeFixture fixture) {
+        return "/api/knowledge-bases/" + fixture.spaceId() + "/items/" + fixture.itemId();
+    }
+
+    private record KnowledgeFixture(UUID spaceId, UUID itemId) {
     }
 
     private UUID createBase(String token, UUID viewerId) throws Exception {

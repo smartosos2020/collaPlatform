@@ -1,7 +1,7 @@
 package com.colla.platform.modules.im.api;
 
-import com.colla.platform.modules.doc.application.DocumentService;
-import com.colla.platform.modules.doc.domain.DocumentModels.DocumentDetail;
+import com.colla.platform.modules.knowledge.application.KnowledgeContentService;
+import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContent;
 import com.colla.platform.modules.im.application.ImService;
 import com.colla.platform.modules.im.api.UserImDtos.UserConversationDetailView;
 import com.colla.platform.modules.im.api.UserImDtos.UserConversationView;
@@ -38,12 +38,12 @@ import org.springframework.web.bind.annotation.RestController;
 public class ImController {
     private final ImService imService;
     private final ProjectService projectService;
-    private final DocumentService documentService;
+    private final KnowledgeContentService contentService;
 
-    public ImController(ImService imService, ProjectService projectService, DocumentService documentService) {
+    public ImController(ImService imService, ProjectService projectService, KnowledgeContentService contentService) {
         this.imService = imService;
         this.projectService = projectService;
-        this.documentService = documentService;
+        this.contentService = contentService;
     }
 
     @GetMapping
@@ -187,27 +187,27 @@ public class ImController {
         );
     }
 
-    @PostMapping("/{conversationId}/messages/{messageId}/convert-to-document")
-    public DocumentDetail convertMessageToDocument(
+    @PostMapping("/{conversationId}/messages/{messageId}/convert-to-knowledge-content")
+    public KnowledgeContent convertMessageToKnowledgeContent(
         @PathVariable UUID conversationId,
         @PathVariable UUID messageId,
-        @Valid @RequestBody ConvertMessageToDocumentRequest request,
+        @Valid @RequestBody ConvertMessageToKnowledgeContentRequest request,
         Authentication authentication
     ) {
         CurrentUser currentUser = currentUser(authentication);
         MessageSummary message = imService.getMessage(currentUser, conversationId, messageId);
-        DocumentDetail document = documentService.createDocument(
+        KnowledgeContent document = contentService.createItem(
             currentUser,
             request.parentId(),
-            request.title() == null || request.title().isBlank() ? defaultDocumentTitleFromMessage(message) : request.title(),
+            request.title() == null || request.title().isBlank() ? defaultKnowledgeContentTitleFromMessage(message) : request.title(),
             "markdown",
-            documentContentFromMessage(message),
+            knowledgeContentFromMessage(message),
             null,
             null,
             "view",
             false
         );
-        return documentService.addRelation(currentUser, document.document().id(), "message", messageId);
+        return contentService.addRelation(currentUser, document.item().id(), "message", messageId);
     }
 
     @PatchMapping("/{conversationId}/messages/{messageId}")
@@ -296,10 +296,10 @@ public class ImController {
     ) {
     }
 
-    public record ConvertMessageToDocumentRequest(UUID parentId, @Size(max = 255) String title) {
+    public record ConvertMessageToKnowledgeContentRequest(UUID parentId, @Size(max = 255) String title) {
     }
 
-    private String defaultDocumentTitleFromMessage(MessageSummary message) {
+    private String defaultKnowledgeContentTitleFromMessage(MessageSummary message) {
         String normalized = message.content() == null ? "" : message.content().replaceAll("\\s+", " ").trim();
         if (normalized.isBlank()) {
             return message.senderName() + " 的消息记录";
@@ -307,12 +307,12 @@ public class ImController {
         return normalized.length() <= 80 ? normalized : normalized.substring(0, 80);
     }
 
-    private String documentContentFromMessage(MessageSummary message) {
+    private String knowledgeContentFromMessage(MessageSummary message) {
         String content = message.content() == null ? "" : message.content().trim();
         String quoted = content.isBlank() ? "> 空消息" : "> " + content.replace("\n", "\n> ");
         return String.join(
             "\n\n",
-            "# " + defaultDocumentTitleFromMessage(message),
+            "# " + defaultKnowledgeContentTitleFromMessage(message),
             "来源消息：" + message.senderName() + " · " + message.createdAt() + " /im?conversationId=" + message.conversationId() + "&messageId=" + message.id(),
             quoted,
             "::object-card{\"objectType\":\"message\",\"objectId\":\"" + message.id() + "\"}"

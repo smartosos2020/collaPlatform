@@ -1,8 +1,8 @@
 package com.colla.platform.modules.search.application;
 
 import com.colla.platform.modules.audit.application.AuditService;
-import com.colla.platform.modules.doc.domain.DocumentModels.DocumentSummary;
-import com.colla.platform.modules.doc.infrastructure.DocumentRepository;
+import com.colla.platform.modules.knowledge.domain.KnowledgeBaseItemModels.KnowledgeBaseItem;
+import com.colla.platform.modules.knowledge.infrastructure.KnowledgeContentRepository;
 import com.colla.platform.modules.platform.application.PlatformObjectResolverRegistry;
 import com.colla.platform.modules.platform.domain.PlatformModels.ObjectAccessState;
 import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectSummary;
@@ -32,7 +32,7 @@ public class SearchService {
     private final SearchRepository searchRepository;
     private final SearchIndexService searchIndexService;
     private final PlatformObjectResolverRegistry objectResolverRegistry;
-    private final DocumentRepository documentRepository;
+    private final KnowledgeContentRepository contentRepository;
     private final PermissionService permissionService;
     private final AuditService auditService;
 
@@ -40,14 +40,14 @@ public class SearchService {
         SearchRepository searchRepository,
         SearchIndexService searchIndexService,
         PlatformObjectResolverRegistry objectResolverRegistry,
-        DocumentRepository documentRepository,
+        KnowledgeContentRepository contentRepository,
         PermissionService permissionService,
         AuditService auditService
     ) {
         this.searchRepository = searchRepository;
         this.searchIndexService = searchIndexService;
         this.objectResolverRegistry = objectResolverRegistry;
-        this.documentRepository = documentRepository;
+        this.contentRepository = contentRepository;
         this.permissionService = permissionService;
         this.auditService = auditService;
     }
@@ -58,7 +58,7 @@ public class SearchService {
         int limit,
         UUID knowledgeBaseId,
         UUID directoryId,
-        String docType,
+        String contentType,
         List<String> tags,
         UUID maintainerId,
         String knowledgeStatus,
@@ -73,7 +73,7 @@ public class SearchService {
         SearchFilters filters = new SearchFilters(
             knowledgeBaseId,
             directoryId,
-            normalizeDocType(docType),
+            normalizeContentType(contentType),
             normalizeTags(tags),
             maintainerId,
             normalizeKnowledgeStatus(knowledgeStatus),
@@ -145,9 +145,9 @@ public class SearchService {
                 null
             );
         }
-        if ("document".equals(result.objectType())) {
-            DocumentSummary document = documentRepository.findDocument(currentUser.workspaceId(), result.objectId()).orElse(null);
-            if (document != null && "object_ref".equals(document.docType()) && document.targetObjectType() != null && document.targetObjectId() != null) {
+        if ("knowledge_content".equals(result.objectType())) {
+            KnowledgeBaseItem document = contentRepository.findItem(currentUser.workspaceId(), result.objectId()).orElse(null);
+            if (document != null && "object_ref".equals(document.contentType()) && document.targetObjectType() != null && document.targetObjectId() != null) {
                 PlatformObjectSummary targetSummary = objectResolverRegistry.resolve(currentUser, document.targetObjectType(), document.targetObjectId());
                 if (targetSummary.accessState() != ObjectAccessState.available) {
                     return new SearchResult(
@@ -163,13 +163,13 @@ public class SearchService {
                         "对象入口目标当前为 " + targetSummary.accessState().name() + " 状态，搜索结果不展示原始内容。",
                         result.knowledgeBaseId(),
                         result.knowledgeBaseName(),
-                        result.parentDocumentId(),
+                        result.parentItemId(),
                         result.directoryPath(),
                         List.of(),
                         null,
                         null,
                         null,
-                        result.docType(),
+                        result.contentType(),
                         result.hitSource()
                     );
                 }
@@ -188,19 +188,19 @@ public class SearchService {
             availableExplanation(summary),
             result.knowledgeBaseId(),
             result.knowledgeBaseName(),
-            result.parentDocumentId(),
+            result.parentItemId(),
             result.directoryPath(),
             result.tags(),
             result.maintainerId(),
             result.maintainerName(),
             result.knowledgeStatus(),
-            result.docType(),
+            result.contentType(),
             result.hitSource()
         );
     }
 
     private boolean isUserContentResult(String objectType) {
-        return List.of("issue", "document", "base", "base_table", "base_record", "message", "approval").contains(objectType);
+        return List.of("issue", "knowledge_content", "base", "base_table", "base_record", "message", "approval").contains(objectType);
     }
 
     private List<AdminGovernanceSearchResult> governanceCatalog() {
@@ -213,11 +213,11 @@ public class SearchService {
         );
     }
 
-    private String normalizeDocType(String docType) {
-        if (docType == null || docType.isBlank()) {
+    private String normalizeContentType(String contentType) {
+        if (contentType == null || contentType.isBlank()) {
             return null;
         }
-        String normalized = docType.trim().toLowerCase(Locale.ROOT);
+        String normalized = contentType.trim().toLowerCase(Locale.ROOT);
         if (!List.of("space", "folder", "markdown", "object_ref", "external_link").contains(normalized)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid document type filter");
         }

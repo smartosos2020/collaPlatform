@@ -6,6 +6,7 @@ import com.colla.platform.modules.notification.application.NotificationService;
 import com.colla.platform.modules.notification.domain.NotificationModels.NotificationItem;
 import com.colla.platform.modules.notification.infrastructure.NotificationRepository;
 import com.colla.platform.modules.search.application.SearchIndexService;
+import com.colla.platform.modules.platform.domain.PlatformObjectTypes;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Map;
@@ -72,7 +73,7 @@ public class DomainEventWorker {
                 payload.getOrDefault("notificationType", "system").toString(),
                 payload.get("title").toString(),
                 payload.getOrDefault("body", "").toString(),
-                payload.get("targetType") == null ? null : payload.get("targetType").toString(),
+                payload.get("targetType") == null ? null : PlatformObjectTypes.canonicalize(payload.get("targetType").toString()),
                 targetId,
                 payload.get("webPath") == null ? null : payload.get("webPath").toString(),
                 payload.getOrDefault("dedupeKey", event.id().toString()).toString()

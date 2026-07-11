@@ -1,6 +1,6 @@
-export type ApiBoundaryKind = 'user-collaboration' | 'admin-governance' | 'shared-platform' | 'compatibility'
+export type ApiBoundaryKind = 'user-collaboration' | 'admin-governance' | 'shared-platform'
 
-export type ApiMigrationAction = 'keep' | 'wrap-facade' | 'migrate-caller' | 'deprecate' | 'remove-after-compat'
+export type ApiMigrationAction = 'keep' | 'wrap-facade' | 'migrate-caller'
 
 export type ApiBoundaryRule = {
   prefix: string
@@ -57,15 +57,6 @@ export const apiBoundaryRules: ApiBoundaryRule[] = [
     permissionRule: 'space membership, content ACL and space management actions',
     errorRule: 'focus on content unavailable, object missing, permission request available',
     migrationAction: 'wrap-facade',
-  },
-  {
-    prefix: '/docs',
-    boundary: 'compatibility',
-    owner: 'docs editor foundation',
-    dtoRule: 'Document* remains editor/compat DTO; new product DTO must wrap it',
-    permissionRule: 'document ACL and editor action permissions',
-    errorRule: 'focus on legacy deep link, editor state, block/comment/version action',
-    migrationAction: 'deprecate',
   },
   {
     prefix: '/bases',

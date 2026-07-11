@@ -1,7 +1,6 @@
 package com.colla.platform.modules.workspace.api;
 
 import com.colla.platform.modules.base.domain.BaseModels.BaseSummary;
-import com.colla.platform.modules.doc.domain.DocumentModels.DocumentSummary;
 import com.colla.platform.modules.im.domain.ImModels.ConversationSummary;
 import com.colla.platform.modules.notification.domain.NotificationModels.NotificationItem;
 import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectSummary;
@@ -21,14 +20,13 @@ final class UserWorkspaceDtos {
             dashboard.unreadConversations(),
             dashboard.unreadNotificationCount(),
             dashboard.latestNotifications(),
-            dashboard.recentDocuments(),
             dashboard.recentKnowledgeContents(),
             dashboard.recentBases(),
             dashboard.recentObjects(),
             dashboard.favoriteObjects(),
             new UserWorkspaceNavigationSummary(
                 dashboard.myIssues().size(),
-                dashboard.recentDocuments().size() + dashboard.recentKnowledgeContents().size(),
+                dashboard.recentKnowledgeContents().size(),
                 dashboard.recentBases().size(),
                 dashboard.unreadConversations().size(),
                 dashboard.unreadNotificationCount()
@@ -44,7 +42,6 @@ final class UserWorkspaceDtos {
         List<ConversationSummary> unreadConversations,
         long unreadNotificationCount,
         List<NotificationItem> latestNotifications,
-        List<DocumentSummary> recentDocuments,
         List<PlatformObjectSummary> recentKnowledgeContents,
         List<BaseSummary> recentBases,
         List<PlatformObjectSummary> recentObjects,

@@ -12,7 +12,7 @@ const targetTypeOptions = [
   { label: '全部对象', value: '' },
   { label: '事项', value: 'issue' },
   { label: '项目', value: 'project' },
-  { label: '知识内容', value: 'document' },
+  { label: '知识内容', value: 'knowledge_content' },
   { label: '知识库', value: 'knowledge_base' },
   { label: '表格', value: 'base' },
   { label: '审批', value: 'approval' },
@@ -110,7 +110,7 @@ export function AdminAuditLogsPage() {
           <Button onClick={() => applyKnowledgeFilter('knowledge_base.updated', 'knowledge_base')}>知识库设置</Button>
           <Button onClick={() => applyKnowledgeFilter('resource.permission.granted', 'knowledge_base')}>知识库成员</Button>
           <Button onClick={() => applyKnowledgeFilter('knowledge_base.governance.bulk_updated', 'knowledge_base')}>批量治理</Button>
-          <Button onClick={() => applyKnowledgeFilter('resource.permission.inheritance.broken', 'document')}>继承变更</Button>
+          <Button onClick={() => applyKnowledgeFilter('resource.permission.inheritance.broken', 'knowledge_content')}>继承变更</Button>
         </Space>
       </Form>
 

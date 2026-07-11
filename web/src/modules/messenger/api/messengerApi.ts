@@ -1,6 +1,5 @@
 import { apiDelete, apiGet, apiPatch, apiPost } from '../../../shared/api/httpClient'
 import type { PlatformObjectSummary } from '../../platform/api/platformObjectsApi'
-import type { DocumentDetail } from '../../docs/api/docsApi'
 import type { IssueDetail } from '../../projects/api/projectsApi'
 
 export type ConversationMember = {
@@ -188,12 +187,17 @@ export function convertMessageToIssue(
   return apiPost<IssueDetail>(`/conversations/${conversationId}/messages/${messageId}/convert-to-issue`, request)
 }
 
-export function convertMessageToDocument(
+export function convertMessageToKnowledgeContent(
   conversationId: string,
   messageId: string,
   request: { parentId?: string | null; title?: string },
 ) {
-  return apiPost<DocumentDetail>(`/conversations/${conversationId}/messages/${messageId}/convert-to-document`, request)
+  return apiPost<ConvertedKnowledgeContentDetail>(`/conversations/${conversationId}/messages/${messageId}/convert-to-knowledge-content`, request)
+}
+
+type ConvertedKnowledgeContentDetail = {
+  item: { id: string }
+  context?: { webPath?: string | null } | null
 }
 
 export function editMessage(conversationId: string, messageId: string, content: string) {

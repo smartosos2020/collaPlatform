@@ -87,7 +87,7 @@ export function AdminUserGroupsPage() {
   const refreshGroups = async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['admin', 'user-groups'] }),
-      queryClient.invalidateQueries({ queryKey: ['docs'] }),
+      queryClient.invalidateQueries({ queryKey: ['knowledge-content'] }),
     ])
   }
 

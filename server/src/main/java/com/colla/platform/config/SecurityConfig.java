@@ -74,6 +74,12 @@ public class SecurityConfig {
             "X-Colla-Retry-Attempt",
             "X-Colla-Request-Id"
         ));
+        configuration.setExposedHeaders(List.of(
+            "Deprecation",
+            "Sunset",
+            "Link",
+            "X-Colla-Request-Id"
+        ));
         configuration.setAllowCredentials(false);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();

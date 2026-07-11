@@ -53,8 +53,8 @@ class SearchCollaborationIntegrationTests {
             .andExpect(jsonPath("$.byStatus[?(@.key == 'open')].count").value(hasItem(1)))
             .andExpect(jsonPath("$.byAssignee[?(@.key == '" + memberId + "')].count").value(hasItem(1)));
 
-        UUID docId = createAndUpdateDocument(adminToken, memberId);
-        mockMvc.perform(get("/api/docs/" + docId + "/versions/diff?fromVersionNo=1&toVersionNo=2")
+        KnowledgeFixture content = createAndUpdateKnowledgeContent(adminToken, memberId);
+        mockMvc.perform(get(itemPath(content) + "/versions/diff?fromVersionNo=1&toVersionNo=2")
                 .header("Authorization", "Bearer " + memberToken))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.lines[?(@.type == 'added')].content").value(hasItem("aurora-new-line")));
@@ -111,7 +111,7 @@ class SearchCollaborationIntegrationTests {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.items.length()", greaterThanOrEqualTo(4)))
             .andExpect(jsonPath("$.items[*].objectType").value(hasItem("issue")))
-            .andExpect(jsonPath("$.items[*].objectType").value(hasItem("document")))
+            .andExpect(jsonPath("$.items[*].objectType").value(hasItem("knowledge_content")))
             .andExpect(jsonPath("$.items[*].objectType").value(hasItem("base")))
             .andExpect(jsonPath("$.items[*].objectType").value(hasItem("base_table")))
             .andExpect(jsonPath("$.items[*].objectType").value(hasItem("base_record")))
@@ -182,27 +182,57 @@ class SearchCollaborationIntegrationTests {
         return UUID.fromString(objectMapper.readTree(response).get("issue").get("id").asText());
     }
 
-    private UUID createAndUpdateDocument(String token, UUID memberId) throws Exception {
-        String response = mockMvc.perform(post("/api/docs")
+    private KnowledgeFixture createAndUpdateKnowledgeContent(String token, UUID memberId) throws Exception {
+        String suffix = UUID.randomUUID().toString().substring(0, 8);
+        String spaceResponse = mockMvc.perform(post("/api/knowledge-bases")
                 .header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"title\":\"aurora document\",\"content\":\"first-line\"}"))
+                .content(objectMapper.writeValueAsString(Map.of("name", "aurora knowledge", "code", "aurora-" + suffix))))
             .andExpect(status().isOk())
-            .andReturn()
-            .getResponse()
-            .getContentAsString();
-        UUID docId = UUID.fromString(objectMapper.readTree(response).get("document").get("id").asText());
-        mockMvc.perform(post("/api/docs/" + docId + "/permissions")
+            .andReturn().getResponse().getContentAsString();
+        JsonNode space = objectMapper.readTree(spaceResponse).get("space");
+        UUID spaceId = UUID.fromString(space.get("id").asText());
+        UUID rootItemId = UUID.fromString(space.get("rootItemId").asText());
+        String response = mockMvc.perform(post("/api/knowledge-bases/" + spaceId + "/items")
                 .header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"userId\":\"" + memberId + "\",\"permissionLevel\":\"view\"}"))
-            .andExpect(status().isOk());
-        mockMvc.perform(patch("/api/docs/" + docId)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "parentId", rootItemId,
+                    "title", "aurora knowledge content",
+                    "contentType", "markdown",
+                    "content", "first-line"
+                ))))
+            .andExpect(status().isOk())
+            .andReturn().getResponse().getContentAsString();
+        UUID itemId = UUID.fromString(objectMapper.readTree(response).get("item").get("id").asText());
+        KnowledgeFixture fixture = new KnowledgeFixture(spaceId, itemId);
+        mockMvc.perform(post("/api/resource-permissions/knowledge_base/" + spaceId)
                 .header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"baseVersionNo\":1,\"title\":\"aurora document\",\"content\":\"first-line\\naurora-new-line\"}"))
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "subjectType", "user", "subjectId", memberId, "permissionLevel", "view"
+                ))))
             .andExpect(status().isOk());
-        return docId;
+        mockMvc.perform(post(itemPath(fixture) + "/permissions")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "subjectType", "user", "subjectId", memberId, "permissionLevel", "view"
+                ))))
+            .andExpect(status().isOk());
+        mockMvc.perform(patch(itemPath(fixture))
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"baseVersionNo\":1,\"title\":\"aurora knowledge content\",\"content\":\"first-line\\naurora-new-line\"}"))
+            .andExpect(status().isOk());
+        return fixture;
+    }
+
+    private String itemPath(KnowledgeFixture fixture) {
+        return "/api/knowledge-bases/" + fixture.spaceId() + "/items/" + fixture.itemId();
+    }
+
+    private record KnowledgeFixture(UUID spaceId, UUID itemId) {
     }
 
     private JsonNode createBaseTableRecord(String token, UUID memberId) throws Exception {

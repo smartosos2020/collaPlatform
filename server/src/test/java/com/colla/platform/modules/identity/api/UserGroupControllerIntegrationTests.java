@@ -29,7 +29,7 @@ class UserGroupControllerIntegrationTests {
     private ObjectMapper objectMapper;
 
     @Test
-    void adminCanManageUserGroupMembersExpansionAuditAndDocumentGrant() throws Exception {
+    void adminCanManageUserGroupMembersExpansionAuditAndKnowledgeContentGrant() throws Exception {
         String adminToken = login("admin", "admin123456", "user-group-admin-" + UUID.randomUUID());
         String suffix = UUID.randomUUID().toString().replace("-", "").substring(0, 10);
         UUID departmentId = createDepartment(adminToken, "ug_dept_" + suffix, "User Group Dept");
@@ -72,8 +72,9 @@ class UserGroupControllerIntegrationTests {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.length()", greaterThanOrEqualTo(1)));
 
-        UUID documentId = createDocument(adminToken, "User Group Grant " + suffix);
-        mockMvc.perform(post("/api/docs/" + documentId + "/permissions")
+        KnowledgeFixture content = createItem(adminToken, "User Group Grant " + suffix);
+        grantSpacePermission(adminToken, content.spaceId(), groupId);
+        mockMvc.perform(post(itemPath(content) + "/permissions")
                 .header("Authorization", "Bearer " + adminToken)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(Map.of(
@@ -85,22 +86,22 @@ class UserGroupControllerIntegrationTests {
             .andExpect(jsonPath("$.permissions[*].subjectType", hasItem("user_group")))
             .andExpect(jsonPath("$.permissions[*].subjectName", hasItem("Reviewers " + suffix)));
 
-        mockMvc.perform(get("/api/docs/" + documentId)
+        mockMvc.perform(get(itemPath(content))
                 .header("Authorization", "Bearer " + departmentUserToken))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.document.permissionLevel").value("view"));
+            .andExpect(jsonPath("$.item.permissionLevel").value("view"));
 
-        mockMvc.perform(get("/api/docs")
+        mockMvc.perform(get("/api/knowledge-bases/" + content.spaceId() + "/items")
                 .header("Authorization", "Bearer " + departmentUserToken))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$[*].id", hasItem(documentId.toString())));
+            .andExpect(jsonPath("$[*].id", hasItem(content.itemId().toString())));
 
         mockMvc.perform(post("/api/admin/user-groups/" + groupId + "/disable")
                 .header("Authorization", "Bearer " + adminToken))
             .andExpect(status().isOk());
 
-        UUID blockedDocumentId = createDocument(adminToken, "Disabled Group Grant " + suffix);
-        mockMvc.perform(post("/api/docs/" + blockedDocumentId + "/permissions")
+        KnowledgeFixture blockedContent = createItem(adminToken, "Disabled Group Grant " + suffix);
+        mockMvc.perform(post(itemPath(blockedContent) + "/permissions")
                 .header("Authorization", "Bearer " + adminToken)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(Map.of(
@@ -213,16 +214,45 @@ class UserGroupControllerIntegrationTests {
         return UUID.fromString(objectMapper.readTree(response).get("id").asText());
     }
 
-    private UUID createDocument(String token, String title) throws Exception {
-        String response = mockMvc.perform(post("/api/docs")
+    private KnowledgeFixture createItem(String token, String title) throws Exception {
+        String suffix = UUID.randomUUID().toString().substring(0, 8);
+        String spaceResponse = mockMvc.perform(post("/api/knowledge-bases")
                 .header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(Map.of("title", title, "content", "# " + title))))
+                .content(objectMapper.writeValueAsString(Map.of("name", title, "code", "ug-" + suffix))))
             .andExpect(status().isOk())
-            .andReturn()
-            .getResponse()
-            .getContentAsString();
-        return UUID.fromString(objectMapper.readTree(response).get("document").get("id").asText());
+            .andReturn().getResponse().getContentAsString();
+        JsonNode space = objectMapper.readTree(spaceResponse).get("space");
+        UUID spaceId = UUID.fromString(space.get("id").asText());
+        String response = mockMvc.perform(post("/api/knowledge-bases/" + spaceId + "/items")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "parentId", UUID.fromString(space.get("rootItemId").asText()),
+                    "title", title,
+                    "contentType", "markdown",
+                    "content", "# " + title
+                ))))
+            .andExpect(status().isOk())
+            .andReturn().getResponse().getContentAsString();
+        return new KnowledgeFixture(spaceId, UUID.fromString(objectMapper.readTree(response).get("item").get("id").asText()));
+    }
+
+    private void grantSpacePermission(String token, UUID spaceId, UUID groupId) throws Exception {
+        mockMvc.perform(post("/api/resource-permissions/knowledge_base/" + spaceId)
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "subjectType", "user_group", "subjectId", groupId, "permissionLevel", "view"
+                ))))
+            .andExpect(status().isOk());
+    }
+
+    private String itemPath(KnowledgeFixture fixture) {
+        return "/api/knowledge-bases/" + fixture.spaceId() + "/items/" + fixture.itemId();
+    }
+
+    private record KnowledgeFixture(UUID spaceId, UUID itemId) {
     }
 
     private String login(String username, String password, String deviceFingerprint) throws Exception {

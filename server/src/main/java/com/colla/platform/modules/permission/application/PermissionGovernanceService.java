@@ -109,7 +109,7 @@ public class PermissionGovernanceService {
         if ("knowledge_base".equals(resourceType)) {
             return resourceId.equals(knowledgeBaseId);
         }
-        if (!"document".equals(resourceType)) {
+        if (!"knowledge_content".equals(resourceType)) {
             return false;
         }
         Boolean exists = jdbcTemplate.queryForObject(
@@ -117,11 +117,11 @@ public class PermissionGovernanceService {
                 with recursive subtree as (
                     select d.id
                     from knowledge_base_spaces k
-                    join documents d on d.workspace_id = k.workspace_id and d.id = k.root_document_id and d.deleted_at is null
+                    join knowledge_base_items d on d.workspace_id = k.workspace_id and d.id = k.root_item_id and d.deleted_at is null
                     where k.workspace_id = ? and k.id = ? and k.deleted_at is null
                     union all
                     select child.id
-                    from documents child
+                    from knowledge_base_items child
                     join subtree parent on parent.id = child.parent_id
                     where child.workspace_id = ? and child.deleted_at is null
                 )

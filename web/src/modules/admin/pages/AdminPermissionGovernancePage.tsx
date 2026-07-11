@@ -97,11 +97,11 @@ export function AdminPermissionGovernancePage() {
             placeholder="用户"
           />
         </Form.Item>
-        <Form.Item name="resourceType" initialValue="document" rules={[{ required: true }]}>
+        <Form.Item name="resourceType" initialValue="knowledge_content" rules={[{ required: true }]}>
           <Select
             className="permission-governance-resource-type"
             options={[
-              { label: 'document', value: 'document' },
+              { label: '知识内容', value: 'knowledge_content' },
               { label: 'knowledge_base', value: 'knowledge_base' },
               { label: 'base', value: 'base' },
               { label: 'project', value: 'project' },

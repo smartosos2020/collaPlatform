@@ -21,13 +21,13 @@ public final class SearchModels {
         String permissionExplanation,
         UUID knowledgeBaseId,
         String knowledgeBaseName,
-        UUID parentDocumentId,
+        UUID parentItemId,
         String directoryPath,
         List<String> tags,
         UUID maintainerId,
         String maintainerName,
         String knowledgeStatus,
-        String docType,
+        String contentType,
         String hitSource
     ) {
     }
@@ -35,7 +35,7 @@ public final class SearchModels {
     public record SearchFilters(
         UUID knowledgeBaseId,
         UUID directoryId,
-        String docType,
+        String contentType,
         List<String> tags,
         UUID maintainerId,
         String knowledgeStatus,

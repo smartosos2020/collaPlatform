@@ -33,21 +33,21 @@ class PermissionGovernanceControllerIntegrationTests {
         String suffix = UUID.randomUUID().toString().replace("-", "").substring(0, 10);
         UUID departmentId = createDepartment(adminToken, "gov_dept_" + suffix, "Gov Dept " + suffix);
         UUID memberId = createMember(adminToken, "govuser" + suffix, "Gov User", departmentId);
-        UUID documentId = createDocument(adminToken, "Gov Doc " + suffix);
+        UUID itemId = createItem(adminToken, "Gov Knowledge " + suffix);
 
-        grantResource(adminToken, "document", documentId, "department", departmentId, "view", false);
+        grantResource(adminToken, "knowledge_content", itemId, "department", departmentId, "view", false);
 
         mockMvc.perform(get("/api/admin/permission-governance/inspect")
                 .param("userId", memberId.toString())
-                .param("resourceType", "document")
-                .param("resourceId", documentId.toString())
+                .param("resourceType", "knowledge_content")
+                .param("resourceId", itemId.toString())
                 .param("action", "view")
                 .header("Authorization", "Bearer " + adminToken))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.allowed").value(true))
             .andExpect(jsonPath("$.currentLevel").value("view"))
             .andExpect(jsonPath("$.risk.level").value("low"))
-            .andExpect(jsonPath("$.impactScope.resourceType").value("document"))
+            .andExpect(jsonPath("$.impactScope.resourceType").value("knowledge_content"))
             .andExpect(jsonPath("$.suggestedAction").value("monitor"));
 
         mockMvc.perform(get("/api/admin/permission-governance/risks/export")
@@ -91,16 +91,28 @@ class PermissionGovernanceControllerIntegrationTests {
             .andExpect(status().isOk());
     }
 
-    private UUID createDocument(String token, String title) throws Exception {
-        String response = mockMvc.perform(post("/api/docs")
+    private UUID createItem(String token, String title) throws Exception {
+        String suffix = UUID.randomUUID().toString().substring(0, 8);
+        String spaceResponse = mockMvc.perform(post("/api/knowledge-bases")
                 .header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(Map.of("title", title, "content", "# " + title))))
+                .content(objectMapper.writeValueAsString(Map.of("name", title, "code", "gov-" + suffix))))
             .andExpect(status().isOk())
-            .andReturn()
-            .getResponse()
-            .getContentAsString();
-        return UUID.fromString(objectMapper.readTree(response).get("document").get("id").asText());
+            .andReturn().getResponse().getContentAsString();
+        var space = objectMapper.readTree(spaceResponse).get("space");
+        UUID spaceId = UUID.fromString(space.get("id").asText());
+        String response = mockMvc.perform(post("/api/knowledge-bases/" + spaceId + "/items")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "parentId", UUID.fromString(space.get("rootItemId").asText()),
+                    "title", title,
+                    "contentType", "markdown",
+                    "content", "# " + title
+                ))))
+            .andExpect(status().isOk())
+            .andReturn().getResponse().getContentAsString();
+        return UUID.fromString(objectMapper.readTree(response).get("item").get("id").asText());
     }
 
     private UUID createBase(String token, String name) throws Exception {

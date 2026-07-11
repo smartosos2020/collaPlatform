@@ -44,7 +44,7 @@ import { ObjectSummaryCard } from '../../platform/components/InternalLinkCard'
 import {
   addConversationMembers,
   closeConversation,
-  convertMessageToDocument,
+  convertMessageToKnowledgeContent,
   convertMessageToIssue,
   createConversation,
   editMessage,
@@ -84,7 +84,7 @@ type ConvertMessageForm = {
   description?: string
 }
 
-type ConvertMessageToDocumentForm = {
+type ConvertMessageToKnowledgeContentForm = {
   title?: string
 }
 
@@ -119,7 +119,7 @@ export function MessengerPage() {
   const [syncingAfterReconnect, setSyncingAfterReconnect] = useState(false)
   const [form] = Form.useForm<CreateConversationForm>()
   const [convertForm] = Form.useForm<ConvertMessageForm>()
-  const [convertDocumentForm] = Form.useForm<ConvertMessageToDocumentForm>()
+  const [convertDocumentForm] = Form.useForm<ConvertMessageToKnowledgeContentForm>()
   const messageListRef = useRef<HTMLElement | null>(null)
   const messageRefs = useRef<Record<string, HTMLElement | null>>({})
   const autoReadMessageIdRef = useRef<string | null>(null)
@@ -279,8 +279,8 @@ export function MessengerPage() {
   })
 
   const convertDocumentMutation = useMutation({
-    mutationFn: (values: ConvertMessageToDocumentForm) =>
-      convertMessageToDocument(
+    mutationFn: (values: ConvertMessageToKnowledgeContentForm) =>
+      convertMessageToKnowledgeContent(
         convertDocumentMessage?.conversationId || selectedConversationId || '',
         convertDocumentMessage?.id || '',
         { title: values.title },
@@ -290,7 +290,7 @@ export function MessengerPage() {
       setConvertDocumentMessage(null)
       convertDocumentForm.resetFields()
       await refreshIm()
-      navigate(detail.knowledgeContext?.webPath ?? `/docs/${detail.document.id}`)
+      navigate(detail.context?.webPath ?? '/knowledge-bases')
     },
     onError: () => message.error('从消息沉淀知识内容失败'),
   })
@@ -709,7 +709,7 @@ export function MessengerPage() {
                 onChange={(value) => setMessageSearchTargetType(value)}
                 options={[
                   { value: 'issue', label: '事项' },
-                  { value: 'document', label: '知识内容' },
+                  { value: 'knowledge_content', label: '知识内容' },
                   { value: 'base', label: '表格' },
                   { value: 'approval', label: '审批' },
                   { value: 'message', label: '消息' },
@@ -1193,7 +1193,7 @@ function MessageBubble({
       onClick: onCreateIssue,
     },
     {
-      key: 'document',
+      key: 'knowledge_content',
       icon: <FileTextOutlined />,
       label: '转知识内容',
       disabled: Boolean(item.revokedAt) || isLocal,

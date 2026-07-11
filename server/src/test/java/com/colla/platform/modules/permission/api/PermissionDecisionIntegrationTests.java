@@ -31,7 +31,7 @@ class PermissionDecisionIntegrationTests {
     private ObjectMapper objectMapper;
 
     @Test
-    void documentAccessExplanationAndSearchUseUnifiedResourcePermissions() throws Exception {
+    void knowledgeContentAccessExplanationAndSearchUseUnifiedResourcePermissions() throws Exception {
         String suffix = UUID.randomUUID().toString().replace("-", "").substring(0, 10);
         String adminToken = login("admin", "admin123456", "permission-admin-" + suffix);
         UUID departmentId = createDepartment(adminToken, "acl_dept_" + suffix, "ACL Dept " + suffix);
@@ -42,15 +42,15 @@ class PermissionDecisionIntegrationTests {
         createMember(adminToken, outsiderUsername, "ACL Outsider", null);
         String outsiderToken = login(outsiderUsername, "member123456", "permission-outsider-" + suffix);
 
-        UUID departmentDocumentId = createDocument(adminToken, "acl-department-" + suffix);
-        grantDocumentPermission(adminToken, departmentDocumentId, "department", departmentId, "view");
+        KnowledgeFixture departmentContent = createItem(adminToken, "acl-department-" + suffix);
+        grantKnowledgeContentPermission(adminToken, departmentContent, "department", departmentId, "view");
 
-        mockMvc.perform(get("/api/docs/" + departmentDocumentId)
+        mockMvc.perform(get(itemPath(departmentContent))
                 .header("Authorization", "Bearer " + memberToken))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.document.permissionLevel").value("view"));
+            .andExpect(jsonPath("$.item.permissionLevel").value("view"));
 
-        mockMvc.perform(get("/api/platform/objects/document/" + departmentDocumentId + "/permission-explanation?action=view")
+        mockMvc.perform(get("/api/platform/objects/knowledge_content/" + departmentContent.itemId() + "/permission-explanation?action=view")
                 .header("Authorization", "Bearer " + memberToken))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.allowed").value(true))
@@ -64,17 +64,17 @@ class PermissionDecisionIntegrationTests {
         mockMvc.perform(get("/api/search?q=acl-department-" + suffix + "&limit=20")
                 .header("Authorization", "Bearer " + memberToken))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.items[*].objectId").value(hasItem(departmentDocumentId.toString())));
+            .andExpect(jsonPath("$.items[*].objectId").value(hasItem(departmentContent.itemId().toString())));
 
         mockMvc.perform(get("/api/search?q=acl-department-" + suffix + "&limit=20")
                 .header("Authorization", "Bearer " + outsiderToken))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.items[*].objectId").value(not(hasItem(departmentDocumentId.toString()))));
+            .andExpect(jsonPath("$.items[*].objectId").value(not(hasItem(departmentContent.itemId().toString()))));
 
-        UUID roleDocumentId = createDocument(adminToken, "acl-role-" + suffix);
-        grantDocumentPermission(adminToken, roleDocumentId, "role", MEMBER_ROLE_ID, "comment");
+        KnowledgeFixture roleContent = createItem(adminToken, "acl-role-" + suffix);
+        grantKnowledgeContentPermission(adminToken, roleContent, "role", MEMBER_ROLE_ID, "comment");
 
-        mockMvc.perform(get("/api/platform/objects/document/" + roleDocumentId + "/permission-explanation?action=comment")
+        mockMvc.perform(get("/api/platform/objects/knowledge_content/" + roleContent.itemId() + "/permission-explanation?action=comment")
                 .header("Authorization", "Bearer " + memberToken))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.allowed").value(true))
@@ -115,20 +115,39 @@ class PermissionDecisionIntegrationTests {
         return UUID.fromString(objectMapper.readTree(response).get("id").asText());
     }
 
-    private UUID createDocument(String token, String title) throws Exception {
-        String response = mockMvc.perform(post("/api/docs")
+    private KnowledgeFixture createItem(String token, String title) throws Exception {
+        String suffix = UUID.randomUUID().toString().substring(0, 8);
+        String spaceResponse = mockMvc.perform(post("/api/knowledge-bases")
                 .header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(Map.of("title", title, "content", "# " + title))))
+                .content(objectMapper.writeValueAsString(Map.of("name", title, "code", "acl-" + suffix))))
             .andExpect(status().isOk())
-            .andReturn()
-            .getResponse()
-            .getContentAsString();
-        return UUID.fromString(objectMapper.readTree(response).get("document").get("id").asText());
+            .andReturn().getResponse().getContentAsString();
+        var space = objectMapper.readTree(spaceResponse).get("space");
+        UUID spaceId = UUID.fromString(space.get("id").asText());
+        UUID rootItemId = UUID.fromString(space.get("rootItemId").asText());
+        String itemResponse = mockMvc.perform(post("/api/knowledge-bases/" + spaceId + "/items")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "parentId", rootItemId, "title", title, "contentType", "markdown", "content", "# " + title
+                ))))
+            .andExpect(status().isOk())
+            .andReturn().getResponse().getContentAsString();
+        return new KnowledgeFixture(spaceId, UUID.fromString(objectMapper.readTree(itemResponse).get("item").get("id").asText()));
     }
 
-    private void grantDocumentPermission(String token, UUID documentId, String subjectType, UUID subjectId, String permissionLevel) throws Exception {
-        mockMvc.perform(post("/api/docs/" + documentId + "/permissions")
+    private void grantKnowledgeContentPermission(String token, KnowledgeFixture fixture, String subjectType, UUID subjectId, String permissionLevel) throws Exception {
+        mockMvc.perform(post("/api/resource-permissions/knowledge_base/" + fixture.spaceId())
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "subjectType", subjectType,
+                    "subjectId", subjectId,
+                    "permissionLevel", "view"
+                ))))
+            .andExpect(status().isOk());
+        mockMvc.perform(post(itemPath(fixture) + "/permissions")
                 .header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(Map.of(
@@ -137,6 +156,13 @@ class PermissionDecisionIntegrationTests {
                     "permissionLevel", permissionLevel
                 ))))
             .andExpect(status().isOk());
+    }
+
+    private String itemPath(KnowledgeFixture fixture) {
+        return "/api/knowledge-bases/" + fixture.spaceId() + "/items/" + fixture.itemId();
+    }
+
+    private record KnowledgeFixture(UUID spaceId, UUID itemId) {
     }
 
     private String login(String username, String password, String deviceFingerprint) throws Exception {

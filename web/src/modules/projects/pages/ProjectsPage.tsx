@@ -824,7 +824,7 @@ function IssueDrawer({
 }) {
   const issue = detail?.issue
   const documentSnippet = issue ? extractDocumentSnippet(issue.description) : ''
-  const hasDocumentRelation = Boolean(detail?.relations.some((relation) => relation.targetType === 'document'))
+  const hasKnowledgeContentRelation = Boolean(detail?.relations.some((relation) => relation.targetType === 'knowledge_content'))
   return (
     <Drawer title={issue ? `${issue.issueKey} ${issue.title}` : '事项详情'} open={Boolean(detail) || loading} onClose={onClose} size="large">
       {issue ? (
@@ -853,7 +853,7 @@ function IssueDrawer({
           </Card>
           {issue.workflowNote ? <Typography.Paragraph className="issue-workflow-note">{issue.workflowNote}</Typography.Paragraph> : null}
           <Typography.Paragraph>{issue.description || '暂无描述'}</Typography.Paragraph>
-          {hasDocumentRelation && documentSnippet ? (
+          {hasKnowledgeContentRelation && documentSnippet ? (
             <Card size="small" title="关联知识内容片段">
               <Typography.Paragraph>{documentSnippet}</Typography.Paragraph>
             </Card>

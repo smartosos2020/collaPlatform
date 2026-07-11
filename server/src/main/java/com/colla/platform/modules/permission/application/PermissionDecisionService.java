@@ -7,9 +7,11 @@ import com.colla.platform.modules.permission.domain.PermissionModels.ResourcePer
 import com.colla.platform.modules.permission.domain.PermissionModels.ResourcePermissionMatch;
 import com.colla.platform.modules.permission.infrastructure.ResourcePermissionRepository;
 import com.colla.platform.shared.auth.CurrentUser;
+import com.colla.platform.modules.platform.domain.PlatformObjectTypes;
 import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -60,8 +62,11 @@ public class PermissionDecisionService {
     public PermissionDecision decide(CurrentUser currentUser, String objectType, UUID objectId, String actionOrRequiredLevel) {
         String normalizedObjectType = normalizeObjectType(objectType);
         String requiredLevel = requiredLevel(actionOrRequiredLevel);
-        return resourcePermissionRepository.findBestMatch(currentUser.workspaceId(), currentUser.id(), normalizedObjectType, objectId)
-            .map(match -> decisionFromMatch(currentUser, normalizedObjectType, objectId, actionOrRequiredLevel, requiredLevel, match))
+        Optional<ResourcePermissionMatch> match = resourcePermissionRepository.findBestMatch(
+            currentUser.workspaceId(), currentUser.id(), normalizedObjectType, objectId
+        );
+        return match
+            .map(permissionMatch -> decisionFromMatch(currentUser, normalizedObjectType, objectId, actionOrRequiredLevel, requiredLevel, permissionMatch))
             .orElseGet(() -> new PermissionDecision(
                 currentUser.workspaceId(),
                 normalizedObjectType,
@@ -204,7 +209,7 @@ public class PermissionDecisionService {
         if (objectType == null || objectType.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Object type is required");
         }
-        return objectType.trim().toLowerCase(Locale.ROOT);
+        return PlatformObjectTypes.canonicalize(objectType);
     }
 
     private String normalizeSourceType(String sourceType) {

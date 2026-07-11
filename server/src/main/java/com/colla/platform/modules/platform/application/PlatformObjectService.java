@@ -7,6 +7,7 @@ import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectN
 import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectReference;
 import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectSummary;
 import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectTypeRule;
+import com.colla.platform.modules.platform.domain.PlatformObjectTypes;
 import com.colla.platform.modules.permission.application.PermissionService;
 import com.colla.platform.modules.permission.application.PermissionDecisionService;
 import com.colla.platform.modules.permission.domain.PermissionModels.PermissionDecision;
@@ -40,7 +41,7 @@ public class PlatformObjectService {
     }
 
     public PlatformObjectNavigation navigation(CurrentUser currentUser, String objectType, UUID objectId) {
-        PlatformObjectSummary summary = resolverRegistry.resolve(currentUser, objectType, objectId);
+        PlatformObjectSummary summary = resolverRegistry.resolve(currentUser, PlatformObjectTypes.canonicalize(objectType), objectId);
         if (summary.accessState() == ObjectAccessState.available) {
             recordAccess(currentUser, summary);
         }
@@ -54,7 +55,7 @@ public class PlatformObjectService {
     }
 
     public PlatformObjectSummary markAccessed(CurrentUser currentUser, String objectType, UUID objectId) {
-        PlatformObjectSummary summary = resolverRegistry.resolve(currentUser, objectType, objectId);
+        PlatformObjectSummary summary = resolverRegistry.resolve(currentUser, PlatformObjectTypes.canonicalize(objectType), objectId);
         if (summary.accessState() == ObjectAccessState.available) {
             recordAccess(currentUser, summary);
         }
@@ -62,7 +63,7 @@ public class PlatformObjectService {
     }
 
     public PlatformObjectCard card(CurrentUser currentUser, String objectType, UUID objectId, String context) {
-        PlatformObjectSummary summary = resolverRegistry.resolve(currentUser, objectType, objectId);
+        PlatformObjectSummary summary = resolverRegistry.resolve(currentUser, PlatformObjectTypes.canonicalize(objectType), objectId);
         String presentationContext = normalizePresentationContext(context);
         boolean adminContextAllowed = "admin".equals(presentationContext) && permissionService.canAccessAdmin(currentUser);
         if ("admin".equals(presentationContext) && !adminContextAllowed) {
@@ -84,7 +85,8 @@ public class PlatformObjectService {
             presentationContext = "user";
         }
         PermissionActionCategory actionCategory = permissionService.categorizeAction(objectType, normalizedAction);
-        PlatformObjectSummary summary = resolverRegistry.resolve(currentUser, objectType, objectId);
+        String canonicalType = PlatformObjectTypes.canonicalize(objectType);
+        PlatformObjectSummary summary = resolverRegistry.resolve(currentUser, canonicalType, objectId);
         PermissionDecision resourceDecision = permissionDecisionService.decide(currentUser, objectType, objectId, normalizedAction);
         if (resourceDecision.permissionId() != null) {
             PermissionExplanation explanation = permissionDecisionService.explain(currentUser, objectType, objectId, normalizedAction, summary.accessState().name());
@@ -132,16 +134,19 @@ public class PlatformObjectService {
     }
 
     public PlatformObjectSummary addFavorite(CurrentUser currentUser, String objectType, UUID objectId) {
-        PlatformObjectSummary summary = resolverRegistry.resolve(currentUser, objectType, objectId);
+        String canonicalType = PlatformObjectTypes.canonicalize(objectType);
+        PlatformObjectSummary summary = resolverRegistry.resolve(currentUser, canonicalType, objectId);
         if (summary.accessState() == ObjectAccessState.available) {
-            objectRepository.addFavorite(currentUser.workspaceId(), currentUser.id(), objectType, objectId);
+            objectRepository.addFavorite(currentUser.workspaceId(), currentUser.id(), canonicalType, objectId);
             recordAccess(currentUser, summary);
         }
         return summary;
     }
 
     public void removeFavorite(CurrentUser currentUser, String objectType, UUID objectId) {
-        objectRepository.removeFavorite(currentUser.workspaceId(), currentUser.id(), objectType, objectId);
+        objectRepository.removeFavorite(
+            currentUser.workspaceId(), currentUser.id(), PlatformObjectTypes.canonicalize(objectType), objectId
+        );
     }
 
     public List<PlatformObjectTypeRule> objectTypes() {
@@ -277,7 +282,7 @@ public class PlatformObjectService {
     private String source(PlatformObjectSummary summary) {
         return switch (summary.objectType()) {
             case "issue" -> "project_members";
-            case "document" -> "resource_permissions";
+            case PlatformObjectTypes.KNOWLEDGE_CONTENT -> "resource_permissions";
             case "base", "base_table", "base_record" -> "base_members";
             case "approval" -> "approval_participants";
             case "message" -> "conversation_members";

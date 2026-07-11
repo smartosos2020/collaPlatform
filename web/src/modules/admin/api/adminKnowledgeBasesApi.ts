@@ -9,14 +9,14 @@ export type AdminKnowledgeBaseSpaceView = {
   coverUrl?: string | null
   status: 'active' | 'disabled' | 'archived'
   visibility: 'private' | 'workspace'
-  rootDocumentId: string
-  homeDocumentId: string
+  rootItemId: string
+  homeItemId: string
   ownerId: string
   ownerName: string
   defaultPermissionLevel: 'view' | 'comment' | 'edit'
   createdAt: string
   updatedAt?: string | null
-  documentCount: number
+  itemCount: number
   governance: {
     status: string
     visibility: string
@@ -34,7 +34,7 @@ export type AdminKnowledgeBaseContentRef = {
   id: string
   parentId?: string | null
   title: string
-  docType: string
+  contentType: string
   archived: boolean
   maintainerId?: string | null
   maintainerName?: string | null
@@ -45,16 +45,16 @@ export type AdminKnowledgeBaseContentRef = {
 
 export type AdminKnowledgeBaseDetailView = {
   space: AdminKnowledgeBaseSpaceView
-  rootDocument: AdminKnowledgeBaseContentRef
-  homeDocument: AdminKnowledgeBaseContentRef
+  rootItem: AdminKnowledgeBaseContentRef
+  homeItem: AdminKnowledgeBaseContentRef
 }
 
 export type AdminKnowledgeBaseHealthView = {
-  documentCount: number
-  activeDocumentCount: number
-  outdatedDocumentCount: number
-  unmaintainedDocumentCount: number
-  ownerlessDocumentCount: number
+  itemCount: number
+  activeItemCount: number
+  outdatedItemCount: number
+  unmaintainedItemCount: number
+  ownerlessItemCount: number
   highRiskPermissionCount: number
   blockCoverageGapCount: number
   emptyBlockCount: number
@@ -81,8 +81,8 @@ export type AdminKnowledgeBaseGovernanceRiskView = {
   }
 }
 
-export type AdminKnowledgeBaseAccessDocumentView = {
-  document: AdminKnowledgeBaseContentRef
+export type AdminKnowledgeBaseAccessItemView = {
+  item: AdminKnowledgeBaseContentRef
   visitorCount: number
   accessCount: number
   lastAccessedAt?: string | null
@@ -101,8 +101,8 @@ export type AdminKnowledgeBaseGovernanceView = {
   accessStats: {
     visitorCount: number
     accessCount: number
-    popularDocuments: AdminKnowledgeBaseAccessDocumentView[]
-    lowAccessDocuments: AdminKnowledgeBaseAccessDocumentView[]
+    popularItems: AdminKnowledgeBaseAccessItemView[]
+    lowAccessItems: AdminKnowledgeBaseAccessItemView[]
     noResultTerms: AdminKnowledgeBaseSearchTermStat[]
   }
   severityBuckets: Record<string, number>
@@ -110,7 +110,7 @@ export type AdminKnowledgeBaseGovernanceView = {
 }
 
 export type AdminKnowledgeBaseBulkGovernanceRequest = {
-  documentIds: string[]
+  itemIds: string[]
   maintainerId?: string
   tags?: string[]
   replaceTags?: boolean

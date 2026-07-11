@@ -1,7 +1,7 @@
 import { apiGet } from '../../../shared/api/httpClient'
 
 export type SearchResult = {
-  objectType: 'issue' | 'document' | 'base' | 'base_table' | 'base_record' | 'message'
+  objectType: 'issue' | 'knowledge_content' | 'base' | 'base_table' | 'base_record' | 'message'
   objectId: string
   title?: string | null
   excerpt?: string | null
@@ -19,10 +19,9 @@ export type SearchResult = {
   maintainerId?: string | null
   maintainerName?: string | null
   knowledgeStatus?: 'draft' | 'verified' | 'needs_review' | 'outdated' | 'archived' | null
-  docType?: 'space' | 'folder' | 'markdown' | null
+  contentType?: 'space' | 'folder' | 'markdown' | null
   hitSource?: 'title' | 'body_block' | 'comment' | 'tags' | 'directory_path' | string | null
 }
-
 export type SearchResponse = {
   query: string
   searchScope: 'user_content'
@@ -32,7 +31,7 @@ export type SearchResponse = {
 export type SearchFilters = {
   knowledgeBaseId?: string
   directoryId?: string
-  docType?: string
+  contentType?: string
   tags?: string[]
   maintainerId?: string
   knowledgeStatus?: string
@@ -44,7 +43,7 @@ export function searchAll(query: string, limit = 20, filters: SearchFilters = {}
   const params = new URLSearchParams({ q: query, limit: String(limit) })
   if (filters.knowledgeBaseId) params.set('knowledgeBaseId', filters.knowledgeBaseId)
   if (filters.directoryId) params.set('directoryId', filters.directoryId)
-  if (filters.docType) params.set('docType', filters.docType)
+  if (filters.contentType) params.set('contentType', filters.contentType)
   if (filters.maintainerId) params.set('maintainerId', filters.maintainerId)
   if (filters.knowledgeStatus) params.set('knowledgeStatus', filters.knowledgeStatus)
   if (filters.updatedFrom) params.set('updatedFrom', filters.updatedFrom)

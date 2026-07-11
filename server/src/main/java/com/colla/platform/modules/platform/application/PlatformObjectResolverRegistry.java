@@ -2,6 +2,7 @@ package com.colla.platform.modules.platform.application;
 
 import com.colla.platform.modules.platform.domain.PlatformModels.ObjectAccessState;
 import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectSummary;
+import com.colla.platform.modules.platform.domain.PlatformObjectTypes;
 import com.colla.platform.modules.platform.infrastructure.PlatformObjectRepository;
 import com.colla.platform.shared.auth.CurrentUser;
 import jakarta.annotation.PostConstruct;
@@ -25,17 +26,20 @@ public class PlatformObjectResolverRegistry {
     @PostConstruct
     void initialize() {
         for (PlatformObjectResolver resolver : discoveredResolvers) {
-            resolvers.put(resolver.objectType(), resolver);
+            String canonicalType = PlatformObjectTypes.canonicalize(resolver.objectType());
+            resolvers.put(canonicalType, resolver);
         }
         for (String objectType : objectRepository.listObjectTypes()) {
-            resolvers.putIfAbsent(objectType, new ObjectLinkPlatformObjectResolver(objectType, objectRepository));
+            String canonicalType = PlatformObjectTypes.canonicalize(objectType);
+            resolvers.putIfAbsent(canonicalType, new ObjectLinkPlatformObjectResolver(canonicalType, objectRepository));
         }
     }
 
     public PlatformObjectSummary resolve(CurrentUser currentUser, String objectType, UUID objectId) {
-        PlatformObjectResolver resolver = resolvers.get(objectType);
+        String canonicalType = PlatformObjectTypes.canonicalize(objectType);
+        PlatformObjectResolver resolver = resolvers.get(canonicalType);
         if (resolver == null) {
-            return PlatformObjectSummary.unavailable(objectType, objectId, ObjectAccessState.invalid);
+            return PlatformObjectSummary.unavailable(canonicalType, objectId, ObjectAccessState.invalid);
         }
         return resolver.resolve(currentUser, objectId)
             .orElseGet(() -> PlatformObjectSummary.unavailable(objectType, objectId, ObjectAccessState.not_found));

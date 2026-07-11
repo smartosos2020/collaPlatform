@@ -1,10 +1,10 @@
 package com.colla.platform.modules.permission.application;
 
 import com.colla.platform.modules.audit.application.AuditService;
-import com.colla.platform.modules.doc.domain.DocumentModels.DocumentSummary;
-import com.colla.platform.modules.doc.domain.DocumentModels.KnowledgeBaseSpaceSummary;
-import com.colla.platform.modules.doc.infrastructure.DocumentRepository;
-import com.colla.platform.modules.doc.infrastructure.KnowledgeBaseSpaceRepository;
+import com.colla.platform.modules.knowledge.domain.KnowledgeBaseItemModels.KnowledgeBaseItem;
+import com.colla.platform.modules.knowledge.domain.KnowledgeBaseItemModels.KnowledgeBaseSpaceSummary;
+import com.colla.platform.modules.knowledge.infrastructure.KnowledgeContentRepository;
+import com.colla.platform.modules.knowledge.infrastructure.KnowledgeBaseSpaceRepository;
 import com.colla.platform.modules.event.infrastructure.DomainEventRepository;
 import com.colla.platform.modules.permission.domain.PermissionModels.PermissionDecision;
 import com.colla.platform.modules.permission.domain.PermissionModels.ResourcePermissionEntry;
@@ -27,13 +27,13 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class ResourcePermissionManagementService {
-    private static final Set<String> MANAGED_RESOURCE_TYPES = Set.of("document", "base", "project", "knowledge_base");
+    private static final Set<String> MANAGED_RESOURCE_TYPES = Set.of("knowledge_content", "base", "project", "knowledge_base");
     private static final Set<String> SUBJECT_TYPES = Set.of("user", "department", "user_group", "role");
 
     private final ResourcePermissionRepository resourcePermissionRepository;
     private final PermissionDecisionService permissionDecisionService;
     private final KnowledgeBaseSpaceRepository knowledgeBaseSpaceRepository;
-    private final DocumentRepository documentRepository;
+    private final KnowledgeContentRepository contentRepository;
     private final DomainEventRepository eventRepository;
     private final AuditService auditService;
     private final JdbcTemplate jdbcTemplate;
@@ -42,7 +42,7 @@ public class ResourcePermissionManagementService {
         ResourcePermissionRepository resourcePermissionRepository,
         PermissionDecisionService permissionDecisionService,
         KnowledgeBaseSpaceRepository knowledgeBaseSpaceRepository,
-        DocumentRepository documentRepository,
+        KnowledgeContentRepository contentRepository,
         DomainEventRepository eventRepository,
         AuditService auditService,
         JdbcTemplate jdbcTemplate
@@ -50,7 +50,7 @@ public class ResourcePermissionManagementService {
         this.resourcePermissionRepository = resourcePermissionRepository;
         this.permissionDecisionService = permissionDecisionService;
         this.knowledgeBaseSpaceRepository = knowledgeBaseSpaceRepository;
-        this.documentRepository = documentRepository;
+        this.contentRepository = contentRepository;
         this.eventRepository = eventRepository;
         this.auditService = auditService;
         this.jdbcTemplate = jdbcTemplate;
@@ -131,7 +131,7 @@ public class ResourcePermissionManagementService {
             KnowledgeBaseSpaceSummary space = findKnowledgeBase(currentUser.workspaceId(), resourceId);
             int propagated = propagateKnowledgeBaseGrant(
                 currentUser.workspaceId(),
-                space.rootDocumentId(),
+                space.rootItemId(),
                 space.id(),
                 normalizedSubjectType,
                 subjectId,
@@ -185,7 +185,7 @@ public class ResourcePermissionManagementService {
             KnowledgeBaseSpaceSummary space = findKnowledgeBase(currentUser.workspaceId(), entry.resourceId());
             revokedInherited = revokeKnowledgeBaseInheritedGrants(
                 currentUser.workspaceId(),
-                space.rootDocumentId(),
+                space.rootItemId(),
                 space.id(),
                 entry.subjectType(),
                 entry.subjectId(),
@@ -211,8 +211,8 @@ public class ResourcePermissionManagementService {
     @Transactional
     public void breakInheritance(CurrentUser currentUser, String resourceType, UUID resourceId, boolean confirmHighRisk) {
         String normalizedResourceType = normalizeResourceType(resourceType);
-        if (!"document".equals(normalizedResourceType)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Only document permission inheritance can be broken");
+        if (!"knowledge_content".equals(normalizedResourceType)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Only knowledge content permission inheritance can be broken");
         }
         if (!confirmHighRisk) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Breaking permission inheritance requires confirmation");
@@ -225,7 +225,7 @@ public class ResourcePermissionManagementService {
                     updated_by = ?,
                     updated_at = now()
                 where workspace_id = ?
-                  and resource_type = 'document'
+                  and resource_type = 'knowledge_content'
                   and resource_id = ?
                   and source_type = 'inherited'
                   and status = 'active'
@@ -237,7 +237,7 @@ public class ResourcePermissionManagementService {
         auditService.log(
             currentUser,
             "resource.permission.inheritance.broken",
-            "document",
+            "knowledge_content",
             resourceId,
             Map.of("revokedInherited", revoked)
         );
@@ -246,24 +246,24 @@ public class ResourcePermissionManagementService {
     @Transactional
     public void restoreInheritance(CurrentUser currentUser, String resourceType, UUID resourceId) {
         String normalizedResourceType = normalizeResourceType(resourceType);
-        if (!"document".equals(normalizedResourceType)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Only document permission inheritance can be restored");
+        if (!"knowledge_content".equals(normalizedResourceType)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Only knowledge content permission inheritance can be restored");
         }
         requireManage(currentUser, normalizedResourceType, resourceId);
-        DocumentSummary document = documentRepository.findDocument(currentUser.workspaceId(), resourceId)
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Document not found"));
+        KnowledgeBaseItem item = contentRepository.findItem(currentUser.workspaceId(), resourceId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Knowledge content not found"));
         int restored;
-        if (document.parentId() != null) {
-            restored = restoreDocumentInheritanceFromParent(
+        if (item.parentId() != null) {
+            restored = restoreItemInheritanceFromParent(
                 currentUser.workspaceId(),
                 resourceId,
-                document.parentId(),
+                item.parentId(),
                 currentUser.id()
             );
         } else {
             KnowledgeBaseSpaceSummary space = knowledgeBaseSpaceRepository
-                .findSpaceByRootDocumentId(currentUser.workspaceId(), resourceId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Root document is not a knowledge base root"));
+                .findSpaceByRootItemId(currentUser.workspaceId(), resourceId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Root item is not a knowledge base root"));
             restored = restoreRootInheritanceFromKnowledgeBase(
                 currentUser.workspaceId(),
                 resourceId,
@@ -274,7 +274,7 @@ public class ResourcePermissionManagementService {
         auditService.log(
             currentUser,
             "resource.permission.inheritance.restored",
-            "document",
+            "knowledge_content",
             resourceId,
             Map.of("restoredInherited", restored)
         );
@@ -423,7 +423,7 @@ public class ResourcePermissionManagementService {
 
     private int propagateKnowledgeBaseGrant(
         UUID workspaceId,
-        UUID rootDocumentId,
+        UUID rootItemId,
         UUID spaceId,
         String subjectType,
         UUID subjectId,
@@ -435,11 +435,11 @@ public class ResourcePermissionManagementService {
             """
                 with recursive subtree as (
                     select d.id
-                    from documents d
+                    from knowledge_base_items d
                     where d.workspace_id = ? and d.id = ? and d.deleted_at is null
                     union all
                     select child.id
-                    from documents child
+                    from knowledge_base_items child
                     join subtree parent on child.parent_id = parent.id
                     where child.workspace_id = ? and child.deleted_at is null
                 )
@@ -451,7 +451,7 @@ public class ResourcePermissionManagementService {
                     updated_at = now()
                 from subtree
                 where rp.workspace_id = ?
-                  and rp.resource_type = 'document'
+                  and rp.resource_type = 'knowledge_content'
                   and rp.resource_id = subtree.id
                   and rp.subject_type = ?
                   and rp.subject_id = ?
@@ -460,7 +460,7 @@ public class ResourcePermissionManagementService {
                   and rp.status = 'active'
                 """,
             workspaceId,
-            rootDocumentId,
+            rootItemId,
             workspaceId,
             permissionLevel,
             expiresAt,
@@ -474,24 +474,24 @@ public class ResourcePermissionManagementService {
             """
                 with recursive subtree as (
                     select d.id
-                    from documents d
+                    from knowledge_base_items d
                     where d.workspace_id = ? and d.id = ? and d.deleted_at is null
                     union all
                     select child.id
-                    from documents child
+                    from knowledge_base_items child
                     join subtree parent on child.parent_id = parent.id
                     where child.workspace_id = ? and child.deleted_at is null
                 )
                 insert into resource_permissions
                     (id, workspace_id, resource_type, resource_id, subject_type, subject_id, permission_level,
                      source_type, source_id, expires_at, status, created_by, created_at, updated_by, updated_at)
-                select gen_random_uuid(), ?, 'document', subtree.id, ?, ?, ?, 'inherited', ?, ?, 'active', ?, now(), ?, now()
+                select gen_random_uuid(), ?, 'knowledge_content', subtree.id, ?, ?, ?, 'inherited', ?, ?, 'active', ?, now(), ?, now()
                 from subtree
                 where not exists (
                     select 1
                     from resource_permissions existing
                     where existing.workspace_id = ?
-                      and existing.resource_type = 'document'
+                      and existing.resource_type = 'knowledge_content'
                       and existing.resource_id = subtree.id
                       and existing.subject_type = ?
                       and existing.subject_id = ?
@@ -499,7 +499,7 @@ public class ResourcePermissionManagementService {
                 )
                 """,
             workspaceId,
-            rootDocumentId,
+            rootItemId,
             workspaceId,
             workspaceId,
             subjectType,
@@ -518,7 +518,7 @@ public class ResourcePermissionManagementService {
 
     private int revokeKnowledgeBaseInheritedGrants(
         UUID workspaceId,
-        UUID rootDocumentId,
+        UUID rootItemId,
         UUID spaceId,
         String subjectType,
         UUID subjectId,
@@ -528,11 +528,11 @@ public class ResourcePermissionManagementService {
             """
                 with recursive subtree as (
                     select d.id
-                    from documents d
+                    from knowledge_base_items d
                     where d.workspace_id = ? and d.id = ? and d.deleted_at is null
                     union all
                     select child.id
-                    from documents child
+                    from knowledge_base_items child
                     join subtree parent on child.parent_id = parent.id
                     where child.workspace_id = ? and child.deleted_at is null
                 )
@@ -542,7 +542,7 @@ public class ResourcePermissionManagementService {
                     updated_at = now()
                 from subtree
                 where rp.workspace_id = ?
-                  and rp.resource_type = 'document'
+                  and rp.resource_type = 'knowledge_content'
                   and rp.resource_id = subtree.id
                   and rp.subject_type = ?
                   and rp.subject_id = ?
@@ -551,7 +551,7 @@ public class ResourcePermissionManagementService {
                   and rp.status = 'active'
                 """,
             workspaceId,
-            rootDocumentId,
+            rootItemId,
             workspaceId,
             actorId,
             workspaceId,
@@ -561,17 +561,17 @@ public class ResourcePermissionManagementService {
         );
     }
 
-    private int restoreDocumentInheritanceFromParent(UUID workspaceId, UUID documentId, UUID parentId, UUID actorId) {
+    private int restoreItemInheritanceFromParent(UUID workspaceId, UUID itemId, UUID parentId, UUID actorId) {
         return jdbcTemplate.update(
             """
                 insert into resource_permissions
                     (id, workspace_id, resource_type, resource_id, subject_type, subject_id, permission_level,
                      source_type, source_id, expires_at, status, created_by, created_at, updated_by, updated_at)
-                select gen_random_uuid(), ?, 'document', ?, parent.subject_type, parent.subject_id, parent.permission_level,
+                select gen_random_uuid(), ?, 'knowledge_content', ?, parent.subject_type, parent.subject_id, parent.permission_level,
                        'inherited', ?, parent.expires_at, 'active', ?, now(), ?, now()
                 from resource_permissions parent
                 where parent.workspace_id = ?
-                  and parent.resource_type = 'document'
+                  and parent.resource_type = 'knowledge_content'
                   and parent.resource_id = ?
                   and parent.status = 'active'
                   and (parent.expires_at is null or parent.expires_at > now())
@@ -579,7 +579,7 @@ public class ResourcePermissionManagementService {
                       select 1
                       from resource_permissions existing
                       where existing.workspace_id = parent.workspace_id
-                        and existing.resource_type = 'document'
+                        and existing.resource_type = 'knowledge_content'
                         and existing.resource_id = ?
                         and existing.subject_type = parent.subject_type
                         and existing.subject_id = parent.subject_id
@@ -587,23 +587,23 @@ public class ResourcePermissionManagementService {
                   )
                 """,
             workspaceId,
-            documentId,
+            itemId,
             parentId,
             actorId,
             actorId,
             workspaceId,
             parentId,
-            documentId
+            itemId
         );
     }
 
-    private int restoreRootInheritanceFromKnowledgeBase(UUID workspaceId, UUID rootDocumentId, UUID spaceId, UUID actorId) {
+    private int restoreRootInheritanceFromKnowledgeBase(UUID workspaceId, UUID rootItemId, UUID spaceId, UUID actorId) {
         return jdbcTemplate.update(
             """
                 insert into resource_permissions
                     (id, workspace_id, resource_type, resource_id, subject_type, subject_id, permission_level,
                      source_type, source_id, expires_at, status, created_by, created_at, updated_by, updated_at)
-                select gen_random_uuid(), ?, 'document', ?, kb.subject_type, kb.subject_id, kb.permission_level,
+                select gen_random_uuid(), ?, 'knowledge_content', ?, kb.subject_type, kb.subject_id, kb.permission_level,
                        'inherited', ?, kb.expires_at, 'active', ?, now(), ?, now()
                 from resource_permissions kb
                 where kb.workspace_id = ?
@@ -615,7 +615,7 @@ public class ResourcePermissionManagementService {
                       select 1
                       from resource_permissions existing
                       where existing.workspace_id = kb.workspace_id
-                        and existing.resource_type = 'document'
+                        and existing.resource_type = 'knowledge_content'
                         and existing.resource_id = ?
                         and existing.subject_type = kb.subject_type
                         and existing.subject_id = kb.subject_id
@@ -623,19 +623,19 @@ public class ResourcePermissionManagementService {
                   )
                 """,
             workspaceId,
-            rootDocumentId,
+            rootItemId,
             spaceId,
             actorId,
             actorId,
             workspaceId,
             spaceId,
-            rootDocumentId
+            rootItemId
         );
     }
 
     private List<UUID> findManagerUserIds(UUID workspaceId, String resourceType, UUID resourceId) {
-        if ("document".equals(resourceType)) {
-            return documentRepository.findDocumentManagerUserIds(workspaceId, resourceId);
+        if ("knowledge_content".equals(resourceType)) {
+            return contentRepository.findItemManagerUserIds(workspaceId, resourceId);
         }
         if (!"knowledge_base".equals(resourceType)) {
             return List.of();
@@ -713,9 +713,9 @@ public class ResourcePermissionManagementService {
             findKnowledgeBase(currentUser.workspaceId(), resourceId);
             return;
         }
-        if ("document".equals(resourceType)) {
-            documentRepository.findDocument(currentUser.workspaceId(), resourceId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Document not found"));
+        if ("knowledge_content".equals(resourceType)) {
+            contentRepository.findItem(currentUser.workspaceId(), resourceId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Knowledge content not found"));
             return;
         }
         throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Resource access request is not supported for this type");
@@ -810,9 +810,6 @@ public class ResourcePermissionManagementService {
 
     private String normalizeResourceType(String resourceType) {
         String normalized = resourceType == null ? "" : resourceType.trim().toLowerCase();
-        if ("doc".equals(normalized)) {
-            normalized = "document";
-        }
         if ("kb".equals(normalized) || "knowledge-base".equals(normalized) || "knowledgebase".equals(normalized)) {
             normalized = "knowledge_base";
         }
@@ -858,9 +855,9 @@ public class ResourcePermissionManagementService {
 
     private String webPath(UUID workspaceId, String resourceType, UUID resourceId) {
         return switch (resourceType) {
-            case "document" -> knowledgeBaseSpaceRepository.findSpaceByDocumentId(workspaceId, resourceId)
-                .map(space -> "/knowledge-bases/" + space.id() + "?docId=" + resourceId)
-                .orElse("/docs/" + resourceId);
+            case "knowledge_content" -> knowledgeBaseSpaceRepository.findSpaceByItemId(workspaceId, resourceId)
+                .map(space -> "/knowledge-bases/" + space.id() + "/items/" + resourceId)
+                .orElse("/knowledge-bases");
             case "knowledge_base" -> "/knowledge-bases/" + resourceId;
             default -> "/";
         };

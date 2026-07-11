@@ -2,7 +2,7 @@ package com.colla.platform.modules.workspace.application;
 
 import com.colla.platform.modules.base.infrastructure.BaseRepository;
 import com.colla.platform.modules.approval.application.ApprovalService;
-import com.colla.platform.modules.doc.infrastructure.DocumentRepository;
+import com.colla.platform.modules.knowledge.infrastructure.KnowledgeContentRepository;
 import com.colla.platform.modules.im.infrastructure.ImRepository;
 import com.colla.platform.modules.notification.infrastructure.NotificationRepository;
 import com.colla.platform.modules.platform.application.PlatformObjectService;
@@ -18,7 +18,7 @@ public class WorkspaceDashboardService {
     private final ProjectRepository projectRepository;
     private final ImRepository imRepository;
     private final NotificationRepository notificationRepository;
-    private final DocumentRepository documentRepository;
+    private final KnowledgeContentRepository contentRepository;
     private final BaseRepository baseRepository;
     private final PlatformObjectService platformObjectService;
     private final ApprovalService approvalService;
@@ -27,7 +27,7 @@ public class WorkspaceDashboardService {
         ProjectRepository projectRepository,
         ImRepository imRepository,
         NotificationRepository notificationRepository,
-        DocumentRepository documentRepository,
+        KnowledgeContentRepository contentRepository,
         BaseRepository baseRepository,
         PlatformObjectService platformObjectService,
         ApprovalService approvalService
@@ -35,7 +35,7 @@ public class WorkspaceDashboardService {
         this.projectRepository = projectRepository;
         this.imRepository = imRepository;
         this.notificationRepository = notificationRepository;
-        this.documentRepository = documentRepository;
+        this.contentRepository = contentRepository;
         this.baseRepository = baseRepository;
         this.platformObjectService = platformObjectService;
         this.approvalService = approvalService;
@@ -46,7 +46,7 @@ public class WorkspaceDashboardService {
             .filter(conversation -> conversation.unreadCount() > 0)
             .limit(DASHBOARD_LIMIT)
             .toList();
-        var recentDocuments = documentRepository.listDocuments(currentUser.workspaceId(), currentUser.id(), false).stream()
+        var recentItems = contentRepository.listItems(currentUser.workspaceId(), currentUser.id(), false).stream()
             .limit(DASHBOARD_LIMIT)
             .toList();
         var recentBases = baseRepository.listBases(currentUser.workspaceId(), currentUser.id()).stream()
@@ -62,8 +62,7 @@ public class WorkspaceDashboardService {
             conversations,
             notificationRepository.unreadCount(currentUser.workspaceId(), currentUser.id()),
             notificationRepository.list(currentUser.workspaceId(), currentUser.id(), false, null, null, null, DASHBOARD_LIMIT),
-            recentDocuments,
-            platformObjectService.summaries(currentUser, "document", recentDocuments.stream().map(document -> document.id()).toList()),
+            platformObjectService.summaries(currentUser, "knowledge_content", recentItems.stream().map(item -> item.id()).toList()),
             recentBases,
             platformObjectService.recent(currentUser, DASHBOARD_LIMIT),
             platformObjectService.favorites(currentUser, DASHBOARD_LIMIT)

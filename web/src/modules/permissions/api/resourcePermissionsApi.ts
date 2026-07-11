@@ -1,6 +1,6 @@
 import { apiGet, apiPost } from '../../../shared/api/httpClient'
 
-export type ManagedResourceType = 'document' | 'base' | 'project' | 'knowledge_base'
+export type ManagedResourceType = 'knowledge_content' | 'base' | 'project' | 'knowledge_base'
 export type ResourcePermissionSubjectType = 'user' | 'department' | 'user_group' | 'role'
 export type ResourcePermissionLevel = 'view' | 'comment' | 'edit' | 'manage' | 'owner'
 

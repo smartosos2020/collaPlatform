@@ -25,6 +25,7 @@
     "kb:block-v2-trial": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/knowledge-base-block-v2-trial.ps1",
     "kb:acceptance": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/knowledge-base-acceptance-report.ps1",
     "kb:v2-acceptance": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/knowledge-base-v2-acceptance-report.ps1",
+    "kb:naming-guard": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/knowledge-naming-guard.ps1",
     "ops:backup": "powershell -NoProfile -ExecutionPolicy Bypass -File deploy/scripts/backup.ps1",
     "ops:restore-drill": "powershell -NoProfile -ExecutionPolicy Bypass -File deploy/scripts/restore-drill.ps1",
     "ops:health": "powershell -NoProfile -ExecutionPolicy Bypass -File deploy/scripts/health-check.ps1",

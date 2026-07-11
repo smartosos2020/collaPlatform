@@ -1,6 +1,6 @@
 package com.colla.platform.shared.websocket;
 
-import com.colla.platform.modules.doc.application.DocumentCollaborationService;
+import com.colla.platform.modules.knowledge.application.KnowledgeContentCollaborationService;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -18,12 +18,12 @@ public class PlatformWebSocketHandler extends TextWebSocketHandler {
     };
 
     private final WebSocketSessionRegistry registry;
-    private final DocumentCollaborationService documentCollaborationService;
+    private final KnowledgeContentCollaborationService documentCollaborationService;
     private final ObjectMapper objectMapper;
 
     public PlatformWebSocketHandler(
         WebSocketSessionRegistry registry,
-        DocumentCollaborationService documentCollaborationService,
+        KnowledgeContentCollaborationService documentCollaborationService,
         ObjectMapper objectMapper
     ) {
         this.registry = registry;
