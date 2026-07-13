@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -23,6 +24,7 @@ public class MemberService {
     private final PasswordPolicy passwordPolicy;
     private final AuditService auditService;
     private final OrganizationService organizationService;
+    private final JdbcTemplate jdbcTemplate;
 
     public MemberService(
         IdentityRepository identityRepository,
@@ -30,7 +32,8 @@ public class MemberService {
         PasswordHasher passwordHasher,
         PasswordPolicy passwordPolicy,
         AuditService auditService,
-        OrganizationService organizationService
+        OrganizationService organizationService,
+        JdbcTemplate jdbcTemplate
     ) {
         this.identityRepository = identityRepository;
         this.permissionService = permissionService;
@@ -38,6 +41,7 @@ public class MemberService {
         this.passwordPolicy = passwordPolicy;
         this.auditService = auditService;
         this.organizationService = organizationService;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     public List<MemberSummary> listMembers(CurrentUser operator, UUID departmentId) {
@@ -96,6 +100,47 @@ public class MemberService {
     }
 
     @Transactional
+    public OffboardingResult offboardMember(CurrentUser operator, UUID userId, UUID handoverToUserId) {
+        permissionService.requireManageUsers(operator);
+        if (operator.id().equals(userId)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Cannot offboard current user");
+        }
+        if (userId.equals(handoverToUserId)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Handover user must be different");
+        }
+        identityRepository.findUserById(userId)
+            .filter(user -> user.workspaceId().equals(operator.workspaceId()))
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Member not found"));
+        identityRepository.findUserById(handoverToUserId)
+            .filter(user -> user.workspaceId().equals(operator.workspaceId()) && "active".equals(user.status()))
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Handover member must be active in this workspace"));
+
+        int knowledgeBaseCount = jdbcTemplate.update(
+            """
+                update knowledge_base_spaces
+                set owner_id = ?, updated_by = ?, updated_at = now()
+                where workspace_id = ? and owner_id = ? and deleted_at is null
+                """,
+            handoverToUserId, operator.id(), operator.workspaceId(), userId
+        );
+        int conversationCount = jdbcTemplate.update(
+            """
+                update conversations
+                set owner_id = ?, updated_at = now()
+                where workspace_id = ? and owner_id = ? and archived_at is null
+                """,
+            handoverToUserId, operator.workspaceId(), userId
+        );
+        identityRepository.updateUserStatus(operator.workspaceId(), userId, "disabled", operator.id());
+        auditService.log(operator, "user.offboarded", "user", userId, Map.of(
+            "handoverToUserId", handoverToUserId.toString(),
+            "knowledgeBaseCount", knowledgeBaseCount,
+            "conversationCount", conversationCount
+        ));
+        return new OffboardingResult(knowledgeBaseCount, conversationCount);
+    }
+
+    @Transactional
     public void enableMember(CurrentUser operator, UUID userId) {
         permissionService.requireManageUsers(operator);
         identityRepository.updateUserStatus(operator.workspaceId(), userId, "active", operator.id());
@@ -115,5 +160,8 @@ public class MemberService {
         permissionService.requireManageUsers(operator);
         identityRepository.updateAvatarFileId(operator.workspaceId(), userId, avatarFileId, operator.id());
         auditService.log(operator, "user.avatar.updated", "user", userId, Map.of("avatarFileId", avatarFileId == null ? "" : avatarFileId));
+    }
+
+    public record OffboardingResult(int knowledgeBaseCount, int conversationCount) {
     }
 }

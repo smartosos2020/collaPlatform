@@ -16,6 +16,7 @@ public final class AuthModels {
         String username,
         String passwordHash,
         String displayName,
+        UUID avatarFileId,
         String email,
         String status
     ) {
@@ -44,6 +45,7 @@ public final class AuthModels {
         UUID workspaceId,
         String username,
         String displayName,
+        UUID avatarFileId,
         String email,
         Set<String> roles,
         Set<String> permissions

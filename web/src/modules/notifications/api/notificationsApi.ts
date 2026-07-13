@@ -1,4 +1,4 @@
-import { apiGet, apiPost } from '../../../shared/api/httpClient'
+import { apiGet, apiPost, apiPut } from '../../../shared/api/httpClient'
 
 export type UserNotificationView = {
   id: string
@@ -27,6 +27,12 @@ export type UnreadCount = {
 
 export type NotificationBatchResult = {
   changed: number
+}
+
+export type NotificationPreference = {
+  sourceType: string
+  enabled: boolean
+  required: boolean
 }
 
 export type NotificationFilters = {
@@ -72,4 +78,12 @@ export function markNotificationsRead(notificationIds: string[]) {
 
 export function markAllNotificationsRead() {
   return apiPost<void>('/notifications/read-all')
+}
+
+export function listNotificationPreferences() {
+  return apiGet<NotificationPreference[]>('/notifications/preferences')
+}
+
+export function updateNotificationPreference(sourceType: string, enabled: boolean) {
+  return apiPut<NotificationPreference[]>(`/notifications/preferences/${sourceType}`, { enabled })
 }

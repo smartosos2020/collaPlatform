@@ -179,6 +179,26 @@ public class BaseService {
             baseId,
             Map.of("userId", userId.toString(), "permissionLevel", normalizedPermission)
         );
+        if (!userId.equals(currentUser.id())) {
+            eventRepository.append(
+                currentUser.workspaceId(),
+                "notification.created",
+                "base",
+                baseId,
+                currentUser.id(),
+                Map.of(
+                    "recipientId", userId.toString(),
+                    "notificationType", "base_permission_changed",
+                    "title", "你的 Base 权限已更新",
+                    "body", "权限级别：" + normalizedPermission,
+                    "targetType", "base",
+                    "targetId", baseId.toString(),
+                    "webPath", "/bases/" + baseId,
+                    "dedupeKey", "base.permission:" + baseId + ":" + userId + ":" + normalizedPermission
+                ),
+                "notification.base.permission:" + baseId + ":" + userId + ":" + normalizedPermission
+            );
+        }
         return getBase(currentUser, baseId);
     }
 

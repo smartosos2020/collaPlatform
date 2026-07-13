@@ -1,12 +1,10 @@
 import { DesktopOutlined, MobileOutlined, TabletOutlined } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { App as AntdApp, Button, Card, Empty, Space, Table, Tag, Typography } from 'antd'
+import { Alert, App as AntdApp, Button, Card, Empty, Space, Table, Tag, Typography } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 
 import {
   listDevices,
-  probePush,
-  registerPushToken,
   revokeDevice,
   type DeviceSummary,
 } from '../api/devicesApi'
@@ -25,20 +23,6 @@ export function DevicesPage() {
       await refreshDevices()
     },
   })
-  const pushMutation = useMutation({
-    mutationFn: (deviceId: string) => registerPushToken(deviceId, `fake-${crypto.randomUUID()}`),
-    onSuccess: async () => {
-      message.success('假 Push Token 已登记')
-      await refreshDevices()
-    },
-  })
-  const probeMutation = useMutation({
-    mutationFn: probePush,
-    onSuccess: (result) => {
-      message.info(result.deliverable ? `假通道可投递：${result.enabledTokenCount} 个 token` : '当前设备没有可投递 token')
-    },
-  })
-
   const columns: ColumnsType<DeviceSummary> = [
     {
       title: '设备',
@@ -75,11 +59,6 @@ export function DevicesPage() {
       width: 110,
     },
     {
-      title: 'Push',
-      dataIndex: 'enabledPushTokenCount',
-      width: 90,
-    },
-    {
       title: '最近活跃',
       dataIndex: 'lastActiveAt',
       width: 190,
@@ -87,19 +66,9 @@ export function DevicesPage() {
     },
     {
       title: '操作',
-      width: 260,
+      width: 120,
       render: (_, device) => (
         <Space wrap>
-          {device.current && !device.revokedAt ? (
-            <>
-              <Button size="small" loading={pushMutation.isPending} onClick={() => pushMutation.mutate(device.id)}>
-                登记假 Push
-              </Button>
-              <Button size="small" loading={probeMutation.isPending} onClick={() => probeMutation.mutate(device.id)}>
-                验证通道
-              </Button>
-            </>
-          ) : null}
           {!device.current && !device.revokedAt ? (
             <Button danger size="small" loading={revokeMutation.isPending} onClick={() => revokeMutation.mutate(device.id)}>
               撤销
@@ -114,10 +83,12 @@ export function DevicesPage() {
     <Space orientation="vertical" size={16} className="page-stack">
       <Space className="page-toolbar" wrap>
         <div>
-          <Typography.Title level={2}>设备管理</Typography.Title>
-          <Typography.Text type="secondary">查看多端登录设备、撤销设备、验证假 Push 通道。</Typography.Text>
+          <Typography.Title level={2}>登录设备</Typography.Title>
+          <Typography.Text type="secondary">查看当前账号的登录设备，及时撤销不再使用的会话。</Typography.Text>
         </div>
       </Space>
+
+      {devicesQuery.isError ? <Alert type="error" showIcon message="登录设备暂时无法加载" description="请检查网络连接后重试。" /> : null}
 
       <Card>
         <Table

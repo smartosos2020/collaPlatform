@@ -206,7 +206,10 @@ public class SearchService {
     private List<AdminGovernanceSearchResult> governanceCatalog() {
         return List.of(
             new AdminGovernanceSearchResult("permission", "权限排查", "按成员、资源和动作排查权限来源、风险和缺口。", "/admin/permission-governance", "high"),
+            new AdminGovernanceSearchResult("permission_risk", "权限风险处置", "检索过期授权、孤立授权、失效主体和高风险组合，并预览单项修复。", "/admin/permission-governance?severity=high", "critical"),
+            new AdminGovernanceSearchResult("permission_grant", "授权上下文", "从授权主体定位成员、资源、权限解释和关联审计。", "/admin/permission-governance", "high"),
             new AdminGovernanceSearchResult("audit", "审计日志", "按来源 UI、动作、对象和操作者查询后台与用户侧审计。", "/admin/audit-logs", "medium"),
+            new AdminGovernanceSearchResult("audit_permission", "权限变更审计", "快捷查看权限授予、撤销、请求决定和风险修复记录。", "/admin/audit-logs?permissionOnly=true", "high"),
             new AdminGovernanceSearchResult("application", "应用治理", "Base、项目、消息和审批的策略、风险和治理深链。", "/admin/app-governance", "medium"),
             new AdminGovernanceSearchResult("knowledge", "知识库治理", "知识空间、内容状态、订阅、权限和知识风险治理。", "/admin/knowledge-bases", "medium"),
             new AdminGovernanceSearchResult("identity", "组织与成员", "组织架构、成员、用户组和角色权限管理。", "/admin/users", "high")

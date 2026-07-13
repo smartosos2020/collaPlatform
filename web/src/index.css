@@ -508,6 +508,50 @@ body {
   width: 100%;
 }
 
+.user-settings-page .user-settings-profile-header {
+  align-items: flex-start;
+}
+
+.user-settings-page .user-settings-preferences {
+  width: 100%;
+}
+
+.user-settings-preference-row {
+  align-items: center;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  min-height: 42px;
+}
+
+.user-settings-preference-row > div:first-child {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.user-settings-save-state {
+  margin-left: 12px;
+}
+
+.user-settings-inline-alert {
+  margin-top: 12px;
+}
+
+.dashboard-object-link {
+  align-items: center;
+}
+
+@media (max-width: 720px) {
+  .user-settings-page .page-toolbar {
+    align-items: flex-start;
+  }
+
+  .user-settings-preference-row {
+    align-items: flex-start;
+  }
+}
+
 .page-card {
   min-height: 240px;
 }

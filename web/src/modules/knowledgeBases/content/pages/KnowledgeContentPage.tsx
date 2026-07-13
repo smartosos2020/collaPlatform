@@ -21,7 +21,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { App as AntdApp, Alert, Breadcrumb, Button, Empty, Form, Input, Modal, Select, Space, Switch, Tag, Tooltip, Tree, Typography } from 'antd'
 import type { FormInstance } from 'antd/es/form'
 import type { ReactNode } from 'react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 
 import { InternalLinkCard, ObjectSummaryCard } from '../../../platform/components/InternalLinkCard'
@@ -224,6 +224,8 @@ export function KnowledgeContentPage() {
   const [blockDraftItemId, setBlockDraftItemId] = useState<string | null>(null)
   const [blockDraftVersionNo, setBlockDraftVersionNo] = useState(0)
   const [blockDrafts, setBlockDrafts] = useState<BlockKnowledgeContentDraftState[]>([])
+  const blockAutoSaveKeyRef = useRef('')
+  const blockSaveOriginRef = useRef<'auto' | 'manual'>('manual')
   const [createForm] = Form.useForm<CreateItemForm>()
   const [moveForm] = Form.useForm<MoveItemForm>()
   const [permissionForm] = Form.useForm<PermissionForm>()
@@ -300,6 +302,12 @@ export function KnowledgeContentPage() {
   const contentDraft = draft.itemId === activeItemId ? draft.content : contentQuery.data?.content ?? ''
   const baseVersionNo =
     draft.itemId === activeItemId ? draft.baseVersionNo : contentQuery.data?.item.currentVersionNo ?? 0
+  const blockDraftContent = useMemo(() => blocksToMarkdown(blockDrafts), [blockDrafts])
+  const persistedBlockContent = useMemo(() => blocksToMarkdown(contentQuery.data?.blocks ?? []), [contentQuery.data?.blocks])
+  const blockDraftDirty =
+    blockDraftItemId === activeItemId &&
+    Boolean(contentQuery.data) &&
+    (titleDraft !== contentQuery.data?.item.title || blockDraftContent !== persistedBlockContent)
 
   useEffect(() => {
     const first = itemsQuery.data?.[0]
@@ -680,6 +688,7 @@ export function KnowledgeContentPage() {
     mutationFn: () =>
       saveKnowledgeContentBlocks(spaceId || '', activeItemId || '', {
         baseVersionNo: blockDraftVersionNo || baseVersionNo,
+        title: titleDraft,
         blocks: blockDrafts.map((block, index) => ({
           id: block.id,
           parentId: block.parentId,
@@ -693,12 +702,24 @@ export function KnowledgeContentPage() {
           anchorId: block.anchorId,
           deleted: block.deleted,
         })),
-      }),
+    }),
     onSuccess: async (detail) => {
-      message.success('块已保存')
+      setBlockDraftItemId(detail.item.id)
+      setBlockDraftVersionNo(detail.item.currentVersionNo)
+      setDraft({
+        itemId: detail.item.id,
+        title: detail.item.title,
+        content: detail.content,
+        baseVersionNo: detail.item.currentVersionNo,
+      })
+      blockAutoSaveKeyRef.current = blockSaveKey(detail.item.id, detail.item.title, detail.blocks)
+      if (blockSaveOriginRef.current !== 'auto') {
+        message.success('块已保存')
+      }
       await refreshKnowledgeContent(detail.item.id)
     },
     onError: (error) => {
+      blockAutoSaveKeyRef.current = ''
       if (error.message.includes('409')) {
         setConflictItemId(activeItemId)
         message.warning('内容已被其他版本更新，请刷新后再保存块')
@@ -707,6 +728,22 @@ export function KnowledgeContentPage() {
       message.error('块保存失败')
     },
   })
+
+  useEffect(() => {
+    if (!contentQuery.data || !activeItemId || contentQuery.data.item.contentType !== 'markdown' || !canEdit || !blockDraftDirty || blockMutation.isPending) {
+      return
+    }
+    const key = blockSaveKey(activeItemId, titleDraft, blockDrafts)
+    if (blockAutoSaveKeyRef.current === key) {
+      return
+    }
+    const timer = window.setTimeout(() => {
+      blockAutoSaveKeyRef.current = key
+      blockSaveOriginRef.current = 'auto'
+      blockMutation.mutate()
+    }, 700)
+    return () => window.clearTimeout(timer)
+  }, [activeItemId, blockDraftDirty, blockDrafts, blockMutation, canEdit, contentQuery.data, titleDraft])
 
   const commentMutation = useMutation({
     mutationFn: () =>
@@ -1077,7 +1114,10 @@ export function KnowledgeContentPage() {
               }
               saveMutation.mutate()
             }}
-            onSaveBlocks={() => blockMutation.mutate()}
+            onSaveBlocks={() => {
+              blockSaveOriginRef.current = 'manual'
+              blockMutation.mutate()
+            }}
             onRefresh={() => refreshKnowledgeContent()}
             onOpenPermission={openPermissionSettings}
             onOpenRelation={() => setRelationOpen(true)}
@@ -2615,6 +2655,10 @@ function buildKnowledgeItemTreeData(
     ),
     children: buildKnowledgeItemTreeData(node.children, activeItemId, favoriteItemIds),
   }))
+}
+
+function blockSaveKey(itemId: string, title: string, blocks: Array<Pick<KnowledgeContentBlockDraft, 'blockType' | 'content' | 'sortOrder'>>) {
+  return `${itemId}\u0000${title}\u0000${blocks.map((block, index) => `${block.sortOrder ?? index}:${block.blockType}:${block.content}`).join('\u0001')}`
 }
 
 function blockTypeText(blockType: string) {

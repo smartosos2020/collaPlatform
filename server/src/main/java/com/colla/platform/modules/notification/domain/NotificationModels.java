@@ -27,4 +27,7 @@ public final class NotificationModels {
 
     public record NotificationBatchResult(int changed) {
     }
+
+    public record NotificationPreference(String sourceType, boolean enabled, boolean required) {
+    }
 }

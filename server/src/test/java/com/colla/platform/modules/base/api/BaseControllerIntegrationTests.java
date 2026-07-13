@@ -157,6 +157,17 @@ class BaseControllerIntegrationTests {
             .andExpect(jsonPath("$.created").value(1))
             .andExpect(jsonPath("$.errors.length()").value(0));
 
+        mockMvc.perform(post("/api/bases/" + baseId + "/tables/" + tableId + "/import.csv")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "csv",
+                    "标题,优先级,状态\nBroken Case,not-a-number,未开始\n"
+                ))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.created").value(0))
+            .andExpect(jsonPath("$.errors.length()").value(1));
+
         mockMvc.perform(get("/api/platform/objects/base/" + baseId + "/summary")
                 .header("Authorization", "Bearer " + viewerToken))
             .andExpect(status().isOk())

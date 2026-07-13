@@ -1,6 +1,7 @@
 package com.colla.platform.modules.notification.infrastructure;
 
 import com.colla.platform.modules.notification.domain.NotificationModels.NotificationItem;
+import com.colla.platform.modules.notification.domain.NotificationModels.NotificationPreference;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
@@ -13,6 +14,10 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public class JdbcNotificationRepository implements NotificationRepository {
+    private static final List<String> REQUIRED_TYPES = List.of(
+        "resource_permission_granted", "resource_permission_revoked", "resource_permission_request_approved",
+        "resource_permission_request_rejected", "security_alert", "approval_task_created"
+    );
     private final JdbcTemplate jdbcTemplate;
 
     public JdbcNotificationRepository(JdbcTemplate jdbcTemplate) {
@@ -119,6 +124,8 @@ public class JdbcNotificationRepository implements NotificationRepository {
                 update notifications
                 set read_at = coalesce(read_at, now())
                 where workspace_id = ? and recipient_id = ? and id = ?
+                  and notification_type not like 'admin_%'
+                  and notification_type not like 'governance_%'
                 """,
             workspaceId,
             recipientId,
@@ -141,6 +148,8 @@ public class JdbcNotificationRepository implements NotificationRepository {
                 update notifications
                 set read_at = coalesce(read_at, now())
                 where workspace_id = ? and recipient_id = ? and id in (%s) and read_at is null
+                  and notification_type not like 'admin_%%'
+                  and notification_type not like 'governance_%%'
                 """.formatted(placeholders),
             args.toArray()
         );
@@ -149,10 +158,60 @@ public class JdbcNotificationRepository implements NotificationRepository {
     @Override
     public int markAllRead(UUID workspaceId, UUID recipientId) {
         return jdbcTemplate.update(
-            "update notifications set read_at = coalesce(read_at, now()) where workspace_id = ? and recipient_id = ? and read_at is null",
+            """
+                update notifications set read_at = coalesce(read_at, now())
+                where workspace_id = ? and recipient_id = ? and read_at is null
+                  and notification_type not like 'admin_%'
+                  and notification_type not like 'governance_%'
+                """,
             workspaceId,
             recipientId
         );
+    }
+
+    @Override
+    public List<NotificationPreference> listPreferences(UUID workspaceId, UUID userId) {
+        List<String> sources = List.of("im", "project", "knowledge", "base", "approval", "resource", "system");
+        return sources.stream().map(source -> new NotificationPreference(
+            source,
+            Boolean.TRUE.equals(jdbcTemplate.queryForObject(
+                "select coalesce((select enabled from notification_preferences where workspace_id = ? and user_id = ? and source_type = ?), true)",
+                Boolean.class,
+                workspaceId,
+                userId,
+                source
+            )),
+            "resource".equals(source) || "system".equals(source)
+        )).toList();
+    }
+
+    @Override
+    public void upsertPreference(UUID workspaceId, UUID userId, String sourceType, boolean enabled) {
+        jdbcTemplate.update(
+            """
+                insert into notification_preferences (workspace_id, user_id, source_type, enabled, updated_at)
+                values (?, ?, ?, ?, now())
+                on conflict (workspace_id, user_id, source_type)
+                do update set enabled = excluded.enabled, updated_at = now()
+                """,
+            workspaceId, userId, sourceType, enabled
+        );
+    }
+
+    @Override
+    public boolean isEnabled(UUID workspaceId, UUID userId, String notificationType) {
+        if (REQUIRED_TYPES.contains(notificationType) || notificationType.startsWith("security_")) {
+            return true;
+        }
+        String source = sourceType(notificationType);
+        Boolean enabled = jdbcTemplate.queryForObject(
+            "select coalesce((select enabled from notification_preferences where workspace_id = ? and user_id = ? and source_type = ?), true)",
+            Boolean.class,
+            workspaceId,
+            userId,
+            source
+        );
+        return !Boolean.FALSE.equals(enabled);
     }
 
     private NotificationItem mapNotification(ResultSet rs, int rowNum) throws SQLException {

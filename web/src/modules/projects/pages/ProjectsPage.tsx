@@ -119,7 +119,7 @@ function fallbackWorkflowActions(issue: IssueSummary): IssueWorkflowAction[] {
       requiresReason: false,
       requiresTargetIssue: false,
       requiresDueAt: false,
-      description: issue.issueType === 'bug' ? '开发提交修复，等待验证' : '实现完成，等待确认',
+      description: issue.issueType === 'bug' ? '修复处理中，等待验证' : '处理完成，等待确认',
       issueTypes: allTypes,
       fromStatuses: ['open', 'in_progress'],
     },
@@ -940,7 +940,7 @@ function IssueDrawer({
                   />
                   <Input
                     value={verificationEnvironment}
-                    placeholder="验证环境，例如 Windows / Chrome / 测试库"
+                    placeholder="运行环境，例如 Windows / Chrome / 浏览器"
                     onChange={(event) => onVerificationEnvironmentChange(event.target.value)}
                   />
                   <Input

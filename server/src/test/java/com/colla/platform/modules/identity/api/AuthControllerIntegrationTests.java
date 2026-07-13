@@ -3,8 +3,10 @@ package com.colla.platform.modules.identity.api;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.blankOrNullString;
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -141,6 +143,41 @@ class AuthControllerIntegrationTests {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"refreshToken\":\"not-a-refresh-jwt\"}"))
             .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void memberCanUpdateProfileAndPasswordEndpointProtectsCurrentPassword() throws Exception {
+        String loginResponse = mockMvc.perform(post("/api/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                        {
+                          "username": "admin",
+                          "password": "admin123456",
+                          "deviceType": "web",
+                          "deviceFingerprint": "profile-test-device"
+                        }
+                        """
+                ))
+            .andExpect(status().isOk())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+        String accessToken = objectMapper.readTree(loginResponse).get("accessToken").asText();
+
+        mockMvc.perform(patch("/api/auth/me")
+                .header("Authorization", "Bearer " + accessToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"displayName\":\"Administrator\",\"email\":null,\"avatarFileId\":null}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.displayName").value("Administrator"))
+            .andExpect(jsonPath("$.avatarFileId").value(nullValue()));
+
+        mockMvc.perform(post("/api/auth/me/password")
+                .header("Authorization", "Bearer " + accessToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"currentPassword\":\"wrong-password\",\"newPassword\":\"member123456\"}"))
+            .andExpect(status().isBadRequest());
     }
 
     @Test

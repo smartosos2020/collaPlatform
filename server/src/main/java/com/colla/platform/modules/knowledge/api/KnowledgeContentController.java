@@ -120,6 +120,7 @@ public class KnowledgeContentController {
             user,
             itemId,
             request.baseVersionNo(),
+            request.title(),
             request.blocks().stream().map(KnowledgeApiDtos::toBlockDraft).toList()
         ));
     }
@@ -491,7 +492,7 @@ public class KnowledgeContentController {
     ) {
     }
 
-    public record SaveKnowledgeContentBlocksRequest(int baseVersionNo, @NotNull List<KnowledgeContentBlockDraft> blocks) {
+    public record SaveKnowledgeContentBlocksRequest(int baseVersionNo, @Size(max = 255) String title, @NotNull List<KnowledgeContentBlockDraft> blocks) {
     }
 
     public record InsertKnowledgeContentBlockRequest(

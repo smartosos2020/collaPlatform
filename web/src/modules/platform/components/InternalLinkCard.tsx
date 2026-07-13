@@ -35,7 +35,7 @@ export function InternalLinkCard({ link }: InternalLinkCardProps) {
   }
 
   if (linkQuery.isError || !linkQuery.data?.summary) {
-    return <Alert type="warning" message="链接解析失败" showIcon />
+    return <Alert type="warning" message="链接解析失败" description="请返回上一页或重新打开对象。" showIcon />
   }
 
   const summary = linkQuery.data.summary
@@ -94,7 +94,7 @@ export function ObjectSummaryCard({ summary, onOpen }: { summary: PlatformObject
         <Space size={4}>
           {metadataText(summary.metadata.backReferencePath) ? <Button size="small" href={normalizeKnowledgeContentPath(metadataText(summary.metadata.backReferencePath))}>回看引用</Button> : null}
           {canOpen ? (
-            <Button size="small" loading={openMutation.isPending} onClick={handleOpen}>
+            <Button size="small" aria-label={`打开${objectTypeText[summary.objectType] ?? '对象'} ${displayTitle}`} loading={openMutation.isPending} onClick={handleOpen}>
               {summary.objectType === 'knowledge_content' ? '打开知识内容' : '打开'}
             </Button>
           ) : null}

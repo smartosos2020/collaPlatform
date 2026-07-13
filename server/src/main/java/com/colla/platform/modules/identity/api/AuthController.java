@@ -10,9 +10,12 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
+import java.util.UUID;
 import org.springframework.http.HttpHeaders;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -53,6 +56,21 @@ public class AuthController {
         return authService.me((CurrentUser) authentication.getPrincipal());
     }
 
+    @PatchMapping("/me")
+    public CurrentUserProfile updateProfile(@Valid @RequestBody UpdateProfileRequest request, Authentication authentication) {
+        return authService.updateProfile(
+            (CurrentUser) authentication.getPrincipal(),
+            request.displayName(),
+            request.email(),
+            request.avatarFileId()
+        );
+    }
+
+    @PostMapping("/me/password")
+    public void changePassword(@Valid @RequestBody ChangePasswordRequest request, Authentication authentication) {
+        authService.changePassword((CurrentUser) authentication.getPrincipal(), request.currentPassword(), request.newPassword());
+    }
+
     private String clientIp(HttpServletRequest request) {
         String forwardedFor = request.getHeader("X-Forwarded-For");
         if (forwardedFor != null && !forwardedFor.isBlank()) {
@@ -78,5 +96,15 @@ public class AuthController {
     }
 
     public record LogoutRequest(String refreshToken) {
+    }
+
+    public record UpdateProfileRequest(
+        @NotBlank @Size(max = 64) String displayName,
+        @Size(max = 128) String email,
+        UUID avatarFileId
+    ) {
+    }
+
+    public record ChangePasswordRequest(@NotBlank String currentPassword, @NotBlank String newPassword) {
     }
 }

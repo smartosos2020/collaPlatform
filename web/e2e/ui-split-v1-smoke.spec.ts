@@ -1,8 +1,8 @@
 import { expect, test } from '@playwright/test'
 
-const apiBaseUrl = process.env.COLLA_E2E_API_BASE_URL ?? 'http://localhost:8080/api'
-const username = process.env.COLLA_E2E_USERNAME ?? 'admin'
-const password = process.env.COLLA_E2E_PASSWORD ?? ['admin', '123456'].join('')
+import { installSession, loginByApi } from './support/api'
+import { installFailureEvidence } from './support/diagnostics'
+import { AdminConsolePage, UserWorkspacePage } from './support/pageObjects'
 
 const userRoutes = [
   { path: '/', label: '工作台' },
@@ -26,52 +26,31 @@ const adminRoutes = [
   { path: '/admin/audit-logs', label: '审计日志' },
 ] as const
 
-test('UI-SPLIT v1 smoke: user workspace and admin console stay separated', async ({ page, request }) => {
-  const login = await request.post(`${apiBaseUrl}/auth/login`, {
-    data: {
-      username,
-      password,
-      deviceType: 'web',
-      deviceFingerprint: `ui-split-smoke-${Date.now()}`,
-      deviceName: 'UI split smoke',
-      appVersion: 'ui-split-v1',
-    },
-  })
-  expect(login.ok()).toBeTruthy()
-  const tokens = await login.json()
+test('@smoke @route-final M4 UI-SPLIT v1 smoke: user workspace and admin console stay separated', async ({ page, request }, testInfo) => {
+  const flushEvidence = installFailureEvidence(page, testInfo)
+  try {
+    await installSession(page, await loginByApi(request))
+    const userWorkspace = new UserWorkspacePage(page)
+    const adminConsole = new AdminConsolePage(page)
 
-  await page.addInitScript(
-    ([accessToken, refreshToken]) => {
-      localStorage.setItem('colla.accessToken', accessToken)
-      localStorage.setItem('colla.refreshToken', refreshToken)
-    },
-    [tokens.accessToken, tokens.refreshToken],
-  )
-
-  const failedResponses: string[] = []
-  page.on('response', (response) => {
-    if (response.url().includes('/api/') && response.status() >= 500) {
-      failedResponses.push(`${response.status()} ${response.url()}`)
+    for (const route of userRoutes) {
+      await page.goto(route.path)
+      await userWorkspace.expectVisible()
+      await expect(page.getByText(route.label).first()).toBeVisible()
     }
-  })
 
-  for (const route of userRoutes) {
-    await page.goto(route.path)
-    await expect(page.locator('.user-workspace-shell')).toBeVisible()
-    await expect(page.getByText(route.label).first()).toBeVisible()
-    await expect(page.locator('.admin-console-shell')).toHaveCount(0)
+    await userWorkspace.openAccountMenu()
+    await expect(page.getByText('管理后台')).toBeVisible()
+
+    for (const route of adminRoutes) {
+      await page.goto(route.path)
+      await adminConsole.expectVisible(route.label)
+    }
+
+    await adminConsole.returnToWorkspace()
+    await expect(page).toHaveURL(/\/$/)
+    await userWorkspace.expectVisible()
+  } finally {
+    await flushEvidence()
   }
-
-  await page.locator('.app-user-menu-trigger').click()
-  await expect(page.getByText('管理后台')).toBeVisible()
-
-  for (const route of adminRoutes) {
-    await page.goto(route.path)
-    await expect(page.locator('.admin-console-shell')).toBeVisible()
-    await expect(page.getByRole('heading', { name: route.label })).toBeVisible()
-    await expect(page.locator('.user-workspace-shell')).toHaveCount(0)
-  }
-
-  await expect(page.getByRole('button', { name: '返回工作台' })).toBeVisible()
-  expect(failedResponses).toEqual([])
 })

@@ -10,6 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -49,6 +50,29 @@ public class AuditService {
     public List<AuditLogEntry> list(CurrentUser currentUser, String action, String targetType, UUID targetId, UUID actorId, int limit) {
         permissionService.requireManageUsers(currentUser);
         return auditRepository.list(currentUser.workspaceId(), action, targetType, targetId, actorId, limit);
+    }
+
+    public String export(CurrentUser currentUser, String action, String targetType, UUID targetId, UUID actorId, int limit) {
+        List<AuditLogEntry> entries = list(currentUser, action, targetType, targetId, actorId, Math.min(limit, 200));
+        String header = "id,created_at,actor,action,target_type,target_id";
+        return header + "\n" + entries.stream()
+            .map(entry -> String.join(",",
+                csv(entry.id()),
+                csv(entry.createdAt()),
+                csv(entry.actorName()),
+                csv(entry.action()),
+                csv(entry.targetType()),
+                csv(entry.targetId())
+            ))
+            .collect(Collectors.joining("\n"));
+    }
+
+    private String csv(Object value) {
+        String text = value == null ? "" : String.valueOf(value);
+        if (!text.isEmpty() && "=+-@".indexOf(text.charAt(0)) >= 0) {
+            text = "'" + text;
+        }
+        return "\"" + text.replace("\"", "\"\"") + "\"";
     }
 
     private Map<String, Object> enrichMetadata(Map<String, Object> metadata) {

@@ -136,9 +136,9 @@ public class PermissionDecisionService {
             return value;
         }
         return switch (value) {
-            case "delete", "permission", "share", "manage" -> "manage";
-            case "edit", "update", "save", "transition", "approve", "reject" -> "edit";
-            case "comment", "reply" -> "comment";
+            case "delete", "permission", "share", "manage", "manage_members", "manage_schema" -> "manage";
+            case "edit", "update", "save", "transition", "approve", "reject", "edit_issue", "edit_record", "act", "withdraw" -> "edit";
+            case "comment", "reply", "send" -> "comment";
             default -> "view";
         };
     }

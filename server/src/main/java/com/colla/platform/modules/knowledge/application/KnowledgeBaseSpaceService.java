@@ -140,14 +140,20 @@ public class KnowledgeBaseSpaceService {
         UUID targetParentId = parentId == null ? space.rootItemId() : parentId;
         requireItemInsideKnowledgeBase(currentUser, space.rootItemId(), targetParentId);
         String normalizedContentType = normalizeItemContentType(contentType);
+        String normalizedTargetObjectType = normalizeTargetObjectType(normalizedContentType, targetObjectType);
+        UUID normalizedTargetObjectId = normalizeTargetObjectId(normalizedContentType, targetObjectId);
+        String normalizedTargetRoute = normalizeTargetRoute(normalizedContentType, targetRoute);
+        if ("object_ref".equals(normalizedContentType)) {
+            normalizedTargetRoute = resolveCanonicalTargetRoute(currentUser, normalizedTargetObjectType, normalizedTargetObjectId);
+        }
         KnowledgeContent detail = contentService.createItem(currentUser, targetParentId, title, normalizedContentType, content, null, null, "view", false);
         itemRepository.updateKnowledgeNodeMetadata(
             currentUser.workspaceId(),
             detail.item().id(),
             nodeKindFor(normalizedContentType),
-            normalizeTargetObjectType(normalizedContentType, targetObjectType),
-            normalizeTargetObjectId(normalizedContentType, targetObjectId),
-            normalizeTargetRoute(normalizedContentType, targetRoute),
+            normalizedTargetObjectType,
+            normalizedTargetObjectId,
+            normalizedTargetRoute,
             normalizeDisplayMode(displayMode),
             normalizeTitleStrategy(targetTitleStrategy),
             normalizeEntryAlias(entryAlias),
@@ -1272,6 +1278,29 @@ public class KnowledgeBaseSpaceService {
             return normalized.substring(0, 1024);
         }
         return normalized;
+    }
+
+    private String resolveCanonicalTargetRoute(CurrentUser currentUser, String targetObjectType, UUID targetObjectId) {
+        PlatformObjectSummary target = objectResolverRegistry.resolve(currentUser, targetObjectType, targetObjectId);
+        if (target.accessState() == ObjectAccessState.forbidden) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                org.springframework.http.HttpStatus.FORBIDDEN,
+                "Target object is not accessible"
+            );
+        }
+        if (target.accessState() != ObjectAccessState.available) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                org.springframework.http.HttpStatus.NOT_FOUND,
+                "Target object does not exist"
+            );
+        }
+        if (target.webPath() == null || target.webPath().isBlank()) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                org.springframework.http.HttpStatus.BAD_REQUEST,
+                "Target object has no canonical route"
+            );
+        }
+        return target.webPath();
     }
 
     private String normalizeDisplayMode(String displayMode) {

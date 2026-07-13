@@ -14,6 +14,7 @@ import com.colla.platform.modules.permission.infrastructure.ResourcePermissionRe
 import com.colla.platform.shared.auth.CurrentUser;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -159,6 +160,17 @@ public class ResourcePermissionManagementService {
                 "highRisk", highRisk
             )
         );
+        notifyPermissionSubjectChange(
+            currentUser,
+            normalizedResourceType,
+            resourceId,
+            normalizedSubjectType,
+            subjectId,
+            "resource_permission_granted",
+            "你获得了资源访问权限",
+            "权限级别：" + normalizedPermission,
+            "resource.permission.granted:" + normalizedResourceType + ":" + resourceId + ":" + subjectId + ":" + normalizedPermission
+        );
         return resourcePermissionRepository.listGrants(currentUser.workspaceId(), normalizedResourceType, resourceId).stream()
             .filter(entry -> entry.subjectType().equals(normalizedSubjectType) && entry.subjectId().equals(subjectId))
             .findFirst()
@@ -206,6 +218,99 @@ public class ResourcePermissionManagementService {
                 "revokedInherited", revokedInherited
             )
         );
+        notifyPermissionSubjectChange(
+            currentUser,
+            entry.resourceType(),
+            entry.resourceId(),
+            entry.subjectType(),
+            entry.subjectId(),
+            "resource_permission_revoked",
+            "你的资源访问权限已被撤销",
+            "原权限级别：" + entry.permissionLevel(),
+            "resource.permission.revoked:" + permissionId
+        );
+    }
+
+    private void notifyPermissionSubjectChange(
+        CurrentUser currentUser,
+        String resourceType,
+        UUID resourceId,
+        String subjectType,
+        UUID subjectId,
+        String notificationType,
+        String title,
+        String body,
+        String dedupeKey
+    ) {
+        for (UUID recipientId : expandPermissionSubjectUserIds(currentUser.workspaceId(), subjectType, subjectId)) {
+            if (recipientId.equals(currentUser.id())) {
+                continue;
+            }
+            UUID eventDedupeId = UUID.nameUUIDFromBytes((dedupeKey + ":" + recipientId).getBytes(StandardCharsets.UTF_8));
+            eventRepository.append(
+                currentUser.workspaceId(),
+                "notification.created",
+                resourceType,
+                resourceId,
+                currentUser.id(),
+                Map.of(
+                    "recipientId", recipientId.toString(),
+                    "notificationType", notificationType,
+                    "title", title,
+                    "body", body + "；授权主体：" + subjectType,
+                    "targetType", resourceType,
+                    "targetId", resourceId.toString(),
+                    "webPath", webPath(currentUser.workspaceId(), resourceType, resourceId),
+                    "dedupeKey", "resource.permission:" + eventDedupeId
+                ),
+                "notification.permission:" + eventDedupeId
+            );
+        }
+    }
+
+    private List<UUID> expandPermissionSubjectUserIds(UUID workspaceId, String subjectType, UUID subjectId) {
+        return switch (subjectType) {
+            case "user" -> List.of(subjectId);
+            case "department" -> jdbcTemplate.query(
+                """
+                    select distinct dm.user_id
+                    from department_members dm
+                    join users u on u.workspace_id = dm.workspace_id and u.id = dm.user_id
+                    where dm.workspace_id = ? and dm.department_id = ? and dm.ended_at is null
+                      and u.status = 'active' and u.deleted_at is null
+                    """,
+                (rs, rowNum) -> rs.getObject("user_id", UUID.class), workspaceId, subjectId
+            );
+            case "user_group" -> jdbcTemplate.query(
+                """
+                    select distinct expanded.user_id
+                    from (
+                        select ugm.subject_id user_id
+                        from user_group_members ugm
+                        where ugm.workspace_id = ? and ugm.group_id = ? and ugm.subject_type = 'user' and ugm.removed_at is null
+                        union all
+                        select dm.user_id
+                        from user_group_members ugm
+                        join department_members dm on dm.workspace_id = ugm.workspace_id
+                            and dm.department_id = ugm.subject_id and dm.ended_at is null
+                        where ugm.workspace_id = ? and ugm.group_id = ? and ugm.subject_type = 'department' and ugm.removed_at is null
+                    ) expanded
+                    join users u on u.workspace_id = ? and u.id = expanded.user_id
+                    where u.status = 'active' and u.deleted_at is null
+                    """,
+                (rs, rowNum) -> rs.getObject("user_id", UUID.class), workspaceId, subjectId, workspaceId, subjectId, workspaceId
+            );
+            case "role" -> jdbcTemplate.query(
+                """
+                    select distinct ur.user_id
+                    from user_roles ur
+                    join users u on u.workspace_id = ur.workspace_id and u.id = ur.user_id
+                    where ur.workspace_id = ? and ur.role_id = ? and u.status = 'active' and u.deleted_at is null
+                    """,
+                (rs, rowNum) -> rs.getObject("user_id", UUID.class), workspaceId, subjectId
+            );
+            default -> List.of();
+        };
     }
 
     @Transactional

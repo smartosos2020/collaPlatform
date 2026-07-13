@@ -6,6 +6,7 @@ import com.colla.platform.shared.auth.CurrentUser;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.util.List;
 import java.util.UUID;
@@ -53,6 +54,15 @@ public class AdminUserController {
         memberService.disableMember(currentUser(authentication), userId);
     }
 
+    @PostMapping("/{userId}/offboard")
+    public MemberService.OffboardingResult offboard(
+        @PathVariable UUID userId,
+        @Valid @RequestBody OffboardMemberRequest request,
+        Authentication authentication
+    ) {
+        return memberService.offboardMember(currentUser(authentication), userId, request.handoverToUserId());
+    }
+
     @PostMapping("/{userId}/enable")
     public void enable(@PathVariable UUID userId, Authentication authentication) {
         memberService.enableMember(currentUser(authentication), userId);
@@ -91,6 +101,9 @@ public class AdminUserController {
     }
 
     public record ResetPasswordRequest(@NotBlank @Size(min = 8) String newPassword) {
+    }
+
+    public record OffboardMemberRequest(@NotNull UUID handoverToUserId) {
     }
 
     public record UpdateAvatarRequest(UUID avatarFileId) {

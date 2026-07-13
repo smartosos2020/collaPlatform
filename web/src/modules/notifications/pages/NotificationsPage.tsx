@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Badge, Button, Checkbox, Empty, Select, Space, Tag, Typography } from 'antd'
+import { Alert, Badge, Button, Checkbox, Empty, Select, Space, Tag, Typography } from 'antd'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
@@ -97,6 +97,8 @@ export function NotificationsPage() {
           </Button>
         </Space>
       </Space>
+
+      {notificationsQuery.isError ? <Alert type="error" showIcon message="通知暂时无法加载" description="请检查网络连接后重试。" /> : null}
 
       <Space wrap className="notification-filters">
         <Checkbox

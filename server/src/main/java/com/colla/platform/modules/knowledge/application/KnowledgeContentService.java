@@ -917,13 +917,14 @@ public class KnowledgeContentService {
     }
 
     @Transactional
-    public KnowledgeContent saveBlocks(CurrentUser currentUser, UUID itemId, int baseVersionNo, List<KnowledgeContentBlockDraft> blocks) {
+    public KnowledgeContent saveBlocks(CurrentUser currentUser, UUID itemId, int baseVersionNo, String title, List<KnowledgeContentBlockDraft> blocks) {
         KnowledgeBaseItem before = requireEdit(currentUser, itemId);
         if (baseVersionNo != before.currentVersionNo()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Document version conflict");
         }
         List<KnowledgeContentBlock> previousBlocks = contentRepository.listBlocks(currentUser.workspaceId(), itemId);
         List<KnowledgeContentBlockDraft> normalizedBlocks = normalizeBlocks(blocks);
+        String normalizedTitle = title == null || title.isBlank() ? before.title() : title.trim();
         String normalizedContent = contentFromBlocks(normalizedBlocks);
         String versionSummary = blockChangeSummary(previousBlocks, normalizedBlocks);
         int nextVersionNo = before.currentVersionNo() + 1;
@@ -931,7 +932,7 @@ public class KnowledgeContentService {
             currentUser.workspaceId(),
             itemId,
             before.parentId(),
-            before.title(),
+            normalizedTitle,
             normalizedContent,
             nextVersionNo,
             currentUser.id()
@@ -940,7 +941,7 @@ public class KnowledgeContentService {
             currentUser.workspaceId(),
             itemId,
             nextVersionNo,
-            before.title(),
+            normalizedTitle,
             normalizedContent,
             currentUser.id(),
             null,
@@ -951,7 +952,7 @@ public class KnowledgeContentService {
         );
         contentRepository.replaceBlocks(currentUser.workspaceId(), itemId, normalizedBlocks, currentUser.id());
         reanchorSelectionComments(currentUser.workspaceId(), itemId, normalizedContent);
-        registerDocumentObject(currentUser.workspaceId(), itemId, before.title());
+        registerDocumentObject(currentUser.workspaceId(), itemId, normalizedTitle);
         eventRepository.append(
             currentUser.workspaceId(),
             "knowledge.content.blocks.updated",
@@ -971,7 +972,7 @@ public class KnowledgeContentService {
             .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
         int insertAt = afterSortOrder == null ? current.size() : Math.min(Math.max(afterSortOrder + 1, 0), current.size());
         current.add(insertAt, block == null ? new KnowledgeContentBlockDraft("paragraph", "", insertAt) : block);
-        return saveBlocks(currentUser, itemId, baseVersionNo, current);
+        return saveBlocks(currentUser, itemId, baseVersionNo, null, current);
     }
 
     @Transactional
@@ -991,7 +992,7 @@ public class KnowledgeContentService {
         if (!found) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Document block not found");
         }
-        return saveBlocks(currentUser, itemId, baseVersionNo, current);
+        return saveBlocks(currentUser, itemId, baseVersionNo, null, current);
     }
 
     @Transactional
@@ -1015,7 +1016,7 @@ public class KnowledgeContentService {
             reordered.add(block);
         }
         reordered.addAll(byId.values());
-        return saveBlocks(currentUser, itemId, baseVersionNo, reordered);
+        return saveBlocks(currentUser, itemId, baseVersionNo, null, reordered);
     }
 
     @Transactional
@@ -1027,7 +1028,7 @@ public class KnowledgeContentService {
         if (remaining.size() == contentRepository.listBlocks(currentUser.workspaceId(), itemId).size()) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Document block not found");
         }
-        return saveBlocks(currentUser, itemId, baseVersionNo, remaining);
+        return saveBlocks(currentUser, itemId, baseVersionNo, null, remaining);
     }
 
     public KnowledgeContentVersionDiff diffVersions(CurrentUser currentUser, UUID itemId, int fromVersionNo, int toVersionNo) {

@@ -1,8 +1,9 @@
 import { DownloadOutlined, SearchOutlined } from '@ant-design/icons'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Alert, App as AntdApp, Button, Form, Input, Select, Space, Table, Tag, Typography } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 
 import { listAdminKnowledgeBases } from '../api/adminKnowledgeBasesApi'
 import { listMembers } from '../api/adminUsersApi'
@@ -10,14 +11,20 @@ import {
   exportPermissionRisks,
   inspectPermission,
   listPermissionRisks,
+  remediatePermissionRisk,
   type InspectPermissionParams,
   type PermissionRiskItem,
 } from '../api/permissionGovernanceApi'
 
 export function AdminPermissionGovernancePage() {
-  const { message } = AntdApp.useApp()
+  const { message, modal } = AntdApp.useApp()
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const [searchParams] = useSearchParams()
   const [form] = Form.useForm<InspectPermissionParams>()
-  const [knowledgeBaseId, setKnowledgeBaseId] = useState<string | undefined>()
+  const [knowledgeBaseId, setKnowledgeBaseId] = useState<string | undefined>(() => searchParams.get('knowledgeBaseId') || undefined)
+  const [severity, setSeverity] = useState<string | undefined>(() => searchParams.get('severity') || undefined)
+  const [riskQuery, setRiskQuery] = useState(() => searchParams.get('q') || '')
   const membersQuery = useQuery({ queryKey: ['admin', 'users'], queryFn: () => listMembers() })
   const spacesQuery = useQuery({ queryKey: ['admin', 'knowledge-bases', 'permission-governance'], queryFn: () => listAdminKnowledgeBases({ includeArchived: true }) })
   const risksQuery = useQuery({
@@ -42,6 +49,35 @@ export function AdminPermissionGovernancePage() {
       message.success('风险列表已导出')
     },
   })
+  const remediationMutation = useMutation({
+    mutationFn: ({ riskId, confirm }: { riskId: string; confirm: boolean }) => remediatePermissionRisk(riskId, confirm),
+    onSuccess: async (result, variables) => {
+      if (!variables.confirm) {
+        if (!result.executable) {
+          message.warning(result.reason)
+          return
+        }
+        modal.confirm({
+          title: '确认单项修复权限风险？',
+          content: `${result.reason} 风险规则：${result.ruleCode}`,
+          okText: '确认修复',
+          cancelText: '取消',
+          onOk: () => remediationMutation.mutateAsync({ riskId: result.riskId, confirm: true }),
+        })
+        return
+      }
+      message.success(result.reason)
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'permission-governance', 'risks'] })
+    },
+  })
+  const filteredRisks = useMemo(() => {
+    const query = riskQuery.trim().toLowerCase()
+    return (risksQuery.data?.items ?? []).filter((risk) =>
+      (!severity || risk.severity === severity)
+      && (!query || [risk.ruleCode, risk.reason, risk.resourceType, risk.resourceId, risk.subjectName, risk.subjectId]
+        .some((value) => value?.toLowerCase().includes(query))),
+    )
+  }, [riskQuery, risksQuery.data?.items, severity])
 
   const columns: ColumnsType<PermissionRiskItem> = [
     {
@@ -51,6 +87,7 @@ export function AdminPermissionGovernancePage() {
         <Space orientation="vertical" size={0}>
           <Typography.Text strong>{value}</Typography.Text>
           <Typography.Text type="secondary">{record.reason}</Typography.Text>
+          {record.suggestedAction ? <Typography.Text type="secondary">建议：{record.suggestedAction}</Typography.Text> : null}
         </Space>
       ),
     },
@@ -70,9 +107,59 @@ export function AdminPermissionGovernancePage() {
       render: (_, record) => (record.subjectType ? `${record.subjectType}:${record.subjectName ?? record.subjectId}` : '-'),
     },
     {
+      title: '影响范围',
+      key: 'impactScope',
+      render: (_, record) => record.impactScope ? `${record.impactScope.resourceType}:${record.impactScope.resourceId}` : '-',
+    },
+    {
       title: '权限',
       dataIndex: 'permissionLevel',
       render: (level) => (level ? <Tag>{level}</Tag> : '-'),
+    },
+    {
+      title: '快捷操作',
+      key: 'actions',
+      render: (_, record) => (
+        <Space>
+          {record.resourceType && record.resourceId ? (
+            <Button size="small" onClick={() => navigate(`/admin/audit-logs?targetType=${record.resourceType}&targetId=${record.resourceId}`)}>
+              审计
+            </Button>
+          ) : null}
+          {record.subjectType === 'user' && record.subjectId ? (
+            <Button size="small" onClick={() => navigate(`/admin/users?userId=${record.subjectId}`)}>成员</Button>
+          ) : null}
+          {record.subjectType === 'user' && record.subjectId && record.resourceType && record.resourceId ? (
+            <Button
+              size="small"
+              onClick={() => {
+                form.setFieldsValue({
+                  userId: record.subjectId ?? undefined,
+                  resourceType: record.resourceType ?? undefined,
+                  resourceId: record.resourceId ?? undefined,
+                  action: 'view',
+                })
+                inspectMutation.mutate({
+                  userId: record.subjectId ?? '',
+                  resourceType: record.resourceType ?? '',
+                  resourceId: record.resourceId ?? '',
+                  action: 'view',
+                })
+              }}
+            >
+              授权
+            </Button>
+          ) : null}
+          <Button
+            size="small"
+            danger={record.severity === 'high' || record.severity === 'critical'}
+            loading={remediationMutation.isPending && remediationMutation.variables?.riskId === record.id}
+            onClick={() => remediationMutation.mutate({ riskId: record.id, confirm: false })}
+          >
+            处置
+          </Button>
+        </Space>
+      ),
     },
   ]
 
@@ -139,6 +226,19 @@ export function AdminPermissionGovernancePage() {
           optionFilterProp="label"
           options={(spacesQuery.data ?? []).map((space) => ({ value: space.id, label: space.name }))}
         />
+        <Select
+          allowClear
+          placeholder="风险级别"
+          value={severity}
+          onChange={setSeverity}
+          options={['critical', 'high', 'medium', 'low'].map((value) => ({ label: value, value }))}
+        />
+        <Input.Search
+          allowClear
+          placeholder="规则、资源、授权主体"
+          value={riskQuery}
+          onChange={(event) => setRiskQuery(event.target.value)}
+        />
       </Form>
 
       {inspectMutation.data ? (
@@ -149,12 +249,13 @@ export function AdminPermissionGovernancePage() {
           description={`${inspectMutation.data.reason} 当前 ${inspectMutation.data.currentLevel}，需要 ${inspectMutation.data.requiredLevel}，来源 ${inspectMutation.data.source}。`}
         />
       ) : null}
+      {risksQuery.isError || inspectMutation.isError || exportMutation.isError || remediationMutation.isError ? <Alert type="error" showIcon message="权限风险操作失败" description="请检查资源权限后重试；未确认的动作不会写入。" /> : null}
 
       <Table
         rowKey="id"
         loading={risksQuery.isLoading}
         columns={columns}
-        dataSource={risksQuery.data?.items ?? []}
+        dataSource={filteredRisks}
         pagination={{ pageSize: 10 }}
       />
     </Space>

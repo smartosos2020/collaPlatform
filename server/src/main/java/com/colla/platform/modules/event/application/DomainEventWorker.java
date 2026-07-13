@@ -65,12 +65,16 @@ public class DomainEventWorker {
         if (NOTIFICATION_CREATED.equals(event.eventType())) {
             Map<String, Object> payload = event.payload();
             UUID recipientId = UUID.fromString(payload.get("recipientId").toString());
+            String notificationType = payload.getOrDefault("notificationType", "system").toString();
+            if (!notificationRepository.isEnabled(event.workspaceId(), recipientId, notificationType)) {
+                return;
+            }
             UUID targetId = payload.get("targetId") == null ? null : UUID.fromString(payload.get("targetId").toString());
             notificationRepository.create(
                 event.workspaceId(),
                 recipientId,
                 event.actorId(),
-                payload.getOrDefault("notificationType", "system").toString(),
+                notificationType,
                 payload.get("title").toString(),
                 payload.getOrDefault("body", "").toString(),
                 payload.get("targetType") == null ? null : PlatformObjectTypes.canonicalize(payload.get("targetType").toString()),

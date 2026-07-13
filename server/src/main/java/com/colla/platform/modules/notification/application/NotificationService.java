@@ -3,6 +3,7 @@ package com.colla.platform.modules.notification.application;
 import com.colla.platform.modules.notification.domain.NotificationModels.NotificationItem;
 import com.colla.platform.modules.notification.domain.NotificationModels.NotificationBatchResult;
 import com.colla.platform.modules.notification.domain.NotificationModels.UnreadCount;
+import com.colla.platform.modules.notification.domain.NotificationModels.NotificationPreference;
 import com.colla.platform.modules.notification.infrastructure.NotificationRepository;
 import com.colla.platform.shared.auth.CurrentUser;
 import com.colla.platform.shared.websocket.WebSocketMessageSender;
@@ -10,9 +11,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class NotificationService {
+    private static final List<String> SOURCES = List.of("im", "project", "knowledge", "base", "approval", "resource", "system");
     private final NotificationRepository notificationRepository;
     private final WebSocketMessageSender webSocketMessageSender;
 
@@ -56,6 +60,22 @@ public class NotificationService {
         if (changed > 0) {
             pushUnreadChanged(currentUser.workspaceId(), currentUser.id());
         }
+    }
+
+    public List<NotificationPreference> preferences(CurrentUser currentUser) {
+        return notificationRepository.listPreferences(currentUser.workspaceId(), currentUser.id());
+    }
+
+    public List<NotificationPreference> updatePreference(CurrentUser currentUser, String sourceType, boolean enabled) {
+        String normalized = sourceType == null ? "" : sourceType.trim().toLowerCase();
+        if (!SOURCES.contains(normalized)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid notification source");
+        }
+        if (!enabled && ("resource".equals(normalized) || "system".equals(normalized))) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Required notifications cannot be disabled");
+        }
+        notificationRepository.upsertPreference(currentUser.workspaceId(), currentUser.id(), normalized, enabled);
+        return preferences(currentUser);
     }
 
     public void pushCreated(UUID workspaceId, UUID recipientId, NotificationItem notification) {

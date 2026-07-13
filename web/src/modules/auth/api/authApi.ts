@@ -1,4 +1,4 @@
-import { apiGet, apiPost } from '../../../shared/api/httpClient'
+import { apiGet, apiPatch, apiPost } from '../../../shared/api/httpClient'
 import type { CurrentUser } from '../authStore'
 
 export type LoginRequest = {
@@ -27,6 +27,20 @@ export async function login(request: LoginRequest): Promise<AuthTokens> {
 
 export async function getCurrentUser(): Promise<CurrentUser> {
   return apiGet<CurrentUser>('/auth/me')
+}
+
+export type UpdateProfileRequest = {
+  displayName: string
+  email?: string
+  avatarFileId?: string | null
+}
+
+export function updateProfile(request: UpdateProfileRequest) {
+  return apiPatch<CurrentUser>('/auth/me', request)
+}
+
+export function changePassword(request: { currentPassword: string; newPassword: string }) {
+  return apiPost<void>('/auth/me/password', request)
 }
 
 export async function logout(refreshToken: string | null): Promise<void> {

@@ -4,6 +4,7 @@ import com.colla.platform.modules.notification.domain.NotificationModels.Notific
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import com.colla.platform.modules.notification.domain.NotificationModels.NotificationPreference;
 
 public interface NotificationRepository {
     List<NotificationItem> list(UUID workspaceId, UUID recipientId, boolean unreadOnly, String source, String status, String targetType, int limit);
@@ -28,4 +29,10 @@ public interface NotificationRepository {
     int markReadBatch(UUID workspaceId, UUID recipientId, List<UUID> notificationIds);
 
     int markAllRead(UUID workspaceId, UUID recipientId);
+
+    List<NotificationPreference> listPreferences(UUID workspaceId, UUID userId);
+
+    void upsertPreference(UUID workspaceId, UUID userId, String sourceType, boolean enabled);
+
+    boolean isEnabled(UUID workspaceId, UUID userId, String notificationType);
 }

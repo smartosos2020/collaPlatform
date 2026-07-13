@@ -1,6 +1,8 @@
 package com.colla.platform.modules.identity.application;
 
 import com.colla.platform.modules.audit.application.AuditService;
+import com.colla.platform.modules.file.domain.FileModels.FileMetadata;
+import com.colla.platform.modules.file.infrastructure.FileRepository;
 import com.colla.platform.modules.identity.domain.AuthModels.AuthTokens;
 import com.colla.platform.modules.identity.domain.AuthModels.CurrentUserProfile;
 import com.colla.platform.modules.identity.domain.AuthModels.DeviceRegistration;
@@ -10,6 +12,7 @@ import com.colla.platform.modules.identity.infrastructure.IdentityRepository.Ses
 import com.colla.platform.shared.auth.CurrentUser;
 import com.colla.platform.shared.auth.JwtTokenService;
 import com.colla.platform.shared.auth.PasswordHasher;
+import com.colla.platform.shared.auth.PasswordPolicy;
 import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
@@ -24,17 +27,23 @@ public class AuthService {
     private final PasswordHasher passwordHasher;
     private final JwtTokenService jwtTokenService;
     private final AuditService auditService;
+    private final PasswordPolicy passwordPolicy;
+    private final FileRepository fileRepository;
 
     public AuthService(
         IdentityRepository identityRepository,
         PasswordHasher passwordHasher,
         JwtTokenService jwtTokenService,
-        AuditService auditService
+        AuditService auditService,
+        PasswordPolicy passwordPolicy,
+        FileRepository fileRepository
     ) {
         this.identityRepository = identityRepository;
         this.passwordHasher = passwordHasher;
         this.jwtTokenService = jwtTokenService;
         this.auditService = auditService;
+        this.passwordPolicy = passwordPolicy;
+        this.fileRepository = fileRepository;
     }
 
     @Transactional
@@ -117,10 +126,48 @@ public class AuthService {
             user.workspaceId(),
             user.username(),
             user.displayName(),
+            user.avatarFileId(),
             user.email(),
             currentUser.roles(),
             currentUser.permissions()
         );
+    }
+
+    @Transactional
+    public CurrentUserProfile updateProfile(CurrentUser currentUser, String displayName, String email, UUID avatarFileId) {
+        String normalizedDisplayName = displayName == null ? "" : displayName.trim();
+        if (normalizedDisplayName.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Display name is required");
+        }
+        if (normalizedDisplayName.length() > 64) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Display name is too long");
+        }
+        String normalizedEmail = email == null || email.isBlank() ? null : email.trim();
+        if (normalizedEmail != null && normalizedEmail.length() > 128) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Email is too long");
+        }
+        if (avatarFileId != null) {
+            FileMetadata avatar = fileRepository.find(currentUser.workspaceId(), avatarFileId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Avatar file is not available"));
+            if (!currentUser.id().equals(avatar.uploadedBy()) || !"completed".equals(avatar.status())) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Avatar file is not available");
+            }
+        }
+        identityRepository.updateProfile(currentUser.workspaceId(), currentUser.id(), normalizedDisplayName, normalizedEmail, avatarFileId, currentUser.id());
+        auditService.log(currentUser, "user.profile.updated", "user", currentUser.id(), Map.of());
+        return me(currentUser);
+    }
+
+    @Transactional
+    public void changePassword(CurrentUser currentUser, String currentPassword, String newPassword) {
+        UserAccount user = identityRepository.findUserById(currentUser.id())
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Current user not found"));
+        if (currentPassword == null || !passwordHasher.matches(currentPassword, user.passwordHash())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Current password is incorrect");
+        }
+        passwordPolicy.validate(newPassword);
+        identityRepository.updatePassword(currentUser.workspaceId(), currentUser.id(), passwordHasher.hash(newPassword), currentUser.id());
+        auditService.log(currentUser, "user.password.changed", "user", currentUser.id(), Map.of());
     }
 
     private AuthTokens issueTokens(UserAccount user, UUID deviceId, String userAgent, String ipAddress) {

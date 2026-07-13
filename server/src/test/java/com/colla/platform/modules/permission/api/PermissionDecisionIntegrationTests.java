@@ -57,7 +57,7 @@ class PermissionDecisionIntegrationTests {
             .andExpect(jsonPath("$.currentLevel").value("view"))
             .andExpect(jsonPath("$.source", containsString("部门 ACL Dept " + suffix)));
 
-        mockMvc.perform(post("/api/search/reindex")
+        mockMvc.perform(post("/api/admin/search-governance/reindex")
                 .header("Authorization", "Bearer " + adminToken))
             .andExpect(status().isOk());
 

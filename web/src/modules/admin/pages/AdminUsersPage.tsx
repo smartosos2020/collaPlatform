@@ -5,10 +5,11 @@ import {
   PlusOutlined,
   SearchOutlined,
   StopOutlined,
+  SwapOutlined,
   UserOutlined,
 } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { App as AntdApp, Button, Form, Input, Modal, Select, Space, Table, Typography } from 'antd'
+import { Alert, App as AntdApp, Button, Form, Input, Modal, Select, Space, Table, Typography } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { useMemo, useRef, useState } from 'react'
 
@@ -22,6 +23,7 @@ import {
   disableMember,
   enableMember,
   listMembers,
+  offboardMember,
   resetMemberPassword,
   updateMemberAvatar,
 } from '../api/adminUsersApi'
@@ -41,6 +43,7 @@ export function AdminUsersPage() {
   const { message } = AntdApp.useApp()
   const [createOpen, setCreateOpen] = useState(false)
   const [resetUser, setResetUser] = useState<MemberSummary | null>(null)
+  const [offboardingUser, setOffboardingUser] = useState<MemberSummary | null>(null)
   const [departmentId, setDepartmentId] = useState<string | undefined>()
   const [filterType, setFilterType] = useState<'department' | 'name'>('department')
   const [memberKeyword, setMemberKeyword] = useState('')
@@ -48,6 +51,7 @@ export function AdminUsersPage() {
   const avatarInputRef = useRef<HTMLInputElement>(null)
   const [createForm] = Form.useForm<CreateMemberRequest>()
   const [resetForm] = Form.useForm<{ newPassword: string }>()
+  const [offboardingForm] = Form.useForm<{ handoverToUserId: string }>()
 
   const departmentsQuery = useQuery({
     queryKey: ['admin', 'departments', 'tree'],
@@ -109,6 +113,17 @@ export function AdminUsersPage() {
   const enableMutation = useMutation({
     mutationFn: enableMember,
     onSuccess: refreshMembers,
+  })
+
+  const offboardingMutation = useMutation({
+    mutationFn: ({ userId, handoverToUserId }: { userId: string; handoverToUserId: string }) => offboardMember(userId, handoverToUserId),
+    onSuccess: async (result) => {
+      message.success(`成员已停用；已交接 ${result.knowledgeBaseCount} 个知识库、${result.conversationCount} 个会话`)
+      setOffboardingUser(null)
+      offboardingForm.resetFields()
+      await refreshMembers()
+    },
+    onError: (error) => message.error(error instanceof Error ? error.message : '离职交接失败'),
   })
 
   const resetMutation = useMutation({
@@ -211,15 +226,18 @@ export function AdminUsersPage() {
             重置密码
           </Button>
           {record.status === 'active' ? (
-            <Button
-              className="admin-danger-outline"
-              size="small"
-              icon={<StopOutlined />}
-              loading={disableMutation.isPending}
-              onClick={() => disableMutation.mutate(record.id)}
-            >
-              停用
-            </Button>
+            <>
+              <Button
+                className="admin-danger-outline"
+                size="small"
+                icon={<StopOutlined />}
+                loading={disableMutation.isPending}
+                onClick={() => disableMutation.mutate(record.id)}
+              >
+                停用
+              </Button>
+              <Button size="small" icon={<SwapOutlined />} onClick={() => setOffboardingUser(record)}>离职交接</Button>
+            </>
           ) : (
             <Button
               className="admin-success-outline"
@@ -238,6 +256,7 @@ export function AdminUsersPage() {
 
   return (
     <Space orientation="vertical" size={16} className="page-stack admin-org-page admin-members-page">
+      {membersQuery.isError || departmentsQuery.isError ? <Alert type="error" showIcon message="成员信息加载失败" description="请检查管理权限或网络后重试。" /> : null}
       <div className="admin-members-layout">
         <div className="admin-org-panel admin-member-sidebar">
           <Button block type="primary" icon={<PlusOutlined />} className="admin-sidebar-create admin-sidebar-create-top" onClick={() => setCreateOpen(true)}>
@@ -371,6 +390,34 @@ export function AdminUsersPage() {
         </Form>
       </Modal>
       <Modal
+        title={`离职交接：${offboardingUser?.displayName ?? ''}`}
+        open={Boolean(offboardingUser)}
+        okText="交接并停用"
+        cancelText="取消"
+        confirmLoading={offboardingMutation.isPending}
+        onCancel={() => setOffboardingUser(null)}
+        onOk={() => offboardingForm.submit()}
+      >
+        <Typography.Paragraph type="secondary">将转交该成员名下的知识库和未归档会话，并停用账号；结果会写入审计日志。</Typography.Paragraph>
+        <Form
+          form={offboardingForm}
+          layout="vertical"
+          onFinish={(values) => {
+            if (offboardingUser) {
+              offboardingMutation.mutate({ userId: offboardingUser.id, handoverToUserId: values.handoverToUserId })
+            }
+          }}
+        >
+          <Form.Item label="交接给" name="handoverToUserId" rules={[{ required: true, message: '请选择交接成员' }]}>
+            <Select
+              showSearch
+              optionFilterProp="label"
+              options={members.filter((member) => member.id !== offboardingUser?.id && member.status === 'active').map((member) => ({ label: `${member.displayName} (${member.username})`, value: member.id }))}
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
+      <Modal
         title={`重置密码：${resetUser?.displayName ?? ''}`}
         open={Boolean(resetUser)}
         okText="重置"
@@ -418,7 +465,7 @@ function MemberInfoCard({
         <span className="admin-empty-icon">
           <UserOutlined />
         </span>
-        <Typography.Text type="secondary">No data</Typography.Text>
+        <Typography.Text type="secondary">暂无成员信息</Typography.Text>
       </div>
     )
   }
@@ -436,6 +483,7 @@ function MemberInfoCard({
             shape="circle"
             size="small"
             className="admin-member-avatar-edit"
+            aria-label="更新成员头像"
             icon={<CameraOutlined />}
             loading={avatarLoading}
             onClick={onPickAvatar}

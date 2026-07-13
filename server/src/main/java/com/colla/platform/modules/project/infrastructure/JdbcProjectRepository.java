@@ -636,7 +636,7 @@ public class JdbcProjectRepository implements ProjectRepository {
             """
                 insert into issue_verification_logs
                     (id, workspace_id, issue_id, verifier_id, result, note, environment, reproduction_steps, fix_version, created_at)
-                values (?, ?, ?, ?, ?, ?, ?, ?, ?, now())
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, clock_timestamp())
                 """,
             id,
             workspaceId,
@@ -660,7 +660,7 @@ public class JdbcProjectRepository implements ProjectRepository {
                 from issue_verification_logs v
                 join users u on u.id = v.verifier_id
                 where v.workspace_id = ? and v.issue_id = ?
-                order by v.created_at desc
+                order by v.created_at desc, v.id desc
                 """,
             (rs, rowNum) -> new IssueVerification(
                 rs.getObject("id", UUID.class),

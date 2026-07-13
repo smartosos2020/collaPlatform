@@ -15,6 +15,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.PutMapping;
+import com.colla.platform.modules.notification.domain.NotificationModels.NotificationPreference;
 
 @RestController
 @RequestMapping("/api/notifications")
@@ -59,10 +61,27 @@ public class NotificationController {
         notificationService.markAllRead(currentUser(authentication));
     }
 
+    @GetMapping("/preferences")
+    public List<NotificationPreference> preferences(Authentication authentication) {
+        return notificationService.preferences(currentUser(authentication));
+    }
+
+    @PutMapping("/preferences/{sourceType}")
+    public List<NotificationPreference> updatePreference(
+        @PathVariable String sourceType,
+        @RequestBody NotificationPreferenceRequest request,
+        Authentication authentication
+    ) {
+        return notificationService.updatePreference(currentUser(authentication), sourceType, request.enabled());
+    }
+
     private CurrentUser currentUser(Authentication authentication) {
         return (CurrentUser) authentication.getPrincipal();
     }
 
     public record NotificationBatchRequest(List<UUID> notificationIds) {
+    }
+
+    public record NotificationPreferenceRequest(boolean enabled) {
     }
 }

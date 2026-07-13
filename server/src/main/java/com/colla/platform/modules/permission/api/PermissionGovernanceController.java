@@ -5,6 +5,11 @@ import com.colla.platform.modules.permission.api.AdminPermissionDtos.AdminPermis
 import com.colla.platform.modules.permission.api.AdminPermissionDtos.AdminPermissionRiskSummaryView;
 import com.colla.platform.shared.auth.CurrentUser;
 import java.util.UUID;
+import java.util.List;
+import com.colla.platform.modules.permission.domain.PermissionGovernanceModels.PermissionMatrixEntry;
+import com.colla.platform.modules.permission.domain.PermissionGovernanceModels.PermissionRiskRemediation;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -32,6 +37,20 @@ public class PermissionGovernanceController {
         return AdminPermissionDtos.inspection(
             permissionGovernanceService.inspect(currentUser(authentication), userId, resourceType, resourceId, action)
         );
+    }
+
+    @GetMapping("/matrix")
+    public List<PermissionMatrixEntry> matrix(Authentication authentication) {
+        return permissionGovernanceService.permissionMatrix(currentUser(authentication));
+    }
+
+    @PostMapping("/risks/{riskId}/remediation")
+    public PermissionRiskRemediation remediate(
+        @PathVariable String riskId,
+        @RequestParam(defaultValue = "false") boolean confirm,
+        Authentication authentication
+    ) {
+        return permissionGovernanceService.remediate(currentUser(authentication), riskId, confirm);
     }
 
     @GetMapping("/risks")

@@ -1,4 +1,4 @@
-import { apiGet, apiGetText } from '../../../shared/api/httpClient'
+import { apiGet, apiGetText, apiPost } from '../../../shared/api/httpClient'
 
 export type AdminPermissionInspectionView = {
   userId: string
@@ -57,6 +57,15 @@ export type AdminPermissionRiskSummaryView = {
 
 export type PermissionRiskSummary = AdminPermissionRiskSummaryView
 
+export type PermissionRiskRemediation = {
+  riskId: string
+  ruleCode: string
+  executable: boolean
+  applied: boolean
+  action: string
+  reason: string
+}
+
 export type InspectPermissionParams = {
   userId: string
   resourceType: string
@@ -96,4 +105,10 @@ export async function exportPermissionRisks(filters: PermissionRiskFilters = {})
   }
   const query = params.toString()
   return apiGetText(query ? `/admin/permission-governance/risks/export?${query}` : '/admin/permission-governance/risks/export')
+}
+
+export async function remediatePermissionRisk(riskId: string, confirm = false): Promise<PermissionRiskRemediation> {
+  return apiPost<PermissionRiskRemediation>(
+    `/admin/permission-governance/risks/${encodeURIComponent(riskId)}/remediation?confirm=${confirm}`,
+  )
 }

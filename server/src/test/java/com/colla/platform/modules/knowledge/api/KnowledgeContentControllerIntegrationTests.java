@@ -264,6 +264,106 @@ class KnowledgeContentControllerIntegrationTests {
     }
 
     @Test
+    void structuredBlockSavePersistsTitleAndBlockProjectionTogether() throws Exception {
+        String token = login("admin", "admin123456");
+        String suffix = UUID.randomUUID().toString().substring(0, 8);
+        JsonNode space = createSpace(token, "M3 Blocks " + suffix, "m3-blocks-" + suffix);
+        UUID spaceId = uuid(space, "space", "id");
+        UUID rootItemId = uuid(space, "space", "rootItemId");
+        String createResponse = mockMvc.perform(post("/api/knowledge-bases/" + spaceId + "/items")
+                .header("Authorization", bearer(token))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "parentId", rootItemId,
+                    "title", "M3 Draft " + suffix,
+                    "contentType", "markdown",
+                    "content", "Initial body"
+                ))))
+            .andExpect(status().isOk())
+            .andReturn().getResponse().getContentAsString();
+        JsonNode created = objectMapper.readTree(createResponse);
+        UUID itemId = uuid(created, "item", "id");
+        int versionNo = created.path("item").path("currentVersionNo").asInt();
+
+        mockMvc.perform(patch(itemPath(spaceId, itemId) + "/blocks")
+                .header("Authorization", bearer(token))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "baseVersionNo", versionNo,
+                    "title", "M3 Autosaved Title " + suffix,
+                    "blocks", List.of(
+                        Map.of(
+                            "blockType", "heading",
+                            "content", "M3 Structured Heading",
+                            "sortOrder", 0,
+                            "schemaVersion", 2,
+                            "attrs", Map.of(),
+                            "richContent", Map.of(),
+                            "deleted", false
+                        ),
+                        Map.of(
+                            "blockType", "paragraph",
+                            "content", "M3 Structured Paragraph",
+                            "sortOrder", 1,
+                            "schemaVersion", 2,
+                            "attrs", Map.of(),
+                            "richContent", Map.of(),
+                            "deleted", false
+                        )
+                    )
+                ))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.item.title").value("M3 Autosaved Title " + suffix))
+            .andExpect(jsonPath("$.blocks[*].content", hasItem("M3 Structured Heading")))
+            .andExpect(jsonPath("$.blocks[*].content", hasItem("M3 Structured Paragraph")));
+    }
+
+    @Test
+    void embeddedObjectBlocksResolveBaseProjectAndKnowledgeContentSafely() throws Exception {
+        String token = login("admin", "admin123456");
+        String suffix = UUID.randomUUID().toString().substring(0, 8);
+        JsonNode space = createSpace(token, "M3 Objects " + suffix, "m3-objects-" + suffix);
+        UUID spaceId = uuid(space, "space", "id");
+        UUID rootItemId = uuid(space, "space", "rootItemId");
+        JsonNode target = createMarkdownItem(token, spaceId, rootItemId, "M3 Object Target " + suffix, "Target content");
+        JsonNode host = createMarkdownItem(token, spaceId, rootItemId, "M3 Object Host " + suffix, "Host content");
+        UUID targetItemId = uuid(target, "item", "id");
+        UUID hostItemId = uuid(host, "item", "id");
+        UUID baseId = createBaseObject(token, "M3 Object Base " + suffix);
+        UUID projectId = createProjectObject(token, "M3 Object Project " + suffix, "M3" + suffix.toUpperCase());
+
+        String response = mockMvc.perform(patch(itemPath(spaceId, hostItemId) + "/blocks")
+                .header("Authorization", bearer(token))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "baseVersionNo", host.path("item").path("currentVersionNo").asInt(),
+                    "blocks", List.of(
+                        blockDraft("embed_object", Map.of("objectType", "base", "objectId", baseId.toString()), 0),
+                        blockDraft("embed_object", Map.of("objectType", "project", "objectId", projectId.toString()), 1),
+                        blockDraft("embed_object", Map.of("objectType", "knowledge_content", "objectId", targetItemId.toString()), 2),
+                        blockDraft("embed_object", Map.of("objectType", "base", "objectId", UUID.randomUUID().toString()), 3)
+                    )
+                ))))
+            .andExpect(status().isOk())
+            .andReturn().getResponse().getContentAsString();
+        JsonNode blocks = objectMapper.readTree(response).path("blocks");
+
+        org.junit.jupiter.api.Assertions.assertEquals("available", findEmbeddedObject(blocks, "base").path("embedSummary").path("accessState").asText());
+        org.junit.jupiter.api.Assertions.assertEquals("M3 Object Base " + suffix, findEmbeddedObject(blocks, "base").path("embedSummary").path("title").asText());
+        org.junit.jupiter.api.Assertions.assertEquals("available", findEmbeddedObject(blocks, "project").path("embedSummary").path("accessState").asText());
+        org.junit.jupiter.api.Assertions.assertEquals("M3 Object Project " + suffix, findEmbeddedObject(blocks, "project").path("embedSummary").path("title").asText());
+        org.junit.jupiter.api.Assertions.assertEquals("available", findEmbeddedObject(blocks, "knowledge_content").path("embedSummary").path("accessState").asText());
+        org.junit.jupiter.api.Assertions.assertEquals("not_found", blocks.get(3).path("embedSummary").path("accessState").asText());
+
+        mockMvc.perform(get("/api/platform/objects/project/" + projectId + "/navigation")
+                .header("Authorization", bearer(token)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.summary.objectType").value("project"))
+            .andExpect(jsonPath("$.summary.title").value("M3 Object Project " + suffix))
+            .andExpect(jsonPath("$.webPath").value("/projects/" + projectId));
+    }
+
+    @Test
     void canonicalKnowledgeApiDoesNotRevealCrossSpaceItems() throws Exception {
         String token = login("admin", "admin123456");
         String suffix = UUID.randomUUID().toString().substring(0, 8);
@@ -301,6 +401,56 @@ class KnowledgeContentControllerIntegrationTests {
                 .header("Authorization", bearer(token)))
             .andExpect(status().isNotFound())
             .andExpect(content().string(not(containsString(title))));
+    }
+
+    @Test
+    void objectReferenceRequiresAnAvailableTargetAndPersistsItsCanonicalRoute() throws Exception {
+        String token = login("admin", "admin123456");
+        String suffix = UUID.randomUUID().toString().substring(0, 8);
+        JsonNode space = createSpace(token, "Reference integrity " + suffix, "reference-integrity-" + suffix);
+        UUID spaceId = uuid(space, "space", "id");
+        UUID rootItemId = uuid(space, "space", "rootItemId");
+
+        String targetResponse = mockMvc.perform(post("/api/knowledge-bases/" + spaceId + "/items")
+                .header("Authorization", bearer(token))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "parentId", rootItemId,
+                    "title", "Reference target " + suffix,
+                    "contentType", "markdown",
+                    "content", "Target content"
+                ))))
+            .andExpect(status().isOk())
+            .andReturn().getResponse().getContentAsString();
+        UUID targetItemId = uuid(objectMapper.readTree(targetResponse), "item", "id");
+        String canonicalRoute = "/knowledge-bases/" + spaceId + "/items/" + targetItemId;
+
+        mockMvc.perform(post("/api/knowledge-bases/" + spaceId + "/items")
+                .header("Authorization", bearer(token))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "parentId", rootItemId,
+                    "title", "Canonical reference " + suffix,
+                    "contentType", "object_ref",
+                    "targetObjectType", "knowledge_content",
+                    "targetObjectId", targetItemId,
+                    "targetRoute", "/docs/legacy-target"
+                ))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.item.targetRoute").value(canonicalRoute));
+
+        mockMvc.perform(post("/api/knowledge-bases/" + spaceId + "/items")
+                .header("Authorization", bearer(token))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "parentId", rootItemId,
+                    "title", "Missing reference " + suffix,
+                    "contentType", "object_ref",
+                    "targetObjectType", "knowledge_content",
+                    "targetObjectId", UUID.randomUUID(),
+                    "targetRoute", "/knowledge-bases/missing/items/missing"
+                ))))
+            .andExpect(status().isNotFound());
     }
 
     @Test
@@ -346,6 +496,58 @@ class KnowledgeContentControllerIntegrationTests {
         return objectMapper.readTree(response);
     }
 
+    private JsonNode createMarkdownItem(String token, UUID spaceId, UUID parentId, String title, String content) throws Exception {
+        String response = mockMvc.perform(post("/api/knowledge-bases/" + spaceId + "/items")
+                .header("Authorization", bearer(token))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "parentId", parentId,
+                    "title", title,
+                    "contentType", "markdown",
+                    "content", content
+                ))))
+            .andExpect(status().isOk())
+            .andReturn().getResponse().getContentAsString();
+        return objectMapper.readTree(response);
+    }
+
+    private UUID createBaseObject(String token, String name) throws Exception {
+        String response = mockMvc.perform(post("/api/bases")
+                .header("Authorization", bearer(token))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of("name", name, "description", "M3 object-card test"))))
+            .andExpect(status().isOk())
+            .andReturn().getResponse().getContentAsString();
+        return UUID.fromString(objectMapper.readTree(response).path("base").path("id").asText());
+    }
+
+    private UUID createProjectObject(String token, String name, String projectKey) throws Exception {
+        String response = mockMvc.perform(post("/api/projects")
+                .header("Authorization", bearer(token))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "projectKey", projectKey,
+                    "name", name,
+                    "description", "M3 object-card test",
+                    "memberIds", List.of()
+                ))))
+            .andExpect(status().isOk())
+            .andReturn().getResponse().getContentAsString();
+        return UUID.fromString(objectMapper.readTree(response).path("id").asText());
+    }
+
+    private Map<String, Object> blockDraft(String blockType, Map<String, String> content, int sortOrder) throws Exception {
+        return Map.of(
+            "blockType", blockType,
+            "content", objectMapper.writeValueAsString(content),
+            "sortOrder", sortOrder,
+            "schemaVersion", 2,
+            "attrs", Map.of(),
+            "richContent", Map.of(),
+            "deleted", false
+        );
+    }
+
     private String login(String username, String password) throws Exception {
         String response = mockMvc.perform(post("/api/auth/login")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -365,6 +567,13 @@ class KnowledgeContentControllerIntegrationTests {
     private JsonNode findBlock(JsonNode blocks, String content) {
         return java.util.stream.StreamSupport.stream(blocks.spliterator(), false)
             .filter(block -> content.equals(block.path("content").asText()))
+            .findFirst()
+            .orElseThrow();
+    }
+
+    private JsonNode findEmbeddedObject(JsonNode blocks, String objectType) {
+        return java.util.stream.StreamSupport.stream(blocks.spliterator(), false)
+            .filter(block -> objectType.equals(block.path("embedSummary").path("objectType").asText()))
             .findFirst()
             .orElseThrow();
     }

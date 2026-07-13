@@ -312,6 +312,69 @@ class ProjectControllerIntegrationTests {
     }
 
     @Test
+    void recordsFailedVerificationBeforeTheBugIsFixedAndVerified() throws Exception {
+        String adminToken = login("admin", "admin123456", "project-reverify-device-" + UUID.randomUUID());
+        String projectKey = projectKey("REV");
+        String projectResponse = mockMvc.perform(post("/api/projects")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                        {
+                          "projectKey": "%s",
+                          "name": "Reverification Project",
+                          "memberIds": []
+                        }
+                        """.formatted(projectKey)
+                ))
+            .andExpect(status().isOk())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+        UUID projectId = UUID.fromString(objectMapper.readTree(projectResponse).get("id").asText());
+
+        String bugResponse = mockMvc.perform(post("/api/projects/" + projectId + "/issues")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"issueType\":\"bug\",\"title\":\"Reverification target\",\"priority\":\"high\"}"))
+            .andExpect(status().isOk())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+        UUID bugId = UUID.fromString(objectMapper.readTree(bugResponse).get("issue").get("id").asText());
+
+        mockMvc.perform(post("/api/issues/" + bugId + "/transition")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"status\":\"resolved\"}"))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/issues/" + bugId + "/verifications")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"result\":\"failed\",\"note\":\"Regression still reproduces\"}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.issue.status").value("in_progress"))
+            .andExpect(jsonPath("$.issue.workflowReason").value("verification_failed"))
+            .andExpect(jsonPath("$.verifications[0].result").value("failed"));
+
+        mockMvc.perform(post("/api/issues/" + bugId + "/transition")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"status\":\"resolved\"}"))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/issues/" + bugId + "/verifications")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"result\":\"passed\",\"note\":\"Regression fixed\"}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.issue.status").value("closed"))
+            .andExpect(jsonPath("$.verifications[0].result").value("passed"))
+            .andExpect(jsonPath("$.verifications[1].result").value("failed"));
+    }
+
+    @Test
     void issueWorkflowActionsCoverRequirementAndBugBranches() throws Exception {
         String adminToken = login("admin", "admin123456", "project-workflow-device-" + UUID.randomUUID());
         String projectKey = projectKey("WF");

@@ -33,7 +33,7 @@ public class JdbcIdentityRepository implements IdentityRepository {
         try {
             return Optional.ofNullable(jdbcTemplate.queryForObject(
                 """
-                    select id, workspace_id, username, password_hash, display_name, email, status
+                    select id, workspace_id, username, password_hash, display_name, avatar_file_id, email, status
                     from users
                     where username = ? and deleted_at is null
                     """,
@@ -50,7 +50,7 @@ public class JdbcIdentityRepository implements IdentityRepository {
         try {
             return Optional.ofNullable(jdbcTemplate.queryForObject(
                 """
-                    select id, workspace_id, username, password_hash, display_name, email, status
+                    select id, workspace_id, username, password_hash, display_name, avatar_file_id, email, status
                     from users
                     where id = ? and deleted_at is null
                     """,
@@ -317,6 +317,23 @@ public class JdbcIdentityRepository implements IdentityRepository {
     }
 
     @Override
+    public void updateProfile(UUID workspaceId, UUID userId, String displayName, String email, UUID avatarFileId, UUID updatedBy) {
+        jdbcTemplate.update(
+            """
+                update users
+                set display_name = ?, email = ?, avatar_file_id = ?, updated_by = ?, updated_at = now()
+                where workspace_id = ? and id = ? and deleted_at is null
+                """,
+            displayName,
+            email,
+            avatarFileId,
+            updatedBy,
+            workspaceId,
+            userId
+        );
+    }
+
+    @Override
     public void updateAvatarFileId(UUID workspaceId, UUID userId, UUID avatarFileId, UUID updatedBy) {
         jdbcTemplate.update(
             """
@@ -491,6 +508,7 @@ public class JdbcIdentityRepository implements IdentityRepository {
             rs.getString("username"),
             rs.getString("password_hash"),
             rs.getString("display_name"),
+            rs.getObject("avatar_file_id", UUID.class),
             rs.getString("email"),
             rs.getString("status")
         );

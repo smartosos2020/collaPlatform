@@ -1,3 +1,4 @@
+import { DatabaseOutlined } from '@ant-design/icons'
 import { useQuery } from '@tanstack/react-query'
 import { Alert, Badge, Button, Card, Empty, Space, Statistic, Tag, Typography } from 'antd'
 import { Link } from 'react-router-dom'
@@ -5,6 +6,7 @@ import { Link } from 'react-router-dom'
 import { getHealth } from '../../platform/api/platformApi'
 import { ObjectSummaryCard } from '../../platform/components/InternalLinkCard'
 import { getWorkspaceDashboard } from '../../workspace/api/workspaceApi'
+import type { UserWorkspaceDashboardView } from '../../workspace/api/workspaceApi'
 
 export function DashboardPage() {
   const healthQuery = useQuery({
@@ -47,6 +49,7 @@ export function DashboardPage() {
         />
       ) : null}
       {healthQuery.isError ? <Alert type="error" showIcon title="无法连接后端健康检查接口" /> : null}
+      {dashboardQuery.isError ? <Alert type="error" showIcon title="工作台内容暂时无法加载" description="请检查网络连接后重试。" /> : null}
 
       <section className="dashboard-metrics">
         <Card size="small">
@@ -149,12 +152,7 @@ export function DashboardPage() {
             {recentKnowledgeContents.map((summary) => (
               <ObjectSummaryCard summary={summary} key={`doc-${summary.objectId}`} />
             ))}
-            {recentBases.map((base) => (
-              <Link className="dashboard-list-item" to={`/bases/${base.id}`} key={`base-${base.id}`}>
-                <span>{base.name}</span>
-                <Tag>表格</Tag>
-              </Link>
-            ))}
+            {recentBases.map((base) => <BaseSummaryCard base={base} key={`base-${base.id}`} />)}
           </Space>
         </Card>
 
@@ -183,6 +181,18 @@ export function DashboardPage() {
         </Card>
       </section>
     </Space>
+  )
+}
+
+function BaseSummaryCard({ base }: { base: UserWorkspaceDashboardView['recentBases'][number] }) {
+  return (
+    <Link className="dashboard-list-item dashboard-object-link" to={`/bases/${base.id}`} aria-label={`打开表格空间 ${base.name}`}>
+      <Space>
+        <DatabaseOutlined aria-hidden="true" />
+        <span>{base.name || '未命名表格空间'}</span>
+      </Space>
+      <Tag>表格空间</Tag>
+    </Link>
   )
 }
 

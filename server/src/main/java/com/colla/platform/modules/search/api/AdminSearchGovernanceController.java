@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.PostMapping;
 
 @RestController
 @RequestMapping("/api/admin/search-governance")
@@ -25,5 +26,10 @@ public class AdminSearchGovernanceController {
         Authentication authentication
     ) {
         return searchService.searchGovernance((CurrentUser) authentication.getPrincipal(), q, limit);
+    }
+
+    @PostMapping("/reindex")
+    public void reindex(Authentication authentication) {
+        searchService.reindex((CurrentUser) authentication.getPrincipal());
     }
 }

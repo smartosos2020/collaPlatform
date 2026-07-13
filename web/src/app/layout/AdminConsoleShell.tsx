@@ -9,6 +9,7 @@ import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 
 import { logout } from '../../modules/auth/api/authApi'
+import { searchAdminGovernance } from '../../modules/admin/api/adminGovernanceSearchApi'
 import { useAuthStore } from '../../modules/auth/authStore'
 import { adminPages, groupedAdminNavItems } from '../navigation/adminConsoleNav'
 
@@ -44,6 +45,18 @@ export function AdminConsoleShell() {
       navigate('/login', { replace: true })
     },
   })
+  const governanceSearchMutation = useMutation({
+    mutationFn: (query: string) => searchAdminGovernance(query),
+    onSuccess: (result) => {
+      const first = result.items[0]
+      if (!first) {
+        navigate(`/admin/audit-logs?action=${encodeURIComponent(result.query)}`)
+        return
+      }
+      const separator = first.adminPath.includes('?') ? '&' : '?'
+      navigate(`${first.adminPath}${separator}q=${encodeURIComponent(result.query)}`)
+    },
+  })
 
   const selectedKey =
     adminPages
@@ -60,12 +73,12 @@ export function AdminConsoleShell() {
   const searchAdmin = () => {
     const query = searchDraft.trim()
     if (query.length >= 2) {
-      navigate(`/admin/audit-logs?action=${encodeURIComponent(query)}`)
+      governanceSearchMutation.mutate(query)
     }
   }
 
   return (
-    <Layout className="app-shell admin-console-shell">
+    <Layout className="app-shell admin-console-shell" data-testid="admin-console-shell">
       <Sider width={188} className="app-sidebar admin-console-sidebar">
         <div className="admin-console-brand">
           <strong>Colla</strong>
@@ -91,6 +104,7 @@ export function AdminConsoleShell() {
               value={searchDraft}
               onChange={(event) => setSearchDraft(event.target.value)}
               onPressEnter={searchAdmin}
+              status={governanceSearchMutation.isError ? 'error' : undefined}
             />
             <Space>
               <Typography.Text className="admin-console-user">{currentUser?.displayName || currentUser?.username}</Typography.Text>

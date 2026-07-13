@@ -37,4 +37,25 @@ public final class PermissionGovernanceModels {
 
     public record PermissionRiskSummary(int total, List<PermissionRiskItem> items) {
     }
+
+    public record PermissionMatrixEntry(
+        String module,
+        String resourceType,
+        String action,
+        String requiredLevel,
+        String allowedExpectation,
+        String deniedExpectation,
+        String auditExpectation
+    ) {
+    }
+
+    public record PermissionRiskRemediation(
+        String riskId,
+        String ruleCode,
+        boolean executable,
+        boolean applied,
+        String action,
+        String reason
+    ) {
+    }
 }

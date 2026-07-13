@@ -6,9 +6,11 @@ import {
   FileSearchOutlined,
   PartitionOutlined,
   SafetyCertificateOutlined,
+  SecurityScanOutlined,
   SettingOutlined,
   TeamOutlined,
   UserOutlined,
+  SlidersOutlined,
 } from '@ant-design/icons'
 import type { MenuProps } from 'antd'
 import type { ReactNode } from 'react'
@@ -65,6 +67,20 @@ export const adminPages: AdminPageNavEntry[] = [
     description: '权限排查、风险巡检和风险导出',
   },
   {
+    key: '/admin/batch-governance',
+    icon: <SlidersOutlined />,
+    label: '批量治理',
+    section: '权限与安全',
+    description: '组织、成员、用户组和角色的批量预览、确认与结果报告',
+  },
+  {
+    key: '/admin/security',
+    icon: <SecurityScanOutlined />,
+    label: '安全策略',
+    section: '权限与安全',
+    description: '密码、会话、登录设备和必要通知策略',
+  },
+  {
     key: '/admin/audit-logs',
     icon: <AuditOutlined />,
     label: '审计日志',
@@ -101,26 +117,26 @@ export const groupedAdminNavItems: MenuProps['items'] = [
   {
     type: 'group',
     label: '权限与安全',
-    children: [adminPages[4], adminPages[5]],
+    children: [adminPages[4], adminPages[5], adminPages[6], adminPages[7]],
   },
   {
     type: 'group',
     label: '应用配置',
-    children: [adminPages[8], { key: '/admin/app-config', icon: <AppstoreOutlined />, label: '配置中心', disabled: true }],
+    children: [adminPages[10], { key: '/admin/app-config', icon: <AppstoreOutlined />, label: '配置中心', disabled: true }],
   },
   {
     type: 'group',
     label: '内容与数据治理',
-    children: [adminPages[7]],
+    children: [adminPages[9]],
   },
   {
     type: 'group',
     label: '审计与报表',
-    children: [adminPages[6]],
+    children: [adminPages[8]],
   },
   {
     type: 'group',
     label: '系统设置',
-    children: [{ key: '/admin/system-settings', icon: <SettingOutlined />, label: '系统设置', disabled: true }],
+    children: [{ key: '/admin/system-settings', icon: <SettingOutlined />, label: '系统设置' }],
   },
 ]

@@ -5,6 +5,7 @@ import com.colla.platform.modules.permission.domain.PermissionModels.ResourcePer
 import com.colla.platform.modules.permission.domain.PermissionModels.ResourcePermissionMatch;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -43,7 +44,7 @@ public class JdbcResourcePermissionRepository implements ResourcePermissionRepos
             grant.permissionLevel(),
             grant.sourceType(),
             grant.sourceId(),
-            grant.expiresAt(),
+            timestamp(grant.expiresAt()),
             grant.actorId(),
             grant.workspaceId(),
             grant.resourceType(),
@@ -70,7 +71,7 @@ public class JdbcResourcePermissionRepository implements ResourcePermissionRepos
             grant.permissionLevel(),
             grant.sourceType(),
             grant.sourceId(),
-            grant.expiresAt(),
+            timestamp(grant.expiresAt()),
             grant.actorId(),
             grant.actorId()
         );
@@ -426,5 +427,9 @@ public class JdbcResourcePermissionRepository implements ResourcePermissionRepos
 
     private Instant timestampToInstant(ResultSet rs, String column) throws SQLException {
         return rs.getTimestamp(column) == null ? null : rs.getTimestamp(column).toInstant();
+    }
+
+    private Timestamp timestamp(Instant instant) {
+        return instant == null ? null : Timestamp.from(instant);
     }
 }

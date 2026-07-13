@@ -8,6 +8,7 @@ export type CurrentUser = {
   workspaceId: string
   username: string
   displayName: string
+  avatarFileId?: string | null
   email?: string
   roles: string[]
   permissions: string[]

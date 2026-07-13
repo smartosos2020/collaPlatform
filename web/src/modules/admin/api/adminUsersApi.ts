@@ -76,6 +76,15 @@ export async function disableMember(userId: string): Promise<void> {
   return apiPost<void>(`/admin/users/${userId}/disable`)
 }
 
+export type OffboardingResult = {
+  knowledgeBaseCount: number
+  conversationCount: number
+}
+
+export async function offboardMember(userId: string, handoverToUserId: string): Promise<OffboardingResult> {
+  return apiPost<OffboardingResult>(`/admin/users/${userId}/offboard`, { handoverToUserId })
+}
+
 export async function enableMember(userId: string): Promise<void> {
   return apiPost<void>(`/admin/users/${userId}/enable`)
 }

@@ -9,7 +9,7 @@ import {
   SyncOutlined,
 } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { App as AntdApp, Button, Card, Input, List, Progress, Space, Statistic, Table, Tag, Typography } from 'antd'
+import { Alert, App as AntdApp, Button, Card, Input, List, Progress, Space, Statistic, Table, Tag, Typography } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import type { Key } from 'react'
 import { useMemo, useState } from 'react'
@@ -196,7 +196,8 @@ export function AdminKnowledgeBasesPage() {
         </aside>
 
         <main className="admin-kb-governance-main">
-          <Card className="content-card admin-kb-governance-hero" loading={loading}>
+            {spacesQuery.isError || governanceQuery.isError ? <Alert type="error" showIcon message="知识库治理数据加载失败" description="请单独重试当前知识库。" /> : null}
+            <Card className="content-card admin-kb-governance-hero" loading={loading}>
             <Space align="start" className="admin-kb-hero-content">
               <EntityAvatar value={selectedSpace?.name} className="admin-kb-hero-avatar" />
               <div>
@@ -284,7 +285,13 @@ export function AdminKnowledgeBasesPage() {
                   type="primary"
                   disabled={!selectedRiskDocuments.length}
                   loading={bulkReviewMutation.isPending}
-                  onClick={() => bulkReviewMutation.mutate(selectedRiskDocuments)}
+                  onClick={() => modal.confirm({
+                    title: '确认批量请求复核？',
+                    content: `将对 ${selectedRiskDocuments.length} 个内容节点发起复核，并写入审计记录。`,
+                    okText: '确认执行',
+                    cancelText: '取消',
+                    onOk: () => bulkReviewMutation.mutateAsync(selectedRiskDocuments),
+                  })}
                 >
                   请求复核选中内容
                 </Button>

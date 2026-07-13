@@ -51,6 +51,7 @@ export function SearchPage() {
         <Empty description="输入至少 2 个字符开始搜索" />
       ) : (
         <Space orientation="vertical" size={16} className="page-stack">
+          {searchQuery.isError ? <Alert type="error" showIcon message="搜索暂时不可用" description="请检查网络连接后重试。" /> : null}
           {Object.entries(grouped).map(([type, items]) => (
             <section className="search-section" key={type}>
               <Space className="search-section-title">
@@ -64,7 +65,7 @@ export function SearchPage() {
                     <div>
                       <Space wrap>
                         <Tag>{objectTypeText[item.objectType] ?? item.objectType}</Tag>
-                        {item.accessState === 'available' ? <Tag color="green">可访问</Tag> : <Tag color="orange">{item.accessState}</Tag>}
+                        {item.accessState === 'available' ? <Tag color="green">可访问</Tag> : <Tag color="orange">{accessStateText(item.accessState)}</Tag>}
                         {item.objectType === 'knowledge_content' && item.contentType ? <Tag>{contentTypeText(item.contentType)}</Tag> : null}
                         {item.objectType === 'knowledge_content' && item.knowledgeBaseName ? <Tag color="purple">{item.knowledgeBaseName}</Tag> : null}
                         <Typography.Text strong>{resultTitle(item)}</Typography.Text>
@@ -81,7 +82,7 @@ export function SearchPage() {
                       {item.permissionExplanation ? <Alert type="info" showIcon message={item.permissionExplanation} /> : null}
                     </div>
                     {item.accessState === 'available' && (item.webPath || item.deepLink) ? (
-                      <Button type="link" onClick={() => navigate(resolveNavigationPath(item) ?? item.webPath ?? '/')}>
+                      <Button type="link" aria-label={`打开${objectTypeText[item.objectType] ?? '对象'} ${resultTitle(item)}`} onClick={() => navigate(resolveNavigationPath(item) ?? item.webPath ?? '/')}>
                         {item.objectType === 'knowledge_content' ? '打开知识内容' : '打开'}
                       </Button>
                     ) : null}
@@ -96,6 +97,10 @@ export function SearchPage() {
       )}
     </div>
   )
+}
+
+function accessStateText(value: SearchResult['accessState']) {
+  return ({ forbidden: '无权限查看', deleted: '对象已删除', not_found: '对象不存在', invalid: '链接无法识别' } as Record<string, string>)[value] ?? value
 }
 function groupResults(items: SearchResult[]) {
   return items.reduce<Record<string, SearchResult[]>>((acc, item) => {

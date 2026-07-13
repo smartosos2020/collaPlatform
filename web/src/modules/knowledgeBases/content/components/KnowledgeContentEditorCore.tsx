@@ -141,6 +141,7 @@ type TopLevelBlock = {
 
 const OBJECT_INSERT_TYPES = [
   { value: 'knowledge_content', label: '知识内容' },
+  { value: 'project', label: '项目' },
   { value: 'issue', label: '项目事项' },
   { value: 'message', label: '消息' },
   { value: 'base', label: 'Base' },

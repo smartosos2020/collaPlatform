@@ -69,7 +69,7 @@ export function UserWorkspaceShell() {
       { type: 'divider' },
       { key: 'status', label: '我的状态' },
       { key: 'devices', label: '登录设备' },
-      { key: 'settings', label: '设置' },
+      { key: 'settings', icon: <SettingOutlined />, label: '个人设置' },
       { key: 'help', label: '帮助与客服' },
       { key: 'logout', icon: <LogoutOutlined />, label: '退出登录' },
     ]
@@ -99,13 +99,17 @@ export function UserWorkspaceShell() {
       navigate('/admin/overview')
       return
     }
-    if (key === 'devices' || key === 'settings') {
+    if (key === 'devices') {
       navigate('/devices')
+      return
+    }
+    if (key === 'settings' || key === 'status') {
+      navigate('/settings')
     }
   }
 
   return (
-    <Layout className="app-shell user-workspace-shell">
+    <Layout className="app-shell user-workspace-shell" data-testid="user-workspace-shell">
       <Sider width={108} className="app-sidebar user-workspace-sidebar">
         <div className="app-brand">Colla</div>
         <Dropdown
@@ -113,7 +117,7 @@ export function UserWorkspaceShell() {
           placement="bottomLeft"
           trigger={['click']}
         >
-          <button className="app-user-menu-trigger" type="button">
+          <button className="app-user-menu-trigger" data-testid="user-account-menu-trigger" type="button">
             <Avatar size={34} className="app-account-avatar">
               {userInitial(currentUser?.displayName || currentUser?.username)}
             </Avatar>
@@ -128,6 +132,7 @@ export function UserWorkspaceShell() {
             className="app-mobile-menu-button"
             type="text"
             icon={<MenuOutlined />}
+            aria-label="打开导航"
             onClick={() => setMobileNavOpen(true)}
           />
           <Space className="app-header-content user-workspace-header-content">
@@ -136,6 +141,7 @@ export function UserWorkspaceShell() {
               className="app-global-search"
               allowClear
               prefix={<SearchOutlined />}
+              aria-label="全局搜索"
               placeholder="搜索事项、知识内容、表格、消息"
               value={searchDraft}
               onChange={(event) => setSearchDraft(event.target.value)}

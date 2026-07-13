@@ -95,6 +95,173 @@ export function useKnowledgeContentCollaboration({
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
+  const sendCommand = useCallback((type: string, payload: Record<string, unknown>) => {
+    const socket = socketRef.current
+    if (socket?.readyState !== WebSocket.OPEN) {
+      return false
+    }
+    socket.send(JSON.stringify({
+      type,
+      requestId: requestId(),
+      itemId,
+      payload: {
+        itemId,
+        ...payload,
+      },
+    }))
+    return true
+  }, [itemId])
+
+  const updateClock = useCallback((payload: Record<string, unknown>) => {
+    const nextClock = Number(payload.serverClock ?? 0)
+    if (Number.isFinite(nextClock) && nextClock > serverClockRef.current) {
+      serverClockRef.current = nextClock
+    }
+  }, [])
+
+  const updateOnlineUsers = useCallback((payload: Record<string, unknown>) => {
+    const users = Array.isArray(payload.onlineUsers) ? payload.onlineUsers : []
+    setOnlineUsers(users.map(normalizeCollaborator).filter(Boolean) as KnowledgeContentCollaborator[])
+  }, [])
+
+  const sendPendingUpdate = useCallback(() => {
+    const pending = pendingUpdateRef.current
+    const socket = socketRef.current
+    if (!pending || socket?.readyState !== WebSocket.OPEN || !joinedRef.current) {
+      return false
+    }
+    setStatus('saving')
+    lastSentKeyRef.current = snapshotKey(pending.title, pending.content)
+    sendCommand('knowledge.content.update', {
+      clientId,
+      localSeq: pending.localSeq,
+      baseServerClock: serverClockRef.current,
+      encoding: 'snapshot-v1',
+      title: pending.title,
+      content: pending.content,
+    })
+    pendingUpdateRef.current = null
+    return true
+  }, [clientId, sendCommand])
+
+  const queueUpdate = useCallback((nextTitle: string, nextContent: string) => {
+    const localSeq = localSeqRef.current + 1
+    localSeqRef.current = localSeq
+    pendingUpdateRef.current = {
+      title: nextTitle,
+      content: nextContent,
+      baseTitle: lastConfirmedTitleRef.current,
+      baseContent: lastConfirmedContentRef.current,
+      localSeq,
+    }
+    if (!sendPendingUpdate()) {
+      setStatus('offline')
+    }
+  }, [sendPendingUpdate])
+
+  const applySnapshot = useCallback((payload: Record<string, unknown>) => {
+    updateClock(payload)
+    updateOnlineUsers(payload)
+    const nextTitle = String(payload.title ?? latestTitleRef.current)
+    const nextContent = String(payload.content ?? latestContentRef.current)
+    const pending = pendingUpdateRef.current
+    const localTitle = pending?.title ?? latestTitleRef.current
+    const localContent = pending?.content ?? latestContentRef.current
+    const baseTitle = pending?.baseTitle ?? lastConfirmedTitleRef.current
+    const baseContent = pending?.baseContent ?? lastConfirmedContentRef.current
+    const hasLocalContribution =
+      snapshotKey(localTitle, localContent) !== snapshotKey(nextTitle, nextContent) &&
+      snapshotKey(localTitle, localContent) !== snapshotKey(baseTitle, baseContent)
+    const shouldMerge = Boolean(pending) || hasLocalContribution
+    serverSnapshotKeyRef.current = snapshotKey(nextTitle, nextContent)
+    lastConfirmedTitleRef.current = nextTitle
+    lastConfirmedContentRef.current = nextContent
+    const projectedTitle = shouldMerge ? mergeScalarSnapshot(baseTitle, nextTitle, localTitle) : nextTitle
+    const projectedContent = shouldMerge ? mergeTextSnapshot(baseContent, nextContent, localContent) : nextContent
+    if (shouldMerge && snapshotKey(projectedTitle, projectedContent) !== snapshotKey(nextTitle, nextContent)) {
+      const localSeq = localSeqRef.current + 1
+      localSeqRef.current = localSeq
+      pendingUpdateRef.current = {
+        title: projectedTitle,
+        content: projectedContent,
+        baseTitle: nextTitle,
+        baseContent: nextContent,
+        localSeq,
+      }
+      window.setTimeout(() => sendPendingUpdate(), 0)
+    } else if (pending) {
+      pendingUpdateRef.current = null
+    }
+    remoteSnapshotRef.current({
+      itemId,
+      title: projectedTitle,
+      content: projectedContent,
+      serverClock: serverClockRef.current,
+      stateVector: String(payload.stateVector ?? serverClockRef.current),
+      versionNo: typeof payload.versionNo === 'number' ? payload.versionNo : undefined,
+    })
+  }, [itemId, sendPendingUpdate, updateClock, updateOnlineUsers])
+
+  const handleServerMessage = useCallback((data: string) => {
+    let event: PlatformWebSocketEvent
+    try {
+      event = JSON.parse(data) as PlatformWebSocketEvent
+    } catch {
+      return
+    }
+    if (event.objectType && event.objectType !== 'knowledge_content') {
+      return
+    }
+    const payload = (event.payload ?? {}) as Record<string, unknown>
+    const eventItemId = String(payload.itemId ?? event.objectId ?? '')
+    if (eventItemId && eventItemId !== itemId) {
+      return
+    }
+
+    if (event.type === 'knowledge.content.snapshot') {
+      joinedRef.current = true
+      applySnapshot(payload)
+      setStatus(sendPendingUpdate() ? 'saving' : 'synced')
+      return
+    }
+    if (event.type === 'knowledge.content.update') {
+      updateClock(payload)
+      updateOnlineUsers(payload)
+      const sourceClientId = String(payload.clientId ?? '')
+      if (sourceClientId !== clientId) {
+        applySnapshot(payload)
+      } else {
+        const confirmedTitle = String(payload.title ?? latestTitleRef.current)
+        const confirmedContent = String(payload.content ?? latestContentRef.current)
+        lastConfirmedTitleRef.current = confirmedTitle
+        lastConfirmedContentRef.current = confirmedContent
+        serverSnapshotKeyRef.current = snapshotKey(confirmedTitle, confirmedContent)
+        setStatus('synced')
+      }
+      return
+    }
+    if (event.type === 'knowledge.content.awareness.update') {
+      updateClock(payload)
+      updateOnlineUsers(payload)
+      if (joinedRef.current) {
+        setStatus((current) => current === 'connecting' ? 'joined' : current)
+      }
+      return
+    }
+    if (event.type === 'knowledge.content.saved') {
+      updateClock(payload)
+      const savedAt = String(payload.savedAt ?? new Date().toISOString())
+      setLastSavedAt(savedAt)
+      setStatus('synced')
+      savedRef.current?.({ serverClock: serverClockRef.current, savedAt })
+      return
+    }
+    if (event.type === 'knowledge.content.error') {
+      setStatus('error')
+      setError(String(payload.message ?? '知识内容协同连接异常'))
+    }
+  }, [applySnapshot, clientId, itemId, sendPendingUpdate, updateClock, updateOnlineUsers])
+
   useEffect(() => {
     remoteSnapshotRef.current = onRemoteSnapshot
   }, [onRemoteSnapshot])
@@ -196,7 +363,7 @@ export function useKnowledgeContentCollaboration({
       socketRef.current?.close()
     }
     // itemId intentionally reconnects the socket so room membership remains single-doc.
-  }, [accessToken, clientId, itemId, enabled])
+  }, [accessToken, clientId, enabled, handleServerMessage, itemId, sendCommand])
 
   useEffect(() => {
     if (!enabled || !canEdit || !itemId) {
@@ -226,7 +393,7 @@ export function useKnowledgeContentCollaboration({
     sendTimerRef.current = window.setTimeout(() => {
       queueUpdate(title, content)
     }, 450)
-  }, [canEdit, content, itemId, enabled, title])
+  }, [canEdit, content, enabled, itemId, queueUpdate, title])
 
   const sendAwareness = useCallback((cursor: KnowledgeContentCursor) => {
     if (!enabled || !itemId || socketRef.current?.readyState !== WebSocket.OPEN) {
@@ -237,7 +404,7 @@ export function useKnowledgeContentCollaboration({
       editing: canEdit,
       cursor,
     })
-  }, [canEdit, clientId, itemId, enabled])
+  }, [canEdit, clientId, enabled, itemId, sendCommand])
 
   const remoteCursors = useMemo(
     () => onlineUsers.filter((user) => user.clientId !== clientId && user.cursor),
@@ -254,172 +421,6 @@ export function useKnowledgeContentCollaboration({
     sendAwareness,
   }
 
-  function queueUpdate(nextTitle: string, nextContent: string) {
-    const localSeq = localSeqRef.current + 1
-    localSeqRef.current = localSeq
-    pendingUpdateRef.current = {
-      title: nextTitle,
-      content: nextContent,
-      baseTitle: lastConfirmedTitleRef.current,
-      baseContent: lastConfirmedContentRef.current,
-      localSeq,
-    }
-    if (!sendPendingUpdate()) {
-      setStatus('offline')
-    }
-  }
-
-  function sendPendingUpdate() {
-    const pending = pendingUpdateRef.current
-    const socket = socketRef.current
-    if (!pending || socket?.readyState !== WebSocket.OPEN || !joinedRef.current) {
-      return false
-    }
-    setStatus('saving')
-    lastSentKeyRef.current = snapshotKey(pending.title, pending.content)
-    sendCommand('knowledge.content.update', {
-      clientId,
-      localSeq: pending.localSeq,
-      baseServerClock: serverClockRef.current,
-      encoding: 'snapshot-v1',
-      title: pending.title,
-      content: pending.content,
-    })
-    pendingUpdateRef.current = null
-    return true
-  }
-
-  function sendCommand(type: string, payload: Record<string, unknown>) {
-    const socket = socketRef.current
-    if (socket?.readyState !== WebSocket.OPEN) {
-      return false
-    }
-    socket.send(JSON.stringify({
-      type,
-      requestId: requestId(),
-      itemId,
-      payload: {
-        itemId,
-        ...payload,
-      },
-    }))
-    return true
-  }
-
-  function handleServerMessage(data: string) {
-    let event: PlatformWebSocketEvent
-    try {
-      event = JSON.parse(data) as PlatformWebSocketEvent
-    } catch {
-      return
-    }
-    if (event.objectType && event.objectType !== 'knowledge_content') {
-      return
-    }
-    const payload = (event.payload ?? {}) as Record<string, unknown>
-    const eventItemId = String(payload.itemId ?? event.objectId ?? '')
-    if (eventItemId && eventItemId !== itemId) {
-      return
-    }
-
-    if (event.type === 'knowledge.content.snapshot') {
-      joinedRef.current = true
-      applySnapshot(payload)
-      setStatus(sendPendingUpdate() ? 'saving' : 'synced')
-      return
-    }
-    if (event.type === 'knowledge.content.update') {
-      updateClock(payload)
-      updateOnlineUsers(payload)
-      const sourceClientId = String(payload.clientId ?? '')
-      if (sourceClientId !== clientId) {
-        applySnapshot(payload)
-      } else {
-        const confirmedTitle = String(payload.title ?? title)
-        const confirmedContent = String(payload.content ?? content)
-        lastConfirmedTitleRef.current = confirmedTitle
-        lastConfirmedContentRef.current = confirmedContent
-        serverSnapshotKeyRef.current = snapshotKey(confirmedTitle, confirmedContent)
-        setStatus('synced')
-      }
-      return
-    }
-    if (event.type === 'knowledge.content.awareness.update') {
-      updateClock(payload)
-      updateOnlineUsers(payload)
-      if (joinedRef.current && status === 'connecting') {
-        setStatus('joined')
-      }
-      return
-    }
-    if (event.type === 'knowledge.content.saved') {
-      updateClock(payload)
-      const savedAt = String(payload.savedAt ?? new Date().toISOString())
-      setLastSavedAt(savedAt)
-      setStatus('synced')
-      savedRef.current?.({ serverClock: serverClockRef.current, savedAt })
-      return
-    }
-    if (event.type === 'knowledge.content.error') {
-      setStatus('error')
-      setError(String(payload.message ?? '知识内容协同连接异常'))
-    }
-  }
-
-  function applySnapshot(payload: Record<string, unknown>) {
-    updateClock(payload)
-    updateOnlineUsers(payload)
-    const nextTitle = String(payload.title ?? title)
-    const nextContent = String(payload.content ?? content)
-    const pending = pendingUpdateRef.current
-    const localTitle = pending?.title ?? latestTitleRef.current
-    const localContent = pending?.content ?? latestContentRef.current
-    const baseTitle = pending?.baseTitle ?? lastConfirmedTitleRef.current
-    const baseContent = pending?.baseContent ?? lastConfirmedContentRef.current
-    const hasLocalContribution =
-      snapshotKey(localTitle, localContent) !== snapshotKey(nextTitle, nextContent) &&
-      snapshotKey(localTitle, localContent) !== snapshotKey(baseTitle, baseContent)
-    const shouldMerge = Boolean(pending) || hasLocalContribution
-    serverSnapshotKeyRef.current = snapshotKey(nextTitle, nextContent)
-    lastConfirmedTitleRef.current = nextTitle
-    lastConfirmedContentRef.current = nextContent
-    const projectedTitle = shouldMerge ? mergeScalarSnapshot(baseTitle, nextTitle, localTitle) : nextTitle
-    const projectedContent = shouldMerge ? mergeTextSnapshot(baseContent, nextContent, localContent) : nextContent
-    if (shouldMerge && snapshotKey(projectedTitle, projectedContent) !== snapshotKey(nextTitle, nextContent)) {
-      const localSeq = localSeqRef.current + 1
-      localSeqRef.current = localSeq
-      pendingUpdateRef.current = {
-        title: projectedTitle,
-        content: projectedContent,
-        baseTitle: nextTitle,
-        baseContent: nextContent,
-        localSeq,
-      }
-      window.setTimeout(() => sendPendingUpdate(), 0)
-    } else if (pending) {
-      pendingUpdateRef.current = null
-    }
-    remoteSnapshotRef.current({
-      itemId,
-      title: projectedTitle,
-      content: projectedContent,
-      serverClock: serverClockRef.current,
-      stateVector: String(payload.stateVector ?? serverClockRef.current),
-      versionNo: typeof payload.versionNo === 'number' ? payload.versionNo : undefined,
-    })
-  }
-
-  function updateClock(payload: Record<string, unknown>) {
-    const nextClock = Number(payload.serverClock ?? 0)
-    if (Number.isFinite(nextClock) && nextClock > serverClockRef.current) {
-      serverClockRef.current = nextClock
-    }
-  }
-
-  function updateOnlineUsers(payload: Record<string, unknown>) {
-    const users = Array.isArray(payload.onlineUsers) ? payload.onlineUsers : []
-    setOnlineUsers(users.map(normalizeCollaborator).filter(Boolean) as KnowledgeContentCollaborator[])
-  }
 }
 
 function stableClientId() {

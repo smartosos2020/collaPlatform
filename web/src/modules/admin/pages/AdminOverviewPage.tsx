@@ -1,6 +1,7 @@
 import {
   ApartmentOutlined,
   AuditOutlined,
+  CheckCircleOutlined,
   ExclamationCircleOutlined,
   FileSearchOutlined,
   PartitionOutlined,
@@ -9,7 +10,7 @@ import {
   UserOutlined,
 } from '@ant-design/icons'
 import { useQuery } from '@tanstack/react-query'
-import { Button, Card, List, Space, Statistic, Tag, Typography } from 'antd'
+import { Alert, Button, Card, List, Space, Statistic, Tag, Typography } from 'antd'
 import { Link } from 'react-router-dom'
 
 import { listMembers } from '../api/adminUsersApi'
@@ -18,6 +19,7 @@ import { listPermissionRisks } from '../api/permissionGovernanceApi'
 import { listRoles } from '../api/rolesApi'
 import { listUserGroups } from '../api/userGroupsApi'
 import { listAuditLogs } from '../api/auditLogsApi'
+import { getHealth } from '../../platform/api/platformApi'
 
 export function AdminOverviewPage() {
   const membersQuery = useQuery({ queryKey: ['admin', 'overview', 'members'], queryFn: () => listMembers() })
@@ -26,6 +28,7 @@ export function AdminOverviewPage() {
   const rolesQuery = useQuery({ queryKey: ['admin', 'overview', 'roles'], queryFn: listRoles })
   const risksQuery = useQuery({ queryKey: ['admin', 'overview', 'permission-risks'], queryFn: () => listPermissionRisks() })
   const auditQuery = useQuery({ queryKey: ['admin', 'overview', 'audit-logs'], queryFn: () => listAuditLogs({ limit: 8 }) })
+  const healthQuery = useQuery({ queryKey: ['admin', 'overview', 'health'], queryFn: getHealth })
   const departments = flattenDepartmentTree(departmentsQuery.data ?? [])
   const activeMembers = (membersQuery.data ?? []).filter((member) => member.status === 'active').length
   const disabledMembers = (membersQuery.data ?? []).filter((member) => member.status === 'disabled').length
@@ -36,26 +39,31 @@ export function AdminOverviewPage() {
   const risks = risksQuery.data?.items ?? []
   const highRiskCount = risks.filter((risk) => ['high', 'critical'].includes(risk.severity)).length
   const recentAudits = auditQuery.data ?? []
-  const loading = membersQuery.isLoading || departmentsQuery.isLoading || groupsQuery.isLoading || rolesQuery.isLoading || risksQuery.isLoading || auditQuery.isLoading
+  const loading = membersQuery.isLoading || departmentsQuery.isLoading || groupsQuery.isLoading || rolesQuery.isLoading || risksQuery.isLoading || auditQuery.isLoading || healthQuery.isLoading
 
   return (
     <Space orientation="vertical" size={18} className="page-stack admin-org-page admin-overview-page">
+      {membersQuery.isError || departmentsQuery.isError || groupsQuery.isError || rolesQuery.isError || risksQuery.isError || auditQuery.isError || healthQuery.isError ? <Alert type="error" showIcon message="企业概览部分数据加载失败" description="可点击下方入口单独重试对应模块。" /> : null}
       <section className="admin-overview-grid">
         <Card className="admin-overview-metric-card" loading={loading}>
           <Statistic title="组织健康" value={activeDepartments} suffix={`/ ${departments.length} 部门`} prefix={<ApartmentOutlined />} />
-          <Typography.Text type="secondary">停用部门 {disabledDepartments}</Typography.Text>
+          <Typography.Text type="secondary">停用部门 {disabledDepartments} · <Link to="/admin/departments">查看组织</Link></Typography.Text>
         </Card>
         <Card className="admin-overview-metric-card" loading={loading}>
           <Statistic title="成员治理" value={activeMembers} suffix={`/ ${membersQuery.data?.length ?? 0} 成员`} prefix={<UserOutlined />} />
-          <Typography.Text type="secondary">停用成员 {disabledMembers}</Typography.Text>
+          <Typography.Text type="secondary">停用成员 {disabledMembers} · <Link to="/admin/users">查看成员</Link></Typography.Text>
         </Card>
         <Card className="admin-overview-metric-card" loading={loading}>
           <Statistic title="权限风险" value={highRiskCount} suffix={`/ ${risksQuery.data?.total ?? 0} 风险`} prefix={<SafetyCertificateOutlined />} />
-          <Typography.Text type="secondary">角色 {activeRoles} · 用户组 {activeGroups}</Typography.Text>
+          <Typography.Text type="secondary">角色 {activeRoles} · 用户组 {activeGroups} · <Link to="/admin/permission-governance">排查风险</Link></Typography.Text>
         </Card>
         <Card className="admin-overview-metric-card" loading={loading}>
           <Statistic title="审计摘要" value={recentAudits.length} suffix="条最近记录" prefix={<AuditOutlined />} />
-          <Typography.Text type="secondary">用于追踪组织、权限和内容治理操作</Typography.Text>
+          <Typography.Text type="secondary">最近 {recentAudits.length} 条 · <Link to="/admin/audit-logs">查看审计</Link></Typography.Text>
+        </Card>
+        <Card className="admin-overview-metric-card" loading={loading}>
+          <Statistic title="系统健康" value={healthQuery.data?.status === 'ok' ? '正常' : '检查中'} prefix={<CheckCircleOutlined />} />
+          <Typography.Text type="secondary">{healthQuery.data?.service ?? '服务检查'} · <Link to="/admin/system-settings">查看运行信息</Link></Typography.Text>
         </Card>
       </section>
 

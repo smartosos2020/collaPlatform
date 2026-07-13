@@ -35,6 +35,15 @@ const AdminApplicationGovernancePage = lazyRoute(
   () => import('../modules/admin/pages/AdminApplicationGovernancePage'),
   'AdminApplicationGovernancePage',
 )
+const AdminSystemSettingsPage = lazyRoute(
+  () => import('../modules/admin/pages/AdminSystemSettingsPage'),
+  'AdminSystemSettingsPage',
+)
+const AdminSecurityPage = lazyRoute(
+  () => import('../modules/admin/pages/AdminSystemSettingsPage'),
+  'AdminSecurityPage',
+)
+const AdminBatchGovernancePage = lazyRoute(() => import('../modules/admin/pages/AdminBatchGovernancePage'), 'AdminBatchGovernancePage')
 const ApprovalsPage = lazyRoute(() => import('../modules/approvals/pages/ApprovalsPage'), 'ApprovalsPage')
 const AuthLoginPage = lazyRoute(() => import('../modules/auth/pages/AuthLoginPage'), 'AuthLoginPage')
 const BasesPage = lazyRoute(() => import('../modules/bases/pages/BasesPage'), 'BasesPage')
@@ -59,6 +68,7 @@ const NotificationsPage = lazyRoute(
 )
 const ProjectsPage = lazyRoute(() => import('../modules/projects/pages/ProjectsPage'), 'ProjectsPage')
 const SearchPage = lazyRoute(() => import('../modules/search/pages/SearchPage'), 'SearchPage')
+const UserSettingsPage = lazyRoute(() => import('../modules/auth/pages/UserSettingsPage'), 'UserSettingsPage')
 const AppErrorPage = lazyRoute(() => import('../shared/components/AppErrorPage'), 'AppErrorPage')
 const routeLoadingElement = (
   <div className="route-loading">
@@ -106,6 +116,9 @@ export const router = createBrowserRouter([
           { path: 'permission-governance', element: routeElement(<AdminPermissionGovernancePage />) },
           { path: 'knowledge-bases', element: routeElement(<AdminKnowledgeBasesPage />) },
           { path: 'app-governance', element: routeElement(<AdminApplicationGovernancePage />) },
+          { path: 'system-settings', element: routeElement(<AdminSystemSettingsPage />) },
+          { path: 'security', element: routeElement(<AdminSecurityPage />) },
+          { path: 'batch-governance', element: routeElement(<AdminBatchGovernancePage />) },
           { path: 'audit-logs', element: routeElement(<AdminAuditLogsPage />) },
           { path: '*', element: routeElement(<AppErrorPage stateOverride="404" />) },
         ],
@@ -130,6 +143,7 @@ export const router = createBrowserRouter([
           { path: 'approvals/:approvalId', element: routeElement(<ApprovalsPage />) },
           { path: 'notifications', element: routeElement(<NotificationsPage />) },
           { path: 'devices', element: routeElement(<DevicesPage />) },
+          { path: 'settings', element: routeElement(<UserSettingsPage />) },
           { path: 'search', element: routeElement(<SearchPage />) },
           { path: 'error/:state', element: routeElement(<AppErrorPage />) },
           { path: '*', element: routeElement(<AppErrorPage stateOverride="404" />) },

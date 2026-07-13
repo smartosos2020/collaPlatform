@@ -133,7 +133,7 @@ public class ApprovalService {
         approvalRepository.cancelPendingTasks(currentUser.workspaceId(), instance.id(), null);
         approvalRepository.updateInstanceStatus(currentUser.workspaceId(), instance.id(), "withdrawn", instance.currentNodeOrder(), currentUser.id());
         approvalRepository.addAction(currentUser.workspaceId(), instance.id(), currentUser.id(), "withdrawn", "pending", "withdrawn", comment, Map.of());
-        notifyAssignees(currentUser, instance, pendingTasks, "审批已撤回", currentUser.displayName() + " 撤回了「" + instance.title() + "」");
+        notifyAssignees(currentUser, instance, pendingTasks, "approval_withdrawn", "审批已撤回", currentUser.displayName() + " 撤回了「" + instance.title() + "」");
         auditService.log(currentUser, "approval.withdrawn", "approval", instance.id(), Map.of());
         return detail(currentUser, instance.id());
     }
@@ -156,7 +156,7 @@ public class ApprovalService {
             } else {
                 approvalRepository.updateInstanceStatus(currentUser.workspaceId(), instance.id(), "approved", instance.currentNodeOrder(), currentUser.id());
                 toStatus = "approved";
-                notifyApplicant(currentUser, instance, "审批已通过", "「" + instance.title() + "」已审批通过");
+                notifyApplicant(currentUser, instance, "approval_approved", "审批已通过", "「" + instance.title() + "」已审批通过");
             }
         }
 
@@ -173,7 +173,7 @@ public class ApprovalService {
         approvalRepository.cancelPendingTasks(currentUser.workspaceId(), instance.id(), task.id());
         approvalRepository.updateInstanceStatus(currentUser.workspaceId(), instance.id(), "rejected", instance.currentNodeOrder(), currentUser.id());
         approvalRepository.addAction(currentUser.workspaceId(), instance.id(), currentUser.id(), "rejected", "pending", "rejected", comment, Map.of("taskId", task.id().toString()));
-        notifyApplicant(currentUser, instance, "审批已拒绝", "「" + instance.title() + "」被拒绝");
+        notifyApplicant(currentUser, instance, "approval_rejected", "审批已拒绝", "「" + instance.title() + "」被拒绝");
         auditService.log(currentUser, "approval.rejected", "approval", instance.id(), Map.of("taskId", task.id().toString()));
         return detail(currentUser, instance.id());
     }
@@ -197,7 +197,7 @@ public class ApprovalService {
             comment,
             Map.of("taskId", task.id().toString(), "assigneeId", target.id().toString())
         );
-        notifyUser(currentUser, target.id(), instance, "审批待办已转交给你", currentUser.displayName() + " 将「" + instance.title() + "」转交给你处理");
+        notifyUser(currentUser, target.id(), instance, "approval_transferred", "审批待办已转交给你", currentUser.displayName() + " 将「" + instance.title() + "」转交给你处理");
         auditService.log(currentUser, "approval.transferred", "approval", instance.id(), Map.of("taskId", task.id().toString(), "assigneeId", target.id().toString()));
         return detail(currentUser, instance.id());
     }
@@ -248,7 +248,7 @@ public class ApprovalService {
     private void createTasksForNode(CurrentUser currentUser, ApprovalInstanceSummary instance, ApprovalFlowNode node) {
         for (UUID assigneeId : approvalRepository.resolveApprovers(currentUser.workspaceId(), instance.applicantId(), node)) {
             approvalRepository.createTask(currentUser.workspaceId(), instance.id(), node.nodeOrder(), assigneeId);
-            notifyUser(currentUser, assigneeId, instance, "你有新的审批待办", "请处理「" + instance.title() + "」");
+            notifyUser(currentUser, assigneeId, instance, "approval_task_created", "你有新的审批待办", "请处理「" + instance.title() + "」");
         }
     }
 
@@ -280,17 +280,17 @@ public class ApprovalService {
         objectRepository.upsertObjectLink(workspaceId, "approval", instanceId, "/approvals/" + instanceId, "colla://approval/" + instanceId, title);
     }
 
-    private void notifyApplicant(CurrentUser actor, ApprovalInstanceSummary instance, String title, String body) {
-        notifyUser(actor, instance.applicantId(), instance, title, body);
+    private void notifyApplicant(CurrentUser actor, ApprovalInstanceSummary instance, String notificationType, String title, String body) {
+        notifyUser(actor, instance.applicantId(), instance, notificationType, title, body);
     }
 
-    private void notifyAssignees(CurrentUser actor, ApprovalInstanceSummary instance, List<ApprovalTaskSummary> tasks, String title, String body) {
+    private void notifyAssignees(CurrentUser actor, ApprovalInstanceSummary instance, List<ApprovalTaskSummary> tasks, String notificationType, String title, String body) {
         for (ApprovalTaskSummary task : tasks) {
-            notifyUser(actor, task.assigneeId(), instance, title, body);
+            notifyUser(actor, task.assigneeId(), instance, notificationType, title, body);
         }
     }
 
-    private void notifyUser(CurrentUser actor, UUID recipientId, ApprovalInstanceSummary instance, String title, String body) {
+    private void notifyUser(CurrentUser actor, UUID recipientId, ApprovalInstanceSummary instance, String notificationType, String title, String body) {
         if (recipientId.equals(actor.id())) {
             return;
         }
@@ -303,7 +303,7 @@ public class ApprovalService {
             actor.id(),
             Map.of(
                 "recipientId", recipientId.toString(),
-                "notificationType", "approval",
+                "notificationType", notificationType,
                 "title", title,
                 "body", body,
                 "targetType", "approval",

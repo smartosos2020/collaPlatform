@@ -1,4 +1,4 @@
-import { apiGet } from '../../../shared/api/httpClient'
+import { apiGet, apiGetText } from '../../../shared/api/httpClient'
 
 export type AdminAuditLogEntryView = {
   id: string
@@ -49,4 +49,12 @@ export function listAuditLogs(filters: AuditLogFilters = {}) {
   })
   const query = params.toString()
   return apiGet<AdminAuditLogEntryView[]>(query ? `/admin/audit-logs?${query}` : '/admin/audit-logs')
+}
+
+export function exportAuditLogs(filters: AuditLogFilters = {}) {
+  const params = new URLSearchParams()
+  Object.entries({ ...filters, limit: filters.limit ?? 200 }).forEach(([key, value]) => {
+    if (value !== undefined && value !== '') params.set(key, String(value))
+  })
+  return apiGetText(`/admin/audit-logs/export?${params}`)
 }
