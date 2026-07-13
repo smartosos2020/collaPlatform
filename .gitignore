@@ -11,25 +11,13 @@ Thumbs.db
 # Logs
 *.log
 logs/
-.local-logs/
-.local-reports/
-.local-backups/
-.local-connection-info.md
+/.local-*
+**/.local-*/
 
-# Local-only documentation, reports, and operational scripts
-*.md
-!/README.md
-/docs/
-/scripts/
-/deploy/scripts/
+# Local-only generated reports and CI drafts
 /.github/workflows/
 /.github/ISSUE_TEMPLATE/
-*.ps1
-*.psm1
-*.psd1
-*.sh
-*.bat
-*.cmd
+
 # Java
 target/
 *.class
