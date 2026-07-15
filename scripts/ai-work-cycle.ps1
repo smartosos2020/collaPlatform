@@ -294,6 +294,8 @@ function Ensure-ExecutionReport {
 
     $title = "$($Context.milestone) Execution Report"
     $today = Get-Date -Format "yyyy-MM-dd"
+    $verificationRows = @($Context.workScope.expectedTasks | ForEach-Object { "| $_ | TODO | TODO | TODO | TODO | TODO |" })
+    $acceptanceRows = @($Context.workScope.expectedTasks | ForEach-Object { "| $_ | TODO | TODO | TODO | TODO | Pending |" })
     $content = @(
         "---",
         "title: $title",
@@ -311,8 +313,8 @@ function Ensure-ExecutionReport {
         "## Verification Contract",
         "",
         "| Task | Required verification level | Browser evidence kind | Environment | Mock browser allowed | Required real flow |",
-        "| --- | --- | --- | --- | --- | --- |",
-        @($Context.workScope.expectedTasks | ForEach-Object { "| $_ | TODO | TODO | TODO | TODO | TODO |" }),
+        "| --- | --- | --- | --- | --- | --- |"
+    ) + $verificationRows + @(
         "",
         "## Completed Items",
         "",
@@ -322,8 +324,8 @@ function Ensure-ExecutionReport {
         "## Acceptance Evidence",
         "",
         "| Task | Acceptance criterion | Implementation evidence | Automated evidence | Browser evidence | Status |",
-        "| --- | --- | --- | --- | --- | --- |",
-        @($Context.workScope.expectedTasks | ForEach-Object { "| $_ | TODO | TODO | TODO | TODO | Pending |" }),
+        "| --- | --- | --- | --- | --- | --- |"
+    ) + $acceptanceRows + @(
         "",
         "## Code Changes",
         "",

@@ -24,27 +24,37 @@ Required values:
 - `INIT_ADMIN_PASSWORD`
 - `CORS_ALLOWED_ORIGINS`
 - `APP_BASE_URL`
+- `SERVER_IMAGE` and `WEB_IMAGE`, each with an explicit version tag (never `latest`)
+- `SOURCE_COMMIT`, as the full 40-character commit used to build both images
 
-3. Start or update the stack:
-
-```powershell
-docker compose --env-file deploy/.env.prod -f deploy/docker-compose.prod.yml up -d --build
-```
-
-4. Check health:
+3. Run the release gate. A verified backup is mandatory for a formal pass:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File deploy/scripts/health-check.ps1 -EnvFile deploy/.env.prod -BaseUrl http://localhost
+powershell -NoProfile -ExecutionPolicy Bypass -File deploy/scripts/release-check.ps1 -EnvFile deploy/.env.prod -ExpectedProjectName colla-platform-prod -CreateBackup
 ```
 
-5. For TLS, put certificates under `deploy/certs` and extend
+4. Start or update the stack from the validated image tags, without rebuilding:
+
+```powershell
+docker compose --env-file deploy/.env.prod -f deploy/docker-compose.prod.yml up -d --no-build --wait
+```
+
+5. Check health and request/log correlation:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File deploy/scripts/health-check.ps1 -EnvFile deploy/.env.prod -BaseUrl http://localhost -ExpectedProjectName colla-platform-prod -RequireLogCorrelation
+```
+
+6. For TLS, put certificates under `deploy/certs` and extend
 `deploy/nginx/colla.conf` with a `listen 443 ssl` server block.
 
 ## Backup
 
 The backup script captures PostgreSQL and MinIO data into `.local-backups/`.
-Each backup includes `manifest.json`, `manifest.md`, file sizes, and SHA-256
-checksums.
+Each manifest-v2 backup includes source project/commit, consistency mode,
+Flyway version, key PostgreSQL counts, MinIO object count, file sizes, and
+SHA-256 checksums. The script quiesces the application and stops MinIO while
+copying its volume, then restores service health.
 
 Local development backup:
 
@@ -71,16 +81,18 @@ Dry-run validation:
 powershell -NoProfile -ExecutionPolicy Bypass -File deploy/scripts/restore-drill.ps1 -BackupPath .local-backups/<timestamp> -EnvFile deploy/.env.prod
 ```
 
-Actual restore drill:
+Actual restore drill must use a separate Compose project, ports, and volumes.
+The project name must match `colla-platform-drill-<id>` and differ from the
+backup source:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File deploy/scripts/restore-drill.ps1 -BackupPath .local-backups/<timestamp> -EnvFile deploy/.env.prod -RunRestore -ConfirmRestore
+powershell -NoProfile -ExecutionPolicy Bypass -File deploy/scripts/restore-drill.ps1 -BackupPath .local-backups/<timestamp> -EnvFile .local-reports/restore-drill.env -ExpectedProjectName colla-platform-drill-<id> -BaseUrl http://127.0.0.1:<port> -RunRestore -ConfirmRestore
 ```
 
 Direct restore:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File deploy/scripts/restore.ps1 -BackupPath .local-backups/<timestamp> -EnvFile deploy/.env.prod -ConfirmRestore
+powershell -NoProfile -ExecutionPolicy Bypass -File deploy/scripts/restore.ps1 -BackupPath .local-backups/<timestamp> -EnvFile deploy/.env.prod -ExpectedProjectName colla-platform-prod -ConfirmationText RESTORE:colla-platform-prod -ConfirmRestore
 ```
 
 After restore, confirm:
@@ -88,7 +100,7 @@ After restore, confirm:
 - `/api/health` returns normally.
 - `/actuator/health` returns `UP`.
 - Login works with the expected admin account.
-- IM, Project, Docs, Base, and Notifications pages can open.
+- IM, Project, Knowledge Base, Base, and Notifications pages can open.
 
 ## Health And Monitoring
 
@@ -138,30 +150,62 @@ Before deployment:
 Scripted pre-release check:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File deploy/scripts/release-check.ps1 -EnvFile deploy/.env.prod
+powershell -NoProfile -ExecutionPolicy Bypass -File deploy/scripts/release-check.ps1 -EnvFile deploy/.env.prod -ExpectedProjectName colla-platform-prod -CreateBackup
 ```
 
-For a dry run with the example env file:
+Any dirty-worktree or skipped-gate run requires `-AllowPartial` and produces
+`Decision: PARTIAL`; it is diagnostic evidence, never release approval.
+
+## Controlled Pilot Baseline
+
+Use `deploy/pilot-v2/manifest.example.json` as the versioned contract, and keep
+the concrete participant roster under ignored `.local-pilot/`. The manifest
+contains no credentials. Validate it before any write:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File deploy/scripts/release-check.ps1 -EnvFile deploy/.env.prod.example -AllowDirty -SkipQualityGate -SkipImageBuild
+pnpm pilot:contract-check
+pnpm pilot:check -- -ManifestPath .local-pilot\pilot.json -Level initialization
+pnpm pilot:initialize -- -ManifestPath .local-pilot\pilot.json
+```
+
+The initializer defaults to a read-only plan. Applying requires credential
+environment variables and the exact confirmation string shown by the manifest.
+After initialization, take a target-project backup, complete an isolated restore
+drill, run the milestone quality gate, and pass those explicit evidence paths to
+`pnpm pilot:readiness`. `-SimulationFreeze` can close an engineering rehearsal
+only when every persona is synthetic, the limitations are acknowledged, and the
+backup plus source snapshot match; it returns `SIMULATION-READY`. Rehearsal or
+simulation evidence cannot be used as a formal human kickoff approval. `-Freeze`
+returns `READY` only with human confirmations, a clean release commit, and a
+backup produced from that same commit.
+
+Validate the script safety contracts without touching Docker data:
+
+```powershell
+pnpm ops:contract-check
 ```
 
 ## Rollback
 
-Rollback is explicit and requires `-ConfirmRollback`.
+Rollback deploys previously validated, version-tagged images. It never checks
+out or rebuilds a Git ref in the active worktree. Both images must carry the
+same full `org.opencontainers.image.revision` label. It requires an exact typed
+confirmation string.
 
-Application-only rollback to a known Git ref:
+Application-only rollback:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File deploy/scripts/rollback.ps1 -EnvFile deploy/.env.prod -GitRef <tag-or-commit> -ConfirmRollback
+$serverImage = "registry.example.com/colla/server:<version>"
+$webImage = "registry.example.com/colla/web:<version>"
+$confirmation = "ROLLBACK:colla-platform-prod:$serverImage`:$webImage"
+powershell -NoProfile -ExecutionPolicy Bypass -File deploy/scripts/rollback.ps1 -EnvFile deploy/.env.prod -ServerImage $serverImage -WebImage $webImage -ExpectedSourceCommit <40-char-commit> -ExpectedProjectName colla-platform-prod -ConfirmationText $confirmation -ConfirmRollback
 ```
 
 Application and data rollback:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File deploy/scripts/rollback.ps1 -EnvFile deploy/.env.prod -GitRef <tag-or-commit> -BackupPath .local-backups/<timestamp> -RestoreData -ConfirmRollback
+powershell -NoProfile -ExecutionPolicy Bypass -File deploy/scripts/rollback.ps1 -EnvFile deploy/.env.prod -ServerImage $serverImage -WebImage $webImage -ExpectedSourceCommit <40-char-commit> -ExpectedProjectName colla-platform-prod -ConfirmationText $confirmation -BackupPath .local-backups/<timestamp> -RestoreData -ConfirmRollback
 ```
 
-The rollback script rebuilds and starts the compose stack, optionally restores
-data, and runs the health check afterward.
+The rollback script uses `--no-build`, optionally performs a manifest-verified
+data restore, and runs semantic health and request/log correlation afterward.

@@ -205,6 +205,14 @@ class KnowledgeContentControllerIntegrationTests {
                 ))))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.permissions[*].itemId", hasItem(itemId.toString())));
+        mockMvc.perform(post(itemPath(spaceId, itemId) + "/permissions")
+                .header("Authorization", bearer(token))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "subjectType", "user", "subjectId", adminId, "permissionLevel", "owner"
+                ))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.permissions[?(@.subjectId == '" + adminId + "')].permissionLevel", hasItem("owner")));
         mockMvc.perform(post(itemPath(spaceId, itemId) + "/share-link")
                 .header("Authorization", bearer(token))
                 .contentType(MediaType.APPLICATION_JSON)

@@ -2,7 +2,9 @@
 .local-logs
 .local-reports
 node_modules
+**/node_modules
 web/dist
+collaboration/node_modules
 server/target
 desktop/tauri-spike/target
 mobile/**/node_modules

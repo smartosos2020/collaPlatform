@@ -3352,15 +3352,6 @@ body {
   gap: 16px;
 }
 
-.doc-editor-mode-bar {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-  color: #64748b;
-  font-size: 12px;
-}
-
 .doc-editor-shell {
   display: flex;
   flex-direction: column;
@@ -3386,41 +3377,6 @@ body {
 
 .doc-editor-actions {
   flex: 0 0 auto;
-}
-
-.doc-collab-presence {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 8px;
-}
-
-.doc-collab-user {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  max-width: 160px;
-  border: 1px solid #e5e7eb;
-  border-radius: 999px;
-  background: #fff;
-  color: #334155;
-  padding: 3px 8px;
-  font-size: 12px;
-  line-height: 18px;
-}
-
-.doc-collab-user i {
-  width: 8px;
-  height: 8px;
-  flex: 0 0 auto;
-  border-radius: 50%;
-  background: var(--collab-color, #1677ff);
-}
-
-.doc-collab-user {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .doc-title-input {
@@ -3468,27 +3424,6 @@ body {
   flex-wrap: nowrap;
 }
 
-.doc-editor-hover-insert {
-  position: absolute;
-  top: 28px;
-  left: 12px;
-  z-index: 18;
-  width: 26px;
-  height: 26px;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.12s ease, transform 0.12s ease;
-  transform: translateX(-4px);
-  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
-}
-
-.doc-editor-canvas:hover .doc-editor-hover-insert,
-.doc-editor-hover-insert:focus-visible {
-  opacity: 1;
-  pointer-events: auto;
-  transform: translateX(0);
-}
-
 .doc-table-editor-toolbar {
   z-index: 42;
   border: 1px solid #dbe3ef;
@@ -3496,33 +3431,6 @@ body {
   background: #fff;
   box-shadow: 0 12px 30px rgba(15, 23, 42, 0.16);
   padding: 5px;
-}
-
-.doc-remote-cursor-strip {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  border-bottom: 1px solid #eef2f7;
-  background: #fff;
-  padding: 7px 8px;
-}
-
-.doc-remote-cursor-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  border-left: 3px solid var(--cursor-color, #1677ff);
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--cursor-color, #1677ff) 10%, white);
-  color: #111827;
-  padding: 3px 8px 3px 6px;
-  font-size: 12px;
-  line-height: 18px;
-}
-
-.doc-remote-cursor-chip small {
-  color: #64748b;
-  font-size: 11px;
 }
 
 .doc-prosemirror {
@@ -3703,7 +3611,12 @@ body {
 
 .doc-block-drag-handle {
   z-index: 30;
-  margin-left: -38px;
+  margin-left: 0;
+  padding: 2px;
+  border: 1px solid #dbe3ef;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
   opacity: 0;
   transition: opacity 0.12s ease;
 }
@@ -3713,16 +3626,34 @@ body {
   opacity: 1;
 }
 
-.doc-block-handle-button {
+.doc-block-action-buttons {
+  display: flex;
+  align-items: center;
+}
+
+.doc-block-action-buttons .ant-btn {
+  width: 26px;
+  height: 26px;
+  padding-inline: 4px;
+}
+
+.doc-block-handle-button,
+.doc-block-insert-button {
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  width: 28px;
-  padding-inline: 4px;
   border-color: #dbe3ef;
   background: #fff;
   color: #64748b;
-  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.12);
+}
+
+.doc-block-operation-dropdown {
+  max-width: min(240px, calc(100vw - 32px));
+}
+
+.doc-block-operation-dropdown .ant-dropdown-menu {
+  max-height: min(360px, calc(100vh - 96px));
+  overflow-y: auto;
 }
 
 .doc-slash-menu {
@@ -3857,33 +3788,11 @@ body {
   padding: 4px;
 }
 
-.doc-editor-fallback {
-  border: 1px dashed #dbe3ef;
-  border-radius: 8px;
-  background: #f8fafc;
-  padding: 10px 12px;
-}
-
-.doc-editor-fallback summary {
-  cursor: pointer;
-  color: #64748b;
-  font-size: 12px;
-}
-
-.doc-editor-fallback .doc-markdown-input {
-  margin-top: 10px;
-}
-
 .doc-editor-grid {
   display: grid;
   grid-template-columns: minmax(280px, 1fr) minmax(280px, 1fr);
   gap: 16px;
   min-height: 420px;
-}
-
-.doc-markdown-input {
-  min-height: 420px;
-  resize: vertical;
 }
 
 .doc-preview {
@@ -3933,20 +3842,6 @@ body {
   background: #fff;
   padding: 16px;
   min-width: 0;
-}
-
-.doc-legacy-block-panel summary {
-  cursor: pointer;
-  color: #64748b;
-  font-weight: 600;
-}
-
-.doc-legacy-block-panel:not([open]) {
-  padding: 12px 16px;
-}
-
-.doc-legacy-block-panel[open] summary {
-  margin-bottom: 12px;
 }
 
 .doc-panel-title {
@@ -4109,116 +4004,6 @@ body {
 .doc-comment-anchor-preview .ant-typography {
   min-width: 0;
   word-break: break-word;
-}
-
-.doc-block-editor-item {
-  display: grid;
-  grid-template-columns: 110px minmax(0, 1fr) auto;
-  gap: 8px;
-  align-items: flex-start;
-  width: 100%;
-  padding: 8px;
-  border: 1px solid #edf0f5;
-  border-radius: 8px;
-  background: #f8fafc;
-}
-
-.doc-block-type {
-  width: 110px;
-}
-
-.doc-block-content {
-  min-width: 0;
-}
-
-.doc-table-block-editor,
-.doc-embed-block-editor {
-  min-width: 0;
-}
-
-.doc-table-toolbar {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: 6px;
-}
-
-.doc-table-block-scroll {
-  max-width: 100%;
-  overflow-x: auto;
-}
-
-.doc-table-block {
-  width: 100%;
-  min-width: 360px;
-  border-collapse: collapse;
-  background: #fff;
-}
-
-.doc-table-block th,
-.doc-table-block td {
-  border: 1px solid #e5e7eb;
-  padding: 4px;
-  vertical-align: top;
-}
-
-.doc-table-block th {
-  background: #f9fafb;
-}
-
-.doc-embed-fields {
-  width: 100%;
-  margin-bottom: 8px;
-}
-
-.doc-embed-type {
-  width: 132px;
-}
-
-.doc-embed-id {
-  width: min(360px, 100%);
-}
-
-.doc-embed-view-id {
-  width: min(220px, 100%);
-}
-
-.doc-embed-block-editor .internal-link-card {
-  max-width: 100%;
-}
-
-.doc-base-view-preview {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.doc-base-view-grid {
-  max-width: 100%;
-  overflow-x: auto;
-  border: 1px solid #e5e7eb;
-  border-radius: 6px;
-  background: #fff;
-}
-
-.doc-base-view-row {
-  display: grid;
-  grid-template-columns: 48px repeat(4, minmax(120px, 1fr));
-  min-width: 520px;
-}
-
-.doc-base-view-row.header {
-  background: #f8fafc;
-  font-weight: 600;
-}
-
-.doc-base-view-row span {
-  overflow: hidden;
-  min-width: 0;
-  border-right: 1px solid #e5e7eb;
-  border-bottom: 1px solid #e5e7eb;
-  padding: 6px 8px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .doc-diff-view {
@@ -4996,21 +4781,6 @@ body {
 
   .bases-panel {
     max-height: none;
-  }
-
-  .doc-block-editor-item {
-    grid-template-columns: 1fr;
-  }
-
-  .doc-embed-fields {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .doc-embed-type,
-  .doc-embed-id,
-  .doc-embed-view-id {
-    width: 100%;
   }
 
   .page-stack .ant-card-body {

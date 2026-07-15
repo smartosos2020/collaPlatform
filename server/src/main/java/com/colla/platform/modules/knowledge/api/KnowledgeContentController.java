@@ -2,7 +2,9 @@ package com.colla.platform.modules.knowledge.api;
 
 import com.colla.platform.modules.knowledge.api.KnowledgeApiDtos.KnowledgeContentBlockDraft;
 import com.colla.platform.modules.knowledge.api.KnowledgeApiDtos.KnowledgeContentBlockView;
+import com.colla.platform.modules.knowledge.api.KnowledgeApiDtos.KnowledgeContentCanonicalMigrationPreviewView;
 import com.colla.platform.modules.knowledge.api.KnowledgeApiDtos.KnowledgeContentCollaborationHealthView;
+import com.colla.platform.modules.knowledge.api.KnowledgeApiDtos.KnowledgeCollaborationTicketView;
 import com.colla.platform.modules.knowledge.api.KnowledgeApiDtos.KnowledgeContentDetailView;
 import com.colla.platform.modules.knowledge.api.KnowledgeApiDtos.KnowledgeContentMigrationPreviewView;
 import com.colla.platform.modules.knowledge.api.KnowledgeApiDtos.KnowledgeContentPathItemView;
@@ -12,6 +14,8 @@ import com.colla.platform.modules.knowledge.api.KnowledgeApiDtos.KnowledgeConten
 import com.colla.platform.modules.knowledge.api.KnowledgeApiDtos.KnowledgeContentVersionDiffView;
 import com.colla.platform.modules.knowledge.api.KnowledgeApiDtos.KnowledgeContentVersionView;
 import com.colla.platform.modules.knowledge.application.KnowledgeContentCollaborationService;
+import com.colla.platform.modules.knowledge.application.KnowledgeCollaborationGatewayService;
+import com.colla.platform.modules.knowledge.application.KnowledgeContentCanonicalService;
 import com.colla.platform.modules.knowledge.application.KnowledgeContentCrossModuleService;
 import com.colla.platform.modules.knowledge.application.KnowledgeContentService;
 import com.colla.platform.modules.knowledge.application.KnowledgeBaseSpaceService;
@@ -42,17 +46,23 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/knowledge-bases/{spaceId}/items/{itemId}")
 public class KnowledgeContentController {
     private final KnowledgeContentCollaborationService collaborationService;
+    private final KnowledgeCollaborationGatewayService collaborationGatewayService;
+    private final KnowledgeContentCanonicalService canonicalService;
     private final KnowledgeContentCrossModuleService crossModuleService;
     private final KnowledgeContentService contentService;
     private final KnowledgeBaseSpaceService knowledgeBaseSpaceService;
 
     public KnowledgeContentController(
         KnowledgeContentCollaborationService collaborationService,
+        KnowledgeCollaborationGatewayService collaborationGatewayService,
+        KnowledgeContentCanonicalService canonicalService,
         KnowledgeContentCrossModuleService crossModuleService,
         KnowledgeContentService contentService,
         KnowledgeBaseSpaceService knowledgeBaseSpaceService
     ) {
         this.collaborationService = collaborationService;
+        this.collaborationGatewayService = collaborationGatewayService;
+        this.canonicalService = canonicalService;
         this.crossModuleService = crossModuleService;
         this.contentService = contentService;
         this.knowledgeBaseSpaceService = knowledgeBaseSpaceService;
@@ -121,6 +131,7 @@ public class KnowledgeContentController {
             itemId,
             request.baseVersionNo(),
             request.title(),
+            request.saveMode(),
             request.blocks().stream().map(KnowledgeApiDtos::toBlockDraft).toList()
         ));
     }
@@ -459,6 +470,16 @@ public class KnowledgeContentController {
         return KnowledgeApiDtos.migrationPreview(contentService.migrationPreview(user, itemId));
     }
 
+    @GetMapping("/migration/preview")
+    public KnowledgeContentCanonicalMigrationPreviewView canonicalMigrationPreview(
+        @PathVariable UUID spaceId,
+        @PathVariable UUID itemId,
+        Authentication authentication
+    ) {
+        CurrentUser user = itemUser(authentication, spaceId, itemId);
+        return KnowledgeApiDtos.canonicalMigrationPreview(canonicalService.plan(itemId, contentService.getContent(user, itemId)));
+    }
+
     @GetMapping("/collaboration/health")
     public KnowledgeContentCollaborationHealthView collaborationHealth(
         @PathVariable UUID spaceId,
@@ -467,6 +488,16 @@ public class KnowledgeContentController {
     ) {
         CurrentUser user = itemUser(authentication, spaceId, itemId);
         return KnowledgeApiDtos.collaborationHealth(collaborationService.health(user, itemId));
+    }
+
+    @PostMapping("/collaboration/ticket")
+    public KnowledgeCollaborationTicketView collaborationTicket(
+        @PathVariable UUID spaceId,
+        @PathVariable UUID itemId,
+        Authentication authentication
+    ) {
+        CurrentUser user = itemUser(authentication, spaceId, itemId);
+        return KnowledgeApiDtos.collaborationTicket(collaborationGatewayService.issue(user, itemId));
     }
 
     private CurrentUser itemUser(Authentication authentication, UUID spaceId, UUID itemId) {
@@ -492,7 +523,12 @@ public class KnowledgeContentController {
     ) {
     }
 
-    public record SaveKnowledgeContentBlocksRequest(int baseVersionNo, @Size(max = 255) String title, @NotNull List<KnowledgeContentBlockDraft> blocks) {
+    public record SaveKnowledgeContentBlocksRequest(
+        int baseVersionNo,
+        @Size(max = 255) String title,
+        String saveMode,
+        @NotNull List<KnowledgeContentBlockDraft> blocks
+    ) {
     }
 
     public record InsertKnowledgeContentBlockRequest(

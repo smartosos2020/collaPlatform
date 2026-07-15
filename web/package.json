@@ -11,9 +11,12 @@
   },
   "dependencies": {
     "@ant-design/icons": "^6.2.5",
+    "@hocuspocus/provider": "4.4.0",
     "@tanstack/react-query": "^5.101.0",
     "@tanstack/react-table": "^8.21.3",
     "@tiptap/core": "3.26.1",
+    "@tiptap/extension-collaboration": "3.26.1",
+    "@tiptap/extension-collaboration-caret": "3.26.1",
     "@tiptap/extension-drag-handle-react": "3.26.1",
     "@tiptap/extension-file-handler": "3.26.1",
     "@tiptap/extension-image": "3.26.1",
@@ -31,6 +34,7 @@
     "react-dom": "^19.2.6",
     "react-router-dom": "^7.17.0",
     "zustand": "^5.0.14"
+    ,"yjs": "13.6.31"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

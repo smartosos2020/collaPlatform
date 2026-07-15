@@ -1,6 +1,7 @@
 import { apiDelete, apiGet, apiGetText, apiPatch, apiPost } from '../../../../shared/api/httpClient'
 import type { PlatformObjectSummary } from '../../../platform/api/platformObjectsApi'
 import type { IssueDetail } from '../../../projects/api/projectsApi'
+import type { JSONContent } from '@tiptap/react'
 
 export type KnowledgeBaseItem = {
   id: string
@@ -75,7 +76,7 @@ export type KnowledgeContentContext = {
 
 export type KnowledgeContentBlock = {
   id: string; itemId: string; parentId?: string | null
-  blockType: 'paragraph' | 'heading' | 'list' | 'bullet_list' | 'ordered_list' | 'task' | 'task_item' | 'quote' | 'code' | 'code_block' | 'table' | 'divider' | 'legacy_html' | 'embed' | 'embed_object' | 'base_view' | 'issue_embed' | 'message_embed' | 'file_embed' | 'link_card'
+  blockType: 'paragraph' | 'heading' | 'list' | 'bullet_list' | 'ordered_list' | 'task' | 'task_item' | 'quote' | 'code' | 'code_block' | 'table' | 'divider' | 'image' | 'legacy_html' | 'embed' | 'embed_object' | 'base_view' | 'issue_embed' | 'message_embed' | 'file_embed' | 'link_card'
   content: string; sortOrder: number; schemaVersion: number; attrs?: Record<string, unknown> | null; richContent?: Record<string, unknown> | null
   plainText?: string | null; anchorId?: string | null; blockVersion: number; createdBy: string; createdAt: string; updatedBy: string; updatedAt: string
   embedSummary?: PlatformObjectSummary | null; metadata?: Record<string, unknown> | null
@@ -93,11 +94,26 @@ export type KnowledgeContentVersion = {
   id: string; itemId: string; versionNo: number; versionName?: string | null; versionType: string; title: string; content: string
   summary?: string | null; sourceVersionNo?: number | null; blockSnapshot?: string | null; createdBy: string; createdByName: string; createdAt: string
 }
-export type KnowledgeContentDiffLine = { type: string; oldLineNo: number; newLineNo: number; content: string; scope?: string | null; blockIndex?: number | null; blockType?: KnowledgeContentBlock['blockType'] | null }
+export type KnowledgeContentDiffLine = { type: string; oldLineNo: number; newLineNo: number; content: string; scope?: string | null; blockIndex?: number | null; blockType?: KnowledgeContentBlock['blockType'] | null; blockId?: string | null }
 export type KnowledgeContentVersionDiff = { itemId: string; fromVersionNo: number; toVersionNo: number; lines: KnowledgeContentDiffLine[] }
 export type KnowledgeContentTemplate = { id: string; title: string; description?: string | null; category: string; content: string; builtIn: boolean; scopeType: string; knowledgeBaseId?: string | null; knowledgeBaseName?: string | null; createdAt: string }
 export type KnowledgeContentPerformance = { itemId: string; blockCount: number; embedCount: number; commentCount: number; contentLength: number; lineCount: number; largeContent: boolean; recommendedMode: string }
 export type KnowledgeContentMigrationPreview = { itemId: string; currentVersionNo: number; contentBlockCount: number; storedBlockCount: number; contentLength: number; blockProjectionCurrent: boolean; rollbackAvailable: boolean; migrationMode: string }
+export type KnowledgeContentSchemaIssue = { code: string; path: string; message: string; severity: 'info' | 'warning' | 'error' | string }
+export type KnowledgeContentCanonicalMigrationPreview = {
+  itemId: string
+  sourceSchemaVersion: number
+  targetSchemaVersion: number
+  sourceChecksum: string
+  targetChecksum: string
+  sourceBlockCount: number
+  targetBlockCount: number
+  changed: boolean
+  safeToApply: boolean
+  migrationMode: string
+  issues: KnowledgeContentSchemaIssue[]
+  canonicalDocument: JSONContent
+}
 export type KnowledgeContentCollaborationHealth = { itemId: string; serverClock: number; activeUsers: number; dirty: boolean; stateVector: string; lastSavedAt?: string | null; updatedAt: string }
 
 const contentPath = (spaceId: string, itemId: string) => `/knowledge-bases/${spaceId}/items/${itemId}`
@@ -105,12 +121,28 @@ const contentPath = (spaceId: string, itemId: string) => `/knowledge-bases/${spa
 export const getKnowledgeContent = (spaceId: string, itemId: string) => apiGet<KnowledgeContentDetail>(contentPath(spaceId, itemId))
 export const getKnowledgeContentPerformance = (spaceId: string, itemId: string) => apiGet<KnowledgeContentPerformance>(`${contentPath(spaceId, itemId)}/performance`)
 export const getKnowledgeContentMigrationPreview = (spaceId: string, itemId: string) => apiGet<KnowledgeContentMigrationPreview>(`${contentPath(spaceId, itemId)}/migration-preview`)
+export const getKnowledgeContentCanonicalMigrationPreview = (spaceId: string, itemId: string) => apiGet<KnowledgeContentCanonicalMigrationPreview>(`${contentPath(spaceId, itemId)}/migration/preview`)
 export const getKnowledgeContentCollaborationHealth = (spaceId: string, itemId: string) => apiGet<KnowledgeContentCollaborationHealth>(`${contentPath(spaceId, itemId)}/collaboration/health`)
+
+export type KnowledgeCollaborationTicket = {
+  url: string
+  documentName: string
+  ticket: string
+  clientId: string
+  protocolVersion: 'colla-yjs-v1'
+  schemaVersion: number
+  permissionLevel: string
+  canView: boolean
+  canEdit: boolean
+  expiresAt: string
+}
+
+export const createKnowledgeCollaborationTicket = (spaceId: string, itemId: string) =>
+  apiPost<KnowledgeCollaborationTicket>(`${contentPath(spaceId, itemId)}/collaboration/ticket`)
 export const getKnowledgeContentPath = (spaceId: string, itemId: string) => apiGet<KnowledgeContentPathItem[]>(`${contentPath(spaceId, itemId)}/path`)
-export const saveKnowledgeContent = (spaceId: string, itemId: string, request: { baseVersionNo: number; title: string; content: string }) => apiPatch<KnowledgeContentDetail>(contentPath(spaceId, itemId), request)
 export const updateKnowledgeContentMetadata = (spaceId: string, itemId: string, request: { maintainerId?: string | null; tags?: string[]; category?: string | null; knowledgeStatus?: KnowledgeBaseItem['knowledgeStatus']; reviewDueAt?: string | null; verifiedAt?: string }) => apiPatch<KnowledgeContentDetail>(`${contentPath(spaceId, itemId)}/metadata`, request)
 export const listKnowledgeContentBlocks = (spaceId: string, itemId: string) => apiGet<KnowledgeContentBlock[]>(`${contentPath(spaceId, itemId)}/blocks`)
-export const saveKnowledgeContentBlocks = (spaceId: string, itemId: string, request: { baseVersionNo: number; title?: string; blocks: KnowledgeContentBlockDraft[] }) => apiPatch<KnowledgeContentDetail>(`${contentPath(spaceId, itemId)}/blocks`, request)
+export const saveKnowledgeContentBlocks = (spaceId: string, itemId: string, request: { baseVersionNo: number; title?: string; saveMode?: 'auto' | 'manual'; blocks: KnowledgeContentBlockDraft[] }) => apiPatch<KnowledgeContentDetail>(`${contentPath(spaceId, itemId)}/blocks`, request)
 export const insertKnowledgeContentBlock = (spaceId: string, itemId: string, request: { baseVersionNo: number; block: KnowledgeContentBlockDraft; afterSortOrder?: number | null }) => apiPost<KnowledgeContentDetail>(`${contentPath(spaceId, itemId)}/blocks`, request)
 export const updateKnowledgeContentBlock = (spaceId: string, itemId: string, blockId: string, request: { baseVersionNo: number; block: Partial<KnowledgeContentBlockDraft> }) => apiPatch<KnowledgeContentDetail>(`${contentPath(spaceId, itemId)}/blocks/${blockId}`, request)
 export const reorderKnowledgeContentBlocks = (spaceId: string, itemId: string, request: { baseVersionNo: number; blockIds: string[] }) => apiPost<KnowledgeContentDetail>(`${contentPath(spaceId, itemId)}/blocks/reorder`, request)

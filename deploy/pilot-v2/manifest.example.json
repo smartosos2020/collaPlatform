@@ -1,0 +1,174 @@
+{
+  "schemaVersion": 1,
+  "pilotId": "replace-with-pilot-id",
+  "mode": "real",
+  "environment": {
+    "projectName": "colla-platform-pilot",
+    "baseUrl": "https://replace-with-pilot-host",
+    "dataPrefix": "PILOT-V2-",
+    "workspaceLabel": "pilot-v2"
+  },
+  "schedule": {
+    "kickoffAt": "2026-08-03T09:30:00+08:00",
+    "startAt": "2026-08-03T10:00:00+08:00",
+    "endAt": "2026-08-14T18:00:00+08:00",
+    "dailyWindow": "09:30-18:00 Asia/Shanghai",
+    "feedbackChannel": "replace-with-feedback-channel"
+  },
+  "participants": [
+    {
+      "participantId": "owner-01",
+      "username": "replace-with-owner-username",
+      "displayName": "replace-with-owner-name",
+      "email": "replace-with-owner-email",
+      "participantKind": "human",
+      "pilotRole": "owner",
+      "platformRole": "admin",
+      "departmentCode": "pilot-ops",
+      "responsibilities": ["Go/No-Go decision", "P0/P1 escalation"],
+      "availability": "Daily 09:30-18:00",
+      "feedbackChannel": "replace-with-feedback-channel",
+      "consentConfirmed": false
+    },
+    {
+      "participantId": "admin-01",
+      "username": "replace-with-admin-username",
+      "displayName": "replace-with-admin-name",
+      "email": "replace-with-admin-email",
+      "participantKind": "human",
+      "pilotRole": "admin",
+      "platformRole": "admin",
+      "departmentCode": "pilot-ops",
+      "responsibilities": ["Account and permission administration", "Daily readiness review"],
+      "availability": "Daily 09:30-18:00",
+      "feedbackChannel": "replace-with-feedback-channel",
+      "consentConfirmed": false
+    },
+    {
+      "participantId": "member-01",
+      "username": "replace-with-member-01-username",
+      "displayName": "replace-with-member-01-name",
+      "email": "replace-with-member-01-email",
+      "participantKind": "human",
+      "pilotRole": "member",
+      "platformRole": "member",
+      "departmentCode": "pilot-product",
+      "responsibilities": ["Project and approval scenarios", "Daily feedback"],
+      "availability": "At least 60 minutes per day",
+      "feedbackChannel": "replace-with-feedback-channel",
+      "consentConfirmed": false
+    },
+    {
+      "participantId": "member-02",
+      "username": "replace-with-member-02-username",
+      "displayName": "replace-with-member-02-name",
+      "email": "replace-with-member-02-email",
+      "participantKind": "human",
+      "pilotRole": "member",
+      "platformRole": "member",
+      "departmentCode": "pilot-engineering",
+      "responsibilities": ["Knowledge and Base scenarios", "Daily feedback"],
+      "availability": "At least 60 minutes per day",
+      "feedbackChannel": "replace-with-feedback-channel",
+      "consentConfirmed": false
+    },
+    {
+      "participantId": "member-03",
+      "username": "replace-with-member-03-username",
+      "displayName": "replace-with-member-03-name",
+      "email": "replace-with-member-03-email",
+      "participantKind": "human",
+      "pilotRole": "member",
+      "platformRole": "member",
+      "departmentCode": "pilot-engineering",
+      "responsibilities": ["IM and search scenarios", "Daily feedback"],
+      "availability": "At least 60 minutes per day",
+      "feedbackChannel": "replace-with-feedback-channel",
+      "consentConfirmed": false
+    }
+  ],
+  "organization": {
+    "departments": [
+      { "code": "pilot-root", "name": "PILOT-V2 Team", "parentCode": null, "sortOrder": 900 },
+      { "code": "pilot-ops", "name": "Pilot Operations", "parentCode": "pilot-root", "sortOrder": 10 },
+      { "code": "pilot-product", "name": "Pilot Product", "parentCode": "pilot-root", "sortOrder": 20 },
+      { "code": "pilot-engineering", "name": "Pilot Engineering", "parentCode": "pilot-root", "sortOrder": 30 }
+    ],
+    "userGroup": {
+      "code": "pilot-v2-participants",
+      "name": "PILOT-V2 Participants",
+      "description": "Participants in the current controlled pilot",
+      "groupType": "normal"
+    }
+  },
+  "templates": {
+    "project": {
+      "projectKey": "PILOTV2",
+      "name": "PILOT-V2 Collaboration Trial",
+      "description": "Controlled cross-module pilot tasks"
+    },
+    "knowledge": {
+      "code": "pilot-v2-handbook",
+      "name": "PILOT-V2 Handbook",
+      "description": "Pilot scope, scenarios, decisions, and daily notes",
+      "templateTitle": "Daily Pilot Note",
+      "templateDescription": "Daily observations and blockers",
+      "templateCategory": "pilot",
+      "templateContent": "# Daily Pilot Note\n\n## Completed scenarios\n\n## Blockers\n\n## Feedback"
+    },
+    "base": {
+      "name": "PILOT-V2 Feedback Register",
+      "description": "Structured pilot observations and issue references",
+      "tableName": "Observations"
+    },
+    "approval": {
+      "formKey": "leave",
+      "formName": "请假申请"
+    }
+  },
+  "scenarios": [
+    { "scenarioId": "IM-01", "module": "im", "title": "Discuss a blocker and convert the message into an issue", "ownerParticipantId": "member-03", "successCriteria": "Source message and target issue can be traced in both directions", "targetMinutes": 20 },
+    { "scenarioId": "PROJECT-01", "module": "project", "title": "Create, assign, update, comment, and verify an issue", "ownerParticipantId": "member-01", "successCriteria": "Status, assignee, comments, and verification history are consistent", "targetMinutes": 30 },
+    { "scenarioId": "KNOWLEDGE-01", "module": "knowledge", "title": "Create a structured team note and share it read-only", "ownerParticipantId": "member-02", "successCriteria": "Editor and viewer observe the expected content and permission boundary", "targetMinutes": 30 },
+    { "scenarioId": "BASE-01", "module": "base", "title": "Record, filter, and export pilot observations", "ownerParticipantId": "member-02", "successCriteria": "Records, filtered results, and CSV export are consistent", "targetMinutes": 30 },
+    { "scenarioId": "APPROVAL-01", "module": "approval", "title": "Submit, transfer, approve, and withdraw controlled requests", "ownerParticipantId": "member-01", "successCriteria": "Todos, action history, and notifications remain consistent", "targetMinutes": 30 },
+    { "scenarioId": "SEARCH-01", "module": "search", "title": "Find permitted pilot objects across modules", "ownerParticipantId": "member-03", "successCriteria": "Permitted results open correctly and restricted objects are not disclosed", "targetMinutes": 20 }
+  ],
+  "dataPolicy": {
+    "classification": "synthetic-or-explicitly-consented-business-data",
+    "retentionDays": 30,
+    "forbiddenCategories": ["production credentials", "access tokens", "government identifiers", "payment data", "medical data", "unapproved customer data"],
+    "cleanupOwnerParticipantId": "admin-01",
+    "testDataPrefixRequired": true
+  },
+  "issuePolicy": {
+    "feedbackProjectKey": "PILOTV2",
+    "requiredFields": ["severity", "reporter", "module", "context", "reproductionSteps", "expected", "actual", "evidence", "owner"],
+    "levels": [
+      { "code": "P0", "definition": "Data loss, security breach, or pilot-wide outage", "responseMinutes": 15, "resolutionHours": 4 },
+      { "code": "P1", "definition": "Core scenario blocked for one or more participants with no workaround", "responseMinutes": 30, "resolutionHours": 8 },
+      { "code": "P2", "definition": "Scenario degraded but a safe workaround exists", "responseMinutes": 240, "resolutionHours": 48 },
+      { "code": "P3", "definition": "Minor usability, copy, or improvement request", "responseMinutes": 1440, "resolutionHours": 120 }
+    ],
+    "stopConditions": ["Any confirmed P0", "Any uncontained permission leak", "Two open P1 issues affecting the same core scenario", "Restore or audit evidence becomes unavailable"]
+  },
+  "metrics": [
+    { "code": "activeParticipantRate", "description": "Participants completing at least one assigned scenario", "operator": ">=", "threshold": 0.8, "source": "audit-and-scenario-log" },
+    { "code": "scenarioCompletionRate", "description": "Assigned scenarios completed successfully", "operator": ">=", "threshold": 0.85, "source": "scenario-log" },
+    { "code": "criticalErrorCount", "description": "Open P0 or P1 issues", "operator": "=", "threshold": 0, "source": "feedback-project" },
+    { "code": "blockedParticipantCount", "description": "Participants blocked for more than one business day", "operator": "=", "threshold": 0, "source": "daily-status" },
+    { "code": "satisfactionScore", "description": "Average participant score from 1 to 5", "operator": ">=", "threshold": 3.5, "source": "end-survey" }
+  ],
+  "kickoffApproval": {
+    "confirmationBasis": "pending",
+    "scopeConfirmedBy": [],
+    "feedbackConfirmedBy": [],
+    "stopConditionsConfirmedBy": [],
+    "acceptedAt": null,
+    "releaseCommit": "replace-with-40-character-release-commit",
+    "backupManifest": "replace-with-verified-backup-manifest",
+    "sourceSnapshot": "replace-with-64-character-source-snapshot",
+    "limitationsAcknowledged": [],
+    "decision": "pending"
+  }
+}

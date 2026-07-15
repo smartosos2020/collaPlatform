@@ -5,6 +5,9 @@ import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.Knowle
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContentBlock;
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContentBlockDraft;
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContentCollaborationState;
+import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeCollaborationBinaryState;
+import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeCollaborationStoredUpdate;
+import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeCollaborationTicketRecord;
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContentPermission;
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContentShareLink;
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContentRelation;
@@ -88,6 +91,29 @@ public interface KnowledgeContentRepository {
     );
 
     void markCollaborationStateSaved(UUID workspaceId, UUID itemId, long serverClock);
+
+    void createCollaborationTicket(
+        String tokenHash, UUID workspaceId, UUID itemId, UUID userId, UUID deviceId,
+        String clientId, Instant expiresAt
+    );
+
+    Optional<KnowledgeCollaborationTicketRecord> findActiveCollaborationTicket(String tokenHash);
+
+    Optional<KnowledgeCollaborationBinaryState> findCollaborationBinaryState(UUID workspaceId, UUID itemId);
+
+    List<KnowledgeCollaborationStoredUpdate> listCollaborationUpdatesAfter(UUID workspaceId, UUID itemId, long sequence);
+
+    long appendCollaborationUpdate(
+        UUID workspaceId, UUID itemId, String updateId, byte[] payload, UUID actorId,
+        String clientId, int schemaVersion
+    );
+
+    void storeCollaborationSnapshot(
+        UUID workspaceId, UUID itemId, byte[] snapshot, byte[] stateVector, String snapshotHash,
+        int schemaVersion, String canonicalSnapshot, String clientId, UUID actorId
+    );
+
+    boolean markCollaborationAuditCheckpoint(UUID workspaceId, UUID itemId, Instant cutoff);
 
     List<KnowledgeContentVersion> listVersions(UUID workspaceId, UUID itemId);
 

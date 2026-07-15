@@ -1,7 +1,7 @@
 ---
 title: Admin Operations Runbook
 status: active
-updated_at: 2026-07-12
+updated_at: 2026-07-13
 ---
 
 # Admin Operations Runbook
@@ -45,7 +45,7 @@ The check validates `/api/health`, `/actuator/health`, and direct-backend `/actu
 powershell -NoProfile -ExecutionPolicy Bypass -File deploy/scripts/backup.ps1
 ```
 
-The backup script writes a timestamped directory under `.local-backups/` containing `postgres.sql`, `minio-data.tgz`, `manifest.json`, and `manifest.md`.
+The backup script writes a timestamped directory under `.local-backups/` containing `postgres.sql`, `minio-data.tgz`, `manifest.json`, and `manifest.md`. Manifest v2 records source project/commit, Flyway version, key row counts, MinIO object count, sizes and hashes. The application is quiesced and MinIO is stopped while its raw volume is copied.
 
 ## Restore Drill
 
@@ -53,7 +53,7 @@ The backup script writes a timestamped directory under `.local-backups/` contain
 powershell -NoProfile -ExecutionPolicy Bypass -File deploy/scripts/restore-drill.ps1 -BackupPath .local-backups\YYYYMMDD-HHMMSS
 ```
 
-This validates hashes and compose config only. Destructive restore requires both `-RunRestore` and `-ConfirmRestore`.
+This validates hashes and compose config only. A destructive drill additionally requires `-RunRestore`, `-ConfirmRestore`, an explicit `-ExpectedProjectName`, and a separate target named `colla-platform-drill-<id>`. Never point a drill at the source project, its ports, or its volumes.
 
 ## Knowledge Base Checks
 
@@ -64,7 +64,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/knowledge-consistenc
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/knowledge-naming-guard.ps1
 ```
 
-`kb:consistency-check` queries the current V047 space, item, block, version, permission, search and object-reference model without writing data. `kb:naming-guard` prevents active source and browser tests from reintroducing the deleted document product model, routes and compatibility types. Historical migration, block-v2 trial and compatibility-cleanup scripts are archived and are not current release checks.
+`kb:consistency-check` queries the current knowledge space, item, block, version, permission, search and object-reference model without writing data. `kb:naming-guard` prevents active source and browser tests from reintroducing the deleted document product model, routes and compatibility types. Historical migration, block-v2 trial and compatibility-cleanup scripts are archived and are not current release checks.
 
 Treat `Decision: GO-WITH-REVIEW` as acceptable only when each WARN has an explicit compatibility or cleanup decision in the current execution report. Treat any FAIL as a release blocker.
 
@@ -89,13 +89,17 @@ blocker rather than a successful health result.
 
 ## Release And Rollback Decision Tree
 
-1. Code-only rollback: use when the release is incompatible only at the application layer, no migration or data corruption is observed, and the target Git ref is known. Run `rollback.ps1` without `-RestoreData`, then run health and smoke checks.
-2. Compatibility rollback: use when a migration is backward-compatible and the previous application can still read the current schema. Keep the database, roll back the application image/ref, and verify health, login, and the affected route before deciding whether a data restore is needed.
+1. Code-only rollback: use when the release is incompatible only at the application layer, no migration or data corruption is observed, and the previous immutable server/web image pair is available. Run `rollback.ps1` without `-RestoreData`, then run health and smoke checks.
+2. Compatibility rollback: use when a migration is backward-compatible and the previous application can still read the current schema. Keep the database, roll back to the version-tagged application images, and verify health, login, and the affected route before deciding whether a data restore is needed.
 3. Data rollback: use only for corruption, deletion, or an unrecoverable migration. Select a manifest-verified backup, run the restore drill, obtain explicit confirmation, restore PostgreSQL and MinIO, compare key object counts, then run health and smoke checks.
 
 Never combine a code rollback and data restore by default. A data restore is
 destructive and requires `-ConfirmRollback`, `-RestoreData`, and a concrete
 `-BackupPath`.
+
+Rollback images must not use `latest`; both must expose the same full OCI
+`org.opencontainers.image.revision`. The script deploys with `--no-build` and
+does not switch or modify the Git worktree.
 
 ## Release Gate And CI Boundary
 
@@ -103,6 +107,17 @@ The current release gate is a manually executed single-node gate:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File deploy/scripts/release-check.ps1 -EnvFile deploy/.env.prod
+```
+
+A formal pass additionally requires a clean worktree, full quality gate, a
+recent manifest-v2 backup matching the target project, immutable app image
+tags, a full source commit, and successful image build. `-AllowDirty` or any
+skip flag requires `-AllowPartial` and must report `PARTIAL`, never `PASS`.
+
+Run the non-destructive safety contract before release or restore work:
+
+```powershell
+pnpm ops:contract-check
 ```
 
 `.github/workflows/ci.yml` is a local reference template excluded by the
@@ -114,7 +129,7 @@ and smoke steps and retain their reports under `.local-reports/`.
 ## Desktop Drill Record
 
 For a release/rollback rehearsal, record the operator, start/end timestamps,
-Git ref, backup manifest, commands, elapsed time, health result, key object
+source commit, immutable image IDs, backup manifest, commands, elapsed time, health result, key object
 counts, and every warning. A drill is successful only when the runbook reaches
 health plus smoke verification; a dry-run hash check alone is not a restore
 success.

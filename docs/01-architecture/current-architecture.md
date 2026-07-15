@@ -14,7 +14,7 @@ Colla Platform 当前是模块化单体：
 
 - 后端：单个 Spring Boot 应用，按业务模块分包。
 - 前端：单个 React SPA，用户工作台和管理后台使用独立 Shell、导航和路由边界。
-- 数据库：单个 PostgreSQL schema，通过 Flyway V001-V047 演进。
+- 数据库：单个 PostgreSQL schema，通过 Flyway V001-V049 演进。
 - 基础设施：Redis、MinIO、WebSocket、平台对象、权限、事件、审计和搜索由模块共享。
 - 交付：本地 Docker 依赖；生产基线是单节点 Docker Compose + Nginx。
 
@@ -104,7 +104,7 @@ Colla Platform 当前是模块化单体：
 
 ## 数据库迁移
 
-当前 Flyway 版本为 V047。历史迁移文件不可修改。
+当前 Flyway 版本为 V049。历史迁移文件不可修改。
 
 知识库最后四个迁移：
 
@@ -114,6 +114,8 @@ Colla Platform 当前是模块化单体：
 | V045 | 删除旧正文快照和双写字段，确立 blocks/块快照事实来源 |
 | V046 | 把对象链接、ACL、通知、搜索和关系迁为规范知识语义 |
 | V047 | 删除旧权限和兼容结构，并阻止活动表重新写入旧产品类型 |
+| V048 | 注册项目平台对象类型及规范路由元数据 |
+| V049 | 增加用户通知偏好及用户维度索引 |
 
 数据库规则：
 
@@ -201,7 +203,7 @@ Colla Platform 当前是模块化单体：
 - 安全扫描、Flyway 顺序、生成物、文档结构和工作循环契约。
 - 知识命名守卫。
 
-最近一次路线级验证为 KB-NAME-M11：后端 60/60，通过 V001-V047 空库迁移、后端 package、前端 build、安全审计、命名和文档门禁；前端 lint 为 0 error、3 个既有 Hook dependency warning。
+最近一次路线级全量验证为 KB-NAME-M11：后端 60/60，通过 V001-V047 空库迁移、后端 package、前端 build、安全审计、命名和文档门禁；PILOT-V2 后续目标验证已应用 V048-V049，新的 V001-V049 路线级全量验证按路线计划在 M11 执行。
 
 ## 当前架构 Gap
 

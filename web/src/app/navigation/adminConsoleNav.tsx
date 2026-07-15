@@ -101,6 +101,13 @@ export const adminPages: AdminPageNavEntry[] = [
     section: '应用配置',
     description: 'Base、项目、消息、审批的配置、策略、审计和治理边界',
   },
+  {
+    key: '/admin/system-settings',
+    icon: <SettingOutlined />,
+    label: '系统设置',
+    section: '系统设置',
+    description: '系统级基础配置和运行参数查看',
+  },
 ]
 
 export const groupedAdminNavItems: MenuProps['items'] = [
@@ -137,6 +144,6 @@ export const groupedAdminNavItems: MenuProps['items'] = [
   {
     type: 'group',
     label: '系统设置',
-    children: [{ key: '/admin/system-settings', icon: <SettingOutlined />, label: '系统设置' }],
+    children: [adminPages[11]],
   },
 ]

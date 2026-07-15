@@ -71,3 +71,8 @@ colla:
     password: admin123456
     display-name: Administrator
     email: admin@colla.local
+  knowledge-collaboration:
+    public-url: ${COLLA_COLLABORATION_PUBLIC_URL:ws://localhost:1234}
+    internal-secret: ${COLLA_COLLABORATION_INTERNAL_SECRET:colla-local-collaboration-secret}
+    ticket-ttl: 5m
+    max-update-bytes: 1048576

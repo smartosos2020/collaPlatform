@@ -1,6 +1,6 @@
 ---
 title: PILOT-V2-M8 Execution Report
-status: archived
+status: completed
 milestone: PILOT-V2-M8
 updated_at: 2026-07-13
 ---
@@ -10,78 +10,97 @@ updated_at: 2026-07-13
 ## Scope
 
 - PILOT-V2-M8-T01 到 PILOT-V2-M8-T08
-
-本轮只推进 M8 T01–T08；T09 不在本轮范围，继续 Pending。
+- 本报告替换首次执行时证据不足的结论；M8 经审计重开后重新实现并复验。
 
 ## Verification Contract
 
 | Task | Required verification level | Browser evidence kind | Environment | Mock browser allowed | Required real flow |
 | --- | --- | --- | --- | --- | --- |
-| PILOT-V2-M8-T01 | integration | not-required | not-required | No | 真实 PostgreSQL/MinIO 备份生成 manifest、SHA-256 和保留策略检查，确认清理路径留在仓库备份根目录。 |
-| PILOT-V2-M8-T02 | integration | not-required | not-required | No | 真实隔离 Compose 目标执行 PostgreSQL/MinIO restore，比较关键表计数和非系统对象数。 |
-| PILOT-V2-M8-T03 | integration | not-required | not-required | No | 真实新启动服务检查 API health、Actuator、Prometheus，并用 X-Colla-Request-Id 关联服务日志。 |
-| PILOT-V2-M8-T04 | static | not-required | not-required | No | 真实执行 release-check，验证环境配置、compose、质量门禁、备份、构建和健康步骤均有明确入口。 |
-| PILOT-V2-M8-T05 | static | not-required | not-required | No | 按真实 runbook 决策树区分代码回退、兼容回退和数据恢复，不默认同时回退代码与数据。 |
-| PILOT-V2-M8-T06 | static | not-required | not-required | No | 真实检查本地脚本、被忽略的 CI 模板和远程仓库边界，确认人工步骤可复制。 |
-| PILOT-V2-M8-T07 | static | not-required | not-required | No | 真实评估 `.github/workflows/ci.yml` 模板与本地门禁差异，输出保留人工门禁的风险接受决定。 |
-| PILOT-V2-M8-T08 | integration | not-required | not-required | No | 真实桌面演练执行备份、dry-run、隔离恢复、health、发布检查并记录耗时、问题和证据。 |
+| PILOT-V2-M8-T01 | integration | not-required | isolated-compose | No | 真实 PostgreSQL/MinIO 生成 manifest v2、关键计数、SHA-256；写入期间停止应用/MinIO，保留策略只处理已验证目录。 |
+| PILOT-V2-M8-T02 | integration | not-required | isolated-compose | No | 使用独立 Compose project、端口和 volumes 完整恢复 PostgreSQL/MinIO，自动比较关键表与对象计数。 |
+| PILOT-V2-M8-T03 | integration | not-required | isolated-compose | No | 校验全部 Compose 服务、API health 语义、Actuator、request-id 回显和服务日志关联。 |
+| PILOT-V2-M8-T04 | integration | not-required | isolated-compose | No | 校验生产配置、不可变镜像标签、源码 revision、完整服务、备份门禁、质量门禁和镜像构建；跳过项只能得到 PARTIAL。 |
+| PILOT-V2-M8-T05 | integration | not-required | isolated-compose | No | 使用已构建的 server/web 镜像执行 `--no-build` 回滚，核对两镜像 revision 并通过健康检查，不切换 Git 工作树。 |
+| PILOT-V2-M8-T06 | static | not-required | not-required | No | docs、治理/运维脚本纳入版本管理；环境、备份、日志、报告和密钥继续排除。 |
+| PILOT-V2-M8-T07 | static | not-required | not-required | No | 远程 CI 未启用时明确人工门禁和风险，不把本地模板描述为远程 required check。 |
+| PILOT-V2-M8-T08 | integration | not-required | isolated-compose | No | 连续完成备份、restore dry-run、真实隔离 restore、health、release diagnostic 和镜像 rollback，保留本地证据。 |
 
 ## Completed Items
 
 | Task | Status | Evidence |
 | --- | --- | --- |
-| PILOT-V2-M8-T01 | Done | `.local-backups/m8-cycle/20260713-175116` 生成 PostgreSQL/MinIO 包、manifest 和双文件 SHA-256；RetentionDays=1 检查通过。 |
-| PILOT-V2-M8-T02 | Done | 隔离 `local-reports` Compose restore 完成，PostgreSQL 和 MinIO 关键计数一致。 |
-| PILOT-V2-M8-T03 | Done | 新服务 8081 的 API、Actuator、Prometheus 和 request-id 日志关联通过；旧长驻进程异常已记录为 blocker。 |
-| PILOT-V2-M8-T04 | Done | `release-check.ps1` 使用示例生产环境配置通过，发布前清单已写入 runbook。 |
-| PILOT-V2-M8-T05 | Done | admin-operations runbook 固化三分支回退决策树和显式确认规则。 |
-| PILOT-V2-M8-T06 | Done | 本地 `scripts/`、`deploy/scripts/` 与被忽略 `.github` 模板边界已写明。 |
-| PILOT-V2-M8-T07 | Done | 远程 CI 保持模板状态，未声称存在远程合并门禁；人工门禁风险接受已记录。 |
-| PILOT-V2-M8-T08 | Done | 桌面演练记录备份、restore、health、release gate 耗时、计数、警告和清理结果。 |
+| PILOT-V2-M8-T01 | Done | `.local-backups/m8-remediation/20260713-192700`：manifest v2、Flyway V049、PostgreSQL 六类计数、MinIO 17 对象、双文件 SHA-256；未完成目录 `20260713-192036` 未被 retention 误删。 |
+| PILOT-V2-M8-T02 | Done | `colla-platform-drill-m8r1` 独立项目在 18080/18443 完成真实恢复；`.local-reports/restore-drill-20260713-194308.md` 与 `restore-20260713-194309.md`。 |
+| PILOT-V2-M8-T03 | Done | `.local-reports/health-check-20260713-194420.md` 及 `health-check-20260713-195440.md`：六服务健康、API payload、Actuator 和日志关联通过。 |
+| PILOT-V2-M8-T04 | Done | `.local-reports/release-check-20260713-195319.md` 明确为 PARTIAL；镜像构建与 OCI revision 通过，跳过备份/质量门禁没有被误报为正式放行。 |
+| PILOT-V2-M8-T05 | Done | `.local-reports/rollback-20260713-195421.md`：版本化镜像 `m8r0` 执行 `--no-build` 回滚，revision 一致且健康通过，当前 Git 工作树未切换。 |
+| PILOT-V2-M8-T06 | Done | 当前 `.gitignore` 仅排除 `.local-*`、环境/密钥和运行产物；docs、scripts、deploy scripts 均为版本化交付内容。 |
+| PILOT-V2-M8-T07 | Done | runbook 明确远程 CI 未生效，当前采用可复制的人工 release gate，不声称存在远程合并门禁。 |
+| PILOT-V2-M8-T08 | Done | 本次重开执行形成完整桌面演练链路；`pnpm ops:contract-check` 8/8 通过，隔离栈最终清理前保持可复核。 |
 
 ## Acceptance Evidence
 
 | Task | Acceptance criterion | Implementation evidence | Automated evidence | Browser evidence | Status |
 | --- | --- | --- | --- | --- | --- |
-| PILOT-V2-M8-T01 | PostgreSQL/MinIO 备份可验证且不会越界清理 | `deploy/scripts/backup.ps1` 生成双介质 manifest、大小和 SHA-256，并限制 retention 根目录 | backup 实跑成功；restore-drill 对两个文件 hash 通过；RetentionDays=1 运行通过 | not-required：PowerShell/Docker 运维任务无浏览器界面 | Done |
-| PILOT-V2-M8-T02 | 恢复后健康检查和关键对象计数一致 | `restore.ps1` 显式确认、manifest hash 校验、PostgreSQL/MinIO 恢复；`.local-reports/m8-restore-evidence.md` | users 5→5、workspaces 1→1、bases 1→1、projects 1→1、knowledge spaces 27→27、audit logs 296→296；MinIO 对象 17→17 | not-required：隔离恢复目标无浏览器界面 | Done |
-| PILOT-V2-M8-T03 | 管理员可从请求定位到服务日志 | `health-check.ps1` 检查 API/Actuator/Prometheus；admin runbook 固化 request-id 命令 | 8081 health-check 三项 PASS；X-Colla-Request-Id 在后端 JSON 日志中命中 | not-required：服务排障命令无浏览器界面 | Done |
-| PILOT-V2-M8-T04 | 配置、迁移、备份、构建、端口和依赖均有发布门禁 | `release-check.ps1` 与 deploy/admin runbook 发布清单 | release-check 使用 `.env.prod.example`、AllowDirty、SkipQualityGate/SkipImageBuild 通过；正式质量门禁另有记录 | not-required：发布门禁无浏览器界面 | Done |
-| PILOT-V2-M8-T05 | 区分只回代码、兼容回退和恢复数据 | admin-operations runbook 三分支决策树；rollback/restore 均要求显式确认 | 静态检查 rollback/restore 的 Confirm 参数和 BackupPath 防线；restore 实演成功 | not-required：回退决策为 runbook/CLI 流程 | Done |
-| PILOT-V2-M8-T06 | 远程不引用缺失脚本，人工门禁步骤可复制执行 | scripts README、admin-operations runbook 和 `.github` 忽略边界 | `git check-ignore .github/workflows/ci.yml` 与本地脚本入口核对通过 | not-required：仓库与脚本边界无浏览器界面 | Done |
-| PILOT-V2-M8-T07 | 远程 CI 评估结论与人工门禁风险接受可复核 | CI 模板仅作本地参考；runbook 明确 Java/Node/pnpm/Docker/测试/build 人工步骤 | `.github/workflows/ci.yml` 模板内容与路线图远程门禁声明一致；本地 release-check 通过 | not-required：CI 决策无浏览器界面 | Done |
-| PILOT-V2-M8-T08 | 按 runbook 执行成功并记录耗时、问题和证据 | `.local-reports/m8-desktop-drill.md` 记录备份、dry-run、隔离 restore、health、release gate 和 warning | 桌面演练各阶段成功；隔离恢复计数和对象数一致；共享数据未恢复或重置 | not-required：桌面运维演练无浏览器界面 | Done |
+| PILOT-V2-M8-T01 | PostgreSQL/MinIO 备份可验证且不会越界清理 | `backup.ps1`、`operations-common.ps1`：应用静默、MinIO 停写、manifest v2、严格子路径和已验证目录 retention | 真实备份成功；manifest 文件大小/哈希复核；不完整目录保留 | not-required：CLI 数据保护流程 | Done |
+| PILOT-V2-M8-T02 | 恢复后健康检查和关键对象计数一致 | `restore.ps1` 要求目标名和精确确认文本；`restore-drill.ps1` 只允许 `colla-platform-drill-*` 且禁止源/目标同项目 | users 5、workspaces 1、projects 1、bases 1、knowledge spaces 27、audit logs 296、MinIO 17 全部匹配 | not-required：隔离 Compose 恢复流程 | Done |
+| PILOT-V2-M8-T03 | 管理员可从请求定位到服务日志 | `health-check.ps1` 校验 Compose 状态、API 业务字段、request-id、Actuator 和可选日志关联 | 两次隔离 health 实跑通过；自定义 request-id 在 server 日志命中 | not-required：服务诊断流程 | Done |
+| PILOT-V2-M8-T04 | 配置、迁移、备份、构建、端口和依赖均有发布门禁 | `release-check.ps1`、镜像 digest、`SERVER_IMAGE/WEB_IMAGE/SOURCE_COMMIT` 契约和 artifact JSON | 镜像构建成功；两镜像 revision 匹配 HEAD；PARTIAL 语义符合跳过项 | not-required：发布门禁无浏览器 UI | Done |
+| PILOT-V2-M8-T05 | 区分只回代码、兼容回退和恢复数据 | `rollback.ps1` 改为不可变镜像输入；数据恢复仍为独立显式开关；runbook 三分支决策树 | 镜像回滚重建 server/web 后六服务、API、Actuator、日志关联通过 | not-required：回滚为 CLI 流程 | Done |
+| PILOT-V2-M8-T06 | 版本管理边界与仓库事实一致 | `.gitignore`、deploy/scripts、scripts README | `git status` 只显示预期版本化改动，`.local-*` 证据未进入 Git | not-required：仓库治理任务 | Done |
+| PILOT-V2-M8-T07 | CI 结论与风险接受可复核 | admin operations runbook 明确当前人工门禁和远程 CI 边界 | 文档不再把被忽略模板称为远程门禁 | not-required：CI 决策任务 | Done |
+| PILOT-V2-M8-T08 | 按 runbook 执行并记录问题、修复和证据 | deploy README、admin runbook 和本报告同步真实参数及判断语义 | contract 8/8、checkpoint compile/lint、备份/恢复/构建/回滚/健康均通过 | not-required：运维桌面演练 | Done |
+
+## Remediation Findings
+
+首次 M8 执行的以下结论不成立，已在本轮修复：
+
+- 恢复时应用和 MinIO 仍可能写入，原始 volume 覆盖不具备一致性保证。
+- restore drill 没有强制独立项目，可能误指向源环境。
+- health 只看可达性，没有验证 payload、request-id 回显和日志关联。
+- release check 可跳过质量、镜像和备份后仍被描述为通过。
+- rollback 在当前开发仓库切换 Git ref 并临时重建，既会污染工作树，也无法保证旧构建链仍可用。
+- Web Dockerfile 的复制/安装顺序导致生产镜像无法从干净上下文构建。
+- Compose 应用服务缺少健康检查，且基础镜像存在漂移标签。
+- 工作循环 `FrontendStrategy=lint` 成功执行后仍被错误判为不支持。
 
 ## Code Changes
 
-- Backend: 本轮无业务代码变更；用新启动实例验证现有 health、Actuator、Prometheus 和 request logging。
-- Frontend: 无前端变更；M8 验收对象是单节点运维、发布和回退流程。
-- Runbooks: 扩展 `docs/05-runbooks/admin-operations.md`，加入 request-id 排障、三分支回退决策树、发布/CI 边界和桌面演练记录要求。
-- Scripts: 复核并实跑 `deploy/scripts/backup.ps1`、`restore-drill.ps1`、`restore.ps1`、`health-check.ps1`、`release-check.ps1`、`rollback.ps1` 的确认和路径边界。
-- Database/Storage: 使用共享数据生成只读备份，恢复写入隔离 PostgreSQL 和 MinIO；共享数据未执行 restore/reset。
+- Deployment: 固定依赖镜像 digest，应用镜像使用版本化 tag 和源码 revision label，server/web/nginx 增加健康检查。
+- Backup/restore: 增加一致性停写、manifest v2、哈希/计数、隔离目标、精确确认和恢复日志。
+- Release/rollback: 正式与部分门禁分离；回滚改为不可变镜像和 `--no-build`，不再操作 Git 工作树。
+- Verification: 新增 `operations-contract-check.ps1` 及 `pnpm ops:contract-check`，修复工作循环 lint 策略分支。
+- Backend/frontend business logic: 无业务接口、数据结构或页面行为变更。
 
 ## Documentation Changes
 
 | Document | Action | Reason |
 | --- | --- | --- |
-| `docs/02-roadmap/current-roadmap.md` | M8 T01–T08 set Done; T09 remains Pending | 与本轮连续范围和运维证据一致 |
-| `docs/05-runbooks/admin-operations.md` | Added request-id troubleshooting, rollback tree, CI boundary, desktop drill record | 让人工发布/回退步骤可复制、可审计 |
-| `docs/90-reports/pilot-v2-m8-execution-report.md` | Replaced template with v2 contract and evidence matrix | 任务级门禁和残余风险可复核 |
+| `deploy/README.md` | 重写发布、隔离恢复和镜像回滚命令 | 参数与脚本真实契约一致 |
+| `docs/05-runbooks/admin-operations.md` | 增加 manifest v2、不可变镜像和 PARTIAL 规则 | 防止把诊断演练当正式放行 |
+| `scripts/README.md` | 增加运维契约入口并更新 V049 | 活动脚本与当前 schema 一致 |
+| `docs/02-roadmap/current-roadmap.md` | 移除不存在的 M8-T09，修正 V049 基线 | 路线状态与代码事实一致 |
 
 ## Validation
 
-- Backend tests: M8 无业务代码变更；`release-check` 和正式 finish stage 使用目标后端集成测试集合，Tests run 36, Failures 0, Errors 0。
-- Frontend build: stage finish detected no frontend changes (`affected=none`) and therefore skipped frontend lint/build；本轮无前端变更。
-- Local quality gate: finish stage `.local-reports/quality-gate-20260713-180202.md` reports PASS；目标后端测试 36/36 通过，工具链检查通过，无 warning/failure；报告修订后 full 静态/文档契约复核 `.local-reports/quality-gate-20260713-180538.md` 亦 PASS（后端验证沿用前述 finish 证据）。
-- Browser smoke: not-required；M8 是 PowerShell/Docker 运维流程，没有浏览器界面；真实证据由隔离 restore、health、release-check 和桌面演练提供。
+- Operations contract: `pnpm ops:contract-check`，8/8 passed。
+- Work-cycle finish (`stage`): `KnowledgeSchemaMigrationIntegrationTests` 1/1 passed，Testcontainers 从空库成功应用 49 个迁移至 V049；前端 lint、build、chunk budget 和 route lazy-loading 全部 passed。
+- Image build: server/web 生产镜像从干净 Docker context 构建成功，均带 revision `dd0d9a9b1b14785bfaf84f4618393647378721f6`。
+- Restore: 独立 Compose project 真实恢复成功，Flyway V049、六类数据库计数和 MinIO 17 对象一致。
+- Rollback: 使用本地版本化镜像标签执行 `--no-build` 应用回滚，健康和日志关联通过。
+- Browser smoke: not-required；本轮没有用户界面或业务行为改动，真实证据来自 Docker/PowerShell 隔离运维流程。
+- Full `mvn test` / Flyway empty-db suite: 按当前路线规则留在 PILOT-V2-M11，不在 M8 重复执行。
 
 ## Remaining Gaps
 
 | Related task | Gap | Acceptance effect | Tracking |
 | --- | --- | --- | --- |
-| N/A | 本轮 T01–T08 无验收阻塞缺口；旧长驻共享后端的 Actuator 连接池卡住已记录为需重启/诊断的运行风险。 | non-blocking | `.local-reports/m8-desktop-drill.md`；M8-T09 仍待后续范围。 |
+| PILOT-V2-M9-T08 | 本轮工作树有改动，因此 release check 正确输出 PARTIAL；没有形成可正式发布的 clean-commit 制品。 | 不影响 M8 门禁机制验收；阻止将本次镜像当正式发布物。 | 试运行冻结提交后，以 clean HEAD、完整质量门禁和目标环境新备份执行正式 release check。 |
+| PILOT-V2-M11-T07 | 回滚演练的 `m8r0/m8r1` 为相同内容的两个标签，验证了制品选择、重建和健康链路，没有验证真实旧版本的业务兼容性。 | 不阻塞 M8 机制准入；正式 Go/No-Go 前必须用连续两个真实 release artifact 复验。 | M11 最终发布回退复核。 |
+| N/A | 远程 CI 仍未启用。 | 人工操作遗漏风险继续存在，但已明确接受且不再误报。 | 由项目所有者决定是否另立 CI 路线。 |
 
 ## Next Steps
 
-- M8-T09 仍 Pending；如继续推进需另起 AI 工作循环。
-- 共享后端 Actuator 连接池异常应在下一次服务重启/运行观察中确认原因，不得作为健康通过信号复用。
+- 进入 PILOT-V2-M9，先冻结干净提交并生成第一组正式 release artifact，不复用本轮 dirty-worktree 镜像。
+- M9 准入备份必须来自试运行目标项目，并通过 manifest v2 与隔离 restore drill。
+- M11 使用两个真实相邻版本再次执行镜像回滚和兼容性验证。

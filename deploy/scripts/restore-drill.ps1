@@ -4,24 +4,20 @@ param(
     [string] $ComposeFile = "deploy/docker-compose.prod.yml",
     [string] $EnvFile = "deploy/.env.prod",
     [string] $BaseUrl = "http://localhost",
+    [string] $ExpectedProjectName = "",
     [switch] $RunRestore,
     [switch] $ConfirmRestore
 )
 
 $ErrorActionPreference = "Stop"
-$Root = Resolve-Path (Join-Path $PSScriptRoot "..\..")
+$Root = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
+. (Join-Path $PSScriptRoot "operations-common.ps1")
 $ReportDir = Join-Path $Root ".local-reports"
 $Timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
 $ReportPath = Join-Path $ReportDir "restore-drill-$Timestamp.md"
 $Results = New-Object System.Collections.Generic.List[string]
-
-function Resolve-ProjectPath {
-    param([string] $Path)
-    if ([System.IO.Path]::IsPathRooted($Path)) {
-        return $Path
-    }
-    return Join-Path $Root $Path
-}
+$startedAt = Get-Date
+$decision = "FAIL"
 
 function Add-Result {
     param([string] $Message)
@@ -29,88 +25,71 @@ function Add-Result {
     Write-Host $Message
 }
 
-function Assert-FileHash {
-    param(
-        [string] $Path,
-        [string] $ExpectedHash
-    )
-    $stream = [System.IO.File]::OpenRead($Path)
-    try {
-        $sha256 = [System.Security.Cryptography.SHA256]::Create()
-        try {
-            $hash = $sha256.ComputeHash($stream)
-            $actual = (($hash | ForEach-Object { $_.ToString("x2") }) -join "").ToUpperInvariant()
-        } finally {
-            $sha256.Dispose()
-        }
-    } finally {
-        $stream.Dispose()
-    }
-    if ($actual -ne $ExpectedHash) {
-        throw "Hash mismatch for $Path. Expected $ExpectedHash, got $actual"
-    }
-}
-
-$ComposePath = Resolve-ProjectPath $ComposeFile
-$EnvPath = Resolve-ProjectPath $EnvFile
-$BackupDir = Resolve-Path $BackupPath
-$ManifestPath = Join-Path $BackupDir "manifest.json"
-
-New-Item -ItemType Directory -Force -Path $ReportDir | Out-Null
-
-if (-not (Test-Path $ComposePath)) {
+$ComposePath = Resolve-CollaPath -Root $Root -Path $ComposeFile
+$EnvPath = Resolve-CollaPath -Root $Root -Path $EnvFile
+$BackupDir = (Resolve-Path -LiteralPath $BackupPath).Path
+if (-not (Test-Path -LiteralPath $ComposePath -PathType Leaf)) {
     throw "Compose file not found: $ComposePath"
 }
-if (-not (Test-Path $EnvPath)) {
+if (-not (Test-Path -LiteralPath $EnvPath -PathType Leaf)) {
     throw "Environment file not found: $EnvPath"
 }
-if (-not (Test-Path $ManifestPath)) {
-    throw "Backup manifest not found: $ManifestPath"
-}
+New-Item -ItemType Directory -Force -Path $ReportDir | Out-Null
 
-$manifest = Get-Content -LiteralPath $ManifestPath -Raw | ConvertFrom-Json
-foreach ($file in @($manifest.files)) {
-    $path = Join-Path $BackupDir $file.name
-    if (-not (Test-Path $path)) {
-        throw "Missing backup file: $path"
-    }
-    Assert-FileHash -Path $path -ExpectedHash $file.sha256
-    $item = Get-Item -LiteralPath $path
-    Add-Result "- PASS: $($file.name) hash verified, $($item.Length) bytes"
-}
-
-Push-Location $Root
 try {
-    docker compose --env-file $EnvPath -f $ComposePath config -q
-    if ($LASTEXITCODE -ne 0) {
-        throw "Compose config validation failed"
+    $manifest = Read-CollaBackupManifest -BackupPath $BackupDir -VerifyFiles
+    foreach ($file in @($manifest.files)) {
+        Add-Result "- PASS: $($file.name) size and SHA-256 verified"
     }
-    Add-Result "- PASS: compose config validated"
+
+    $actualProjectName = Get-CollaComposeProjectName -ComposePath $ComposePath -EnvPath $EnvPath
+    Add-Result "- PASS: compose config validated as project $actualProjectName"
+    if (-not [string]::IsNullOrWhiteSpace($ExpectedProjectName) -and $actualProjectName -cne $ExpectedProjectName) {
+        throw "Restore drill target mismatch. Expected '$ExpectedProjectName', compose resolves to '$actualProjectName'."
+    }
 
     if ($RunRestore) {
         if (-not $ConfirmRestore) {
-            throw "Restore drill is destructive when -RunRestore is used. Add -ConfirmRestore to continue."
+            throw "Restore drill writes data. Add -ConfirmRestore to continue."
         }
-        & (Join-Path $PSScriptRoot "restore.ps1") -BackupPath $BackupDir -ComposeFile $ComposeFile -EnvFile $EnvFile -BaseUrl $BaseUrl -ConfirmRestore
+        if ([string]::IsNullOrWhiteSpace($ExpectedProjectName)) {
+            throw "-ExpectedProjectName is required for a restore drill"
+        }
+        if ($actualProjectName -notmatch '^colla-platform-drill-[a-z0-9-]+$') {
+            throw "Restore drills may only target an isolated project named colla-platform-drill-<id>; resolved '$actualProjectName'."
+        }
+        if ($actualProjectName -ceq [string] $manifest.projectName) {
+            throw "Restore drill target must differ from the backup source project"
+        }
+        & (Join-Path $PSScriptRoot "restore.ps1") `
+            -BackupPath $BackupDir `
+            -ComposeFile $ComposeFile `
+            -EnvFile $EnvFile `
+            -BaseUrl $BaseUrl `
+            -ExpectedProjectName $ExpectedProjectName `
+            -ConfirmationText "RESTORE:$ExpectedProjectName" `
+            -ConfirmRestore
         if ($LASTEXITCODE -ne 0) {
             throw "Restore command failed"
         }
-        Add-Result "- PASS: restore command completed"
+        Add-Result "- PASS: isolated restore and post-restore health verification completed"
+        $decision = "PASS"
     } else {
-        Add-Result "- PASS: dry-run only; restore command was not executed"
+        Add-Result "- PASS: dry-run completed; no target data was changed"
+        $decision = "DRY-RUN-PASS"
     }
-
+} finally {
     $report = @(
         "# Restore Drill",
         "",
-        "- Time: $(Get-Date -Format o)",
+        "- Started: $($startedAt.ToUniversalTime().ToString('o'))",
+        "- Finished: $((Get-Date).ToUniversalTime().ToString('o'))",
         "- Backup path: $BackupDir",
-        "- Mode: $(if ($RunRestore) { "restore" } else { "dry-run" })",
+        "- Mode: $(if ($RunRestore) { 'isolated-restore' } else { 'dry-run' })",
+        "- Decision: $decision",
         "",
         "## Results"
     ) + $Results
     Set-Content -LiteralPath $ReportPath -Value ($report -join [Environment]::NewLine) -Encoding UTF8
     Write-Host "Restore drill report: $ReportPath"
-} finally {
-    Pop-Location
 }

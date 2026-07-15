@@ -49,6 +49,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Locale;
@@ -106,6 +107,7 @@ public class KnowledgeContentService {
     };
     private static final TypeReference<List<KnowledgeContentBlockDraft>> BLOCK_DRAFT_LIST = new TypeReference<>() {
     };
+    private static final Duration AUTO_CHECKPOINT_INTERVAL = Duration.ofMinutes(1);
 
     private final KnowledgeContentRepository contentRepository;
     private final KnowledgeBaseSpaceRepository knowledgeBaseSpaceRepository;
@@ -741,8 +743,10 @@ public class KnowledgeContentService {
     @Transactional
     public KnowledgeContent createVersionCheckpoint(CurrentUser currentUser, UUID itemId) {
         KnowledgeBaseItem before = requireEdit(currentUser, itemId);
-        String content = contentRepository.findContent(currentUser.workspaceId(), itemId)
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Knowledge content not found"));
+        List<KnowledgeContentBlockDraft> currentBlocks = contentRepository.listBlocks(currentUser.workspaceId(), itemId).stream()
+            .map(this::draftFromStoredBlock)
+            .toList();
+        String content = contentFromBlocks(currentBlocks);
         int nextVersionNo = before.currentVersionNo() + 1;
         contentRepository.updateContent(
             currentUser.workspaceId(),
@@ -764,9 +768,8 @@ public class KnowledgeContentService {
             "manual_checkpoint",
             "手动生成版本",
             before.currentVersionNo(),
-            blockSnapshot(blocksFromContent(content))
+            blockSnapshot(currentBlocks)
         );
-        contentRepository.replaceBlocks(currentUser.workspaceId(), itemId, blocksFromContent(content), currentUser.id());
         registerDocumentObject(currentUser.workspaceId(), itemId, before.title());
         eventRepository.append(
             currentUser.workspaceId(),
@@ -785,8 +788,10 @@ public class KnowledgeContentService {
         KnowledgeBaseItem before = requireEdit(currentUser, itemId);
         String name = normalizeVersionName(versionName);
         String normalizedSummary = normalizeNullableText(summary, 512);
-        String content = contentRepository.findContent(currentUser.workspaceId(), itemId)
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Knowledge content not found"));
+        List<KnowledgeContentBlockDraft> currentBlocks = contentRepository.listBlocks(currentUser.workspaceId(), itemId).stream()
+            .map(this::draftFromStoredBlock)
+            .toList();
+        String content = contentFromBlocks(currentBlocks);
         int nextVersionNo = before.currentVersionNo() + 1;
         contentRepository.updateContent(
             currentUser.workspaceId(),
@@ -808,7 +813,7 @@ public class KnowledgeContentService {
             "named",
             normalizedSummary,
             before.currentVersionNo(),
-            blockSnapshot(blocksFromContent(content))
+            blockSnapshot(currentBlocks)
         );
         eventRepository.append(
             currentUser.workspaceId(),
@@ -918,6 +923,19 @@ public class KnowledgeContentService {
 
     @Transactional
     public KnowledgeContent saveBlocks(CurrentUser currentUser, UUID itemId, int baseVersionNo, String title, List<KnowledgeContentBlockDraft> blocks) {
+        return saveBlocks(currentUser, itemId, baseVersionNo, title, "auto", blocks);
+    }
+
+    @Transactional
+    public KnowledgeContent saveBlocks(
+        CurrentUser currentUser,
+        UUID itemId,
+        int baseVersionNo,
+        String title,
+        String saveMode,
+        List<KnowledgeContentBlockDraft> blocks
+    ) {
+        Instant startedAt = Instant.now();
         KnowledgeBaseItem before = requireEdit(currentUser, itemId);
         if (baseVersionNo != before.currentVersionNo()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Document version conflict");
@@ -928,6 +946,9 @@ public class KnowledgeContentService {
         String normalizedContent = contentFromBlocks(normalizedBlocks);
         String versionSummary = blockChangeSummary(previousBlocks, normalizedBlocks);
         int nextVersionNo = before.currentVersionNo() + 1;
+        String normalizedSaveMode = normalizeSaveMode(saveMode);
+        boolean checkpointCreated = "manual".equals(normalizedSaveMode)
+            || shouldCreateAutoCheckpoint(currentUser.workspaceId(), itemId);
         contentRepository.updateContent(
             currentUser.workspaceId(),
             itemId,
@@ -937,19 +958,21 @@ public class KnowledgeContentService {
             nextVersionNo,
             currentUser.id()
         );
-        contentRepository.addVersion(
-            currentUser.workspaceId(),
-            itemId,
-            nextVersionNo,
-            normalizedTitle,
-            normalizedContent,
-            currentUser.id(),
-            null,
-            "auto_snapshot",
-            versionSummary,
-            before.currentVersionNo(),
-            blockSnapshot(normalizedBlocks)
-        );
+        if (checkpointCreated) {
+            contentRepository.addVersion(
+                currentUser.workspaceId(),
+                itemId,
+                nextVersionNo,
+                normalizedTitle,
+                normalizedContent,
+                currentUser.id(),
+                null,
+                "manual".equals(normalizedSaveMode) ? "manual_checkpoint" : "auto_snapshot",
+                versionSummary,
+                before.currentVersionNo(),
+                blockSnapshot(normalizedBlocks)
+            );
+        }
         contentRepository.replaceBlocks(currentUser.workspaceId(), itemId, normalizedBlocks, currentUser.id());
         reanchorSelectionComments(currentUser.workspaceId(), itemId, normalizedContent);
         registerDocumentObject(currentUser.workspaceId(), itemId, normalizedTitle);
@@ -959,7 +982,15 @@ public class KnowledgeContentService {
             "knowledge_content",
             itemId,
             currentUser.id(),
-            Map.of("itemId", itemId.toString(), "versionNo", Integer.toString(nextVersionNo)),
+            Map.of(
+                "itemId", itemId.toString(),
+                "versionNo", Integer.toString(nextVersionNo),
+                "baseVersionNo", Integer.toString(baseVersionNo),
+                "saveMode", normalizedSaveMode,
+                "checkpointCreated", Boolean.toString(checkpointCreated),
+                "blockCount", Integer.toString(normalizedBlocks.size()),
+                "durationMs", Long.toString(Duration.between(startedAt, Instant.now()).toMillis())
+            ),
             "knowledge.content.blocks.updated:" + itemId + ":" + nextVersionNo
         );
         return getContent(currentUser, itemId);
@@ -1139,7 +1170,7 @@ public class KnowledgeContentService {
                 "subjectId", subjectId.toString(),
                 "permissionLevel", normalizedPermission
             ),
-            "knowledge.content.permission.granted:" + itemId + ":" + normalizedSubjectType + ":" + subjectId
+            "kb.permission:" + UUID.randomUUID()
         );
         auditService.log(
             currentUser,
@@ -1935,25 +1966,42 @@ public class KnowledgeContentService {
         int j = 0;
         while (i < oldBlocks.size() || j < newBlocks.size()) {
             if (i < oldBlocks.size() && j < newBlocks.size() && blockIdentity(oldBlocks.get(i)).equals(blockIdentity(newBlocks.get(j)))) {
-                KnowledgeContentBlockDraft block = newBlocks.get(j);
-                lines.add(new KnowledgeContentDiffLine("context", i + 1, j + 1, block.content(), "block", j + 1, block.blockType()));
+                KnowledgeContentBlockDraft oldBlock = oldBlocks.get(i);
+                KnowledgeContentBlockDraft newBlock = newBlocks.get(j);
+                String lineType = sameBlockSnapshot(oldBlock, newBlock) ? "context" : "modified";
+                lines.add(new KnowledgeContentDiffLine(lineType, i + 1, j + 1, newBlock.content(), "block", j + 1, newBlock.blockType(), newBlock.id()));
                 i++;
                 j++;
             } else if (j < newBlocks.size() && (i == oldBlocks.size() || lcs[i][j + 1] >= lcs[i + 1][j])) {
                 KnowledgeContentBlockDraft block = newBlocks.get(j);
-                lines.add(new KnowledgeContentDiffLine("added", 0, j + 1, block.content(), "block", j + 1, block.blockType()));
+                lines.add(new KnowledgeContentDiffLine("added", 0, j + 1, block.content(), "block", j + 1, block.blockType(), block.id()));
                 j++;
             } else {
                 KnowledgeContentBlockDraft block = oldBlocks.get(i);
-                lines.add(new KnowledgeContentDiffLine("removed", i + 1, 0, block.content(), "block", i + 1, block.blockType()));
+                lines.add(new KnowledgeContentDiffLine("removed", i + 1, 0, block.content(), "block", i + 1, block.blockType(), block.id()));
                 i++;
             }
         }
         return lines;
     }
 
+    private boolean sameBlockSnapshot(KnowledgeContentBlockDraft left, KnowledgeContentBlockDraft right) {
+        return Objects.equals(left.blockType(), right.blockType())
+            && Objects.equals(left.content(), right.content())
+            && Objects.equals(left.parentId(), right.parentId())
+            && Objects.equals(left.schemaVersion(), right.schemaVersion())
+            && Objects.equals(left.attrs(), right.attrs())
+            && Objects.equals(left.richContent(), right.richContent())
+            && Objects.equals(left.plainText(), right.plainText())
+            && Objects.equals(left.anchorId(), right.anchorId())
+            && Objects.equals(left.deleted(), right.deleted());
+    }
+
     private String blockIdentity(KnowledgeContentBlockDraft block) {
-        return block.blockType() + "\n" + block.content();
+        if (block.id() != null) {
+            return "id:" + block.id();
+        }
+        return "fallback:" + block.blockType() + "\n" + block.content();
     }
 
     private String[] splitLines(String content) {
@@ -2073,6 +2121,22 @@ public class KnowledgeContentService {
         }
         String normalized = versionName.trim();
         return normalized.length() <= 128 ? normalized : normalized.substring(0, 128);
+    }
+
+    private String normalizeSaveMode(String saveMode) {
+        String normalized = saveMode == null || saveMode.isBlank() ? "auto" : saveMode.trim().toLowerCase(Locale.ROOT);
+        if (!List.of("auto", "manual").contains(normalized)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid document save mode");
+        }
+        return normalized;
+    }
+
+    private boolean shouldCreateAutoCheckpoint(UUID workspaceId, UUID itemId) {
+        return contentRepository.listVersions(workspaceId, itemId).stream()
+            .filter(version -> "auto_snapshot".equals(version.versionType()))
+            .findFirst()
+            .map(version -> version.createdAt() == null || Duration.between(version.createdAt(), Instant.now()).compareTo(AUTO_CHECKPOINT_INTERVAL) >= 0)
+            .orElse(true);
     }
 
     private String normalizeContentType(String contentType) {

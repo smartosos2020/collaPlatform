@@ -1,6 +1,13 @@
 import { defineConfig } from '@playwright/test'
 
 const suite = process.env.COLLA_E2E_SUITE ?? 'smoke'
+const suitePattern = suite === 'route-final'
+  ? /@route-final/
+  : suite === 'pilot-m9'
+    ? /@pilot-m9/
+    : suite === 'pilot-m10'
+      ? /@pilot-m10/
+      : /@smoke/
 
 export default defineConfig({
   testDir: '.',
@@ -19,6 +26,6 @@ export default defineConfig({
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
   },
-  grep: suite === 'route-final' ? /@route-final/ : /@smoke/,
+  grep: suitePattern,
   reporter: [['list'], ['html', { outputFolder: 'test-results/report', open: 'never' }]],
 })

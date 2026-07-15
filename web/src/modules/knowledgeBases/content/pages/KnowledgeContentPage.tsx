@@ -3,7 +3,6 @@ import {
   ArrowUpOutlined,
   CheckCircleOutlined,
   CommentOutlined,
-  DeleteOutlined,
   FileTextOutlined,
   FolderOpenOutlined,
   FolderOutlined,
@@ -11,7 +10,6 @@ import {
   LinkOutlined,
   PlusOutlined,
   RollbackOutlined,
-  SaveOutlined,
   SearchOutlined,
   ShareAltOutlined,
   StarFilled,
@@ -20,19 +18,17 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { App as AntdApp, Alert, Breadcrumb, Button, Empty, Form, Input, Modal, Select, Space, Switch, Tag, Tooltip, Tree, Typography } from 'antd'
 import type { FormInstance } from 'antd/es/form'
+import type { JSONContent } from '@tiptap/react'
 import type { ReactNode } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 
-import { InternalLinkCard, ObjectSummaryCard } from '../../../platform/components/InternalLinkCard'
-import type { PlatformObjectSummary } from '../../../platform/api/platformObjectsApi'
-import { getTable, queryRecords, type BaseField, type BaseRecord } from '../../../bases/api/basesApi'
-import { objectTypeText } from '../../../platform/objectTypeLabels'
+import { InternalLinkCard } from '../../../platform/components/InternalLinkCard'
 import { useAuthStore } from '../../../auth/authStore'
-import { KnowledgeContentEditorCore, type KnowledgeContentEditorSelectionAnchor } from '../components/KnowledgeContentEditorCore'
+import { type KnowledgeContentEditorSelectionAnchor, type KnowledgeContentSaveState } from '../components/KnowledgeContentEditorCore'
 import { KnowledgeContentEditor } from '../components/KnowledgeContentEditor'
-import { blocksToMarkdown } from '../editor/knowledgeContentAdapter'
-import { useKnowledgeContentCollaboration } from '../hooks/useKnowledgeContentCollaboration'
+import { useKnowledgeContentRealtimeCollaboration, type KnowledgeContentRealtimeSession } from '../hooks/useKnowledgeContentRealtimeCollaboration'
+import { ApiRequestError } from '../../../../shared/api/httpClient'
 import {
   addObjectFavorite,
   listFavoriteObjects,
@@ -62,6 +58,7 @@ import {
   createNamedKnowledgeContentVersion,
   diffKnowledgeContentVersions,
   getKnowledgeContent,
+  getKnowledgeContentCanonicalMigrationPreview,
   getKnowledgeContentPath,
   importKnowledgeContentMarkdown,
   grantKnowledgeContentPermission,
@@ -70,12 +67,12 @@ import {
   restoreKnowledgeContentVersion,
   reopenKnowledgeContentComment,
   resolveKnowledgeContentComment,
-  saveKnowledgeContent,
   saveKnowledgeContentBlocks,
   setKnowledgeContentShareLinkEnabled,
   updateKnowledgeContentMetadata,
   updateKnowledgeContentShareLink,
   type KnowledgeContentBlockDraft,
+  type KnowledgeContentCanonicalMigrationPreview,
   type KnowledgeContentComment,
   type KnowledgeContentDetail,
   type KnowledgeContentShareLink,
@@ -166,16 +163,26 @@ type BlockKnowledgeContentDraftState = KnowledgeContentBlockDraft & {
   id?: string | null
 }
 
+type BlockSavePayload = {
+  key: string
+  itemId: string
+  baseVersionNo: number
+  title: string
+  blocks: BlockKnowledgeContentDraftState[]
+  saveMode: 'auto' | 'manual'
+}
+
+type LocalDraftRecovery = {
+  itemId: string
+  title: string
+  baseVersionNo: number
+  blocks: BlockKnowledgeContentDraftState[]
+  savedAt: string
+}
+
 type TableBlockContent = {
   columns: string[]
   rows: string[][]
-}
-
-type EmbedBlockContent = {
-  objectType?: string
-  objectId?: string
-  viewId?: string
-  title?: string
 }
 
 type TreeDataNode = {
@@ -200,6 +207,7 @@ export function KnowledgeContentPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { message } = AntdApp.useApp()
+  const currentUser = useAuthStore((state) => state.currentUser)
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null)
   const [draft, setDraft] = useState<KnowledgeContentDraftState>({ itemId: null, title: '', content: '', baseVersionNo: 0 })
   const [createOpen, setCreateOpen] = useState(false)
@@ -218,15 +226,41 @@ export function KnowledgeContentPage() {
   const [commentReplyDrafts, setCommentReplyDrafts] = useState<Record<string, string>>({})
   const [conflictItemId, setConflictItemId] = useState<string | null>(null)
   const [diffToVersionNo, setDiffToVersionNo] = useState<number | null>(null)
+  const [diffFromVersionNo, setDiffFromVersionNo] = useState<number | null>(null)
   const [itemSearch, setItemSearch] = useState('')
   const [itemListMode, setItemListMode] = useState<KnowledgeItemListMode>('all')
   const [includeArchived, setIncludeArchived] = useState(false)
   const [blockDraftItemId, setBlockDraftItemId] = useState<string | null>(null)
   const [blockDraftVersionNo, setBlockDraftVersionNo] = useState(0)
   const [blockDrafts, setBlockDrafts] = useState<BlockKnowledgeContentDraftState[]>([])
+  const [saveState, setSaveState] = useState<KnowledgeContentSaveState>('clean')
+  const [localDraftRecovery, setLocalDraftRecovery] = useState<LocalDraftRecovery | null>(null)
+  const [localDraftOpen, setLocalDraftOpen] = useState(false)
+  const [localDraftJson, setLocalDraftJson] = useState('')
   const blockAutoSaveKeyRef = useRef('')
+  const blockedAutoSaveKeyRef = useRef('')
   const blockSaveOriginRef = useRef<'auto' | 'manual'>('manual')
+  const networkOnlineRef = useRef(typeof navigator === 'undefined' ? true : navigator.onLine)
+  const latestBlockDraftsRef = useRef<BlockKnowledgeContentDraftState[]>([])
+  const latestTitleDraftRef = useRef('')
+  const preserveLocalDraftRef = useRef(false)
+  const recoveryCheckedItemRef = useRef<string | null>(null)
   const [createForm] = Form.useForm<CreateItemForm>()
+
+  useEffect(() => {
+    const handleOnline = () => {
+      networkOnlineRef.current = true
+    }
+    const handleOffline = () => {
+      networkOnlineRef.current = false
+    }
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
+    return () => {
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
+    }
+  }, [])
   const [moveForm] = Form.useForm<MoveItemForm>()
   const [permissionForm] = Form.useForm<PermissionForm>()
   const [shareLinkForm] = Form.useForm<ShareLinkForm>()
@@ -269,6 +303,11 @@ export function KnowledgeContentPage() {
     queryFn: () => getKnowledgeContent(spaceId || '', activeItemId || ''),
     enabled: Boolean(spaceId && activeItemId),
   })
+  const canonicalMigrationQuery = useQuery<KnowledgeContentCanonicalMigrationPreview>({
+    queryKey: ['knowledge-content', spaceId, activeItemId, 'canonical-migration-preview'],
+    queryFn: () => getKnowledgeContentCanonicalMigrationPreview(spaceId || '', activeItemId || ''),
+    enabled: Boolean(spaceId && activeItemId && activeItem?.contentType === 'markdown'),
+  })
   const activeKnowledgeContentContext = contentQuery.data?.context
   const activeKnowledgeItem = contentQuery.data?.item
   const knowledgeRouteSpaceId = spaceId
@@ -289,25 +328,39 @@ export function KnowledgeContentPage() {
     enabled: Boolean(spaceId && activeItemId),
   })
   const diffQuery = useQuery({
-    queryKey: ['knowledge-content', spaceId, activeItemId, 'diff', diffToVersionNo],
-    queryFn: () => diffKnowledgeContentVersions(spaceId || '', activeItemId || '', (diffToVersionNo || 1) - 1, diffToVersionNo || 1),
-    enabled: Boolean(spaceId && activeItemId && diffToVersionNo && diffToVersionNo > 1),
+    queryKey: ['knowledge-content', spaceId, activeItemId, 'diff', diffFromVersionNo, diffToVersionNo],
+    queryFn: () => diffKnowledgeContentVersions(spaceId || '', activeItemId || '', diffFromVersionNo || 1, diffToVersionNo || 1),
+    enabled: Boolean(spaceId && activeItemId && diffFromVersionNo && diffToVersionNo),
   })
 
   const canComment = hasPermission(contentQuery.data?.item.permissionLevel, 'comment')
   const canEdit = hasPermission(contentQuery.data?.item.permissionLevel, 'edit')
   const canManage = hasPermission(contentQuery.data?.item.permissionLevel, 'manage')
+  const realtimeCollaboration = useKnowledgeContentRealtimeCollaboration({
+    spaceId,
+    itemId: activeItemId,
+    enabled: Boolean(activeItemId && contentQuery.data?.item.contentType === 'markdown'),
+    currentUser,
+  })
   const activeShareLink = contentQuery.data?.shareLinks?.[0] ?? null
   const titleDraft = draft.itemId === activeItemId ? draft.title : contentQuery.data?.item.title ?? ''
   const contentDraft = draft.itemId === activeItemId ? draft.content : contentQuery.data?.content ?? ''
   const baseVersionNo =
     draft.itemId === activeItemId ? draft.baseVersionNo : contentQuery.data?.item.currentVersionNo ?? 0
-  const blockDraftContent = useMemo(() => blocksToMarkdown(blockDrafts), [blockDrafts])
-  const persistedBlockContent = useMemo(() => blocksToMarkdown(contentQuery.data?.blocks ?? []), [contentQuery.data?.blocks])
+  const blockDraftContent = useMemo(() => blockDraftKey(blockDrafts), [blockDrafts])
+  const persistedBlockContent = useMemo(() => blockDraftKey(contentQuery.data?.blocks ?? []), [contentQuery.data?.blocks])
   const blockDraftDirty =
+    !realtimeCollaboration.provider &&
     blockDraftItemId === activeItemId &&
     Boolean(contentQuery.data) &&
     (titleDraft !== contentQuery.data?.item.title || blockDraftContent !== persistedBlockContent)
+  const migrationReadOnly = activeItem?.contentType === 'markdown'
+    && (canonicalMigrationQuery.isError || canonicalMigrationQuery.data?.safeToApply === false)
+
+  useEffect(() => {
+    latestBlockDraftsRef.current = blockDrafts
+    latestTitleDraftRef.current = titleDraft
+  }, [blockDrafts, titleDraft])
 
   useEffect(() => {
     const first = itemsQuery.data?.[0]
@@ -327,6 +380,21 @@ export function KnowledgeContentPage() {
       return
     }
     const detail = contentQuery.data
+    const incomingBlocks = detail.blocks.map((block) => ({
+      id: block.id,
+      parentId: block.parentId,
+      blockType: block.blockType,
+      content: block.content,
+      sortOrder: block.sortOrder,
+      schemaVersion: block.schemaVersion,
+      attrs: block.attrs,
+      richContent: block.richContent,
+      plainText: block.plainText,
+      anchorId: block.anchorId,
+    }))
+    const localDraftIsNewer = preserveLocalDraftRef.current
+      && blockDraftItemId === detail.item.id
+      && blockDraftKey(latestBlockDraftsRef.current) !== blockDraftKey(incomingBlocks)
     const timer = window.setTimeout(() => {
       knowledgeMetadataForm.setFieldsValue({
         maintainerId: detail.item.maintainerId ?? undefined,
@@ -335,26 +403,37 @@ export function KnowledgeContentPage() {
         knowledgeStatus: detail.item.knowledgeStatus ?? 'draft',
         reviewDueAt: detail.item.reviewDueAt ?? undefined,
       })
+      if (localDraftIsNewer) {
+        preserveLocalDraftRef.current = false
+        return
+      }
       setBlockDraftItemId(detail.item.id)
       setBlockDraftVersionNo(detail.item.currentVersionNo)
-      setBlockDrafts(detail.blocks.map((block) => ({
-        id: block.id,
-        parentId: block.parentId,
-        blockType: block.blockType,
-        content: block.content,
-        sortOrder: block.sortOrder,
-        schemaVersion: block.schemaVersion,
-        attrs: block.attrs,
-        richContent: block.richContent,
-        plainText: block.plainText,
-        anchorId: block.anchorId,
-      })))
+      setBlockDrafts(incomingBlocks)
+      setSaveState('clean')
       setCommentBlockId(undefined)
+      if (recoveryCheckedItemRef.current !== detail.item.id) {
+        recoveryCheckedItemRef.current = detail.item.id
+        const stored = readLocalDraft(spaceId, detail.item.id)
+        if (stored && stored.blocks.length >= 0 && stored.savedAt) {
+          setLocalDraftRecovery(stored)
+        }
+      }
     }, 0)
     return () => window.clearTimeout(timer)
-  }, [contentQuery.data, knowledgeMetadataForm])
+  }, [blockDraftItemId, contentQuery.data, knowledgeMetadataForm, spaceId])
 
-  const refreshKnowledgeContent = async (itemId = activeItemId) => {
+  const refreshKnowledgeContent = async (itemId = activeItemId, options: { discardLocalDraft?: boolean } = {}) => {
+    if (options.discardLocalDraft && itemId === activeItemId) {
+      preserveLocalDraftRef.current = false
+      blockAutoSaveKeyRef.current = ''
+      blockedAutoSaveKeyRef.current = ''
+      removeLocalDraft(spaceId, itemId)
+      setLocalDraftRecovery(null)
+      setConflictItemId(null)
+      setSaveState('clean')
+      setDraft({ itemId: null, title: '', content: '', baseVersionNo: 0 })
+    }
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['knowledge-base-items', spaceId] }),
       itemId ? queryClient.invalidateQueries({ queryKey: ['knowledge-content', spaceId, itemId] }) : Promise.resolve(),
@@ -362,6 +441,72 @@ export function KnowledgeContentPage() {
       queryClient.invalidateQueries({ queryKey: ['platform', 'favorites', 'docs'] }),
     ])
   }
+
+  const persistLocalDraft = useCallback((item = activeItemId) => {
+    if (!spaceId || !item || !latestBlockDraftsRef.current) {
+      return
+    }
+    writeLocalDraft(spaceId, {
+      itemId: item,
+      title: latestTitleDraftRef.current,
+      baseVersionNo: blockDraftVersionNo || baseVersionNo,
+      blocks: latestBlockDraftsRef.current,
+      savedAt: new Date().toISOString(),
+    })
+  }, [activeItemId, baseVersionNo, blockDraftVersionNo, spaceId])
+
+  const openLocalDraft = useCallback(() => {
+    if (!activeItemId) {
+      return
+    }
+    const snapshot: LocalDraftRecovery = {
+      itemId: activeItemId,
+      title: latestTitleDraftRef.current,
+      baseVersionNo: blockDraftVersionNo || baseVersionNo,
+      blocks: latestBlockDraftsRef.current,
+      savedAt: new Date().toISOString(),
+    }
+    setLocalDraftJson(JSON.stringify(snapshot, null, 2))
+    setLocalDraftOpen(true)
+    persistLocalDraft(activeItemId)
+  }, [activeItemId, baseVersionNo, blockDraftVersionNo, persistLocalDraft])
+
+  const restoreLocalDraft = useCallback(() => {
+    if (!localDraftRecovery || localDraftRecovery.itemId !== activeItemId) {
+      return
+    }
+    setBlockDraftItemId(localDraftRecovery.itemId)
+    setBlockDraftVersionNo(localDraftRecovery.baseVersionNo)
+    setBlockDrafts(localDraftRecovery.blocks)
+    setDraft({
+      itemId: localDraftRecovery.itemId,
+      title: localDraftRecovery.title,
+      content: contentDraft,
+      baseVersionNo: localDraftRecovery.baseVersionNo,
+    })
+    setSaveState('dirty')
+    setLocalDraftRecovery(null)
+  }, [activeItemId, contentDraft, localDraftRecovery])
+
+  const discardLocalDraft = useCallback(() => {
+    if (localDraftRecovery) {
+      removeLocalDraft(spaceId, localDraftRecovery.itemId)
+    }
+    setLocalDraftRecovery(null)
+  }, [localDraftRecovery, spaceId])
+
+  useEffect(() => {
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!activeItemId || !blockDraftDirty) {
+        return
+      }
+      persistLocalDraft(activeItemId)
+      event.preventDefault()
+      event.returnValue = ''
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [activeItemId, blockDraftDirty, persistLocalDraft])
 
   const favoriteItemIds = useMemo(
     () =>
@@ -494,50 +639,6 @@ export function KnowledgeContentPage() {
     },
   })
 
-  const saveMutation = useMutation({
-    mutationFn: () =>
-      saveKnowledgeContent(spaceId || '', activeItemId || '', {
-        baseVersionNo,
-        title: titleDraft,
-        content: contentDraft,
-      }),
-    onSuccess: async (detail) => {
-      setDraft({
-        itemId: detail.item.id,
-        title: detail.item.title,
-        content: detail.content,
-        baseVersionNo: detail.item.currentVersionNo,
-      })
-      setConflictItemId(null)
-      message.success('已保存')
-      await refreshKnowledgeContent(detail.item.id)
-    },
-    onError: (error) => {
-      if (error.message.includes('409')) {
-        setConflictItemId(activeItemId)
-        message.warning('内容已被其他版本更新，请刷新后再合并保存')
-        return
-      }
-      message.error('保存失败')
-    },
-  })
-
-  const checkpointMutation = useMutation({
-    mutationFn: () => createKnowledgeContentCheckpoint(spaceId || '', activeItemId || ''),
-    onSuccess: async (detail) => {
-      setDraft({
-        itemId: detail.item.id,
-        title: detail.item.title,
-        content: detail.content,
-        baseVersionNo: detail.item.currentVersionNo,
-      })
-      setConflictItemId(null)
-      message.success('已生成版本')
-      await refreshKnowledgeContent(detail.item.id)
-    },
-    onError: () => message.error('生成版本失败'),
-  })
-
   const namedVersionMutation = useMutation({
     mutationFn: (values: NamedVersionForm) => createNamedKnowledgeContentVersion(spaceId || '', activeItemId || '', values),
     onSuccess: async (detail) => {
@@ -584,6 +685,15 @@ export function KnowledgeContentPage() {
       message.success('版本已恢复')
       await refreshKnowledgeContent(detail.item.id)
     },
+  })
+
+  const checkpointMutation = useMutation({
+    mutationFn: () => createKnowledgeContentCheckpoint(spaceId || '', activeItemId || ''),
+    onSuccess: async (detail) => {
+      message.success('检查点已创建')
+      await refreshKnowledgeContent(detail.item.id, { discardLocalDraft: true })
+    },
+    onError: () => message.error('检查点创建失败'),
   })
 
   const permissionMutation = useMutation({
@@ -685,11 +795,16 @@ export function KnowledgeContentPage() {
   })
 
   const blockMutation = useMutation({
-    mutationFn: () =>
-      saveKnowledgeContentBlocks(spaceId || '', activeItemId || '', {
-        baseVersionNo: blockDraftVersionNo || baseVersionNo,
-        title: titleDraft,
-        blocks: blockDrafts.map((block, index) => ({
+    networkMode: 'always',
+    mutationFn: async (payload: BlockSavePayload) => {
+      if (!networkOnlineRef.current) {
+        throw new ApiRequestError(0, 'Network unavailable')
+      }
+      return saveKnowledgeContentBlocks(spaceId || '', payload.itemId, {
+        baseVersionNo: payload.baseVersionNo,
+        title: payload.title,
+        saveMode: payload.saveMode,
+        blocks: payload.blocks.map((block, index) => ({
           id: block.id,
           parentId: block.parentId,
           blockType: block.blockType,
@@ -702,48 +817,147 @@ export function KnowledgeContentPage() {
           anchorId: block.anchorId,
           deleted: block.deleted,
         })),
-    }),
-    onSuccess: async (detail) => {
+      })
+    },
+    onMutate: (payload) => {
+      setSaveState('saving')
+      blockSaveOriginRef.current = payload.saveMode
+      if (payload.saveMode === 'manual') {
+        blockedAutoSaveKeyRef.current = ''
+      }
+    },
+    onSuccess: async (detail, payload) => {
+      const currentKey = blockSaveKey(activeItemId || payload.itemId, latestTitleDraftRef.current, latestBlockDraftsRef.current)
+      const hasNewerLocalDraft = currentKey !== payload.key
+      preserveLocalDraftRef.current = hasNewerLocalDraft
       setBlockDraftItemId(detail.item.id)
       setBlockDraftVersionNo(detail.item.currentVersionNo)
-      setDraft({
-        itemId: detail.item.id,
-        title: detail.item.title,
-        content: detail.content,
-        baseVersionNo: detail.item.currentVersionNo,
-      })
-      blockAutoSaveKeyRef.current = blockSaveKey(detail.item.id, detail.item.title, detail.blocks)
+      if (!hasNewerLocalDraft) {
+        setDraft({
+          itemId: detail.item.id,
+          title: detail.item.title,
+          content: detail.content,
+          baseVersionNo: detail.item.currentVersionNo,
+        })
+      }
+      blockAutoSaveKeyRef.current = hasNewerLocalDraft ? '' : payload.key
+      blockedAutoSaveKeyRef.current = ''
+      setSaveState(hasNewerLocalDraft ? 'dirty' : 'saved')
+      queryClient.setQueryData(['knowledge-content', spaceId, detail.item.id], detail)
+      removeLocalDraft(spaceId, detail.item.id)
+      if (hasNewerLocalDraft) {
+        persistLocalDraft(detail.item.id)
+      }
       if (blockSaveOriginRef.current !== 'auto') {
         message.success('块已保存')
       }
-      await refreshKnowledgeContent(detail.item.id)
+      await queryClient.invalidateQueries({ queryKey: ['knowledge-base-items', spaceId] })
     },
-    onError: (error) => {
+    onError: async (error, payload) => {
       blockAutoSaveKeyRef.current = ''
-      if (error.message.includes('409')) {
-        setConflictItemId(activeItemId)
+      blockedAutoSaveKeyRef.current = payload.key
+      persistLocalDraft(payload.itemId)
+        const errorMessage = error instanceof Error ? error.message : String(error)
+        const errorStatus = error instanceof ApiRequestError
+          ? error.status
+          : Number(
+              (error as { status?: unknown })?.status
+                ?? errorMessage.match(/\b(409|408|502|503|504)\b/)?.[1]
+                ?? 0,
+            )
+        let versionConflict = errorStatus === 409
+      if (!versionConflict && errorStatus === 403) {
+        try {
+          const remoteDetail = await getKnowledgeContent(spaceId || '', payload.itemId)
+          versionConflict = remoteDetail.item.currentVersionNo > payload.baseVersionNo
+        } catch {
+          versionConflict = false
+        }
+      }
+      if (versionConflict) {
+        setConflictItemId(payload.itemId)
+        setSaveState('conflict')
         message.warning('内容已被其他版本更新，请刷新后再保存块')
         return
       }
+      if (!errorStatus || [408, 502, 503, 504].includes(errorStatus)) {
+        setSaveState('offline')
+        message.warning('保存未完成，本地草稿已保留')
+        return
+      }
+      setSaveState('error')
       message.error('块保存失败')
     },
   })
 
+  const createBlockSavePayload = useCallback((saveMode: 'auto' | 'manual'): BlockSavePayload | null => {
+    if (!activeItemId) {
+      return null
+    }
+    const nextBlocks = latestBlockDraftsRef.current
+    const nextTitle = latestTitleDraftRef.current
+    return {
+      key: blockSaveKey(activeItemId, nextTitle, nextBlocks),
+      itemId: activeItemId,
+      baseVersionNo: blockDraftVersionNo || baseVersionNo,
+      title: nextTitle,
+      blocks: nextBlocks,
+      saveMode,
+    }
+  }, [activeItemId, baseVersionNo, blockDraftVersionNo])
+
+  const navigateToContent = useCallback((nextItemId: string) => {
+    if (nextItemId === activeItemId) {
+      return
+    }
+    const navigationNeedsGuard = !realtimeCollaboration.provider && (
+      blockDraftDirty
+      || blockMutation.isPending
+      || ['dirty', 'saving', 'conflict', 'offline', 'error'].includes(saveState)
+    )
+    const continueNavigation = () => {
+      if (activeItemId && navigationNeedsGuard) {
+        persistLocalDraft(activeItemId)
+      }
+      recoveryCheckedItemRef.current = null
+      setSelectedItemId(nextItemId)
+      navigate(contentRouteFor(nextItemId))
+    }
+    if (!navigationNeedsGuard) {
+      continueNavigation()
+      return
+    }
+    Modal.confirm({
+      title: '存在未保存内容',
+      content: '切换内容页前，系统会保留本地草稿。你可以稍后恢复并继续保存。',
+      okText: '保留并切换',
+      cancelText: '继续编辑',
+      onOk: continueNavigation,
+    })
+  }, [activeItemId, blockDraftDirty, blockMutation.isPending, contentRouteFor, navigate, persistLocalDraft, realtimeCollaboration.provider, saveState])
+
   useEffect(() => {
-    if (!contentQuery.data || !activeItemId || contentQuery.data.item.contentType !== 'markdown' || !canEdit || !blockDraftDirty || blockMutation.isPending) {
+    if (realtimeCollaboration.provider || !contentQuery.data || !activeItemId || contentQuery.data.item.contentType !== 'markdown' || !canEdit || !blockDraftDirty || blockMutation.isPending) {
       return
     }
     const key = blockSaveKey(activeItemId, titleDraft, blockDrafts)
     if (blockAutoSaveKeyRef.current === key) {
       return
     }
+    if (blockedAutoSaveKeyRef.current === key) {
+      return
+    }
+    blockedAutoSaveKeyRef.current = ''
     const timer = window.setTimeout(() => {
-      blockAutoSaveKeyRef.current = key
-      blockSaveOriginRef.current = 'auto'
-      blockMutation.mutate()
+      const payload = createBlockSavePayload('auto')
+      if (!payload) {
+        return
+      }
+      blockAutoSaveKeyRef.current = payload.key
+      blockMutation.mutate(payload)
     }, 700)
     return () => window.clearTimeout(timer)
-  }, [activeItemId, blockDraftDirty, blockDrafts, blockMutation, canEdit, contentQuery.data, titleDraft])
+  }, [activeItemId, blockDraftDirty, blockDrafts, blockMutation, canEdit, contentQuery.data, createBlockSavePayload, realtimeCollaboration.provider, titleDraft])
 
   const commentMutation = useMutation({
     mutationFn: () =>
@@ -809,34 +1023,6 @@ export function KnowledgeContentPage() {
       content: next.content ?? (current.itemId === activeItemId ? current.content : contentDraft),
       baseVersionNo,
     }))
-  }
-
-  const updateBlockDraft = (index: number, next: Partial<BlockKnowledgeContentDraftState>) => {
-    setBlockDrafts((current) => current.map((block, blockIndex) => (blockIndex === index ? { ...block, ...next } : block)))
-  }
-
-  const addBlockDraft = () => {
-    setBlockDrafts((current) => [...current, { blockType: 'paragraph', content: '', sortOrder: current.length }])
-  }
-
-  const removeBlockDraft = (index: number) => {
-    setBlockDrafts((current) => {
-      const next = current.filter((_, blockIndex) => blockIndex !== index)
-      return next.length > 0 ? next : [{ blockType: 'paragraph', content: '', sortOrder: 0 }]
-    })
-  }
-
-  const moveBlockDraft = (index: number, direction: -1 | 1) => {
-    setBlockDrafts((current) => {
-      const target = index + direction
-      if (target < 0 || target >= current.length) {
-        return current
-      }
-      const next = [...current]
-      const [item] = next.splice(index, 1)
-      next.splice(target, 0, item)
-      return next
-    })
   }
 
   const openMove = () => {
@@ -1011,8 +1197,7 @@ export function KnowledgeContentPage() {
               onSelect={(keys) => {
                 const key = String(keys[0] ?? '')
                 if (key) {
-                  setSelectedItemId(key)
-                  navigate(contentRouteFor(key))
+                  navigateToContent(key)
                 }
               }}
             />
@@ -1026,8 +1211,7 @@ export function KnowledgeContentPage() {
                   className={`doc-list-item${document.id === activeItemId ? ' active' : ''}${document.archived ? ' archived' : ''}`}
                   type="button"
                   onClick={() => {
-                    setSelectedItemId(document.id)
-                    navigate(contentRouteFor(document.id))
+                    navigateToContent(document.id)
                   }}
                 >
                   {document.contentType === 'markdown' ? <FileTextOutlined /> : <FolderOutlined />}
@@ -1073,23 +1257,40 @@ export function KnowledgeContentPage() {
           <div className="docs-breadcrumb-bar">
             <Breadcrumb
               items={pathQuery.data.map((item) => ({
-                title: item.id === activeItemId ? item.title : <button type="button" onClick={() => navigate(contentRouteFor(item.id))}>{item.title}</button>,
+                title: item.id === activeItemId ? item.title : <button type="button" onClick={() => navigateToContent(item.id)}>{item.title}</button>,
               }))}
             />
           </div>
+        ) : null}
+        {localDraftRecovery && localDraftRecovery.itemId === activeItemId ? (
+          <Alert
+            showIcon
+            type="info"
+            message={`发现 ${new Date(localDraftRecovery.savedAt).toLocaleString()} 保存的本地草稿`}
+            description={`该草稿基于 v${localDraftRecovery.baseVersionNo}，恢复后需要重新保存；如远端已有更新，保存时会进入冲突处理。`}
+            action={(
+              <Space>
+                <Button type="primary" onClick={restoreLocalDraft}>恢复草稿</Button>
+                <Button onClick={discardLocalDraft}>丢弃</Button>
+              </Space>
+            )}
+          />
         ) : null}
         {contentQuery.data ? (
           <KnowledgeContentWorkspace
             detail={contentQuery.data}
             titleDraft={titleDraft}
-            contentDraft={contentDraft}
             canComment={canComment}
-            canEdit={canEdit}
+            canEdit={canEdit && !migrationReadOnly}
+            migrationReadOnly={Boolean(migrationReadOnly)}
+            canonicalDocument={canonicalMigrationQuery.data?.safeToApply ? canonicalMigrationQuery.data.canonicalDocument : undefined}
             canManage={canManage}
             conflictVisible={conflictItemId === activeItemId}
+            saveState={saveState}
+            realtimeCollaboration={realtimeCollaboration}
             versions={versionsQuery.data ?? []}
             blockDrafts={blockDraftItemId === activeItemId ? blockDrafts : []}
-            saving={contentQuery.data.item.contentType === 'markdown' ? checkpointMutation.isPending : saveMutation.isPending}
+            blockDraftReady={blockDraftItemId === activeItemId}
             savingBlocks={blockMutation.isPending}
             restoringVersionNo={restoreMutation.variables}
             commentDraft={commentDraft}
@@ -1097,28 +1298,28 @@ export function KnowledgeContentPage() {
             commentAnchor={commentAnchor}
             commentReplyDrafts={commentReplyDrafts}
             activeCommentId={activeCommentId}
-            onTitleChange={(value) => updateDraft({ title: value })}
-            onContentChange={(value) => updateDraft({ content: value })}
-            onBlocksDraftChange={(blocks) => {
-              setBlockDrafts(blocks.map((block, index) => ({ ...block, sortOrder: index })))
-              updateDraft({ content: blocksToMarkdown(blocks) })
+            onTitleChange={(value) => {
+              setSaveState('dirty')
+              updateDraft({ title: value })
             }}
-            onBlockChange={updateBlockDraft}
-            onAddBlock={addBlockDraft}
-            onRemoveBlock={removeBlockDraft}
-            onMoveBlock={moveBlockDraft}
-            onSave={() => {
-              if (contentQuery.data.item.contentType === 'markdown') {
-                checkpointMutation.mutate()
-                return
-              }
-              saveMutation.mutate()
+            onBlocksChange={(blocks) => {
+              setSaveState('dirty')
+              setBlockDrafts(blocks.map((block, index) => ({ ...block, sortOrder: index })))
             }}
             onSaveBlocks={() => {
-              blockSaveOriginRef.current = 'manual'
-              blockMutation.mutate()
+              if (realtimeCollaboration.provider) {
+                realtimeCollaboration.provider.flushPendingUpdates()
+                setSaveState('saving')
+                window.setTimeout(() => checkpointMutation.mutate(), 1200)
+                return
+              }
+              const payload = createBlockSavePayload('manual')
+              if (payload) {
+                blockMutation.mutate(payload)
+              }
             }}
-            onRefresh={() => refreshKnowledgeContent()}
+            onRefresh={() => refreshKnowledgeContent(activeItemId, { discardLocalDraft: true })}
+            onOpenLocalDraft={openLocalDraft}
             onOpenPermission={openPermissionSettings}
             onOpenRelation={() => setRelationOpen(true)}
             onOpenNamedVersion={() => setNamedVersionOpen(true)}
@@ -1134,8 +1335,18 @@ export function KnowledgeContentPage() {
             }))}
             onSaveKnowledgeMetadata={(values) => knowledgeMetadataMutation.mutate(values)}
             savingKnowledgeMetadata={knowledgeMetadataMutation.isPending}
+            onCreateCheckpoint={() => checkpointMutation.mutate()}
+            creatingCheckpoint={checkpointMutation.isPending}
             onRestore={(versionNo) => restoreMutation.mutate(versionNo)}
-            onDiff={(versionNo) => setDiffToVersionNo(versionNo)}
+            onDiff={(versionNo) => {
+              const orderedVersions = [...versionsQuery.data ?? []].sort((left, right) => left.versionNo - right.versionNo)
+              const currentIndex = orderedVersions.findIndex((version) => version.versionNo === versionNo)
+              const previousVersion = currentIndex > 0 ? orderedVersions[currentIndex - 1] : null
+              if (previousVersion) {
+                setDiffFromVersionNo(previousVersion.versionNo)
+                setDiffToVersionNo(versionNo)
+              }
+            }}
             onCommentDraftChange={setCommentDraft}
             onCommentBlockChange={setCommentBlockId}
             onCommentAnchorChange={setCommentAnchor}
@@ -1504,11 +1715,27 @@ export function KnowledgeContentPage() {
       </Modal>
 
       <Modal
+        title="本地草稿"
+        open={localDraftOpen}
+        footer={null}
+        width={860}
+        onCancel={() => setLocalDraftOpen(false)}
+      >
+        <Typography.Paragraph type="secondary">
+          这是离开页面、冲突或网络失败时保留的结构化草稿。刷新远端后可据此人工合并，再回到编辑器保存。
+        </Typography.Paragraph>
+        <Input.TextArea value={localDraftJson} readOnly autoSize={{ minRows: 12, maxRows: 24 }} />
+      </Modal>
+
+      <Modal
         title="版本对比"
         open={Boolean(diffToVersionNo)}
         footer={null}
         width={760}
-        onCancel={() => setDiffToVersionNo(null)}
+        onCancel={() => {
+          setDiffFromVersionNo(null)
+          setDiffToVersionNo(null)
+        }}
       >
         <div className="doc-diff-view">
           {diffQuery.data?.lines.map((line, index) => (
@@ -1527,14 +1754,17 @@ export function KnowledgeContentPage() {
 function KnowledgeContentWorkspace({
   detail,
   titleDraft,
-  contentDraft,
   canComment,
   canEdit,
+  migrationReadOnly,
+  canonicalDocument,
   canManage,
   conflictVisible,
+  saveState,
+  realtimeCollaboration,
   versions,
   blockDrafts,
-  saving,
+  blockDraftReady,
   savingBlocks,
   restoringVersionNo,
   commentDraft,
@@ -1543,15 +1773,10 @@ function KnowledgeContentWorkspace({
   commentReplyDrafts,
   activeCommentId,
   onTitleChange,
-  onContentChange,
-  onBlocksDraftChange,
-  onBlockChange,
-  onAddBlock,
-  onRemoveBlock,
-  onMoveBlock,
-  onSave,
+  onBlocksChange,
   onSaveBlocks,
   onRefresh,
+  onOpenLocalDraft,
   onOpenPermission,
   onOpenRelation,
   onOpenNamedVersion,
@@ -1561,6 +1786,8 @@ function KnowledgeContentWorkspace({
   knowledgeMaintainerOptions,
   onSaveKnowledgeMetadata,
   savingKnowledgeMetadata,
+  onCreateCheckpoint,
+  creatingCheckpoint,
   onRestore,
   onDiff,
   onCommentDraftChange,
@@ -1579,14 +1806,17 @@ function KnowledgeContentWorkspace({
 }: {
   detail: KnowledgeContentDetail
   titleDraft: string
-  contentDraft: string
   canComment: boolean
   canEdit: boolean
+  migrationReadOnly: boolean
+  canonicalDocument?: JSONContent
   canManage: boolean
   conflictVisible: boolean
+  saveState: KnowledgeContentSaveState
+  realtimeCollaboration: KnowledgeContentRealtimeSession
   versions: KnowledgeContentVersion[]
   blockDrafts: BlockKnowledgeContentDraftState[]
-  saving: boolean
+  blockDraftReady: boolean
   savingBlocks: boolean
   restoringVersionNo?: number
   commentDraft: string
@@ -1595,15 +1825,10 @@ function KnowledgeContentWorkspace({
   commentReplyDrafts: Record<string, string>
   activeCommentId: string | null
   onTitleChange: (value: string) => void
-  onContentChange: (value: string) => void
-  onBlocksDraftChange: (blocks: BlockKnowledgeContentDraftState[]) => void
-  onBlockChange: (index: number, next: Partial<BlockKnowledgeContentDraftState>) => void
-  onAddBlock: () => void
-  onRemoveBlock: (index: number) => void
-  onMoveBlock: (index: number, direction: -1 | 1) => void
-  onSave: () => void
+  onBlocksChange: (blocks: BlockKnowledgeContentDraftState[]) => void
   onSaveBlocks: () => void
   onRefresh: () => void
+  onOpenLocalDraft: () => void
   onOpenPermission: () => void
   onOpenRelation: () => void
   onOpenNamedVersion: () => void
@@ -1613,6 +1838,8 @@ function KnowledgeContentWorkspace({
   knowledgeMaintainerOptions: Array<{ label: string; value: string }>
   onSaveKnowledgeMetadata: (values: KnowledgeMetadataForm) => void
   savingKnowledgeMetadata: boolean
+  onCreateCheckpoint: () => void
+  creatingCheckpoint: boolean
   onRestore: (versionNo: number) => void
   onDiff: (versionNo: number) => void
   onCommentDraftChange: (value: string) => void
@@ -1631,30 +1858,7 @@ function KnowledgeContentWorkspace({
 }) {
   const currentUser = useAuthStore((state) => state.currentUser)
   const [commentFilter, setCommentFilter] = useState<CommentFilter>('open')
-  const [blockEditorEnabled, setBlockEditorEnabled] = useState(() => localStorage.getItem('colla.kb.block-editor.mode') !== 'legacy')
-  const checkpointMode = detail.item.contentType === 'markdown'
-  const useBlockEditor = checkpointMode && blockEditorEnabled
-  const handleRemoteSnapshot = useCallback((snapshot: { title: string; content: string }) => {
-    if (useBlockEditor) {
-      return
-    }
-    onTitleChange(snapshot.title)
-    onContentChange(snapshot.content)
-  }, [onContentChange, onTitleChange, useBlockEditor])
-  const collaboration = useKnowledgeContentCollaboration({
-    itemId: detail.item.id,
-    title: titleDraft,
-    content: contentDraft,
-    versionNo: detail.item.currentVersionNo,
-    canEdit,
-    enabled: checkpointMode && !useBlockEditor,
-    onRemoteSnapshot: handleRemoteSnapshot,
-  })
-  const checkpointReady = ['joined', 'synced'].includes(collaboration.status)
-  const checkpointWaiting = checkpointMode && !useBlockEditor && !checkpointReady
-  const saveActionLabel = useBlockEditor ? '保存块' : checkpointMode ? '生成版本' : '保存'
-  const saveActionHint = checkpointWaiting ? '等待自动保存完成后生成版本' : saveActionLabel
-  const effectiveBlockDrafts = blockDrafts.length > 0 ? blockDrafts : detail.blocks.map((block) => ({
+  const effectiveBlockDrafts = blockDraftReady ? blockDrafts : detail.blocks.map((block) => ({
     id: block.id,
     parentId: block.parentId,
     blockType: block.blockType,
@@ -1666,7 +1870,7 @@ function KnowledgeContentWorkspace({
     plainText: block.plainText,
     anchorId: block.anchorId,
   }))
-  const blockContentDirty = blocksToMarkdown(effectiveBlockDrafts) !== blocksToMarkdown(detail.blocks)
+  const blockContentDirty = blockDraftKey(effectiveBlockDrafts) !== blockDraftKey(detail.blocks)
   const commentAnchors = useMemo(
     () =>
       detail.comments
@@ -1732,94 +1936,42 @@ function KnowledgeContentWorkspace({
 
   return (
     <div className="doc-editor">
-      {checkpointMode ? (
-        <div className="doc-editor-mode-bar">
-          <span>{useBlockEditor ? '块编辑器' : '兼容编辑器'}</span>
-          <Button
-            size="small"
-            onClick={() => {
-              const next = !blockEditorEnabled
-              setBlockEditorEnabled(next)
-              localStorage.setItem('colla.kb.block-editor.mode', next ? 'blocks' : 'legacy')
-            }}
-          >
-            切换到{useBlockEditor ? '兼容编辑器' : '块编辑器'}
-          </Button>
-        </div>
+      {migrationReadOnly ? (
+        <Alert
+          showIcon
+          type="warning"
+          message="内容迁移未完成，当前为只读模式"
+          description="当前内容无法安全转换为规范块结构。系统保留原内容用于阅读和导出，不会静默覆盖原数据。"
+        />
       ) : null}
-
-      {useBlockEditor ? (
-        <KnowledgeContentEditor
-          itemId={detail.item.id}
-          title={titleDraft}
-          blocks={effectiveBlockDrafts}
-          fallbackContent={contentDraft}
-          versionNo={detail.item.currentVersionNo}
-          permissionLevel={detail.item.permissionLevel}
-          updatedAt={detail.item.updatedAt}
-          canEdit={canEdit}
-          canManage={canManage}
-          dirty={titleDraft !== detail.item.title || blockContentDirty}
-          saving={savingBlocks}
-          conflictVisible={conflictVisible}
-          saveActionLabel={saveActionLabel}
-          saveActionHint={saveActionHint}
-          saveActionDisabled={false}
-          collaboration={{
-            status: collaboration.status,
-            onlineUsers: collaboration.onlineUsers,
-            remoteCursors: collaboration.remoteCursors,
-            lastSavedAt: collaboration.lastSavedAt,
-            error: collaboration.error,
-          }}
-          commentAnchors={commentAnchors}
-          blockAnchors={detail.blocks.map((block) => ({ id: block.id, anchorId: block.anchorId }))}
-          activeCommentId={activeCommentId}
-          onTitleChange={onTitleChange}
-          onBlocksChange={onBlocksDraftChange}
-          onSelectionChange={collaboration.sendAwareness}
-          onCommentAnchorChange={onCommentAnchorChange}
-          onSave={onSaveBlocks}
-          onRefresh={onRefresh}
-          onOpenPermission={onOpenPermission}
-          onOpenRelation={onOpenRelation}
-        />
-      ) : (
-        <KnowledgeContentEditorCore
-          itemId={detail.item.id}
-          title={titleDraft}
-          content={contentDraft}
-          versionNo={detail.item.currentVersionNo}
-          permissionLevel={detail.item.permissionLevel}
-          updatedAt={detail.item.updatedAt}
-          canEdit={canEdit}
-          canManage={canManage}
-          dirty={titleDraft !== detail.item.title || contentDraft !== detail.content}
-          saving={saving}
-          conflictVisible={conflictVisible}
-          saveActionLabel={saveActionLabel}
-          saveActionHint={saveActionHint}
-          saveActionDisabled={checkpointWaiting}
-          collaboration={{
-            status: collaboration.status,
-            onlineUsers: collaboration.onlineUsers,
-            remoteCursors: collaboration.remoteCursors,
-            lastSavedAt: collaboration.lastSavedAt,
-            error: collaboration.error,
-          }}
-          commentAnchors={commentAnchors}
-          blockAnchors={detail.blocks.map((block) => ({ id: block.id, anchorId: block.anchorId }))}
-          activeCommentId={activeCommentId}
-          onTitleChange={onTitleChange}
-          onContentChange={onContentChange}
-          onSelectionChange={collaboration.sendAwareness}
-          onCommentAnchorChange={onCommentAnchorChange}
-          onSave={onSave}
-          onRefresh={onRefresh}
-          onOpenPermission={onOpenPermission}
-          onOpenRelation={onOpenRelation}
-        />
-      )}
+      <KnowledgeContentEditor
+        itemId={detail.item.id}
+        title={titleDraft}
+        blocks={effectiveBlockDrafts}
+        canonicalDocument={canonicalDocument}
+        versionNo={detail.item.currentVersionNo}
+        permissionLevel={detail.item.permissionLevel}
+        updatedAt={detail.item.updatedAt}
+        canEdit={canEdit}
+        canManage={canManage}
+        dirty={titleDraft !== detail.item.title || blockContentDirty}
+        saving={savingBlocks}
+        conflictVisible={conflictVisible}
+        saveState={saveState}
+        collaboration={realtimeCollaboration}
+        saveActionLabel={saveState === 'offline' || saveState === 'error' ? '重试保存' : '保存'}
+        commentAnchors={commentAnchors}
+        blockAnchors={detail.blocks.map((block) => ({ id: block.id, anchorId: block.anchorId }))}
+        activeCommentId={activeCommentId}
+        onTitleChange={onTitleChange}
+        onBlocksChange={onBlocksChange}
+        onCommentAnchorChange={onCommentAnchorChange}
+        onSave={onSaveBlocks}
+        onRefresh={onRefresh}
+        onOpenLocalDraft={onOpenLocalDraft}
+        onOpenPermission={onOpenPermission}
+        onOpenRelation={onOpenRelation}
+      />
 
       {!canEdit ? (
         <Alert
@@ -1854,93 +2006,6 @@ function KnowledgeContentWorkspace({
             </Space>
           </div>
         ) : null}
-
-        <details className="doc-panel doc-legacy-block-panel">
-          <summary>兼容结构化块</summary>
-          <Space className="doc-panel-title">
-            <Typography.Title level={5}>兼容结构化块</Typography.Title>
-            <Space>
-              <Tooltip title="新增块">
-                <Button size="small" icon={<PlusOutlined />} disabled={!canEdit} onClick={onAddBlock} />
-              </Tooltip>
-              <Tooltip title="保存块">
-                <Button size="small" icon={<SaveOutlined />} disabled={!canEdit} loading={savingBlocks} onClick={onSaveBlocks} />
-              </Tooltip>
-            </Space>
-          </Space>
-          <Space orientation="vertical" size={8} className="doc-panel-list">
-            {blockDrafts.length > 0 ? (
-              blockDrafts.map((block, index) => (
-                <div className="doc-block-editor-item" id={block.id ? `doc-block-${block.id}` : undefined} key={block.id ?? index}>
-                  <Select
-                    className="doc-block-type"
-                    disabled={!canEdit}
-                    value={block.blockType}
-                    onChange={(value) => {
-                      const nextType = value as KnowledgeContentBlockDraft['blockType']
-                      onBlockChange(index, { blockType: nextType, content: defaultBlockContent(nextType, block.content) })
-                    }}
-                    options={[
-                      { value: 'paragraph', label: '段落' },
-                      { value: 'heading', label: '标题' },
-                      { value: 'list', label: '列表' },
-                      { value: 'task', label: '任务' },
-                      { value: 'quote', label: '引用' },
-                      { value: 'code', label: '代码' },
-                      { value: 'table', label: '表格' },
-                      { value: 'base_view', label: 'Base 视图' },
-                      { value: 'issue_embed', label: '事项/BUG' },
-                      { value: 'message_embed', label: '消息' },
-                      { value: 'file_embed', label: '文件' },
-                      { value: 'embed', label: '对象卡片' },
-                    ]}
-                  />
-                  {block.blockType === 'table' ? (
-                    <TableBlockEditor
-                      value={block.content}
-                      disabled={!canEdit}
-                      onChange={(content) => onBlockChange(index, { content })}
-                    />
-                  ) : isEmbedBlockType(block.blockType) ? (
-                    <EmbedBlockEditor
-                      blockType={block.blockType}
-                      value={block.content}
-                      disabled={!canEdit}
-                      summary={detail.blocks.find((item) => item.id === block.id)?.embedSummary ?? null}
-                      onChange={(content) => onBlockChange(index, { content })}
-                    />
-                  ) : (
-                    <Input.TextArea
-                      className="doc-block-content"
-                      disabled={!canEdit}
-                      autoSize={{ minRows: 1, maxRows: 6 }}
-                      value={block.content}
-                      onChange={(event) => onBlockChange(index, { content: event.target.value })}
-                    />
-                  )}
-                  <Space>
-                    <Tooltip title="上移">
-                      <Button size="small" icon={<ArrowUpOutlined />} disabled={!canEdit || index === 0} onClick={() => onMoveBlock(index, -1)} />
-                    </Tooltip>
-                    <Tooltip title="下移">
-                      <Button
-                        size="small"
-                        icon={<ArrowDownOutlined />}
-                        disabled={!canEdit || index === blockDrafts.length - 1}
-                        onClick={() => onMoveBlock(index, 1)}
-                      />
-                    </Tooltip>
-                    <Tooltip title="删除">
-                      <Button size="small" danger icon={<DeleteOutlined />} disabled={!canEdit} onClick={() => onRemoveBlock(index)} />
-                    </Tooltip>
-                  </Space>
-                </div>
-              ))
-            ) : (
-              <Typography.Text type="secondary">暂无块</Typography.Text>
-            )}
-          </Space>
-        </details>
 
         <div className="doc-panel">
           <Space className="doc-panel-title">
@@ -2007,6 +2072,9 @@ function KnowledgeContentWorkspace({
           <Space className="doc-panel-title">
             <Typography.Title level={5}>版本</Typography.Title>
             <Space size={4}>
+              <Button size="small" disabled={!canEdit || blockContentDirty} loading={creatingCheckpoint} onClick={onCreateCheckpoint}>
+                检查点
+              </Button>
               <Button size="small" disabled={!canEdit} onClick={onOpenNamedVersion}>
                 命名
               </Button>
@@ -2250,250 +2318,6 @@ function KnowledgeContentWorkspace({
   )
 }
 
-function TableBlockEditor({
-  value,
-  disabled,
-  onChange,
-}: {
-  value: string
-  disabled: boolean
-  onChange: (content: string) => void
-}) {
-  const table = parseTableBlock(value)
-  const emit = (next: TableBlockContent) => onChange(serializeTableBlock(normalizeTableBlock(next)))
-  const updateColumn = (columnIndex: number, nextValue: string) => {
-    emit({ ...table, columns: table.columns.map((column, index) => (index === columnIndex ? nextValue : column)) })
-  }
-  const updateCell = (rowIndex: number, columnIndex: number, nextValue: string) => {
-    emit({
-      ...table,
-      rows: table.rows.map((row, index) =>
-        index === rowIndex ? row.map((cell, cellIndex) => (cellIndex === columnIndex ? nextValue : cell)) : row,
-      ),
-    })
-  }
-  const addColumn = () => {
-    emit({
-      columns: [...table.columns, `列 ${table.columns.length + 1}`],
-      rows: table.rows.map((row) => [...row, '']),
-    })
-  }
-  const removeColumn = () => {
-    if (table.columns.length <= 1) {
-      return
-    }
-    emit({
-      columns: table.columns.slice(0, -1),
-      rows: table.rows.map((row) => row.slice(0, -1)),
-    })
-  }
-  const addRow = () => {
-    emit({ ...table, rows: [...table.rows, table.columns.map(() => '')] })
-  }
-  const removeRow = () => {
-    if (table.rows.length <= 1) {
-      return
-    }
-    emit({ ...table, rows: table.rows.slice(0, -1) })
-  }
-
-  return (
-    <div className="doc-table-block-editor">
-      <div className="doc-table-toolbar">
-        <Space size={4}>
-          <Tooltip title="新增行">
-            <Button size="small" icon={<PlusOutlined />} disabled={disabled} onClick={addRow}>
-              行
-            </Button>
-          </Tooltip>
-          <Tooltip title="删除末行">
-            <Button size="small" icon={<DeleteOutlined />} disabled={disabled || table.rows.length <= 1} onClick={removeRow}>
-              行
-            </Button>
-          </Tooltip>
-          <Tooltip title="新增列">
-            <Button size="small" icon={<PlusOutlined />} disabled={disabled} onClick={addColumn}>
-              列
-            </Button>
-          </Tooltip>
-          <Tooltip title="删除末列">
-            <Button size="small" icon={<DeleteOutlined />} disabled={disabled || table.columns.length <= 1} onClick={removeColumn}>
-              列
-            </Button>
-          </Tooltip>
-        </Space>
-      </div>
-      <div className="doc-table-block-scroll">
-        <table className="doc-table-block">
-          <thead>
-            <tr>
-              {table.columns.map((column, columnIndex) => (
-                <th key={`column-${columnIndex}`}>
-                  <Input
-                    disabled={disabled}
-                    value={column}
-                    onChange={(event) => updateColumn(columnIndex, event.target.value)}
-                  />
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {table.rows.map((row, rowIndex) => (
-              <tr key={`row-${rowIndex}`}>
-                {table.columns.map((_, columnIndex) => (
-                  <td key={`cell-${rowIndex}-${columnIndex}`}>
-                    <Input
-                      disabled={disabled}
-                      value={row[columnIndex] ?? ''}
-                      onChange={(event) => updateCell(rowIndex, columnIndex, event.target.value)}
-                    />
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  )
-}
-
-function EmbedBlockEditor({
-  blockType,
-  value,
-  disabled,
-  summary,
-  onChange,
-}: {
-  blockType: KnowledgeContentBlockDraft['blockType']
-  value: string
-  disabled: boolean
-  summary?: PlatformObjectSummary | null
-  onChange: (content: string) => void
-}) {
-  const embed = parseEmbedBlock(value)
-  const fixedObjectType = fixedEmbedObjectType(blockType)
-  const objectType = fixedObjectType ?? embed.objectType ?? 'issue'
-  const emit = (next: EmbedBlockContent) => onChange(serializeEmbedBlock({ ...embed, ...next }))
-
-  return (
-    <div className="doc-embed-block-editor">
-      <Space wrap className="doc-embed-fields">
-        {fixedObjectType ? (
-          <Tag>{objectTypeText[fixedObjectType] ?? fixedObjectType}</Tag>
-        ) : (
-          <Select
-            className="doc-embed-type"
-            disabled={disabled}
-            value={objectType}
-            onChange={(nextType) => emit({ objectType: nextType })}
-            options={[
-              { value: 'issue', label: '事项/BUG' },
-              { value: 'knowledge_content', label: '知识内容' },
-              { value: 'base', label: 'Base' },
-              { value: 'base_table', label: '数据表' },
-              { value: 'base_record', label: '表格记录' },
-              { value: 'message', label: '消息' },
-              { value: 'approval', label: '审批' },
-              { value: 'file', label: '文件' },
-            ]}
-          />
-        )}
-        <Input
-          className="doc-embed-id"
-          disabled={disabled}
-          placeholder="对象 ID"
-          value={embed.objectId ?? ''}
-          onChange={(event) => emit({ objectType, objectId: event.target.value })}
-        />
-        {blockType === 'base_view' ? (
-          <Input
-            className="doc-embed-view-id"
-            disabled={disabled}
-            placeholder="视图 ID"
-            value={embed.viewId ?? ''}
-            onChange={(event) => emit({ objectType, viewId: event.target.value })}
-          />
-        ) : null}
-      </Space>
-      {summary ? (
-        <EmbedSummaryPreview summary={summary} blockType={blockType} embed={embed} />
-      ) : (
-        <Typography.Text type="secondary">保存后解析对象摘要</Typography.Text>
-      )}
-    </div>
-  )
-}
-
-function EmbedSummaryPreview({
-  summary,
-  blockType,
-  embed,
-}: {
-  summary: PlatformObjectSummary
-  blockType: KnowledgeContentBlockDraft['blockType']
-  embed: EmbedBlockContent
-}) {
-  const baseId = typeof summary.metadata?.baseId === 'string' ? summary.metadata.baseId : null
-  const tableId = summary.objectId
-  const shouldLoadBaseView = blockType === 'base_view' && summary.accessState === 'available' && Boolean(baseId && tableId)
-  const tableQuery = useQuery({
-    queryKey: ['knowledge-content', 'base-view', baseId, tableId, 'table'],
-    queryFn: () => getTable(baseId || '', tableId),
-    enabled: shouldLoadBaseView,
-  })
-  const selectedView = tableQuery.data?.views.find((view) => view.id === embed.viewId)
-  const recordsQuery = useQuery({
-    queryKey: ['knowledge-content', 'base-view', baseId, tableId, selectedView?.id ?? 'default', 'records'],
-    queryFn: () =>
-      queryRecords(baseId || '', tableId, {
-        filters: selectedView?.filters ?? [],
-        sorts: selectedView?.sorts ?? [],
-        limit: 5,
-        offset: 0,
-      }),
-    enabled: shouldLoadBaseView && tableQuery.isSuccess,
-  })
-
-  if (summary.accessState !== 'available') {
-    return <Alert type="warning" showIcon message={blockAccessText[summary.accessState] ?? '嵌入对象不可访问'} />
-  }
-  if (!shouldLoadBaseView) {
-    return <ObjectSummaryCard summary={summary} />
-  }
-  const fields = tableQuery.data?.fields ?? []
-  const visibleFieldIds = selectedView?.visibleFieldIds ?? []
-  const visibleFields = visibleFieldIds.length > 0 ? fields.filter((field) => visibleFieldIds.includes(field.id)) : fields.slice(0, 4)
-  return (
-    <div className="doc-base-view-preview">
-      <ObjectSummaryCard summary={summary} />
-      <Space wrap size={4}>
-        <Tag color="blue">{selectedView ? selectedView.name : '默认视图'}</Tag>
-        <Tag>{summary.accessState === 'available' ? '权限可见' : '权限受限'}</Tag>
-        {selectedView?.filters.length ? <Tag>筛选 {selectedView.filters.length}</Tag> : null}
-        {selectedView?.sorts.length ? <Tag>排序 {selectedView.sorts.length}</Tag> : null}
-      </Space>
-      <div className="doc-base-view-grid">
-        <div className="doc-base-view-row header">
-          <span>#</span>
-          {visibleFields.map((field) => <span key={field.id}>{field.name}</span>)}
-        </div>
-        {(recordsQuery.data?.items ?? []).map((record) => (
-          <div className="doc-base-view-row" key={record.id}>
-            <span>{record.recordNo}</span>
-            {visibleFields.map((field) => <span key={field.id}>{baseCellValue(field, record)}</span>)}
-          </div>
-        ))}
-        {recordsQuery.isLoading ? <Typography.Text type="secondary">加载视图中...</Typography.Text> : null}
-        {!recordsQuery.isLoading && (recordsQuery.data?.items.length ?? 0) === 0 ? (
-          <Typography.Text type="secondary">当前视图暂无记录</Typography.Text>
-        ) : null}
-      </div>
-    </div>
-  )
-}
-
 function TemplatePreview({ template }: { template: KnowledgeContentTemplate | null }) {
   if (!template) {
     return null
@@ -2513,21 +2337,6 @@ function TemplatePreview({ template }: { template: KnowledgeContentTemplate | nu
       </div>
     </div>
   )
-}
-
-function baseCellValue(field: BaseField, record: BaseRecord) {
-  const value = record.values[field.id] ?? record.values[field.name]
-  if (value === undefined || value === null || value === '') {
-    return '-'
-  }
-  if (Array.isArray(value)) {
-    return value.join(', ')
-  }
-  if (typeof value === 'object' && 'objectType' in value && 'objectId' in value) {
-    const linkValue = value as { objectType?: unknown; objectId?: unknown; title?: unknown }
-    return String(linkValue.title ?? `${linkValue.objectType}:${linkValue.objectId}`)
-  }
-  return String(value)
 }
 
 function commentMatchesAnchor(comment: KnowledgeContentComment, anchor: KnowledgeContentEditorSelectionAnchor) {
@@ -2657,8 +2466,70 @@ function buildKnowledgeItemTreeData(
   }))
 }
 
-function blockSaveKey(itemId: string, title: string, blocks: Array<Pick<KnowledgeContentBlockDraft, 'blockType' | 'content' | 'sortOrder'>>) {
-  return `${itemId}\u0000${title}\u0000${blocks.map((block, index) => `${block.sortOrder ?? index}:${block.blockType}:${block.content}`).join('\u0001')}`
+function blockDraftKey(
+  blocks: Array<Pick<KnowledgeContentBlockDraft, 'id' | 'parentId' | 'blockType' | 'content' | 'sortOrder' | 'schemaVersion' | 'attrs' | 'richContent' | 'plainText' | 'anchorId'>>,
+) {
+  return JSON.stringify(blocks.map((block, index) => ({
+    id: block.id ?? null,
+    parentId: block.parentId ?? null,
+    blockType: block.blockType,
+    content: block.content,
+    sortOrder: block.sortOrder ?? index,
+    schemaVersion: block.schemaVersion ?? null,
+    attrs: block.attrs ?? null,
+    richContent: block.richContent ?? null,
+    plainText: block.plainText ?? null,
+    anchorId: block.anchorId ?? null,
+  })))
+}
+
+function blockSaveKey(itemId: string, title: string, blocks: Array<Pick<KnowledgeContentBlockDraft, 'id' | 'parentId' | 'blockType' | 'content' | 'sortOrder' | 'schemaVersion' | 'attrs' | 'richContent' | 'plainText' | 'anchorId'>>) {
+  return `${itemId}\u0000${title}\u0000${blockDraftKey(blocks)}`
+}
+
+function localDraftStorageKey(spaceId: string | undefined, itemId: string) {
+  return `colla.knowledge-content.local-draft.${spaceId ?? 'unknown'}.${itemId}`
+}
+
+function readLocalDraft(spaceId: string | undefined, itemId: string): LocalDraftRecovery | null {
+  try {
+    const raw = localStorage.getItem(localDraftStorageKey(spaceId, itemId))
+    if (!raw) {
+      return null
+    }
+    const parsed = JSON.parse(raw) as Partial<LocalDraftRecovery>
+    if (parsed.itemId !== itemId || typeof parsed.title !== 'string' || !Array.isArray(parsed.blocks) || typeof parsed.savedAt !== 'string') {
+      return null
+    }
+    return {
+      itemId,
+      title: parsed.title,
+      baseVersionNo: Number(parsed.baseVersionNo ?? 0),
+      blocks: parsed.blocks as BlockKnowledgeContentDraftState[],
+      savedAt: parsed.savedAt,
+    }
+  } catch {
+    return null
+  }
+}
+
+function writeLocalDraft(spaceId: string | undefined, draft: LocalDraftRecovery) {
+  try {
+    localStorage.setItem(localDraftStorageKey(spaceId, draft.itemId), JSON.stringify(draft))
+  } catch {
+    // Storage can be unavailable in private browsing; the in-memory draft remains usable.
+  }
+}
+
+function removeLocalDraft(spaceId: string | undefined, itemId: string | null) {
+  if (!itemId) {
+    return
+  }
+  try {
+    localStorage.removeItem(localDraftStorageKey(spaceId, itemId))
+  } catch {
+    // Ignore storage cleanup failures.
+  }
 }
 
 function blockTypeText(blockType: string) {
@@ -2704,38 +2575,6 @@ function isEmbedBlockType(blockType: string) {
   return EMBED_BLOCK_TYPES.has(blockType)
 }
 
-function fixedEmbedObjectType(blockType: string) {
-  if (blockType === 'base_view') {
-    return 'base_table'
-  }
-  if (blockType === 'issue_embed') {
-    return 'issue'
-  }
-  if (blockType === 'message_embed') {
-    return 'message'
-  }
-  if (blockType === 'file_embed') {
-    return 'file'
-  }
-  return null
-}
-
-function defaultBlockContent(blockType: KnowledgeContentBlockDraft['blockType'], current: string) {
-  if (blockType === 'table') {
-    return serializeTableBlock(parseTableBlock(current))
-  }
-  if (isEmbedBlockType(blockType)) {
-    const fixedObjectType = fixedEmbedObjectType(blockType)
-    const parsed = parseEmbedBlock(current)
-    return serializeEmbedBlock({
-      objectType: fixedObjectType ?? parsed.objectType ?? 'issue',
-      objectId: parsed.objectId ?? '',
-      viewId: blockType === 'base_view' ? parsed.viewId ?? '' : undefined,
-    })
-  }
-  return current
-}
-
 function parseTableBlock(value: string): TableBlockContent {
   const fallback = { columns: ['列 1', '列 2'], rows: [['', '']] }
   const parsed = parseJsonObject<TableBlockContent>(value)
@@ -2750,23 +2589,6 @@ function normalizeTableBlock(table: TableBlockContent): TableBlockContent {
     ? table.rows.map((row) => columns.map((_, index) => String(Array.isArray(row) ? row[index] ?? '' : '')))
     : [columns.map(() => '')]
   return { columns, rows }
-}
-
-function serializeTableBlock(table: TableBlockContent) {
-  return JSON.stringify(normalizeTableBlock(table))
-}
-
-function parseEmbedBlock(value: string): EmbedBlockContent {
-  return parseJsonObject<EmbedBlockContent>(value) ?? {}
-}
-
-function serializeEmbedBlock(embed: EmbedBlockContent) {
-  return JSON.stringify({
-    objectType: embed.objectType ?? 'issue',
-    objectId: embed.objectId ?? '',
-    ...(embed.viewId ? { viewId: embed.viewId } : {}),
-    ...(embed.title ? { title: embed.title } : {}),
-  })
 }
 
 function parseJsonObject<T>(value: string): T | null {

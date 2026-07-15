@@ -26,13 +26,15 @@ status: active
 - Login success/failure.
 - User create/enable/disable/password reset.
 - File download URL creation.
-- Document/base permission grant.
+- Knowledge-content/base permission grant.
 - Approval start/approve/reject/transfer/withdraw.
 
 ## Operations
 
 - Production compose lives in `deploy/docker-compose.prod.yml`.
 - Reverse proxy and WebSocket forwarding live in `deploy/nginx/colla.conf`.
-- Backup and restore scripts live in `deploy/scripts`.
+- Backup, restore, semantic health, release gate and immutable-image rollback scripts live in `deploy/scripts`.
 - 旧性能基线脚本已归档；新的性能验收必须基于当前规范 API 建立任务级基线。
-- `deploy/scripts/restore-drill.ps1` validates backup manifests and hashes in dry-run mode by default.
+- `deploy/scripts/restore-drill.ps1` validates manifest-v2 metadata and hashes in dry-run mode by default; a real drill is restricted to an isolated `colla-platform-drill-*` Compose project.
+- Production dependencies are pinned by digest; server/web images require version tags and matching OCI source revision labels.
+- Dirty-worktree or skipped-gate release checks are `PARTIAL` diagnostics and cannot authorize a release.

@@ -22,7 +22,9 @@ import {
   TableOutlined,
   UnorderedListOutlined,
 } from '@ant-design/icons'
-import { Extension, Mark } from '@tiptap/core'
+import { Extension, Mark, type Extensions } from '@tiptap/core'
+import Collaboration from '@tiptap/extension-collaboration'
+import CollaborationCaret from '@tiptap/extension-collaboration-caret'
 import DragHandle from '@tiptap/extension-drag-handle-react'
 import Image from '@tiptap/extension-image'
 import { Table } from '@tiptap/extension-table'
@@ -48,19 +50,19 @@ import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import StarterKit from '@tiptap/starter-kit'
 import { useQuery } from '@tanstack/react-query'
-import { Alert, Button, Dropdown, Input, Modal, Select, Space, Tag, Tooltip, Typography } from 'antd'
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { Alert, Avatar, Button, Dropdown, Input, Modal, Select, Space, Tag, Tooltip, Typography } from 'antd'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 
 import { uploadFileForTarget, getFileDownloadUrl, getFileMetadata } from '../../../files/api/filesApi'
 import { ObjectSummaryCard } from '../../../platform/components/InternalLinkCard'
 import { getObjectNavigation, resolveInternalLink, type PlatformObjectSummary } from '../../../platform/api/platformObjectsApi'
 import { objectTypeText } from '../../../platform/objectTypeLabels'
-import type { KnowledgeContentCollaborationStatus, KnowledgeContentCollaborator, KnowledgeContentCursor } from '../hooks/useKnowledgeContentCollaboration'
+import type { KnowledgeContentRealtimeSession } from '../hooks/useKnowledgeContentRealtimeCollaboration'
 
 export type KnowledgeContentEditorCoreProps = {
   itemId: string
   title: string
-  content: string
+  document: JSONContent
   versionNo: number
   permissionLevel: string
   updatedAt: string
@@ -69,28 +71,25 @@ export type KnowledgeContentEditorCoreProps = {
   dirty: boolean
   saving: boolean
   conflictVisible: boolean
+  saveState?: KnowledgeContentSaveState
   saveActionLabel?: string
   saveActionHint?: string
   saveActionDisabled?: boolean
-  collaboration?: {
-    status: KnowledgeContentCollaborationStatus
-    onlineUsers: KnowledgeContentCollaborator[]
-    remoteCursors: KnowledgeContentCollaborator[]
-    lastSavedAt?: string | null
-    error?: string | null
-  }
   commentAnchors?: KnowledgeContentEditorCommentAnchor[]
   blockAnchors?: KnowledgeContentEditorBlockAnchor[]
   activeCommentId?: string | null
   onTitleChange: (value: string) => void
-  onContentChange: (value: string) => void
-  onSelectionChange?: (cursor: KnowledgeContentCursor) => void
+  onDocumentChange: (document: JSONContent) => void
   onCommentAnchorChange?: (anchor?: KnowledgeContentEditorSelectionAnchor) => void
   onSave: () => void
   onRefresh: () => void
+  onOpenLocalDraft: () => void
   onOpenPermission: () => void
   onOpenRelation: () => void
+  collaboration?: KnowledgeContentRealtimeSession
 }
+
+export type KnowledgeContentSaveState = 'clean' | 'dirty' | 'saving' | 'saved' | 'offline' | 'conflict' | 'error'
 
 export type KnowledgeContentEditorCommentAnchor = {
   id: string
@@ -194,6 +193,29 @@ const CommentAnchorExtension = Extension.create({
   },
 })
 
+const BlockIdentityExtension = Extension.create({
+  name: 'blockIdentity',
+  addGlobalAttributes() {
+    return [
+      {
+        types: ['paragraph', 'heading', 'blockquote', 'codeBlock', 'bulletList', 'orderedList', 'taskList', 'table', 'image', 'horizontalRule', 'objectCard', 'fileCard'],
+        attributes: {
+          blockId: {
+            default: null,
+            parseHTML: (element: HTMLElement) => element.getAttribute('data-block-id'),
+            renderHTML: (attributes: Record<string, unknown>) => attributes.blockId ? { 'data-block-id': attributes.blockId } : {},
+          },
+          parentBlockId: {
+            default: null,
+            parseHTML: (element: HTMLElement) => element.getAttribute('data-parent-block-id'),
+            renderHTML: (attributes: Record<string, unknown>) => attributes.parentBlockId ? { 'data-parent-block-id': attributes.parentBlockId } : {},
+          },
+        },
+      },
+    ]
+  },
+})
+
 const ObjectCardNode = TiptapNode.create({
   name: 'objectCard',
   group: 'block',
@@ -270,7 +292,7 @@ const InlineObjectMark = Mark.create({
 export function KnowledgeContentEditorCore({
   itemId,
   title,
-  content,
+  document,
   versionNo,
   permissionLevel,
   updatedAt,
@@ -279,31 +301,31 @@ export function KnowledgeContentEditorCore({
   dirty,
   saving,
   conflictVisible,
+  saveState,
   saveActionLabel = '保存',
   saveActionHint,
   saveActionDisabled = false,
-  collaboration,
   commentAnchors = [],
   blockAnchors = [],
   activeCommentId,
   onTitleChange,
-  onContentChange,
-  onSelectionChange,
+  onDocumentChange,
   onCommentAnchorChange,
   onSave,
   onRefresh,
+  onOpenLocalDraft,
   onOpenPermission,
   onOpenRelation,
+  collaboration,
 }: KnowledgeContentEditorCoreProps) {
-  const onContentChangeRef = useRef(onContentChange)
-  const onSelectionChangeRef = useRef(onSelectionChange)
+  const onDocumentChangeRef = useRef(onDocumentChange)
   const onCommentAnchorChangeRef = useRef(onCommentAnchorChange)
   const onSaveRef = useRef(onSave)
   const loadedContentKeyRef = useRef('')
   const editorRef = useRef<Editor | null>(null)
   const imageInputRef = useRef<HTMLInputElement | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
-  const contentStats = useMemo(() => knowledgeContentEditorStats(content, commentAnchors.length), [commentAnchors.length, content])
+  const contentStats = useMemo(() => knowledgeContentEditorStatsFromDocument(document, commentAnchors.length), [commentAnchors.length, document])
   const [fullEditorState, setFullEditorState] = useState(() => ({
     itemId,
     largeDocument: contentStats.largeDocument,
@@ -312,7 +334,7 @@ export function KnowledgeContentEditorCore({
   const fullEditorLoaded = fullEditorState.itemId === itemId && fullEditorState.largeDocument === contentStats.largeDocument
     ? fullEditorState.loaded
     : !contentStats.largeDocument
-  const renderedContent = fullEditorLoaded ? content : previewMarkdown(content, LARGE_DOCUMENT_PREVIEW_BLOCKS)
+  const renderedDocument = fullEditorLoaded ? document : previewDocument(document, LARGE_DOCUMENT_PREVIEW_BLOCKS)
   const [slashOpen, setSlashOpen] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [objectInsert, setObjectInsert] = useState<ObjectInsertState>({
@@ -323,30 +345,25 @@ export function KnowledgeContentEditorCore({
     viewId: '',
     link: '',
   })
+  const collaborationDocument = collaboration?.document
+  const collaborationProvider = collaboration?.provider
+  const collaborationLocalUser = collaboration?.localUser
 
   useEffect(() => {
-    onContentChangeRef.current = onContentChange
-  }, [onContentChange])
+    onDocumentChangeRef.current = onDocumentChange
+  }, [onDocumentChange])
 
   useEffect(() => {
     onSaveRef.current = onSave
   }, [onSave])
 
   useEffect(() => {
-    onSelectionChangeRef.current = onSelectionChange
-  }, [onSelectionChange])
-
-  useEffect(() => {
     onCommentAnchorChangeRef.current = onCommentAnchorChange
   }, [onCommentAnchorChange])
 
-  const syncContentFromEditor = useCallback((targetEditor: Editor) => {
-    const sync = () => onContentChangeRef.current(tiptapDocumentToMarkdown(targetEditor.getJSON()))
-    sync()
-    window.setTimeout(sync, 0)
-    window.setTimeout(sync, 50)
-    window.setTimeout(sync, 250)
-    window.setTimeout(sync, 1000)
+  const syncDocumentFromEditor = useCallback((targetEditor: Editor) => {
+    ensureEditorBlockIds(targetEditor)
+    onDocumentChangeRef.current(targetEditor.getJSON())
   }, [])
 
   const insertUploadedFileCard = useCallback(
@@ -370,12 +387,12 @@ export function KnowledgeContentEditorCore({
             attrs,
           })
           .run()
-        syncContentFromEditor(targetEditor)
+        syncDocumentFromEditor(targetEditor)
       } catch (error) {
         console.warn('Failed to insert uploaded file into knowledge content editor', error)
       }
     },
-    [syncContentFromEditor],
+    [syncDocumentFromEditor],
   )
 
   const uploadFileIntoEditor = useCallback(
@@ -426,16 +443,18 @@ export function KnowledgeContentEditorCore({
         return false
       }
       insertObjectCard(targetEditor, resolved.summary)
-      syncContentFromEditor(targetEditor)
+      syncDocumentFromEditor(targetEditor)
       return true
     },
-    [syncContentFromEditor],
+    [syncDocumentFromEditor],
   )
 
   const extensions = useMemo(
-    () => [
+    () => {
+      const baseExtensions: Extensions = [
       StarterKit.configure({
         heading: { levels: [1, 2, 3] },
+        ...(collaborationProvider ? { undoRedo: false } : {}),
         link: {
           autolink: true,
           defaultProtocol: 'https',
@@ -453,16 +472,28 @@ export function KnowledgeContentEditorCore({
       ObjectCardNode,
       FileCardNode,
       InlineObjectMark,
+      BlockIdentityExtension,
       CommentAnchorExtension,
-    ],
-    [],
+      ]
+      if (collaborationProvider && collaborationDocument) {
+        baseExtensions.push(
+          Collaboration.configure({ document: collaborationDocument, field: 'default' }),
+          CollaborationCaret.configure({
+            provider: collaborationProvider,
+            user: collaborationLocalUser ?? { name: '协作者', color: '#5b5bd6' },
+          }),
+        )
+      }
+      return baseExtensions
+    },
+    [collaborationDocument, collaborationLocalUser, collaborationProvider],
   )
 
   const editor = useEditor(
     {
       extensions,
-      content: markdownToTiptapDocument(renderedContent),
-      editable: canEdit && fullEditorLoaded,
+      content: collaboration?.provider ? undefined : renderedDocument,
+      editable: canEdit && fullEditorLoaded && (!collaboration?.provider || collaboration.canEdit),
       immediatelyRender: false,
       editorProps: {
         attributes: {
@@ -513,15 +544,19 @@ export function KnowledgeContentEditorCore({
           return true
         },
       },
+      onCreate: ({ editor: nextEditor }) => {
+        if (ensureEditorBlockIds(nextEditor) && !collaborationProvider) {
+          onDocumentChangeRef.current(nextEditor.getJSON())
+        }
+      },
       onUpdate: ({ editor: nextEditor }) => {
-        if (!fullEditorLoaded) {
+        if (!fullEditorLoaded || collaborationProvider) {
           return
         }
-        onContentChangeRef.current(tiptapDocumentToMarkdown(nextEditor.getJSON()))
+        syncDocumentFromEditor(nextEditor)
       },
       onSelectionUpdate: ({ editor: nextEditor }) => {
         const { from, to, empty } = nextEditor.state.selection
-        onSelectionChangeRef.current?.({ from, to, empty })
         if (empty) {
           onCommentAnchorChangeRef.current?.(undefined)
           return
@@ -542,7 +577,10 @@ export function KnowledgeContentEditorCore({
         })
       },
     },
-    [extensions, fullEditorLoaded, renderedContent],
+    // Keep the editor instance stable while parent state mirrors each keystroke.
+    // Incoming content is synchronized by the effect below so changing it here
+    // would recreate ProseMirror and drop the current DOM focus.
+    [collaborationProvider, extensions, fullEditorLoaded, syncDocumentFromEditor],
   )
 
   useEffect(() => {
@@ -550,22 +588,34 @@ export function KnowledgeContentEditorCore({
       return
     }
     editorRef.current = editor
-    editor.setEditable(canEdit && fullEditorLoaded)
-  }, [canEdit, editor, fullEditorLoaded])
+    editor.setEditable(canEdit && fullEditorLoaded && (!collaboration?.provider || collaboration.canEdit))
+  }, [canEdit, collaboration?.canEdit, collaboration?.provider, editor, fullEditorLoaded])
 
   useEffect(() => {
-    if (!editor) {
+    if (!editor || collaboration?.provider) {
       return
     }
-    const contentKey = `${itemId}:${versionNo}:${title}:${renderedContent}:${fullEditorLoaded}`
+    const contentKey = `${itemId}:${versionNo}:${fullEditorLoaded}`
     if (loadedContentKeyRef.current === contentKey) {
       return
     }
     loadedContentKeyRef.current = contentKey
-    if (tiptapDocumentToMarkdown(editor.getJSON()) !== renderedContent && !editor.isDestroyed) {
-      editor.commands.setContent(markdownToTiptapDocument(renderedContent), { emitUpdate: false })
+    if (!documentsEqual(editor.getJSON(), renderedDocument) && !editor.isDestroyed) {
+      editor.commands.setContent(renderedDocument, { emitUpdate: false })
     }
-  }, [itemId, editor, fullEditorLoaded, renderedContent, title, versionNo])
+  }, [collaboration?.provider, itemId, editor, fullEditorLoaded, renderedDocument, versionNo])
+
+  useEffect(() => {
+    if (!collaboration?.provider) return
+    const sharedTitle = collaboration.document.getText('title')
+    const syncTitle = () => {
+      const nextTitle = sharedTitle.toString()
+      if (nextTitle && nextTitle !== title) onTitleChange(nextTitle)
+    }
+    sharedTitle.observe(syncTitle)
+    syncTitle()
+    return () => sharedTitle.unobserve(syncTitle)
+  }, [collaboration?.document, collaboration?.provider, onTitleChange, title])
 
   useEffect(() => {
     if (!editor || editor.isDestroyed) {
@@ -579,7 +629,7 @@ export function KnowledgeContentEditorCore({
       return
     }
     syncEditorBlockDomAnchors(editor, blockAnchors)
-  }, [blockAnchors, editor, renderedContent])
+  }, [blockAnchors, editor, renderedDocument])
 
   useEffect(() => {
     if (!editor || !activeCommentId) {
@@ -601,7 +651,7 @@ export function KnowledgeContentEditorCore({
       return
     }
     window.setTimeout(() => highlightEditorBlock(hash), 0)
-  }, [blockAnchors, editor, renderedContent])
+  }, [blockAnchors, editor, renderedDocument])
 
   useEffect(() => {
     const handleHashChange = () => {
@@ -615,46 +665,58 @@ export function KnowledgeContentEditorCore({
   }, [])
 
   const fallbackStatus = saving ? 'saving' : conflictVisible ? 'conflict' : dirty ? 'dirty' : 'saved'
-  const statusLabel = collaboration ? collaborationStatusText(collaboration.status) : statusText(fallbackStatus)
-  const statusColorValue = collaboration ? collaborationStatusColor(collaboration.status) : statusColor(fallbackStatus)
+  const realtimeSaveState: KnowledgeContentSaveState | undefined = collaboration?.provider
+    ? collaboration.error ? 'error'
+      : collaboration.status === 'disconnected' ? 'offline'
+        : collaboration.unsyncedChanges > 0 ? 'saving'
+          : collaboration.synced ? 'saved' : 'saving'
+    : undefined
+  const effectiveSaveState = realtimeSaveState ?? saveState ?? fallbackStatus
+  const statusColorValue = statusColor(effectiveSaveState)
   const saveTooltip = saveActionHint ?? saveActionLabel
-  const updateFallbackContent = (nextContent: string) => {
-    onContentChange(nextContent)
-    if (editor && !editor.isDestroyed) {
-      editor.commands.setContent(markdownToTiptapDocument(nextContent), { emitUpdate: false })
-    }
-  }
-
   return (
     <section className="doc-editor-shell">
       <div className="doc-editor-topbar">
         <div className="doc-editor-title-group">
           <Input
             className="doc-title-input"
-            disabled={!canEdit || !fullEditorLoaded}
+            disabled={!canEdit || !fullEditorLoaded || Boolean(collaboration?.provider && !collaboration.canEdit)}
             aria-label="知识内容标题"
             value={title}
             placeholder="Untitled"
-            onChange={(event) => onTitleChange(event.target.value)}
+            onChange={(event) => {
+              const value = event.target.value
+              if (collaboration?.provider) {
+                const sharedTitle = collaboration.document.getText('title')
+                updateSharedTitle(collaboration.document, sharedTitle, value)
+              }
+              onTitleChange(value)
+            }}
           />
           <Space wrap>
             <Tag>v{versionNo}</Tag>
             <Tag>{permissionText(permissionLevel)}</Tag>
-            <Tag color={statusColorValue}>{statusLabel}</Tag>
+            <Tag color={statusColorValue}>{statusText(effectiveSaveState)}</Tag>
             {contentStats.largeDocument ? <Tag color="orange">大内容 {contentStats.blockCount} 块</Tag> : null}
             <Typography.Text type="secondary">更新于 {new Date(updatedAt).toLocaleString()}</Typography.Text>
-            {collaboration?.lastSavedAt ? (
-              <Typography.Text type="secondary">自动保存 {new Date(collaboration.lastSavedAt).toLocaleTimeString()}</Typography.Text>
-            ) : null}
+            {collaboration?.provider ? <Tag color={collaboration.synced ? 'green' : 'processing'}>{collaboration.synced ? '实时已同步' : '正在同步'}</Tag> : null}
           </Space>
-          {collaboration ? <CollaborationPresence users={collaboration.onlineUsers} /> : null}
         </div>
         <Space wrap className="doc-editor-actions">
+          {collaboration?.provider && collaboration.onlineUsers.length > 0 ? (
+            <Avatar.Group max={{ count: 4 }}>
+              {collaboration.onlineUsers.map((user) => (
+                <Tooltip key={`${user.id}:${user.clientId}`} title={user.name}>
+                  <Avatar style={{ backgroundColor: user.color }}>{user.name.slice(0, 1).toUpperCase()}</Avatar>
+                </Tooltip>
+              ))}
+            </Avatar.Group>
+          ) : null}
           <Tooltip title={saveTooltip}>
             <Button
               type="primary"
               icon={<SaveOutlined />}
-              disabled={!canEdit || saveActionDisabled || !fullEditorLoaded}
+              disabled={!canEdit || saving || saveActionDisabled || !fullEditorLoaded}
               loading={saving}
               onClick={onSave}
             >
@@ -676,15 +738,26 @@ export function KnowledgeContentEditorCore({
           type="warning"
           message="版本冲突"
           description="当前草稿基于旧版本。请刷新知识内容查看最新内容，再手动合并后保存。"
-          action={<Button onClick={onRefresh}>刷新</Button>}
+          action={(
+            <Space>
+              <Button onClick={onRefresh}>刷新远端</Button>
+              <Button onClick={onOpenLocalDraft}>保留本地草稿</Button>
+            </Space>
+          )}
         />
       ) : null}
-      {collaboration?.status === 'offline' ? (
+      {effectiveSaveState === 'offline' || effectiveSaveState === 'error' ? (
         <Alert
           showIcon
-          type="info"
-          message="离线编辑中"
-          description="当前改动会保留在本地编辑器中，连接恢复后会自动请求最新快照并尝试合并。"
+          type={effectiveSaveState === 'offline' ? 'info' : 'error'}
+          message={effectiveSaveState === 'offline' ? '当前网络不可用' : '保存失败'}
+          description="本地草稿已保留。恢复网络或修复问题后可以重试保存。"
+          action={(
+            <Space>
+              <Button onClick={onSave}>重试保存</Button>
+              <Button onClick={onOpenLocalDraft}>查看本地草稿</Button>
+            </Space>
+          )}
         />
       ) : null}
       {contentStats.largeDocument && !fullEditorLoaded ? (
@@ -696,13 +769,10 @@ export function KnowledgeContentEditorCore({
           action={<Button onClick={() => setFullEditorState({ itemId, largeDocument: contentStats.largeDocument, loaded: true })}>加载完整编辑器</Button>}
         />
       ) : null}
-      {collaboration?.error ? <Alert showIcon type="warning" message="协同异常" description={collaboration.error} /> : null}
 
       <div className="doc-editor-canvas">
-        <EditorHoverInsertButton editor={editor} canEdit={canEdit && fullEditorLoaded} onOpenSlash={() => setSlashOpen(true)} />
         <TableToolbar editor={editor} canEdit={canEdit && fullEditorLoaded} />
-        {collaboration?.remoteCursors.length ? <RemoteCursorStrip users={collaboration.remoteCursors} /> : null}
-        <BlockDragHandle editor={editor} canEdit={canEdit} />
+        <BlockDragHandle editor={editor} canEdit={canEdit && fullEditorLoaded} onOpenSlash={() => setSlashOpen(true)} />
         {editor && canEdit && slashOpen ? (
           <SlashMenu
             editor={editor}
@@ -762,7 +832,7 @@ export function KnowledgeContentEditorCore({
                 title: objectInsert.objectId.trim(),
                 metadata: objectInsert.viewId.trim() ? { viewId: objectInsert.viewId.trim() } : {},
               })
-              syncContentFromEditor(editor)
+              syncDocumentFromEditor(editor)
             }
             setObjectInsert({
               open: false,
@@ -776,47 +846,27 @@ export function KnowledgeContentEditorCore({
         />
       ) : null}
 
-      <details className="doc-editor-fallback">
-        <summary>Markdown 兼容内容</summary>
-        <Input.TextArea
-          className="doc-markdown-input"
-          disabled={!canEdit || !fullEditorLoaded}
-          value={content}
-          autoSize={{ minRows: 6, maxRows: 14 }}
-          onChange={(event) => updateFallbackContent(event.target.value)}
-        />
-      </details>
     </section>
   )
 }
 
-function EditorHoverInsertButton({
-  editor,
-  canEdit,
-  onOpenSlash,
-}: {
-  editor: Editor | null
-  canEdit: boolean
-  onOpenSlash: () => void
-}) {
-  if (!editor || !canEdit) {
-    return null
-  }
-  return (
-    <Tooltip title="插入块">
-      <Button
-        size="small"
-        className="doc-editor-hover-insert"
-        icon={<PlusOutlined />}
-        aria-label="插入块"
-        onMouseDown={(event) => event.preventDefault()}
-        onClick={() => {
-          editor.chain().focus().run()
-          onOpenSlash()
-        }}
-      />
-    </Tooltip>
-  )
+function updateSharedTitle(document: import('yjs').Doc, sharedTitle: import('yjs').Text, nextValue: string) {
+  const current = sharedTitle.toString()
+  if (current === nextValue) return
+  let prefix = 0
+  while (prefix < current.length && prefix < nextValue.length && current[prefix] === nextValue[prefix]) prefix += 1
+  let suffix = 0
+  while (
+    suffix < current.length - prefix
+    && suffix < nextValue.length - prefix
+    && current[current.length - suffix - 1] === nextValue[nextValue.length - suffix - 1]
+  ) suffix += 1
+  document.transact(() => {
+    const removed = current.length - prefix - suffix
+    if (removed > 0) sharedTitle.delete(prefix, removed)
+    const inserted = nextValue.slice(prefix, nextValue.length - suffix)
+    if (inserted) sharedTitle.insert(prefix, inserted)
+  }, 'local-title-input')
 }
 
 function SelectionBubbleToolbar({ editor }: { editor: Editor }) {
@@ -986,8 +1036,44 @@ function TableToolbar({ editor, canEdit }: { editor: Editor | null; canEdit: boo
   )
 }
 
-function BlockDragHandle({ editor, canEdit }: { editor: Editor | null; canEdit: boolean }) {
+function BlockDragHandle({
+  editor,
+  canEdit,
+  onOpenSlash,
+}: {
+  editor: Editor | null
+  canEdit: boolean
+  onOpenSlash: () => void
+}) {
   const [activeBlock, setActiveBlock] = useState<{ pos: number } | null>(null)
+  const activeBlockDomRef = useRef<HTMLElement | null>(null)
+  const computePositionConfig = useMemo(() => ({ placement: 'right-start' as const, strategy: 'absolute' as const }), [])
+  const getReferencedVirtualElement = useCallback(() => {
+    if (!editor || editor.isDestroyed) {
+      return null
+    }
+    const canvas = editor.view.dom.parentElement
+    const block = activeBlockDomRef.current
+    if (!canvas || !block) {
+      return null
+    }
+    const canvasRect = canvas.getBoundingClientRect()
+    const blockRect = block.getBoundingClientRect()
+    const left = canvasRect.left + 8
+    return {
+      getBoundingClientRect: () => ({
+        x: left,
+        y: blockRect.top,
+        top: blockRect.top,
+        bottom: blockRect.bottom,
+        left,
+        right: left,
+        width: 0,
+        height: blockRect.height,
+        toJSON: () => ({}),
+      }),
+    }
+  }, [editor])
   if (!editor || !canEdit) {
     return null
   }
@@ -1002,66 +1088,91 @@ function BlockDragHandle({ editor, canEdit }: { editor: Editor | null; canEdit: 
     <DragHandle
       editor={editor}
       className="doc-block-drag-handle"
-      onNodeChange={({ pos }) => setActiveBlock(pos >= 0 ? { pos } : null)}
+      computePositionConfig={computePositionConfig}
+      getReferencedVirtualElement={getReferencedVirtualElement}
+      onNodeChange={({ pos }) => {
+        const dom = pos >= 0 ? editor.view.nodeDOM(pos) : null
+        activeBlockDomRef.current = dom instanceof HTMLElement ? dom : null
+        setActiveBlock(pos >= 0 ? { pos } : null)
+      }}
     >
-      <Dropdown
-        trigger={['click']}
-        menu={{
-          items: [
-            { key: 'move-up', label: '上移', icon: <ArrowUpOutlined /> },
-            { key: 'move-down', label: '下移', icon: <ArrowDownOutlined /> },
-            { key: 'copy', label: '复制块', icon: <CopyOutlined /> },
-            { key: 'paragraph', label: '转为正文' },
-            { key: 'heading', label: '转为标题' },
-            { key: 'bullet', label: '转为列表' },
-            { key: 'task', label: '转为任务' },
-            { key: 'quote', label: '转为引用' },
-            { key: 'code', label: '转为代码块' },
-            { key: 'divider', label: '转为分割线' },
-            { key: 'delete', label: '删除块', icon: <DeleteOutlined />, danger: true },
-          ],
-          onClick: ({ key }) => {
-            focusBlock()
-            if (key === 'move-up') {
-              moveSelectedTopLevelBlock(editor, -1)
-            }
-            if (key === 'move-down') {
-              moveSelectedTopLevelBlock(editor, 1)
-            }
-            if (key === 'copy') {
-              duplicateSelectedTopLevelBlock(editor)
-            }
-            if (key === 'paragraph') {
-              editor.chain().focus().setParagraph().run()
-            }
-            if (key === 'heading') {
-              editor.chain().focus().toggleHeading({ level: 2 }).run()
-            }
-            if (key === 'bullet') {
-              editor.chain().focus().toggleBulletList().run()
-            }
-            if (key === 'task') {
-              editor.chain().focus().toggleTaskList().run()
-            }
-            if (key === 'quote') {
-              editor.chain().focus().toggleBlockquote().run()
-            }
-            if (key === 'code') {
-              editor.chain().focus().toggleCodeBlock().run()
-            }
-            if (key === 'divider') {
-              editor.chain().focus().setHorizontalRule().run()
-            }
-            if (key === 'delete') {
-              editor.chain().focus().deleteNode(editor.state.selection.$from.parent.type.name).run()
-            }
-          },
-        }}
-      >
-        <Button size="small" icon={<HolderOutlined />} className="doc-block-handle-button">
-          <MoreOutlined />
-        </Button>
-      </Dropdown>
+      <Space size={2} className="doc-block-action-buttons">
+        <Tooltip title="插入块">
+          <Button
+            size="small"
+            className="doc-block-insert-button"
+            icon={<PlusOutlined />}
+            aria-label="插入块"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => {
+              focusBlock()
+              onOpenSlash()
+            }}
+          />
+        </Tooltip>
+        <Dropdown
+          trigger={['click']}
+          placement="bottomLeft"
+          autoAdjustOverflow
+          overlayClassName="doc-block-operation-dropdown"
+          getPopupContainer={(triggerNode) => triggerNode.closest<HTMLElement>('.doc-editor-canvas') ?? document.body}
+          menu={{
+            items: [
+              { key: 'move-up', label: '上移', icon: <ArrowUpOutlined /> },
+              { key: 'move-down', label: '下移', icon: <ArrowDownOutlined /> },
+              { key: 'copy', label: '复制块', icon: <CopyOutlined /> },
+              { key: 'paragraph', label: '转为正文' },
+              { key: 'heading', label: '转为标题' },
+              { key: 'bullet', label: '转为列表' },
+              { key: 'task', label: '转为任务' },
+              { key: 'quote', label: '转为引用' },
+              { key: 'code', label: '转为代码块' },
+              { key: 'divider', label: '转为分割线' },
+              { key: 'delete', label: '删除块', icon: <DeleteOutlined />, danger: true },
+            ],
+            onClick: ({ key }) => {
+              focusBlock()
+              if (key === 'move-up') {
+                moveSelectedTopLevelBlock(editor, -1)
+              }
+              if (key === 'move-down') {
+                moveSelectedTopLevelBlock(editor, 1)
+              }
+              if (key === 'copy') {
+                duplicateSelectedTopLevelBlock(editor)
+              }
+              if (key === 'paragraph') {
+                editor.chain().focus().setParagraph().run()
+              }
+              if (key === 'heading') {
+                editor.chain().focus().toggleHeading({ level: 2 }).run()
+              }
+              if (key === 'bullet') {
+                editor.chain().focus().toggleBulletList().run()
+              }
+              if (key === 'task') {
+                editor.chain().focus().toggleTaskList().run()
+              }
+              if (key === 'quote') {
+                editor.chain().focus().toggleBlockquote().run()
+              }
+              if (key === 'code') {
+                editor.chain().focus().toggleCodeBlock().run()
+              }
+              if (key === 'divider') {
+                editor.chain().focus().setHorizontalRule().run()
+              }
+              if (key === 'delete') {
+                editor.chain().focus().deleteNode(editor.state.selection.$from.parent.type.name).run()
+              }
+            },
+          }}
+        >
+          <Button size="small" icon={<HolderOutlined />} className="doc-block-handle-button" aria-label="操作块">
+            <MoreOutlined />
+          </Button>
+        </Dropdown>
+      </Space>
     </DragHandle>
   )
 }
@@ -1122,6 +1233,21 @@ function SlashMenu({
   onInsertObject: (state: Partial<ObjectInsertState>) => void
 }) {
   const [query, setQuery] = useState('')
+  const menuRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target
+      if (target instanceof Node && menuRef.current?.contains(target)) {
+        return
+      }
+      onClose()
+    }
+
+    document.addEventListener('pointerdown', handlePointerDown)
+    return () => document.removeEventListener('pointerdown', handlePointerDown)
+  }, [onClose])
+
   const runCommand = (command: () => void) => {
     removeSlashBeforeCursor(editor)
     command()
@@ -1179,7 +1305,7 @@ function SlashMenu({
       )
     : commands
   return (
-    <div className="doc-slash-menu">
+    <div ref={menuRef} className="doc-slash-menu">
       <Input
         className="doc-slash-menu-search"
         autoFocus
@@ -1377,36 +1503,6 @@ function FileCardNodeView({ node, updateAttributes }: NodeViewProps) {
   )
 }
 
-function CollaborationPresence({ users }: { users: KnowledgeContentCollaborator[] }) {
-  if (users.length === 0) {
-    return null
-  }
-  return (
-    <div className="doc-collab-presence">
-      {users.slice(0, 8).map((user) => (
-        <span className="doc-collab-user" key={user.clientId || user.userId} style={{ '--collab-color': user.color } as CSSProperties}>
-          <i />
-          {user.displayName || user.username}
-        </span>
-      ))}
-      {users.length > 8 ? <Tag>+{users.length - 8}</Tag> : null}
-    </div>
-  )
-}
-
-function RemoteCursorStrip({ users }: { users: KnowledgeContentCollaborator[] }) {
-  return (
-    <div className="doc-remote-cursor-strip">
-      {users.slice(0, 6).map((user) => (
-        <span className="doc-remote-cursor-chip" key={user.clientId || user.userId} style={{ '--cursor-color': user.color } as CSSProperties}>
-          {user.displayName || user.username}
-          {user.cursor ? <small>{user.cursor.from === user.cursor.to ? user.cursor.from : `${user.cursor.from}-${user.cursor.to}`}</small> : null}
-        </span>
-      ))}
-    </div>
-  )
-}
-
 function syncEditorBlockDomAnchors(editor: Editor, blockAnchors: KnowledgeContentEditorBlockAnchor[]) {
   const root = editor.view.dom
   Array.from(root.children).forEach((child, index) => {
@@ -1544,520 +1640,40 @@ function formatFileSize(sizeBytes: number) {
   return `${(sizeBytes / 1024 / 1024).toFixed(1)} MB`
 }
 
-function markdownToTiptapDocument(markdown: string): JSONContent {
-  const lines = markdown.replace(/\r\n/g, '\n').split('\n')
-  const content: JSONContent[] = []
-  let index = 0
-
-  while (index < lines.length) {
-    const line = lines[index]
-    if (!line.trim()) {
-      index += 1
-      continue
-    }
-
-    if (line.trim() === '---') {
-      content.push({ type: 'horizontalRule' })
-      index += 1
-      continue
-    }
-
-    const objectCard = parseDirective(line, 'object-card')
-    if (objectCard) {
-      content.push({
-        type: 'objectCard',
-        attrs: {
-          objectType: objectCard.objectType ?? objectCard.type ?? 'issue',
-          objectId: objectCard.objectId ?? objectCard.id ?? '',
-          title: objectCard.title ?? '',
-          subtitle: objectCard.subtitle ?? '',
-          status: objectCard.status ?? '',
-          webPath: objectCard.webPath ?? '',
-          viewId: objectCard.viewId ?? '',
-        },
-      })
-      index += 1
-      continue
-    }
-
-    const fileCard = parseDirective(line, 'file-card')
-    if (fileCard) {
-      content.push({
-        type: 'fileCard',
-        attrs: {
-          fileId: fileCard.fileId ?? fileCard.id ?? '',
-          fileName: fileCard.fileName ?? fileCard.name ?? '',
-          contentType: fileCard.contentType ?? '',
-          sizeBytes: Number(fileCard.sizeBytes ?? 0),
-          kind: fileCard.kind ?? 'file',
-          itemId: fileCard.itemId ?? '',
-        },
-      })
-      index += 1
-      continue
-    }
-
-    const image = line.match(/^!\[([^\]]*)\]\(([^)\s]+)(?:\s+"([^"]+)")?\)$/)
-    if (image) {
-      content.push({
-        type: 'image',
-        attrs: {
-          alt: image[1],
-          src: image[2],
-          title: image[3] ?? image[1],
-        },
-      })
-      index += 1
-      continue
-    }
-
-    const table = parseMarkdownTable(lines, index)
-    if (table) {
-      content.push(table.node)
-      index = table.nextIndex
-      continue
-    }
-
-    const fence = line.match(/^```(\w+)?\s*$/)
-    if (fence) {
-      const codeLines: string[] = []
-      index += 1
-      while (index < lines.length && !lines[index].startsWith('```')) {
-        codeLines.push(lines[index])
-        index += 1
-      }
-      index += index < lines.length ? 1 : 0
-      content.push({
-        type: 'codeBlock',
-        attrs: fence[1] ? { language: fence[1] } : undefined,
-        content: [{ type: 'text', text: codeLines.join('\n') }],
-      })
-      continue
-    }
-
-    const heading = line.match(/^(#{1,3})\s+(.+)$/)
-    if (heading) {
-      content.push({
-        type: 'heading',
-        attrs: { level: heading[1].length },
-        content: parseInlineMarkdown(heading[2]),
-      })
-      index += 1
-      continue
-    }
-
-    if (/^>\s?/.test(line)) {
-      const quoteLines: string[] = []
-      while (index < lines.length && /^>\s?/.test(lines[index])) {
-        quoteLines.push(lines[index].replace(/^>\s?/, ''))
-        index += 1
-      }
-      content.push({
-        type: 'blockquote',
-        content: quoteLines.map((quoteLine) => paragraphNode(quoteLine)),
-      })
-      continue
-    }
-
-    if (/^\s*[-*]\s+\[[ xX]\]\s+/.test(line)) {
-      const items: JSONContent[] = []
-      while (index < lines.length && /^\s*[-*]\s+\[[ xX]\]\s+/.test(lines[index])) {
-        const task = lines[index].match(/^\s*[-*]\s+\[([ xX])\]\s+(.+)$/)
-        if (task) {
-          items.push({
-            type: 'taskItem',
-            attrs: { checked: task[1].toLowerCase() === 'x' },
-            content: [paragraphNode(task[2])],
-          })
-        }
-        index += 1
-      }
-      content.push({ type: 'taskList', content: items })
-      continue
-    }
-
-    if (/^\s*[-*]\s+/.test(line)) {
-      const items: JSONContent[] = []
-      while (index < lines.length && /^\s*[-*]\s+/.test(lines[index])) {
-        const itemText = lines[index].replace(/^\s*[-*]\s+/, '')
-        items.push({ type: 'listItem', content: [paragraphNode(itemText)] })
-        index += 1
-      }
-      content.push({ type: 'bulletList', content: items })
-      continue
-    }
-
-    if (/^\s*\d+[.)]\s+/.test(line)) {
-      const items: JSONContent[] = []
-      while (index < lines.length && /^\s*\d+[.)]\s+/.test(lines[index])) {
-        const itemText = lines[index].replace(/^\s*\d+[.)]\s+/, '')
-        items.push({ type: 'listItem', content: [paragraphNode(itemText)] })
-        index += 1
-      }
-      content.push({ type: 'orderedList', attrs: { start: 1 }, content: items })
-      continue
-    }
-
-    content.push(paragraphNode(line))
-    index += 1
-  }
-
-  return {
-    type: 'doc',
-    content: content.length > 0 ? content : [{ type: 'paragraph' }],
-  }
-}
-
-function paragraphNode(text: string): JSONContent {
-  return {
-    type: 'paragraph',
-    content: parseInlineMarkdown(text),
-  }
-}
-
-function parseInlineMarkdown(value: string): JSONContent[] | undefined {
-  if (!value) {
-    return undefined
-  }
-  const tokenPattern = /(\*\*([^*]+)\*\*|~~([^~]+)~~|`([^`]+)`|\[([^\]]+)\]\(([^)\s]+)\)|\*([^*]+)\*)/g
-  const nodes: JSONContent[] = []
-  let cursor = 0
-  let match: RegExpExecArray | null
-
-  while ((match = tokenPattern.exec(value)) !== null) {
-    if (match.index > cursor) {
-      pushPlainTextWithInlineObjects(nodes, value.slice(cursor, match.index))
-    }
-    if (match[2]) {
-      nodes.push(textNode(match[2], [{ type: 'bold' }]))
-    } else if (match[3]) {
-      nodes.push(textNode(match[3], [{ type: 'strike' }]))
-    } else if (match[4]) {
-      nodes.push(textNode(match[4], [{ type: 'code' }]))
-    } else if (match[5] && match[6]) {
-      nodes.push(textNode(match[5], [{ type: 'link', attrs: { href: match[6] } }]))
-    } else if (match[7]) {
-      nodes.push(textNode(match[7], [{ type: 'italic' }]))
-    }
-    cursor = match.index + match[0].length
-  }
-
-  if (cursor < value.length) {
-    pushPlainTextWithInlineObjects(nodes, value.slice(cursor))
-  }
-  return nodes.length > 0 ? nodes : undefined
-}
-
-function pushPlainTextWithInlineObjects(nodes: JSONContent[], value: string) {
-  const tokenPattern = /(@[a-zA-Z0-9_.-]{2,32}|#[\p{L}\p{N}_-]{1,32}|(?:20\d{2})[-/](?:0[1-9]|1[0-2])[-/](?:0[1-9]|[12]\d|3[01]))/gu
-  let cursor = 0
-  let match: RegExpExecArray | null
-  while ((match = tokenPattern.exec(value)) !== null) {
-    if (match.index > cursor) {
-      nodes.push(textNode(value.slice(cursor, match.index)))
-    }
-    const token = match[0]
-    nodes.push(textNode(token, [{ type: 'inlineObject', attrs: { objectType: inlineObjectType(token) } }]))
-    cursor = match.index + token.length
-  }
-  if (cursor < value.length) {
-    nodes.push(textNode(value.slice(cursor)))
-  }
-}
-
-function inlineObjectType(token: string) {
-  if (token.startsWith('@')) return 'mention'
-  if (token.startsWith('#')) return 'tag'
-  return 'date'
-}
-
-function textNode(text: string, marks?: JSONContent['marks']): JSONContent {
-  return marks ? { type: 'text', text, marks } : { type: 'text', text }
-}
-
-function parseDirective(line: string, name: string) {
-  const prefix = `::${name}{`
-  if (!line.startsWith(prefix) || !line.endsWith('}')) {
-    return null
-  }
-  const body = line.slice(prefix.length, -1)
-  const attrs: Record<string, string> = {}
-  const attrPattern = /(\w+)="([^"]*)"/g
-  let attrMatch: RegExpExecArray | null
-  while ((attrMatch = attrPattern.exec(body)) !== null) {
-    attrs[attrMatch[1]] = decodeURIComponent(attrMatch[2])
-  }
-  return attrs
-}
-
-function serializeDirective(name: string, attrs: Record<string, string>) {
-  const serialized = Object.entries(attrs)
-    .filter(([, value]) => value !== '')
-    .map(([key, value]) => `${key}="${encodeURIComponent(value)}"`)
-    .join(' ')
-  return `::${name}{${serialized}}`
-}
-
-function parseMarkdownTable(lines: string[], startIndex: number): { node: JSONContent; nextIndex: number } | null {
-  if (startIndex + 1 >= lines.length || !isTableLine(lines[startIndex]) || !isTableSeparator(lines[startIndex + 1])) {
-    return null
-  }
-  const header = splitTableLine(lines[startIndex])
-  const rows: string[][] = []
-  let index = startIndex + 2
-  while (index < lines.length && isTableLine(lines[index])) {
-    rows.push(splitTableLine(lines[index]))
-    index += 1
-  }
-  const width = Math.max(header.length, ...rows.map((row) => row.length), 1)
-  return {
-    node: {
-      type: 'table',
-      content: [
-        {
-          type: 'tableRow',
-          content: normalizeTableCells(header, width).map((cell) => tableCellNode('tableHeader', cell)),
-        },
-        ...rows.map((row) => ({
-          type: 'tableRow',
-          content: normalizeTableCells(row, width).map((cell) => tableCellNode('tableCell', cell)),
-        })),
-      ],
-    },
-    nextIndex: index,
-  }
-}
-
-function tableCellNode(type: 'tableHeader' | 'tableCell', value: string): JSONContent {
-  return {
-    type,
-    content: [paragraphNode(value)],
-  }
-}
-
-function normalizeTableCells(cells: string[], width: number) {
-  return Array.from({ length: width }, (_, index) => cells[index] ?? '')
-}
-
-function isTableLine(line: string) {
-  return line.trim().startsWith('|') && line.trim().endsWith('|')
-}
-
-function isTableSeparator(line: string) {
-  return /^\|?(\s*:?-{3,}:?\s*\|)+\s*$/.test(line.trim())
-}
-
-function splitTableLine(line: string) {
-  return line
-    .trim()
-    .replace(/^\|/, '')
-    .replace(/\|$/, '')
-    .split('|')
-    .map((cell) => cell.trim().replace(/\\\|/g, '|'))
-}
-
-function tiptapDocumentToMarkdown(document: JSONContent): string {
-  return (document.content ?? [])
-    .map((node, index) => serializeBlockNode(node, index))
-    .filter((line) => line.length > 0)
-    .join('\n\n')
-}
-
-function serializeBlockNode(node: JSONContent, index = 0): string {
-  switch (node.type) {
-    case 'heading':
-      return `${'#'.repeat(Number(node.attrs?.level ?? 1))} ${serializeInlineNodes(node.content)}`
-    case 'paragraph':
-      return serializeInlineNodes(node.content)
-    case 'blockquote':
-      return (node.content ?? [])
-        .map((child) => serializeBlockNode(child))
-        .join('\n')
-        .split('\n')
-        .map((line) => `> ${line}`)
-        .join('\n')
-    case 'bulletList':
-      return serializeListItems(node.content, '-')
-    case 'orderedList':
-      return serializeOrderedItems(node.content, Number(node.attrs?.start ?? 1))
-    case 'taskList':
-      return serializeTaskItems(node.content)
-    case 'listItem':
-      return serializeListItem(node)
-    case 'taskItem':
-      return `- [${node.attrs?.checked ? 'x' : ' '}] ${serializeListItem(node)}`
-    case 'table':
-      return serializeTableNode(node)
-    case 'objectCard':
-      return serializeDirective('object-card', {
-        objectType: String(node.attrs?.objectType ?? ''),
-        objectId: String(node.attrs?.objectId ?? ''),
-        title: String(node.attrs?.title ?? ''),
-        subtitle: String(node.attrs?.subtitle ?? ''),
-        status: String(node.attrs?.status ?? ''),
-        webPath: String(node.attrs?.webPath ?? ''),
-        viewId: String(node.attrs?.viewId ?? ''),
-      })
-    case 'fileCard':
-      return serializeDirective('file-card', {
-        fileId: String(node.attrs?.fileId ?? ''),
-        fileName: String(node.attrs?.fileName ?? ''),
-        contentType: String(node.attrs?.contentType ?? ''),
-        sizeBytes: String(node.attrs?.sizeBytes ?? 0),
-        kind: String(node.attrs?.kind ?? 'file'),
-        itemId: String(node.attrs?.itemId ?? ''),
-      })
-    case 'image':
-      return `![${String(node.attrs?.alt ?? '')}](${String(node.attrs?.src ?? '')}${node.attrs?.title ? ` "${String(node.attrs.title)}"` : ''})`
-    case 'codeBlock':
-      return `\`\`\`${node.attrs?.language ?? ''}\n${serializeInlineNodes(node.content)}\n\`\`\``
-    case 'horizontalRule':
-      return '---'
-    default:
-      return serializeInlineNodes(node.content) || (index === 0 ? '' : '')
-  }
-}
-
-function serializeListItems(items: JSONContent[] | undefined, marker: string) {
-  return (items ?? []).map((item) => `${marker} ${serializeListItem(item)}`).join('\n')
-}
-
-function serializeOrderedItems(items: JSONContent[] | undefined, start: number) {
-  return (items ?? []).map((item, index) => `${start + index}. ${serializeListItem(item)}`).join('\n')
-}
-
-function serializeTaskItems(items: JSONContent[] | undefined) {
-  return (items ?? [])
-    .map((item) => `- [${item.attrs?.checked ? 'x' : ' '}] ${serializeListItem(item)}`)
-    .join('\n')
-}
-
-function serializeListItem(item: JSONContent) {
-  return (item.content ?? []).map((child) => serializeBlockNode(child)).join('\n')
-}
-
-function serializeTableNode(table: JSONContent) {
-  const rows = (table.content ?? []).map((row) =>
-    (row.content ?? []).map((cell) => serializeInlineNodesFromBlock(cell).replace(/\|/g, '\\|')),
-  )
-  if (rows.length === 0) {
-    return ''
-  }
-  const width = Math.max(...rows.map((row) => row.length), 1)
-  const normalizedRows = rows.map((row) => normalizeTableCells(row, width))
-  const header = normalizedRows[0]
-  const body = normalizedRows.slice(1)
-  return [
-    `| ${header.join(' | ')} |`,
-    `| ${header.map(() => '---').join(' | ')} |`,
-    ...body.map((row) => `| ${row.join(' | ')} |`),
-  ].join('\n')
-}
-
-function serializeInlineNodesFromBlock(node: JSONContent): string {
-  if (node.type === 'paragraph') {
-    return serializeInlineNodes(node.content)
-  }
-  return (node.content ?? []).map((child) => serializeInlineNodesFromBlock(child)).join(' ')
-}
-
-function serializeInlineNodes(nodes: JSONContent[] | undefined): string {
-  return (nodes ?? []).map(serializeInlineNode).join('')
-}
-
-function serializeInlineNode(node: JSONContent): string {
-  if (node.type === 'text') {
-    return applyMarks(node.text ?? '', node.marks)
-  }
-  if (node.type === 'hardBreak') {
-    return '\n'
-  }
-  return serializeInlineNodes(node.content)
-}
-
-function applyMarks(text: string, marks: JSONContent['marks']) {
-  return (marks ?? []).reduce((current, mark) => {
-    if (mark.type === 'bold') {
-      return `**${current}**`
-    }
-    if (mark.type === 'italic') {
-      return `*${current}*`
-    }
-    if (mark.type === 'strike') {
-      return `~~${current}~~`
-    }
-    if (mark.type === 'code') {
-      return `\`${current}\``
-    }
-    if (mark.type === 'link') {
-      return `[${current}](${mark.attrs?.href ?? ''})`
-    }
-    return current
-  }, text)
-}
-
+// Markdown import/export is handled by the dedicated API, outside the editor main path.
 function permissionText(permission: string) {
   return { view: '可查看', edit: '可编辑', manage: '可管理' }[permission] ?? permission
 }
 
-function statusText(status: 'saved' | 'saving' | 'dirty' | 'conflict') {
+function statusText(status: KnowledgeContentSaveState) {
   return {
+    clean: '未修改',
     saved: '已保存',
     saving: '保存中',
     dirty: '未保存',
     conflict: '冲突',
+    offline: '离线',
+    error: '保存失败',
   }[status]
 }
 
-function statusColor(status: 'saved' | 'saving' | 'dirty' | 'conflict') {
+function statusColor(status: KnowledgeContentSaveState) {
   return {
+    clean: 'default',
     saved: 'green',
     saving: 'blue',
     dirty: 'orange',
     conflict: 'red',
-  }[status]
-}
-
-function collaborationStatusText(status: KnowledgeContentCollaborationStatus) {
-  return {
-    idle: '协同待连接',
-    connecting: '协同连接中',
-    joined: '协同已加入',
-    dirty: '协同未同步',
-    saving: '协同保存中',
-    synced: '自动保存',
-    offline: '离线待同步',
-    error: '协同异常',
-  }[status]
-}
-
-function collaborationStatusColor(status: KnowledgeContentCollaborationStatus) {
-  return {
-    idle: 'default',
-    connecting: 'blue',
-    joined: 'blue',
-    dirty: 'orange',
-    saving: 'blue',
-    synced: 'green',
-    offline: 'default',
+    offline: 'gold',
     error: 'red',
   }[status]
 }
 
-function knowledgeContentEditorStats(content: string, commentCount: number) {
-  const lines = content.split(/\r?\n/)
-  const meaningfulLines = lines.filter((line) => line.trim().length > 0)
-  const embedCount = meaningfulLines.filter((line) => {
-    const normalized = line.trim()
-    return normalized.startsWith('[table] ')
-      || normalized.startsWith('[embed] ')
-      || normalized.startsWith('[base_view] ')
-      || normalized.startsWith('[issue_embed] ')
-      || normalized.startsWith('[message_embed] ')
-      || normalized.startsWith('[file_embed] ')
-      || normalized.startsWith('[link] ')
-  }).length
-  const blockCount = Math.max(meaningfulLines.length, content.trim() ? 1 : 0)
+function knowledgeContentEditorStatsFromDocument(document: JSONContent, commentCount: number) {
+  const nodes = document.content ?? []
+  const embedCount = countDocumentNodes(document, (node) => ['objectCard', 'fileCard', 'image', 'table'].includes(node.type ?? ''))
+  const blockCount = nodes.length
+  const serializedLength = JSON.stringify(document).length
   return {
     blockCount,
     embedCount,
@@ -2065,26 +1681,45 @@ function knowledgeContentEditorStats(content: string, commentCount: number) {
     largeDocument: blockCount >= LARGE_DOCUMENT_BLOCK_THRESHOLD
       || embedCount >= LARGE_DOCUMENT_EMBED_THRESHOLD
       || commentCount >= LARGE_DOCUMENT_COMMENT_THRESHOLD
-      || content.length >= 100_000,
+      || serializedLength >= 100_000,
   }
 }
 
-function previewMarkdown(content: string, maxBlocks: number) {
-  const lines = content.split(/\r?\n/)
-  let usedBlocks = 0
-  const preview: string[] = []
-  for (const line of lines) {
-    if (line.trim()) {
-      usedBlocks += 1
-    }
-    if (usedBlocks > maxBlocks) {
-      break
-    }
-    preview.push(line)
+function countDocumentNodes(document: JSONContent, predicate: (node: JSONContent) => boolean): number {
+  return (document.content ?? []).reduce((count, node) => count + Number(predicate(node)) + countDocumentNodes(node, predicate), 0)
+}
+
+function previewDocument(document: JSONContent, maxBlocks: number): JSONContent {
+  const content = document.content ?? []
+  return content.length > maxBlocks ? { ...document, content: content.slice(0, maxBlocks) } : document
+}
+
+function documentsEqual(left: JSONContent, right: JSONContent) {
+  return JSON.stringify(left) === JSON.stringify(right)
+}
+
+function ensureEditorBlockIds(editor: Editor) {
+  if (editor.isDestroyed) {
+    return false
   }
-  if (preview.length < lines.length) {
-    preview.push('')
-    preview.push(`> 已进入大内容预览模式，仅显示前 ${maxBlocks} 块。加载完整编辑器后可继续编辑。`)
+  let changed = false
+  const transaction = editor.state.tr
+  editor.state.doc.forEach((node, position) => {
+    if (node.attrs.blockId) {
+      return
+    }
+    changed = true
+    transaction.setNodeMarkup(position, undefined, {
+      ...node.attrs,
+      blockId: createEditorBlockId(),
+    })
+  })
+  if (changed) {
+    editor.view.dispatch(transaction)
   }
-  return preview.join('\n')
+  return changed
+}
+
+function createEditorBlockId() {
+  return globalThis.crypto?.randomUUID?.() ?? `client-${Date.now()}-${Math.random().toString(36).slice(2)}`
 }

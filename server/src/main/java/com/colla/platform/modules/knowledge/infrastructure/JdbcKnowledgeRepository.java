@@ -5,6 +5,9 @@ import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.Knowle
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContentComment;
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContentCommentAnchor;
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContentCollaborationState;
+import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeCollaborationBinaryState;
+import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeCollaborationStoredUpdate;
+import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeCollaborationTicketRecord;
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContentPermission;
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContentRelation;
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContentShareLink;
@@ -668,6 +671,170 @@ public class JdbcKnowledgeRepository implements KnowledgeBaseItemRepository, Kno
             itemId,
             serverClock
         );
+    }
+
+    @Override
+    public void createCollaborationTicket(
+        String tokenHash,
+        UUID workspaceId,
+        UUID itemId,
+        UUID userId,
+        UUID deviceId,
+        String clientId,
+        Instant expiresAt
+    ) {
+        jdbcTemplate.update(
+            """
+                insert into knowledge_content_collaboration_tickets
+                    (id, token_hash, workspace_id, item_id, user_id, device_id, client_id, expires_at)
+                values (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+            UUID.randomUUID(), tokenHash, workspaceId, itemId, userId, deviceId, clientId, Timestamp.from(expiresAt)
+        );
+    }
+
+    @Override
+    public Optional<KnowledgeCollaborationTicketRecord> findActiveCollaborationTicket(String tokenHash) {
+        try {
+            return Optional.ofNullable(jdbcTemplate.queryForObject(
+                """
+                    select id, token_hash, workspace_id, item_id, user_id, device_id, client_id, expires_at, revoked_at
+                    from knowledge_content_collaboration_tickets
+                    where token_hash = ? and revoked_at is null and expires_at > now()
+                    """,
+                (rs, rowNum) -> new KnowledgeCollaborationTicketRecord(
+                    rs.getObject("id", UUID.class), rs.getString("token_hash"),
+                    rs.getObject("workspace_id", UUID.class), rs.getObject("item_id", UUID.class),
+                    rs.getObject("user_id", UUID.class), rs.getObject("device_id", UUID.class),
+                    rs.getString("client_id"), rs.getTimestamp("expires_at").toInstant(),
+                    rs.getTimestamp("revoked_at") == null ? null : rs.getTimestamp("revoked_at").toInstant()
+                ),
+                tokenHash
+            ));
+        } catch (EmptyResultDataAccessException exception) {
+            return Optional.empty();
+        }
+    }
+
+    @Override
+    public Optional<KnowledgeCollaborationBinaryState> findCollaborationBinaryState(UUID workspaceId, UUID itemId) {
+        try {
+            return Optional.ofNullable(jdbcTemplate.queryForObject(
+                """
+                    select yjs_snapshot, yjs_state_vector, schema_version, snapshot_sequence, snapshot_hash,
+                           canonical_snapshot::text canonical_snapshot, updated_at
+                    from knowledge_content_collaboration_states
+                    where workspace_id = ? and item_id = ?
+                    """,
+                (rs, rowNum) -> new KnowledgeCollaborationBinaryState(
+                    rs.getBytes("yjs_snapshot"), rs.getBytes("yjs_state_vector"), rs.getInt("schema_version"),
+                    rs.getLong("snapshot_sequence"), rs.getString("snapshot_hash"),
+                    rs.getString("canonical_snapshot"), rs.getTimestamp("updated_at").toInstant()
+                ),
+                workspaceId, itemId
+            ));
+        } catch (EmptyResultDataAccessException exception) {
+            return Optional.empty();
+        }
+    }
+
+    @Override
+    public List<KnowledgeCollaborationStoredUpdate> listCollaborationUpdatesAfter(UUID workspaceId, UUID itemId, long sequence) {
+        return jdbcTemplate.query(
+            """
+                select sequence_no, update_payload, update_id, actor_id, client_id, created_at
+                from knowledge_content_collaboration_updates
+                where workspace_id = ? and item_id = ? and sequence_no > ?
+                order by sequence_no
+                """,
+            (rs, rowNum) -> new KnowledgeCollaborationStoredUpdate(
+                rs.getLong("sequence_no"), rs.getBytes("update_payload"), rs.getString("update_id"),
+                rs.getObject("actor_id", UUID.class), rs.getString("client_id"), rs.getTimestamp("created_at").toInstant()
+            ),
+            workspaceId, itemId, sequence
+        );
+    }
+
+    @Override
+    public long appendCollaborationUpdate(
+        UUID workspaceId,
+        UUID itemId,
+        String updateId,
+        byte[] payload,
+        UUID actorId,
+        String clientId,
+        int schemaVersion
+    ) {
+        Long sequence = jdbcTemplate.queryForObject(
+            """
+                insert into knowledge_content_collaboration_updates
+                    (workspace_id, item_id, update_id, update_payload, actor_id, client_id, schema_version)
+                values (?, ?, ?, ?, ?, ?, ?)
+                on conflict (workspace_id, item_id, update_id)
+                do update set update_id = excluded.update_id
+                returning sequence_no
+                """,
+            Long.class,
+            workspaceId, itemId, updateId, payload, actorId, clientId, schemaVersion
+        );
+        return sequence == null ? 0 : sequence;
+    }
+
+    @Override
+    public void storeCollaborationSnapshot(
+        UUID workspaceId,
+        UUID itemId,
+        byte[] snapshot,
+        byte[] stateVector,
+        String snapshotHash,
+        int schemaVersion,
+        String canonicalSnapshot,
+        String clientId,
+        UUID actorId
+    ) {
+        jdbcTemplate.update(
+            """
+                insert into knowledge_content_collaboration_states
+                    (id, workspace_id, item_id, state_vector, snapshot_payload, server_clock, last_client_id,
+                     updated_by, last_saved_at, yjs_snapshot, yjs_state_vector, schema_version,
+                     snapshot_sequence, snapshot_hash, canonical_snapshot, created_at, updated_at)
+                values (?, ?, ?, ?, jsonb_build_object('encoding', 'yjs-v1'),
+                        (select coalesce(max(sequence_no), 0) from knowledge_content_collaboration_updates where workspace_id = ? and item_id = ?),
+                        ?, ?, now(), ?, ?, ?,
+                        (select coalesce(max(sequence_no), 0) from knowledge_content_collaboration_updates where workspace_id = ? and item_id = ?),
+                        ?, ?::jsonb, now(), now())
+                on conflict (workspace_id, item_id)
+                do update set state_vector = excluded.state_vector,
+                              snapshot_payload = excluded.snapshot_payload,
+                              server_clock = excluded.server_clock,
+                              last_client_id = excluded.last_client_id,
+                              updated_by = excluded.updated_by,
+                              last_saved_at = now(),
+                              yjs_snapshot = excluded.yjs_snapshot,
+                              yjs_state_vector = excluded.yjs_state_vector,
+                              schema_version = excluded.schema_version,
+                              snapshot_sequence = excluded.snapshot_sequence,
+                              snapshot_hash = excluded.snapshot_hash,
+                              canonical_snapshot = excluded.canonical_snapshot,
+                              updated_at = now()
+                """,
+            UUID.randomUUID(), workspaceId, itemId, java.util.Base64.getEncoder().encodeToString(stateVector),
+            workspaceId, itemId, clientId, actorId, snapshot, stateVector, schemaVersion,
+            workspaceId, itemId, snapshotHash, canonicalSnapshot
+        );
+    }
+
+    @Override
+    public boolean markCollaborationAuditCheckpoint(UUID workspaceId, UUID itemId, Instant cutoff) {
+        return jdbcTemplate.update(
+            """
+                update knowledge_content_collaboration_states
+                set last_audited_at = now()
+                where workspace_id = ? and item_id = ?
+                  and (last_audited_at is null or last_audited_at < ?)
+                """,
+            workspaceId, itemId, Timestamp.from(cutoff)
+        ) == 1;
     }
 
     @Override

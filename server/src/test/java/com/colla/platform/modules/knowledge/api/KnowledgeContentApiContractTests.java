@@ -57,6 +57,7 @@ class KnowledgeContentApiContractTests {
             "GET /path",
             "GET /performance",
             "GET /migration-preview",
+            "GET /migration/preview",
             "GET /collaboration/health"
         );
         assertTrue(mappings.containsAll(expected), () -> "Missing canonical mappings: " + difference(expected, mappings));

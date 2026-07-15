@@ -1,6 +1,6 @@
 # Scripts
 
-本目录只保留与当前 V047 schema、知识库唯一模型和双 UI 路由一致的活动脚本。`docs/`、`scripts/` 和 `deploy/scripts/` 均纳入版本管理，以本地最新内容为事实源并同步到远程仓库；运行报告、日志、备份和环境文件继续保持本地。
+本目录只保留与当前 V049 schema、知识库唯一模型和双 UI 路由一致的活动脚本。`docs/`、`scripts/` 和 `deploy/scripts/` 均纳入版本管理，以本地最新内容为事实源并同步到远程仓库；运行报告、日志、备份和环境文件继续保持本地。
 
 ## 稳定脚本
 
@@ -13,6 +13,10 @@
 | `knowledge-naming-guard.ps1` | 阻止活动代码重新引入旧文档产品命名 | 只读 |
 | `knowledge-consistency-check.ps1` | 检查当前知识空间、目录、块、权限、搜索和引用一致性 | 只查询 PostgreSQL |
 | `inspect-knowledge-object-references.ps1` | 展示知识目录对象引用、重复别名和缺失目标 | 只查询 PostgreSQL |
+| `pilot-v2-manifest-check.ps1` | 校验试运行名单、场景、隐私、问题分级、指标和启动确认 | 只读，报告写入 `.local-reports/` |
+| `pilot-v2-initialize.ps1` | 以计划或显式确认模式初始化组织、账号、用户组和协作模板 | `-Apply` 时写入指定试运行环境 |
+| `pilot-v2-simulation-kickoff.ps1` | 冻结合成人格、备份和源码快照并记录模拟限制 | 只更新 `.local-pilot/` manifest，报告写入 `.local-reports/` |
+| `pilot-v2-readiness.ps1` | 汇总初始化、备份、恢复、质量门禁、P0/P1 和冻结提交 | 只读，报告写入 `.local-reports/` |
 | `im-browser-smoke.ps1` | 当前 IM Playwright 冒烟 | 通过当前 API 创建隔离测试数据 |
 | `ui-split-v1-browser-smoke.ps1` | 用户工作台与管理后台双 UI 冒烟 | 通过当前 API 执行浏览器流程 |
 
@@ -37,8 +41,16 @@ pnpm smoke:ui-split
 pnpm ops:backup
 pnpm ops:restore-drill -- -BackupPath .local-backups\YYYYMMDD-HHMMSS
 pnpm ops:health
+pnpm ops:contract-check
 pnpm ops:release-check -- -EnvFile deploy/.env.prod
+pnpm pilot:contract-check
+pnpm pilot:check -- -ManifestPath .local-pilot\pilot.json -Level initialization
+pnpm pilot:initialize -- -ManifestPath .local-pilot\pilot.json
+pnpm pilot:simulate-kickoff -- -ManifestPath .local-pilot\pilot.json -BackupPath <backup> -ConfirmationText SIMULATE:<pilotId>
+pnpm pilot:readiness -- -ManifestPath .local-pilot\pilot.json -InitializationReceiptPath <receipt.json> -BackupPath <backup> -RestoreDrillReportPath <restore.md> -QualityGateReportPath <quality.md>
 ```
+
+正式试运行配置从 `deploy/pilot-v2/manifest.example.json` 复制到被 Git 忽略的 `.local-pilot/`，不得在 manifest 中保存密码、token 或密钥。初始化写入要求从环境变量读取管理员和初始密码，并要求精确确认串 `INITIALIZE:<pilotId>:<projectName>`。非冻结 readiness 最高只输出 `REHEARSAL-READY`；`-SimulationFreeze` 只输出 `SIMULATION-READY`，必须标记合成人格、承认三项模拟限制并绑定源码快照；正式 `READY` 仍要求真实参与确认、干净提交、备份 commit 与冻结 commit 一致。模拟证据不得冒充真实试运行或生产发布批准。
 
 需要传入复杂参数或执行未公开为根命令的维护操作时，可直接调用 PowerShell 脚本：
 
@@ -57,6 +69,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ui-split-v1-browser-
 powershell -NoProfile -ExecutionPolicy Bypass -File deploy/scripts/backup.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File deploy/scripts/restore-drill.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File deploy/scripts/health-check.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File deploy/scripts/operations-contract-check.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File deploy/scripts/release-check.ps1
 ```
 
@@ -99,4 +112,5 @@ stage finish 和 route-final finish 会验证执行报告中的 `Acceptance Evid
 - 任何写数据的浏览器脚本必须使用隔离命名并在报告中说明清理策略。
 - 涉及真实用户角色、认证、权限或资源状态的浏览器验证必须使用隔离环境；共享开发环境只允许无写入的只读验证。
 - `restore.ps1`、`rollback.ps1` 和 restore drill 的执行恢复模式必须保留显式确认开关。
+- `rollback.ps1` 只部署已构建的版本化镜像，不得切换当前 Git 工作树或在回滚时临时重建旧提交。
 - 脚本输出统一写入 `.local-reports/`、`.local-logs/` 或 `.local-backups/`，不得进入远程仓库。

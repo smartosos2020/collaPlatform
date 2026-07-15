@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "contractId": "pilot-v2-m10-synthetic-continuous-run-v1",
+  "evidenceKind": "synthetic-engineering",
+  "minimumRoundCount": 3,
+  "personas": [
+    "pilot-owner",
+    "pilot-admin",
+    "pilot-member-01",
+    "pilot-member-02",
+    "pilot-member-03"
+  ],
+  "modules": [
+    "im",
+    "project",
+    "knowledge",
+    "base",
+    "approval",
+    "search"
+  ],
+  "rounds": [
+    {
+      "roundId": "round-1-baseline",
+      "phase": "baseline",
+      "purpose": "Authenticate all personas and create/read one traceable object in every collaboration module."
+    },
+    {
+      "roundId": "round-2-retry",
+      "phase": "retry",
+      "purpose": "Repeat reads and an idempotent IM submission without duplicate business state or count regression."
+    },
+    {
+      "roundId": "round-3-fault-recovery",
+      "phase": "fault-recovery",
+      "purpose": "Verify expired/unauthorized access, restart the application service, then resume all six module checks."
+    }
+  ],
+  "metrics": {
+    "personaAuthenticationRate": { "operator": "=", "threshold": 1.0 },
+    "scenarioAttemptRate": { "operator": "=", "threshold": 1.0 },
+    "scenarioSuccessRate": { "operator": ">=", "threshold": 0.95 },
+    "moduleRoundCoverage": { "operator": "=", "threshold": 1.0 },
+    "unexpectedAuthorizationCount": { "operator": "=", "threshold": 0 },
+    "dataConsistencyViolationCount": { "operator": "=", "threshold": 0 },
+    "openCriticalIssueCount": { "operator": "=", "threshold": 0 },
+    "faultRecoveryRate": { "operator": "=", "threshold": 1.0 },
+    "automationFlakeRate": { "operator": "<=", "threshold": 0.05 }
+  },
+  "stopConditions": [
+    "Any confirmed permission disclosure or unexpected successful restricted request.",
+    "Any data loss, duplicate idempotent write, or unexplained object-count regression.",
+    "Application service does not recover after the controlled restart.",
+    "Any open P0 or P1 product failure."
+  ],
+  "failureClasses": [
+    "product",
+    "automation-harness",
+    "environment",
+    "expected-fault"
+  ],
+  "limitations": [
+    "No real participant activity or feedback is represented.",
+    "No satisfaction, adoption, learning, or organizational outcome may be inferred.",
+    "Passing this contract is not production release approval."
+  ]
+}

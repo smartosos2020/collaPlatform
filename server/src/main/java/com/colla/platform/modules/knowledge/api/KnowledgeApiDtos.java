@@ -3,10 +3,12 @@ package com.colla.platform.modules.knowledge.api;
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContentBlock;
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContentBlockDraft;
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContentCollaborationHealth;
+import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeCollaborationTicket;
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContentComment;
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContent;
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContentDiffLine;
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContentMigrationPreview;
+import com.colla.platform.modules.knowledge.domain.KnowledgeContentCanonicalModels.KnowledgeContentMigrationPlan;
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContentPathItem;
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContentPerformance;
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContentPermission;
@@ -206,7 +208,7 @@ public final class KnowledgeApiDtos {
 
     private static KnowledgeContentDiffLineView diffLine(KnowledgeContentDiffLine source) {
         return new KnowledgeContentDiffLineView(
-            source.type(), source.oldLineNo(), source.newLineNo(), source.content(), source.scope(), source.blockIndex(), source.blockType()
+            source.type(), source.oldLineNo(), source.newLineNo(), source.content(), source.scope(), source.blockIndex(), source.blockType(), source.blockId()
         );
     }
 
@@ -331,6 +333,25 @@ public final class KnowledgeApiDtos {
         );
     }
 
+    static KnowledgeContentCanonicalMigrationPreviewView canonicalMigrationPreview(KnowledgeContentMigrationPlan source) {
+        return new KnowledgeContentCanonicalMigrationPreviewView(
+            source.itemId(),
+            source.sourceSchemaVersion(),
+            source.targetSchemaVersion(),
+            source.sourceChecksum(),
+            source.targetChecksum(),
+            source.sourceBlockCount(),
+            source.targetBlockCount(),
+            source.changed(),
+            source.safeToApply(),
+            source.migrationMode(),
+            source.issues().stream().map(issue -> new KnowledgeContentSchemaIssueView(
+                issue.code(), issue.path(), issue.message(), issue.severity()
+            )).toList(),
+            source.canonicalDocument().document()
+        );
+    }
+
     static KnowledgeContentCollaborationHealthView collaborationHealth(KnowledgeContentCollaborationHealth source) {
         return new KnowledgeContentCollaborationHealthView(
             source.itemId(),
@@ -340,6 +361,13 @@ public final class KnowledgeApiDtos {
             source.stateVector(),
             source.lastSavedAt(),
             source.updatedAt()
+        );
+    }
+
+    static KnowledgeCollaborationTicketView collaborationTicket(KnowledgeCollaborationTicket source) {
+        return new KnowledgeCollaborationTicketView(
+            source.url(), source.documentName(), source.ticket(), source.clientId(), source.protocolVersion(),
+            source.schemaVersion(), source.permissionLevel(), source.canView(), source.canEdit(), source.expiresAt()
         );
     }
 
@@ -608,7 +636,8 @@ public final class KnowledgeApiDtos {
         String content,
         String scope,
         Integer blockIndex,
-        String blockType
+        String blockType,
+        UUID blockId
     ) {
     }
 
@@ -826,6 +855,25 @@ public final class KnowledgeApiDtos {
     ) {
     }
 
+    public record KnowledgeContentCanonicalMigrationPreviewView(
+        UUID itemId,
+        int sourceSchemaVersion,
+        int targetSchemaVersion,
+        String sourceChecksum,
+        String targetChecksum,
+        int sourceBlockCount,
+        int targetBlockCount,
+        boolean changed,
+        boolean safeToApply,
+        String migrationMode,
+        List<KnowledgeContentSchemaIssueView> issues,
+        com.fasterxml.jackson.databind.JsonNode canonicalDocument
+    ) {
+    }
+
+    public record KnowledgeContentSchemaIssueView(String code, String path, String message, String severity) {
+    }
+
     public record KnowledgeContentCollaborationHealthView(
         UUID itemId,
         long serverClock,
@@ -834,6 +882,12 @@ public final class KnowledgeApiDtos {
         String stateVector,
         Instant lastSavedAt,
         Instant updatedAt
+    ) {
+    }
+
+    public record KnowledgeCollaborationTicketView(
+        String url, String documentName, String ticket, String clientId, String protocolVersion,
+        int schemaVersion, String permissionLevel, boolean canView, boolean canEdit, Instant expiresAt
     ) {
     }
 

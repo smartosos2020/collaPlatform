@@ -3,7 +3,13 @@ import { useEffect, useRef, useState } from 'react'
 import { useAuthStore } from '../../modules/auth/authStore'
 import type { PlatformWebSocketEvent } from './websocketEvents'
 
-const WS_BASE_URL = import.meta.env.VITE_WS_BASE_URL ?? 'ws://localhost:8080/ws/events'
+const WS_BASE_URL = import.meta.env.VITE_WS_BASE_URL ?? defaultWebSocketUrl()
+
+function defaultWebSocketUrl() {
+  if (!import.meta.env.PROD) return 'ws://localhost:8080/ws/events'
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  return `${protocol}//${window.location.host}/ws/events`
+}
 
 export type WebSocketStatus = 'idle' | 'connecting' | 'connected' | 'disconnected'
 

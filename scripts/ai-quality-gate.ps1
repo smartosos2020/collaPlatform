@@ -432,7 +432,7 @@ if (-not $SkipFrontend) {
                 throw "Router must use lazyRoute dynamic imports for page components"
             }
         }
-    } elseif ($effectiveFrontendStrategy -ne "skip") {
+    } elseif ($effectiveFrontendStrategy -notin @("lint", "skip")) {
         throw "Unsupported frontend strategy: $effectiveFrontendStrategy"
     }
 }

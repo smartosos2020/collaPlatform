@@ -19,9 +19,18 @@
     "ops:backup": "powershell -NoProfile -ExecutionPolicy Bypass -File deploy/scripts/backup.ps1",
     "ops:restore-drill": "powershell -NoProfile -ExecutionPolicy Bypass -File deploy/scripts/restore-drill.ps1",
     "ops:health": "powershell -NoProfile -ExecutionPolicy Bypass -File deploy/scripts/health-check.ps1",
+    "ops:contract-check": "powershell -NoProfile -ExecutionPolicy Bypass -File deploy/scripts/operations-contract-check.ps1",
     "ops:release-check": "powershell -NoProfile -ExecutionPolicy Bypass -File deploy/scripts/release-check.ps1",
+    "pilot:check": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/pilot-v2-manifest-check.ps1",
+    "pilot:contract-check": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/pilot-v2-contract-check.ps1",
+    "pilot:initialize": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/pilot-v2-initialize.ps1",
+    "pilot:simulate-kickoff": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/pilot-v2-simulation-kickoff.ps1",
+    "pilot:readiness": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/pilot-v2-readiness.ps1",
     "web:dev": "pnpm --dir web dev",
     "web:build": "pnpm --dir web build",
     "web:lint": "pnpm --dir web lint"
+    ,"collaboration:dev": "pnpm --dir collaboration dev"
+    ,"collaboration:start": "pnpm --dir collaboration start"
+    ,"collaboration:test": "pnpm --dir collaboration test"
   }
 }

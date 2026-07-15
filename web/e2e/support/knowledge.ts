@@ -105,12 +105,14 @@ export async function saveKnowledgeBlocks(
   spaceId: string,
   itemId: string,
   baseVersionNo: number,
-  blocks: Array<{ blockType: string; content: string; sortOrder: number }>,
+  blocks: Array<{ id?: string; blockType: string; content: string; sortOrder: number }>,
+  saveMode: 'auto' | 'manual' = 'auto',
 ): Promise<KnowledgeContentDetail> {
   const response = await request.patch(`${itemPath(spaceId, itemId)}/blocks`, {
     headers: bearer(session),
     data: {
       baseVersionNo,
+      saveMode,
       blocks: blocks.map((block) => ({
         ...block,
         schemaVersion: 2,
@@ -139,7 +141,23 @@ export async function saveKnowledgeContent(
 export async function listKnowledgeVersions(request: APIRequestContext, session: E2eSession, spaceId: string, itemId: string) {
   const response = await request.get(`${itemPath(spaceId, itemId)}/versions`, { headers: bearer(session) })
   expect(response.ok(), 'knowledge version list failed').toBeTruthy()
-  return await response.json() as Array<{ versionNo: number; versionName?: string | null; title: string }>
+  return await response.json() as Array<{ versionNo: number; versionName?: string | null; versionType?: string; title: string }>
+}
+
+export async function diffKnowledgeVersions(
+  request: APIRequestContext,
+  session: E2eSession,
+  spaceId: string,
+  itemId: string,
+  fromVersionNo: number,
+  toVersionNo: number,
+) {
+  const response = await request.get(`${itemPath(spaceId, itemId)}/versions/diff`, {
+    headers: bearer(session),
+    params: { fromVersionNo, toVersionNo },
+  })
+  expect(response.ok(), `knowledge version diff ${fromVersionNo}->${toVersionNo} failed`).toBeTruthy()
+  return await response.json() as { fromVersionNo: number; toVersionNo: number; lines: Array<{ type: string; content: string; blockId?: string | null }> }
 }
 
 export async function createNamedKnowledgeVersion(request: APIRequestContext, session: E2eSession, spaceId: string, itemId: string, versionName: string) {

@@ -59,7 +59,7 @@ public final class KnowledgeContentModels {
     }
 
     public record KnowledgeContentDiffLine(
-        String type, int oldLineNo, int newLineNo, String content, String scope, Integer blockIndex, String blockType
+        String type, int oldLineNo, int newLineNo, String content, String scope, Integer blockIndex, String blockType, UUID blockId
     ) {
     }
 
@@ -118,6 +118,35 @@ public final class KnowledgeContentModels {
     public record KnowledgeContentCollaborationState(
         UUID itemId, String stateVector, String snapshotContent, String snapshotPayload, long serverClock,
         String lastClientId, UUID updatedBy, Instant lastSavedAt, Instant updatedAt
+    ) {
+    }
+
+    public record KnowledgeCollaborationTicket(
+        String url, String documentName, String ticket, String clientId, String protocolVersion,
+        int schemaVersion, String permissionLevel, boolean canView, boolean canEdit, Instant expiresAt
+    ) {
+    }
+
+    public record KnowledgeCollaborationAuthorization(
+        UUID workspaceId, UUID itemId, UUID userId, UUID deviceId, String username, String displayName,
+        String clientId, String color, String permissionLevel, boolean canView, boolean canEdit, Instant expiresAt
+    ) {
+    }
+
+    public record KnowledgeCollaborationTicketRecord(
+        UUID id, String tokenHash, UUID workspaceId, UUID itemId, UUID userId, UUID deviceId,
+        String clientId, Instant expiresAt, Instant revokedAt
+    ) {
+    }
+
+    public record KnowledgeCollaborationBinaryState(
+        byte[] snapshot, byte[] stateVector, int schemaVersion, long snapshotSequence, String snapshotHash,
+        String canonicalSnapshot, Instant updatedAt
+    ) {
+    }
+
+    public record KnowledgeCollaborationStoredUpdate(
+        long sequence, byte[] payload, String updateId, UUID actorId, String clientId, Instant createdAt
     ) {
     }
 

@@ -1,4 +1,5 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080/api'
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? (import.meta.env.PROD ? '/api' : 'http://localhost:8080/api')
+const API_REQUEST_TIMEOUT_MS = 5_000
 
 type RequestOptions = {
   auth?: boolean
@@ -95,13 +96,26 @@ async function sendRequest<T>(
     headers.set('Authorization', `Bearer ${accessToken}`)
   }
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    method,
-    headers: {
-      ...Object.fromEntries(headers.entries()),
-    },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  })
+  const controller = new AbortController()
+  const timeoutId = window.setTimeout(() => controller.abort(), API_REQUEST_TIMEOUT_MS)
+  let response: Response
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      method,
+      headers: {
+        ...Object.fromEntries(headers.entries()),
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal: controller.signal,
+    })
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new Error('API request timed out', { cause: error })
+    }
+    throw error
+  } finally {
+    window.clearTimeout(timeoutId)
+  }
 
   if (!response.ok) {
     throw new ApiRequestError(response.status, await readErrorMessage(response))
