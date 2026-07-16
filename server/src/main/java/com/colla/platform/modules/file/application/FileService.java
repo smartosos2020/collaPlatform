@@ -7,6 +7,7 @@ import com.colla.platform.modules.file.domain.FileModels.UploadUrlResponse;
 import com.colla.platform.modules.file.infrastructure.FileRepository;
 import com.colla.platform.modules.platform.application.PlatformObjectResolverRegistry;
 import com.colla.platform.modules.platform.domain.PlatformModels.ObjectAccessState;
+import com.colla.platform.modules.platform.infrastructure.PlatformObjectRepository;
 import com.colla.platform.shared.auth.CurrentUser;
 import com.colla.platform.shared.storage.StorageProperties;
 import io.minio.GetPresignedObjectUrlArgs;
@@ -29,19 +30,22 @@ public class FileService {
     private final MinioClient minioClient;
     private final StorageProperties storageProperties;
     private final AuditService auditService;
+    private final PlatformObjectRepository objectRepository;
 
     public FileService(
         FileRepository fileRepository,
         PlatformObjectResolverRegistry objectResolverRegistry,
         MinioClient minioClient,
         StorageProperties storageProperties,
-        AuditService auditService
+        AuditService auditService,
+        PlatformObjectRepository objectRepository
     ) {
         this.fileRepository = fileRepository;
         this.objectResolverRegistry = objectResolverRegistry;
         this.minioClient = minioClient;
         this.storageProperties = storageProperties;
         this.auditService = auditService;
+        this.objectRepository = objectRepository;
     }
 
     @Transactional
@@ -81,6 +85,14 @@ public class FileService {
             requireTargetAccess(currentUser, targetType, targetId);
             fileRepository.addUsage(currentUser.workspaceId(), file.id(), targetType, targetId, currentUser.id());
         }
+        objectRepository.upsertObjectLink(
+            currentUser.workspaceId(),
+            "file",
+            file.id(),
+            "/files/" + file.id(),
+            "colla://file/" + file.id(),
+            file.originalName()
+        );
         return file;
     }
 

@@ -7,6 +7,7 @@ import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.Knowle
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContentComment;
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContent;
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContentDiffLine;
+import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContentDiagnostics;
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContentMigrationPreview;
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentCanonicalModels.KnowledgeContentMigrationPlan;
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContentPathItem;
@@ -17,6 +18,7 @@ import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.Knowle
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContentShareLink;
 import com.colla.platform.modules.knowledge.domain.KnowledgeBaseItemModels.KnowledgeBaseItem;
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContentTemplate;
+import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContentTransferReport;
 import com.colla.platform.modules.knowledge.domain.KnowledgeBaseItemModels.KnowledgeBaseItemTreeNode;
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContentVersion;
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContentVersionDiff;
@@ -41,6 +43,10 @@ public final class KnowledgeApiDtos {
     }
 
     static KnowledgeBaseSpaceView space(KnowledgeBaseSpaceSummary source) {
+        return space(source, source.homeItemId() == null ? source.rootItemId() : source.homeItemId());
+    }
+
+    private static KnowledgeBaseSpaceView space(KnowledgeBaseSpaceSummary source, UUID effectiveHomeItemId) {
         return new KnowledgeBaseSpaceView(
             source.id(),
             source.name(),
@@ -51,21 +57,29 @@ public final class KnowledgeApiDtos {
             source.status(),
             source.visibility(),
             source.rootItemId(),
-            source.homeItemId(),
+            effectiveHomeItemId,
             source.ownerId(),
             source.ownerName(),
             source.defaultPermissionLevel(),
             source.createdAt(),
             source.updatedAt(),
             source.itemCount(),
-            new KnowledgeBaseNavigation(source.rootItemId(), source.homeItemId(), "/knowledge-bases/" + source.id()),
+            new KnowledgeBaseNavigation(
+                source.rootItemId(),
+                effectiveHomeItemId,
+                "/knowledge-bases/" + source.id() + "/items/" + effectiveHomeItemId
+            ),
             permission(source.defaultPermissionLevel()),
             List.of("open", "search", "subscribe", "create_item")
         );
     }
 
     static KnowledgeBaseSpaceDetailView spaceDetail(KnowledgeBaseSpaceDetail source) {
-        return new KnowledgeBaseSpaceDetailView(space(source.space()), item(source.rootItem()), item(source.homeItem()));
+        return new KnowledgeBaseSpaceDetailView(
+            space(source.space(), source.homeItem().id()),
+            item(source.rootItem()),
+            item(source.homeItem())
+        );
     }
 
     static KnowledgeBaseItemView item(KnowledgeBaseItem source) {
@@ -223,6 +237,8 @@ public final class KnowledgeApiDtos {
             source.scopeType(),
             source.knowledgeBaseId(),
             source.knowledgeBaseName(),
+            source.versionNo(),
+            source.supersedesTemplateId(),
             source.createdAt()
         );
     }
@@ -315,8 +331,32 @@ public final class KnowledgeApiDtos {
             source.commentCount(),
             source.contentLength(),
             source.lineCount(),
+            source.snapshotBytes(),
+            source.budgetTier(),
+            source.initialRenderBlocks(),
+            source.loadBudgetMs(),
+            source.inputBudgetMs(),
+            source.saveBudgetMs(),
+            source.searchBudgetMs(),
+            source.collaborationBudgetMs(),
             source.largeContent(),
             source.recommendedMode()
+        );
+    }
+
+    static KnowledgeContentDiagnosticsView diagnostics(KnowledgeContentDiagnostics source) {
+        return new KnowledgeContentDiagnosticsView(
+            source.itemId(), source.versionNo(), source.blockCount(), source.snapshotBytes(), source.permissionCount(),
+            source.objectReferenceCount(), source.unavailableObjectCount(), source.searchProjectionReady(),
+            source.shareLinkEnabled(), source.collaborationServerClock(), source.collaborationDirty(),
+            source.collaborationLastSavedAt(), source.generatedAt(), source.redacted()
+        );
+    }
+
+    static KnowledgeContentTransferReportView transferReport(KnowledgeContentTransferReport source) {
+        return new KnowledgeContentTransferReportView(
+            source.direction(), source.format(), source.blockCount(), source.attachmentCount(), source.objectReferenceCount(),
+            source.convertedFeatures(), source.degradedFeatures(), source.fingerprint(), source.safeToApply()
         );
     }
 
@@ -438,6 +478,9 @@ public final class KnowledgeApiDtos {
             source.anchorPrefix(),
             source.anchorSuffix(),
             source.anchorVersionNo(),
+            source.anchorState(),
+            source.anchorInvalidReason(),
+            source.anchorUpdatedAt(),
             source.root(),
             source.resolved(),
             source.resolvedAt(),
@@ -651,6 +694,8 @@ public final class KnowledgeApiDtos {
         String scopeType,
         UUID knowledgeBaseId,
         String knowledgeBaseName,
+        int versionNo,
+        UUID supersedesTemplateId,
         Instant createdAt
     ) {
     }
@@ -743,6 +788,19 @@ public final class KnowledgeApiDtos {
     ) {
     }
 
+    public record KnowledgeContentTransferReportView(
+        String direction,
+        String format,
+        int blockCount,
+        int attachmentCount,
+        int objectReferenceCount,
+        List<String> convertedFeatures,
+        List<String> degradedFeatures,
+        String fingerprint,
+        boolean safeToApply
+    ) {
+    }
+
     public record KnowledgeContentPermissionView(
         UUID id,
         UUID itemId,
@@ -806,6 +864,9 @@ public final class KnowledgeApiDtos {
         String anchorPrefix,
         String anchorSuffix,
         Integer anchorVersionNo,
+        String anchorState,
+        String anchorInvalidReason,
+        Instant anchorUpdatedAt,
         boolean root,
         boolean resolved,
         Instant resolvedAt,
@@ -838,8 +899,34 @@ public final class KnowledgeApiDtos {
         int commentCount,
         int contentLength,
         int lineCount,
+        long snapshotBytes,
+        int budgetTier,
+        int initialRenderBlocks,
+        int loadBudgetMs,
+        int inputBudgetMs,
+        int saveBudgetMs,
+        int searchBudgetMs,
+        int collaborationBudgetMs,
         boolean largeContent,
         String recommendedMode
+    ) {
+    }
+
+    public record KnowledgeContentDiagnosticsView(
+        UUID itemId,
+        int versionNo,
+        int blockCount,
+        long snapshotBytes,
+        int permissionCount,
+        int objectReferenceCount,
+        int unavailableObjectCount,
+        boolean searchProjectionReady,
+        boolean shareLinkEnabled,
+        long collaborationServerClock,
+        boolean collaborationDirty,
+        Instant collaborationLastSavedAt,
+        Instant generatedAt,
+        boolean redacted
     ) {
     }
 

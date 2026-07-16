@@ -115,6 +115,17 @@ public final class PermissionModels {
     ) {
     }
 
+    public record ResourcePermissionTransitionPreview(
+        UUID resourceId,
+        UUID currentParentId,
+        UUID targetParentId,
+        List<ResourcePermissionEntry> retainedDirect,
+        List<ResourcePermissionEntry> removedInherited,
+        List<ResourcePermissionEntry> addedInherited,
+        boolean highPrivilegeAdded
+    ) {
+    }
+
     public record PermissionCatalogItem(
         UUID id,
         String code,

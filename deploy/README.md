@@ -1,8 +1,10 @@
 # Deploy
 
-This directory contains the single-node delivery baseline for Colla Platform.
-It is intended for a test or small-team production environment before a later
-Kubernetes or managed-cloud deployment is justified.
+This directory contains the Docker Compose delivery baseline for Colla Platform.
+The Spring backend, PostgreSQL, Redis, and MinIO remain single instances, while
+two collaboration sidecars sit behind Nginx for cross-node Yjs room recovery.
+This is suitable for a test or small-team environment, but it is not a complete
+high-availability deployment.
 
 ## Test Environment Deployment
 
@@ -24,8 +26,9 @@ Required values:
 - `INIT_ADMIN_PASSWORD`
 - `CORS_ALLOWED_ORIGINS`
 - `APP_BASE_URL`
-- `SERVER_IMAGE` and `WEB_IMAGE`, each with an explicit version tag (never `latest`)
-- `SOURCE_COMMIT`, as the full 40-character commit used to build both images
+- `SERVER_IMAGE`, `WEB_IMAGE`, and `COLLABORATION_IMAGE`, each with an explicit version tag (never `latest`)
+- `COLLA_COLLABORATION_INTERNAL_SECRET`
+- `SOURCE_COMMIT`, as the full 40-character commit used to build all three images
 
 3. Run the release gate. A verified backup is mandatory for a formal pass:
 
@@ -110,6 +113,10 @@ Runtime health signals:
 - `/actuator/health` for Spring Boot health status.
 - `/actuator/prometheus` for Prometheus metrics when checking the backend
   directly.
+- Each collaboration sidecar exposes `/health`, `/ready`, and an
+  internal-secret-protected `/metrics` endpoint on port `1234`. Inspect these
+  endpoints directly inside the deployment network; Nginx does not publish
+  them.
 
 Local health check:
 
@@ -188,8 +195,9 @@ pnpm ops:contract-check
 ## Rollback
 
 Rollback deploys previously validated, version-tagged images. It never checks
-out or rebuilds a Git ref in the active worktree. Both images must carry the
-same full `org.opencontainers.image.revision` label. It requires an exact typed
+out or rebuilds a Git ref in the active worktree. The server, web, and
+collaboration images must carry the same full
+`org.opencontainers.image.revision` label. It requires an exact typed
 confirmation string.
 
 Application-only rollback:
@@ -197,14 +205,15 @@ Application-only rollback:
 ```powershell
 $serverImage = "registry.example.com/colla/server:<version>"
 $webImage = "registry.example.com/colla/web:<version>"
-$confirmation = "ROLLBACK:colla-platform-prod:$serverImage`:$webImage"
-powershell -NoProfile -ExecutionPolicy Bypass -File deploy/scripts/rollback.ps1 -EnvFile deploy/.env.prod -ServerImage $serverImage -WebImage $webImage -ExpectedSourceCommit <40-char-commit> -ExpectedProjectName colla-platform-prod -ConfirmationText $confirmation -ConfirmRollback
+$collaborationImage = "registry.example.com/colla/collaboration:<version>"
+$confirmation = "ROLLBACK:colla-platform-prod:$serverImage`:$webImage`:$collaborationImage"
+powershell -NoProfile -ExecutionPolicy Bypass -File deploy/scripts/rollback.ps1 -EnvFile deploy/.env.prod -ServerImage $serverImage -WebImage $webImage -CollaborationImage $collaborationImage -ExpectedSourceCommit <40-char-commit> -ExpectedProjectName colla-platform-prod -ConfirmationText $confirmation -ConfirmRollback
 ```
 
 Application and data rollback:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File deploy/scripts/rollback.ps1 -EnvFile deploy/.env.prod -ServerImage $serverImage -WebImage $webImage -ExpectedSourceCommit <40-char-commit> -ExpectedProjectName colla-platform-prod -ConfirmationText $confirmation -BackupPath .local-backups/<timestamp> -RestoreData -ConfirmRollback
+powershell -NoProfile -ExecutionPolicy Bypass -File deploy/scripts/rollback.ps1 -EnvFile deploy/.env.prod -ServerImage $serverImage -WebImage $webImage -CollaborationImage $collaborationImage -ExpectedSourceCommit <40-char-commit> -ExpectedProjectName colla-platform-prod -ConfirmationText $confirmation -BackupPath .local-backups/<timestamp> -RestoreData -ConfirmRollback
 ```
 
 The rollback script uses `--no-build`, optionally performs a manifest-verified

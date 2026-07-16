@@ -2,7 +2,7 @@
 title: 当前执行路线
 status: active
 route: KB-PRODUCT
-last_code_check: 2026-07-15
+last_code_check: 2026-07-16
 source_rule: 本文件是唯一执行路线入口；已完成路线只保存在 99-archive。
 ---
 
@@ -96,9 +96,9 @@ source_rule: 本文件是唯一执行路线入口；已完成路线只保存在 
 | KB-PRODUCT-M6 | 多节点、重连与恢复可靠性 | M5 | 双应用节点、Redis 广播、断线重连和快照恢复通过 |
 | KB-PRODUCT-M7 | 协作对象入口闭环 | M1-M3 | 对象选择、创建、跳转、权限和生命周期状态完整 |
 | KB-PRODUCT-M8 | 内容优先导航与知识库信息架构 | M3、M7 | 首页、目录、对象入口、URL 和管理入口符合用户心智 |
-| KB-PRODUCT-M9 | 编辑器高频交互与内容块完善 | M3-M5 | 键盘、粘贴、表格、媒体、块菜单和响应式体验通过 |
-| KB-PRODUCT-M10 | 评论、搜索、关系与导入导出闭环 | M2-M9 | 块锚点、搜索定位、反向引用和格式往返可验证 |
-| KB-PRODUCT-M11 | 权限、治理、性能与可访问性收口 | M7-M10 | 权限继承、治理、性能预算和无障碍基线通过 |
+| KB-PRODUCT-M9 | 编辑器高频交互与内容块完善（2026-07-16 完成） | M3-M5 | 键盘、粘贴、表格、媒体、块菜单和响应式体验通过；`docs/90-reports/kb-product-m9-execution-report.md` |
+| KB-PRODUCT-M10 | 评论、搜索、关系与导入导出闭环（2026-07-16 完成） | M2-M9 | 块锚点、搜索定位、反向引用和格式往返通过；`docs/90-reports/kb-product-m10-execution-report.md` |
+| KB-PRODUCT-M11 | 权限、治理、性能与可访问性收口（2026-07-16 完成） | M7-M10 | 权限继承、治理、性能预算和无障碍基线通过；`docs/90-reports/kb-product-m11-execution-report.md` |
 | KB-PRODUCT-M12 | 真实试用与路线级发布判定 | M1-M11 | 全量验证、真实参与者证据和 Go/No-Go 决策 |
 
 ## 6. 详细任务
@@ -205,15 +205,17 @@ source_rule: 本文件是唯一执行路线入口；已完成路线只保存在 
 
 | 任务 | 内容 | 验收标准 | 状态 |
 | --- | --- | --- | --- |
-| KB-PRODUCT-M6-T01 | 建立 Redis 协同房间广播与节点标识 | 两个应用节点上的成员可实时看到同一文档更新 | Pending |
-| KB-PRODUCT-M6-T02 | 实现更新去重、顺序水位和重放保护 | Redis 重投、客户端重试和跨节点回环不会重复应用 | Pending |
-| KB-PRODUCT-M6-T03 | 实现断线重连握手和缺失更新补偿 | 短暂断线后只补缺失更新，不整篇覆盖新状态 | Pending |
-| KB-PRODUCT-M6-T04 | 实现有限本地离线队列和恢复提示 | 离线编辑有明确状态；恢复后可提交或导出，不静默丢弃 | Pending |
-| KB-PRODUCT-M6-T05 | 建立快照、更新日志压缩和房间回收策略 | 存储增长有上限，活跃房间不被误回收 | Pending |
-| KB-PRODUCT-M6-T06 | 处理应用重启、Redis 短断和数据库延迟 | 故障期间返回可理解状态，恢复后文档继续可编辑 | Pending |
-| KB-PRODUCT-M6-T07 | 增加双节点故障注入和恢复测试 | 覆盖节点切换、消息乱序、重复、Redis 重连和快照恢复 | Pending |
-| KB-PRODUCT-M6-T08 | 增加协同健康、积压和失败指标 | 可按 space/item/node 定位连接数、延迟、积压和错误 | Pending |
-| KB-PRODUCT-M6-T09 | 输出多节点协同运行手册和验收报告 | 部署、排障、回退、数据恢复和限制可执行 | Pending |
+| KB-PRODUCT-M6-T01 | 建立 Redis 协同房间广播与节点标识 | 两个应用节点上的成员可实时看到同一文档更新 | Done |
+| KB-PRODUCT-M6-T02 | 实现更新去重、顺序水位和重放保护 | Redis 重投、客户端重试和跨节点回环不会重复应用 | Done |
+| KB-PRODUCT-M6-T03 | 实现断线重连握手和缺失更新补偿 | 短暂断线后只补缺失更新，不整篇覆盖新状态 | Done |
+| KB-PRODUCT-M6-T04 | 实现有限本地离线队列和恢复提示 | 离线编辑有明确状态；恢复后可提交或导出，不静默丢弃 | Done |
+| KB-PRODUCT-M6-T05 | 建立快照、更新日志压缩和房间回收策略 | 存储增长有上限，活跃房间不被误回收 | Done |
+| KB-PRODUCT-M6-T06 | 处理应用重启、Redis 短断和数据库延迟 | 故障期间返回可理解状态，恢复后文档继续可编辑 | Done |
+| KB-PRODUCT-M6-T07 | 增加双节点故障注入和恢复测试 | 覆盖节点切换、消息乱序、重复、Redis 重连和快照恢复 | Done |
+| KB-PRODUCT-M6-T08 | 增加协同健康、积压和失败指标 | 可按 space/item/node 定位连接数、延迟、积压和错误 | Done |
+| KB-PRODUCT-M6-T09 | 输出多节点协同运行手册和验收报告 | 部署、排障、回退、数据恢复和限制可执行 | Done |
+
+结论：KB-PRODUCT-M6 已完成。双 Hocuspocus/Yjs 节点通过 Redis 广播并以 PostgreSQL update/snapshot 为持久恢复来源；离线预算、重连、节点重启、Redis 故障、去重、压缩、健康指标和三镜像回退均有自动化证据。完整证据见 `docs/90-reports/kb-product-m6-execution-report.md`，运行步骤见 `docs/05-runbooks/knowledge-collaboration.md`。下一执行入口为 KB-PRODUCT-M7。
 
 ### KB-PRODUCT-M7 协作对象入口闭环
 
@@ -221,16 +223,18 @@ source_rule: 本文件是唯一执行路线入口；已完成路线只保存在 
 
 | 任务 | 内容 | 验收标准 | 状态 |
 | --- | --- | --- | --- |
-| KB-PRODUCT-M7-T01 | 复现并定位新建 Base 后“对象不可用”的根因 | 明确是对象注册、ID、路由、事务、权限还是缓存问题 | Pending |
-| KB-PRODUCT-M7-T02 | 建立权限过滤的平台对象选择 API | 只返回当前用户可引用对象，不泄露不可见对象标题 | Pending |
-| KB-PRODUCT-M7-T03 | 实现 Base、项目、文件和知识内容对象选择器 | 普通流程不要求输入 UUID；支持搜索、最近和分页 | Pending |
-| KB-PRODUCT-M7-T04 | 完成“新建 Base 并挂载”和“挂载已有 Base”两条路径 | 创建成功后立即可打开，失败有原子回滚或明确补偿 | Pending |
-| KB-PRODUCT-M7-T05 | 服务端校验目标类型、目标 ID、规范路由和引用权限 | 客户端伪造 route 或 ID 不能绕过 resolver 和权限 | Pending |
-| KB-PRODUCT-M7-T06 | 统一别名、跟随目标标题和展示模式 | alias/follow-target、link/card/inline 语义清晰可编辑 | Pending |
-| KB-PRODUCT-M7-T07 | 完善 available、forbidden、disabled、deleted、not_found、invalid 状态 | 每种状态有不泄露信息的文案、图标和可用操作 | Pending |
-| KB-PRODUCT-M7-T08 | 处理目标移动、改名、归档、恢复和删除 | 引用路由不依赖过期手工路径，生命周期变化可追踪 | Pending |
-| KB-PRODUCT-M7-T09 | 增加对象入口审计、关系和反向定位 | 能从知识节点定位目标，也能从目标看到合法来源引用 | Pending |
-| KB-PRODUCT-M7-T10 | 完成对象入口集成和浏览器矩阵 | Base、项目、文件、知识内容、外链及全部权限状态通过 | Pending |
+| KB-PRODUCT-M7-T01 | 复现并定位新建 Base 后“对象不可用”的根因 | 明确是对象注册、ID、路由、事务、权限还是缓存问题 | Done |
+| KB-PRODUCT-M7-T02 | 建立权限过滤的平台对象选择 API | 只返回当前用户可引用对象，不泄露不可见对象标题 | Done |
+| KB-PRODUCT-M7-T03 | 实现 Base、项目、文件和知识内容对象选择器 | 普通流程不要求输入 UUID；支持搜索、最近和分页 | Done |
+| KB-PRODUCT-M7-T04 | 完成“新建 Base 并挂载”和“挂载已有 Base”两条路径 | 创建成功后立即可打开，失败有原子回滚或明确补偿 | Done |
+| KB-PRODUCT-M7-T05 | 服务端校验目标类型、目标 ID、规范路由和引用权限 | 客户端伪造 route 或 ID 不能绕过 resolver 和权限 | Done |
+| KB-PRODUCT-M7-T06 | 统一别名、跟随目标标题和展示模式 | alias/follow-target、link/card/inline 语义清晰可编辑 | Done |
+| KB-PRODUCT-M7-T07 | 完善 available、forbidden、disabled、deleted、not_found、invalid 状态 | 每种状态有不泄露信息的文案、图标和可用操作 | Done |
+| KB-PRODUCT-M7-T08 | 处理目标移动、改名、归档、恢复和删除 | 引用路由不依赖过期手工路径，生命周期变化可追踪 | Done |
+| KB-PRODUCT-M7-T09 | 增加对象入口审计、关系和反向定位 | 能从知识节点定位目标，也能从目标看到合法来源引用 | Done |
+| KB-PRODUCT-M7-T10 | 完成对象入口集成和浏览器矩阵 | Base、项目、文件、知识内容、外链及全部权限状态通过 | Done |
+
+结论：KB-PRODUCT-M7 已完成。对象入口现在通过权限过滤选择器发现 Base、项目、文件和知识内容；服务端统一校验目标并生成规范路由；Base 新建挂载具备事务回滚；别名、展示模式、生命周期、审计和合法反向引用均有独立集成与真实浏览器证据。完整证据见 `docs/90-reports/kb-product-m7-execution-report.md`。下一执行入口为 KB-PRODUCT-M8。
 
 ### KB-PRODUCT-M8 内容优先导航与知识库信息架构
 
@@ -238,69 +242,77 @@ source_rule: 本文件是唯一执行路线入口；已完成路线只保存在 
 
 | 任务 | 内容 | 验收标准 | 状态 |
 | --- | --- | --- | --- |
-| KB-PRODUCT-M8-T01 | 固化空间入口和首页解析规则 | 打开空间稳定进入 home item，缺失首页有可恢复 fallback | Pending |
-| KB-PRODUCT-M8-T02 | 固化内容页、目录、对象入口和外链点击行为 | 每类节点只有一种主要行为，不先展示无关元数据仪表盘 | Pending |
-| KB-PRODUCT-M8-T03 | 为目录节点提供默认首页或子内容列表 | 非叶子节点可直接承载内容；无首页时展示可行动子项 | Pending |
-| KB-PRODUCT-M8-T04 | 将元数据、设置、权限和治理迁到辅助入口 | 普通正文无管理噪音；管理员默认阅读路径与普通用户一致 | Pending |
-| KB-PRODUCT-M8-T05 | 统一面包屑、树选中态、URL、刷新和前进后退 | 深链恢复同一 space/item，上下文不漂移 | Pending |
-| KB-PRODUCT-M8-T06 | 完善树搜索、最近、收藏、订阅和归档筛选 | 切换筛选不会丢当前合法内容，结果可直接打开 | Pending |
-| KB-PRODUCT-M8-T07 | 完善加载、空、无权、停用、删除和网络错误状态 | 状态有明确下一步，不泄露不可见目录和标题 | Pending |
-| KB-PRODUCT-M8-T08 | 优化侧栏宽度、内部滚动、窄屏和键盘导航 | 页面无浏览器级异常滚动，目录文字不竖排，焦点顺序合理 | Pending |
-| KB-PRODUCT-M8-T09 | 完成普通成员、管理员和只读成员导航验收 | 三类身份看到同一内容逻辑，仅管理入口和动作权限不同 | Pending |
+| KB-PRODUCT-M8-T01 | 固化空间入口和首页解析规则 | 打开空间稳定进入 home item，缺失首页有可恢复 fallback | Done |
+| KB-PRODUCT-M8-T02 | 固化内容页、目录、对象入口和外链点击行为 | 每类节点只有一种主要行为，不先展示无关元数据仪表盘 | Done |
+| KB-PRODUCT-M8-T03 | 为目录节点提供默认首页或子内容列表 | 非叶子节点可直接承载内容；无首页时展示可行动子项 | Done |
+| KB-PRODUCT-M8-T04 | 将元数据、设置、权限和治理迁到辅助入口 | 普通正文无管理噪音；管理员默认阅读路径与普通用户一致 | Done |
+| KB-PRODUCT-M8-T05 | 统一面包屑、树选中态、URL、刷新和前进后退 | 深链恢复同一 space/item，上下文不漂移 | Done |
+| KB-PRODUCT-M8-T06 | 完善树搜索、最近、收藏、订阅和归档筛选 | 切换筛选不会丢当前合法内容，结果可直接打开 | Done |
+| KB-PRODUCT-M8-T07 | 完善加载、空、无权、停用、删除和网络错误状态 | 状态有明确下一步，不泄露不可见目录和标题 | Done |
+| KB-PRODUCT-M8-T08 | 优化侧栏宽度、内部滚动、窄屏和键盘导航 | 页面无浏览器级异常滚动，目录文字不竖排，焦点顺序合理 | Done |
+| KB-PRODUCT-M8-T09 | 完成普通成员、管理员和只读成员导航验收 | 三类身份看到同一内容逻辑，仅管理入口和动作权限不同 | Done |
+
+结论：KB-PRODUCT-M8 已完成。知识库空间入口会解析有效首页并进入规范 item URL；正文、目录、对象入口和外链按节点语义直接工作；治理与元数据退出默认阅读路径；搜索筛选、异常状态、内部滚动、窄屏和管理员/编辑者/只读/无权身份矩阵均通过自动化与真实隔离浏览器验证。完整证据见 `docs/90-reports/kb-product-m8-execution-report.md`。下一执行入口为 KB-PRODUCT-M9。
 
 ### KB-PRODUCT-M9 编辑器高频交互与内容块完善
 
 目标：把当前逐点修复的编辑器交互收敛为稳定、连贯、可预测的生产级体验。
 
+完成结论：连续输入、IME、选区工具栏、行级控制、Slash、块操作、撤销重做、粘贴、表格和媒体链路已在单一 Tiptap/Yjs 编辑器中收口；真实 MinIO 上传、失败重试、替换、说明、权限下载、短/长内容、桌面/窄屏及 owner/viewer 矩阵均通过。完整证据见 `docs/90-reports/kb-product-m9-execution-report.md`，下一执行入口为 KB-PRODUCT-M10。
+
 | 任务 | 内容 | 验收标准 | 状态 |
 | --- | --- | --- | --- |
-| KB-PRODUCT-M9-T01 | 固化连续输入、IME、组合输入和焦点规则 | 中英文连续输入不失焦，父状态更新不重建编辑器 | Pending |
-| KB-PRODUCT-M9-T02 | 完善选择气泡工具栏 | 仅选择内容时显示，贴近选择区且始终位于编辑框可视范围 | Pending |
-| KB-PRODUCT-M9-T03 | 完善行级插入/操作合并按钮 | 跟随当前块，按钮和菜单不越过编辑框，点击外部关闭 | Pending |
-| KB-PRODUCT-M9-T04 | 完善 Slash 命令和键盘选择 | 光标处触发、可搜索、方向键/回车/ESC 可用、外部点击关闭 | Pending |
-| KB-PRODUCT-M9-T05 | 完善块拖拽、复制、移动、转换和删除 | 操作保持 block ID/评论锚点，撤销后完整恢复 | Pending |
-| KB-PRODUCT-M9-T06 | 完善撤销重做、快捷键和跨块选择 | 本地与协同操作边界明确，不撤销他人无关修改 | Pending |
-| KB-PRODUCT-M9-T07 | 完善粘贴和格式清洗 | 纯文本、网页、Markdown、列表和表格粘贴结果确定且安全 | Pending |
-| KB-PRODUCT-M9-T08 | 完善表格块编辑工具栏 | 工具栏跟随表格块，行列操作可撤销且不越界 | Pending |
-| KB-PRODUCT-M9-T09 | 完善图片、文件和媒体块 | 复用 MinIO 上传，支持进度、失败重试、说明和权限下载 | Pending |
-| KB-PRODUCT-M9-T10 | 完善链接、代码、引用、任务、callout 和分割线 | 插入、转换、编辑、只读和导出行为一致 | Pending |
-| KB-PRODUCT-M9-T11 | 增加响应式和无障碍交互基线 | 1366px 与移动窄屏可用，按钮有名称，键盘焦点可见 | Pending |
-| KB-PRODUCT-M9-T12 | 建立编辑器交互视觉回归和浏览器矩阵 | Chromium 关键场景、不同文档长度和权限状态可重复通过 | Pending |
+| KB-PRODUCT-M9-T01 | 固化连续输入、IME、组合输入和焦点规则 | 中英文连续输入不失焦，父状态更新不重建编辑器 | Done |
+| KB-PRODUCT-M9-T02 | 完善选择气泡工具栏 | 仅选择内容时显示，贴近选择区且始终位于编辑框可视范围 | Done |
+| KB-PRODUCT-M9-T03 | 完善行级插入/操作合并按钮 | 跟随当前块，按钮和菜单不越过编辑框，点击外部关闭 | Done |
+| KB-PRODUCT-M9-T04 | 完善 Slash 命令和键盘选择 | 光标处触发、可搜索、方向键/回车/ESC 可用、外部点击关闭 | Done |
+| KB-PRODUCT-M9-T05 | 完善块拖拽、复制、移动、转换和删除 | 操作保持 block ID/评论锚点，撤销后完整恢复 | Done |
+| KB-PRODUCT-M9-T06 | 完善撤销重做、快捷键和跨块选择 | 本地与协同操作边界明确，不撤销他人无关修改 | Done |
+| KB-PRODUCT-M9-T07 | 完善粘贴和格式清洗 | 纯文本、网页、Markdown、列表和表格粘贴结果确定且安全 | Done |
+| KB-PRODUCT-M9-T08 | 完善表格块编辑工具栏 | 工具栏跟随表格块，行列操作可撤销且不越界 | Done |
+| KB-PRODUCT-M9-T09 | 完善图片、文件和媒体块 | 复用 MinIO 上传，支持进度、失败重试、说明和权限下载 | Done |
+| KB-PRODUCT-M9-T10 | 完善链接、代码、引用、任务、callout 和分割线 | 插入、转换、编辑、只读和导出行为一致 | Done |
+| KB-PRODUCT-M9-T11 | 增加响应式和无障碍交互基线 | 1366px 与移动窄屏可用，按钮有名称，键盘焦点可见 | Done |
+| KB-PRODUCT-M9-T12 | 建立编辑器交互视觉回归和浏览器矩阵 | Chromium 关键场景、不同文档长度和权限状态可重复通过 | Done |
 
 ### KB-PRODUCT-M10 评论、搜索、关系与导入导出闭环
 
 目标：让围绕内容发生的评论、发现、关联和迁移都基于稳定块语义。
 
+完成结论：评论锚点具备可映射与失效/恢复生命周期，评论线程、@mention、搜索深链和权限撤销不披露均闭环；知识内容关系支持双向建立与撤销，Markdown/HTML 导入导出保留表格、代码、图片和对象说明并提供转换/降级报告。完整证据见 `docs/90-reports/kb-product-m10-execution-report.md`，下一执行入口为 KB-PRODUCT-M11。
+
 | 任务 | 内容 | 验收标准 | 状态 |
 | --- | --- | --- | --- |
-| KB-PRODUCT-M10-T01 | 将选区评论锚点升级为可随编辑映射的位置 | 前后插入、格式变化和协同更新后评论仍定位正确文本 | Pending |
-| KB-PRODUCT-M10-T02 | 完善块评论、回复、解决、重开和 @mention | 权限、通知、审计和深链闭环，无重复提醒 | Pending |
-| KB-PRODUCT-M10-T03 | 处理被删除块、失效选区和版本恢复后的评论 | 评论保留上下文并标明失效原因，不错误挂到其他内容 | Pending |
-| KB-PRODUCT-M10-T04 | 以规范纯文本投影重建知识搜索索引 | 标题、正文块、标签和允许的评论内容可检索 | Pending |
-| KB-PRODUCT-M10-T05 | 增强中文查询、短语、高亮和筛选 | 常用中文词组召回稳定，支持空间、类型、标签、维护人和状态筛选 | Pending |
-| KB-PRODUCT-M10-T06 | 完成搜索结果到 block/comment 的定位 | 打开结果后目标块可见并高亮，权限变化后不泄露摘要 | Pending |
-| KB-PRODUCT-M10-T07 | 完善正向关系、反向引用和循环引用处理 | 关系可导航、可解释、可撤销，循环不会导致无限展开 | Pending |
-| KB-PRODUCT-M10-T08 | 完善 Markdown/HTML 导入 | 表格、列表、代码、图片和不支持节点有明确转换/降级报告 | Pending |
-| KB-PRODUCT-M10-T09 | 完善 Markdown/HTML/空间导出 | 导出包含结构、附件清单和对象引用说明，重新导入可核对 | Pending |
-| KB-PRODUCT-M10-T10 | 增加评论、搜索、关系和导入导出端到端测试 | 覆盖权限拒绝、并发编辑、损坏输入和大内容 | Pending |
+| KB-PRODUCT-M10-T01 | 将选区评论锚点升级为可随编辑映射的位置 | 前后插入、格式变化和协同更新后评论仍定位正确文本 | Done |
+| KB-PRODUCT-M10-T02 | 完善块评论、回复、解决、重开和 @mention | 权限、通知、审计和深链闭环，无重复提醒 | Done |
+| KB-PRODUCT-M10-T03 | 处理被删除块、失效选区和版本恢复后的评论 | 评论保留上下文并标明失效原因，不错误挂到其他内容 | Done |
+| KB-PRODUCT-M10-T04 | 以规范纯文本投影重建知识搜索索引 | 标题、正文块、标签和允许的评论内容可检索 | Done |
+| KB-PRODUCT-M10-T05 | 增强中文查询、短语、高亮和筛选 | 常用中文词组召回稳定，支持空间、类型、标签、维护人和状态筛选 | Done |
+| KB-PRODUCT-M10-T06 | 完成搜索结果到 block/comment 的定位 | 打开结果后目标块可见并高亮，权限变化后不泄露摘要 | Done |
+| KB-PRODUCT-M10-T07 | 完善正向关系、反向引用和循环引用处理 | 关系可导航、可解释、可撤销，循环不会导致无限展开 | Done |
+| KB-PRODUCT-M10-T08 | 完善 Markdown/HTML 导入 | 表格、列表、代码、图片和不支持节点有明确转换/降级报告 | Done |
+| KB-PRODUCT-M10-T09 | 完善 Markdown/HTML/空间导出 | 导出包含结构、附件清单和对象引用说明，重新导入可核对 | Done |
+| KB-PRODUCT-M10-T10 | 增加评论、搜索、关系和导入导出端到端测试 | 覆盖权限拒绝、并发编辑、损坏输入和大内容 | Done |
 
 ### KB-PRODUCT-M11 权限、治理、性能与可访问性收口
 
 目标：让知识库在真实团队持续使用时可治理、可扩展、可诊断，并保持权限最小化。
 
+完成结论：空间、目录与内容授权统一到资源权限模型，移动/复制继承、分享撤销、权限申请、治理与模板升级均闭环；100/500/1000 块预算、160 块增量渲染、脱敏诊断和 WCAG 工程基线通过定向集成与真实隔离浏览器验证。完整证据见 `docs/90-reports/kb-product-m11-execution-report.md`，下一执行入口为 KB-PRODUCT-M12。
+
 | 任务 | 内容 | 验收标准 | 状态 |
 | --- | --- | --- | --- |
-| KB-PRODUCT-M11-T01 | 复核空间默认权限、目录继承和内容显式授权 | user、department、user_group、role 的最高权限和来源解释一致 | Pending |
-| KB-PRODUCT-M11-T02 | 处理移动、复制、恢复和对象挂载后的权限语义 | 资源换父节点后继承结果可预览，不产生孤立或越权授权 | Pending |
-| KB-PRODUCT-M11-T03 | 完善分享链接有效期、停用、撤销和必要审计 | 链接状态立即生效，过期或撤销后不能通过缓存继续访问 | Pending |
-| KB-PRODUCT-M11-T04 | 完善权限申请、审批结果和通知闭环 | 申请人和管理者可追踪状态，拒绝不泄露敏感信息 | Pending |
-| KB-PRODUCT-M11-T05 | 完善维护人、知识状态、复核日期和过期治理 | 过期、无人维护和待复核内容可发现、分配和关闭 | Pending |
-| KB-PRODUCT-M11-T06 | 完善模板创建、使用、升级和权限边界 | 模板不携带非法对象 ID 或越权内容，升级不改写既有页面 | Pending |
-| KB-PRODUCT-M11-T07 | 建立大文档性能预算 | 明确 100/500/1000 块加载、输入、保存、搜索和协同延迟阈值 | Pending |
-| KB-PRODUCT-M11-T08 | 优化分页、增量加载、渲染和快照体积 | 达到预算且不通过隐藏数据一致性问题换性能 | Pending |
-| KB-PRODUCT-M11-T09 | 完成 WCAG 基础检查和键盘操作验收 | 标题层级、焦点、对比度、读屏名称和错误提示满足基线 | Pending |
-| KB-PRODUCT-M11-T10 | 增加知识库审计、指标和排障上下文 | 可定位保存、协同、搜索、权限和对象解析问题，不记录正文敏感数据 | Pending |
-| KB-PRODUCT-M11-T11 | 执行权限、治理、性能和可访问性收口测试 | 无高风险授权、无 P0/P1 性能阻塞，管理与用户 UI 边界正确 | Pending |
+| KB-PRODUCT-M11-T01 | 复核空间默认权限、目录继承和内容显式授权 | user、department、user_group、role 的最高权限和来源解释一致 | Done |
+| KB-PRODUCT-M11-T02 | 处理移动、复制、恢复和对象挂载后的权限语义 | 资源换父节点后继承结果可预览，不产生孤立或越权授权 | Done |
+| KB-PRODUCT-M11-T03 | 完善分享链接有效期、停用、撤销和必要审计 | 链接状态立即生效，过期或撤销后不能通过缓存继续访问 | Done |
+| KB-PRODUCT-M11-T04 | 完善权限申请、审批结果和通知闭环 | 申请人和管理者可追踪状态，拒绝不泄露敏感信息 | Done |
+| KB-PRODUCT-M11-T05 | 完善维护人、知识状态、复核日期和过期治理 | 过期、无人维护和待复核内容可发现、分配和关闭 | Done |
+| KB-PRODUCT-M11-T06 | 完善模板创建、使用、升级和权限边界 | 模板不携带非法对象 ID 或越权内容，升级不改写既有页面 | Done |
+| KB-PRODUCT-M11-T07 | 建立大文档性能预算 | 明确 100/500/1000 块加载、输入、保存、搜索和协同延迟阈值 | Done |
+| KB-PRODUCT-M11-T08 | 优化分页、增量加载、渲染和快照体积 | 达到预算且不通过隐藏数据一致性问题换性能 | Done |
+| KB-PRODUCT-M11-T09 | 完成 WCAG 基础检查和键盘操作验收 | 标题层级、焦点、对比度、读屏名称和错误提示满足基线 | Done |
+| KB-PRODUCT-M11-T10 | 增加知识库审计、指标和排障上下文 | 可定位保存、协同、搜索、权限和对象解析问题，不记录正文敏感数据 | Done |
+| KB-PRODUCT-M11-T11 | 执行权限、治理、性能和可访问性收口测试 | 无高风险授权、无 P0/P1 性能阻塞，管理与用户 UI 边界正确 | Done |
 
 ### KB-PRODUCT-M12 真实试用与路线级发布判定
 
@@ -337,4 +349,4 @@ source_rule: 本文件是唯一执行路线入口；已完成路线只保存在 
 
 ## 8. 当前执行入口
 
-`KB-PRODUCT-M1-T01` 到 `KB-PRODUCT-M1-T09`、`KB-PRODUCT-M2-T01` 到 `KB-PRODUCT-M2-T10`、`KB-PRODUCT-M3-T01` 到 `KB-PRODUCT-M3-T11` 已完成并形成执行报告。当前唯一执行入口为 `KB-PRODUCT-M4-T01` 到 `KB-PRODUCT-M4-T10`；M4 负责 canonical 自动保存、版本与冲突闭环，不提前宣称实时协同或路线产品化完成。
+`KB-PRODUCT-M1` 到 `KB-PRODUCT-M11` 已完成并形成逐里程碑执行报告。当前唯一执行入口为 `KB-PRODUCT-M12-T01` 到 `KB-PRODUCT-M12-T10`；M12 负责全量工程验证、备份恢复、真实参与者试用和路线级 Go/No-Go，不得用自动化或合成人格替代真实参与证据。

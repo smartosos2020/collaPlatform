@@ -1,22 +1,26 @@
 import {
+  AppstoreOutlined,
   ArrowDownOutlined,
   ArrowUpOutlined,
   CheckCircleOutlined,
   CommentOutlined,
+  DeleteOutlined,
   FileTextOutlined,
   FolderOpenOutlined,
   FolderOutlined,
+  HomeOutlined,
   InboxOutlined,
   LinkOutlined,
   PlusOutlined,
   RollbackOutlined,
   SearchOutlined,
+  SettingOutlined,
   ShareAltOutlined,
   StarFilled,
   StarOutlined,
 } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { App as AntdApp, Alert, Breadcrumb, Button, Empty, Form, Input, Modal, Select, Space, Switch, Tag, Tooltip, Tree, Typography } from 'antd'
+import { App as AntdApp, Alert, Breadcrumb, Button, Empty, Form, Input, Modal, Popconfirm, Result, Select, Space, Spin, Switch, Tag, Tooltip, Tree, Typography } from 'antd'
 import type { FormInstance } from 'antd/es/form'
 import type { JSONContent } from '@tiptap/react'
 import type { ReactNode } from 'react'
@@ -38,11 +42,14 @@ import {
 } from '../../../platform/api/platformObjectsApi'
 import { listDirectoryMembers, listProjects } from '../../../projects/api/projectsApi'
 import { listUserGroups } from '../../../admin/api/userGroupsApi'
+import { getFileDownloadUrl } from '../../../files/api/filesApi'
 import { ResourcePermissionsModal } from '../../../permissions/components/ResourcePermissionsModal'
 import {
   archiveKnowledgeBaseItem,
   createKnowledgeBaseItem,
   createKnowledgeBaseItemFromTemplate,
+  getKnowledgeBase,
+  getKnowledgeBaseDiscovery,
   listKnowledgeBaseItems,
   listKnowledgeBaseItemTree,
   listKnowledgeBaseTemplates,
@@ -64,8 +71,10 @@ import {
   grantKnowledgeContentPermission,
   listKnowledgeContentVersions,
   requestKnowledgeContentPermission,
+  revokeKnowledgeContentShareLink,
   restoreKnowledgeContentVersion,
   reopenKnowledgeContentComment,
+  removeKnowledgeContentRelation,
   resolveKnowledgeContentComment,
   saveKnowledgeContentBlocks,
   setKnowledgeContentShareLinkEnabled,
@@ -75,6 +84,7 @@ import {
   type KnowledgeContentCanonicalMigrationPreview,
   type KnowledgeContentComment,
   type KnowledgeContentDetail,
+  type KnowledgeContentRelation,
   type KnowledgeContentShareLink,
   type KnowledgeBaseItem,
   type KnowledgeContentTemplate,
@@ -156,7 +166,7 @@ type KnowledgeContentDraftState = {
   baseVersionNo: number
 }
 
-type KnowledgeItemListMode = 'all' | 'recent' | 'favorites'
+type KnowledgeItemListMode = 'all' | 'recent' | 'favorites' | 'subscribed'
 type CommentFilter = 'open' | 'mentions' | 'current' | 'all'
 
 type BlockKnowledgeContentDraftState = KnowledgeContentBlockDraft & {
@@ -282,6 +292,17 @@ export function KnowledgeContentPage() {
     queryFn: () => listKnowledgeBaseItemTree(spaceId || '', { includeArchived }),
     enabled: Boolean(spaceId),
   })
+  const spaceQuery = useQuery({
+    queryKey: ['knowledge-bases', spaceId, 'content-shell'],
+    queryFn: () => getKnowledgeBase(spaceId || ''),
+    enabled: Boolean(spaceId),
+    retry: false,
+  })
+  const discoveryQuery = useQuery({
+    queryKey: ['knowledge-bases', spaceId, 'discovery'],
+    queryFn: () => getKnowledgeBaseDiscovery(spaceId || ''),
+    enabled: Boolean(spaceId),
+  })
   const membersQuery = useQuery({ queryKey: ['members', 'directory'], queryFn: listDirectoryMembers })
   const userGroupsQuery = useQuery({
     queryKey: ['admin', 'user-groups', 'active'],
@@ -316,7 +337,6 @@ export function KnowledgeContentPage() {
       `/knowledge-bases/${knowledgeRouteSpaceId}/items/${itemId}${suffix}`,
     [knowledgeRouteSpaceId],
   )
-  const returnToKnowledgeBasePath = activeKnowledgeContentContext?.webPath ?? (spaceId ? `/knowledge-bases/${spaceId}` : '/knowledge-bases')
   const versionsQuery = useQuery({
     queryKey: ['knowledge-content', spaceId, activeItemId, 'versions'],
     queryFn: () => listKnowledgeContentVersions(spaceId || '', activeItemId || ''),
@@ -333,8 +353,10 @@ export function KnowledgeContentPage() {
     enabled: Boolean(spaceId && activeItemId && diffFromVersionNo && diffToVersionNo),
   })
 
-  const canComment = hasPermission(contentQuery.data?.item.permissionLevel, 'comment')
-  const canEdit = hasPermission(contentQuery.data?.item.permissionLevel, 'edit')
+  const activeSpaceAvailable = spaceQuery.data?.space.status === 'active'
+  const activeItemAvailable = !contentQuery.data?.item.archived
+  const canComment = activeSpaceAvailable && activeItemAvailable && hasPermission(contentQuery.data?.item.permissionLevel, 'comment')
+  const canEdit = activeSpaceAvailable && activeItemAvailable && hasPermission(contentQuery.data?.item.permissionLevel, 'edit')
   const canManage = hasPermission(contentQuery.data?.item.permissionLevel, 'manage')
   const realtimeCollaboration = useKnowledgeContentRealtimeCollaboration({
     spaceId,
@@ -528,18 +550,25 @@ export function KnowledgeContentPage() {
       if (itemListMode === 'favorites') {
         return favoriteItemIds.has(document.id)
       }
+      if (itemListMode === 'subscribed') {
+        return (discoveryQuery.data?.subscribedItems ?? []).some((item) => item.id === document.id)
+      }
       if (itemListMode === 'recent') {
         return (recentObjectsQuery.data ?? []).some((item) => item.objectType === 'knowledge_content' && item.objectId === document.id)
       }
       return true
     })
     if (itemListMode !== 'all') {
-      const source = itemListMode === 'favorites' ? favoriteObjectsQuery.data ?? [] : recentObjectsQuery.data ?? []
+      const source = itemListMode === 'favorites'
+        ? favoriteObjectsQuery.data ?? []
+        : itemListMode === 'subscribed'
+          ? (discoveryQuery.data?.subscribedItems ?? []).map((item) => ({ objectId: item.id }))
+          : recentObjectsQuery.data ?? []
       const rank = new Map(source.map((item, index) => [item.objectId, index]))
       return [...filtered].sort((left, right) => (rank.get(left.id) ?? 9999) - (rank.get(right.id) ?? 9999))
     }
     return filtered
-  }, [itemListMode, itemSearch, itemsQuery.data, favoriteItemIds, favoriteObjectsQuery.data, recentObjectsQuery.data])
+  }, [itemListMode, itemSearch, itemsQuery.data, favoriteItemIds, favoriteObjectsQuery.data, recentObjectsQuery.data, discoveryQuery.data?.subscribedItems])
 
   const treeData = useMemo(
     () => buildKnowledgeItemTreeData(itemTreeQuery.data ?? [], activeItemId, favoriteItemIds),
@@ -574,6 +603,12 @@ export function KnowledgeContentPage() {
   }, [activeItem, itemsQuery.data])
 
   const activeSiblingIndex = activeItemId ? activeSiblings.findIndex((document) => document.id === activeItemId) : -1
+  const activeDirectoryChildren = useMemo(
+    () => (itemsQuery.data ?? [])
+      .filter((document) => document.parentId === activeItemId && !document.archived)
+      .sort(knowledgeItemSort),
+    [activeItemId, itemsQuery.data],
+  )
 
   const openCreate = (contentType: KnowledgeBaseItem['contentType']) => {
     setCreateContentType(contentType)
@@ -735,6 +770,15 @@ export function KnowledgeContentPage() {
     onError: () => message.error('分享链接状态更新失败'),
   })
 
+  const shareLinkRevokeMutation = useMutation({
+    mutationFn: () => revokeKnowledgeContentShareLink(spaceId || '', activeItemId || ''),
+    onSuccess: async () => {
+      message.success('分享链接已撤销，原链接永久失效')
+      await refreshKnowledgeContent()
+    },
+    onError: () => message.error('分享链接撤销失败'),
+  })
+
   const knowledgeMetadataMutation = useMutation({
     mutationFn: (values: KnowledgeMetadataForm) =>
       updateKnowledgeContentMetadata(spaceId || '', activeItemId || '', {
@@ -754,9 +798,9 @@ export function KnowledgeContentPage() {
 
   const permissionRequestMutation = useMutation({
     mutationFn: (values: PermissionRequestForm) => requestKnowledgeContentPermission(spaceId || '', activeItemId || '', values),
-    onSuccess: (result) => {
+    onSuccess: () => {
       permissionRequestForm.resetFields()
-      message.success(result.notifiedCount > 0 ? '权限申请已发送' : '已记录申请，当前没有可通知的管理员')
+      message.success('权限申请已提交，可在通知中跟踪处理结果')
     },
     onError: () => message.error('权限申请失败'),
   })
@@ -768,6 +812,16 @@ export function KnowledgeContentPage() {
       relationForm.resetFields()
       await refreshKnowledgeContent()
     },
+  })
+
+  const removeRelationMutation = useMutation({
+    mutationFn: (relation: KnowledgeContentRelation) =>
+      removeKnowledgeContentRelation(spaceId || '', activeItemId || '', relation.targetType, relation.targetId),
+    onSuccess: async () => {
+      message.success('关联已移除')
+      await refreshKnowledgeContent()
+    },
+    onError: () => message.error('移除关联失败'),
   })
 
   const selectionIssueMutation = useMutation({
@@ -935,6 +989,48 @@ export function KnowledgeContentPage() {
       onOk: continueNavigation,
     })
   }, [activeItemId, blockDraftDirty, blockMutation.isPending, contentRouteFor, navigate, persistLocalDraft, realtimeCollaboration.provider, saveState])
+
+  const openKnowledgeTarget = useCallback(async (document: KnowledgeBaseItem) => {
+    if (document.contentType === 'external_link') {
+      if (!document.targetRoute) {
+        message.warning('外部链接不可用')
+        return
+      }
+      window.open(document.targetRoute, '_blank', 'noopener,noreferrer')
+      return
+    }
+    if (document.contentType !== 'object_ref') {
+      navigateToContent(document.id)
+      return
+    }
+    if (document.targetSummary?.accessState !== 'available' || !document.targetRoute) {
+      message.warning(targetAccessText(document.targetSummary?.accessState))
+      return
+    }
+    if (document.targetObjectType === 'file' && document.targetObjectId) {
+      try {
+        const download = await getFileDownloadUrl(document.targetObjectId)
+        window.open(download.downloadUrl, '_blank', 'noopener,noreferrer')
+      } catch {
+        message.error('文件打开失败')
+      }
+      return
+    }
+    if (/^https?:\/\//i.test(document.targetRoute)) {
+      window.open(document.targetRoute, '_blank', 'noopener,noreferrer')
+      return
+    }
+    navigate(document.targetRoute)
+  }, [message, navigate, navigateToContent])
+
+  const activateKnowledgeItem = useCallback((itemId: string) => {
+    const document = (itemsQuery.data ?? []).find((item) => item.id === itemId)
+    if (document && ['object_ref', 'external_link'].includes(document.contentType)) {
+      void openKnowledgeTarget(document)
+      return
+    }
+    navigateToContent(itemId)
+  }, [itemsQuery.data, navigateToContent, openKnowledgeTarget])
 
   useEffect(() => {
     if (realtimeCollaboration.provider || !contentQuery.data || !activeItemId || contentQuery.data.item.contentType !== 'markdown' || !canEdit || !blockDraftDirty || blockMutation.isPending) {
@@ -1113,17 +1209,24 @@ export function KnowledgeContentPage() {
             <Typography.Title level={4}>知识内容树</Typography.Title>
             <Typography.Text type="secondary">{visibleItems.length} / {itemsQuery.data?.length ?? 0} 个内容节点</Typography.Text>
           </div>
-          <Space>
+          {canEdit ? <Space>
+            <Tooltip title="挂载协作对象">
+              <Button
+                aria-label="挂载协作对象"
+                icon={<AppstoreOutlined />}
+                onClick={() => navigate(`/knowledge-bases/${spaceId}?view=management`)}
+              />
+            </Tooltip>
             <Tooltip title="新建文件夹">
-              <Button icon={<FolderOutlined />} onClick={() => openCreate('folder')} />
+              <Button aria-label="新建文件夹" icon={<FolderOutlined />} onClick={() => openCreate('folder')} />
             </Tooltip>
             <Tooltip title="从模板创建">
-              <Button icon={<FileTextOutlined />} onClick={openTemplateCreate} />
+              <Button aria-label="从模板创建" icon={<FileTextOutlined />} onClick={openTemplateCreate} />
             </Tooltip>
             <Tooltip title="新建内容页">
-              <Button icon={<PlusOutlined />} type="primary" onClick={() => openCreate('markdown')} />
+              <Button aria-label="新建内容页" icon={<PlusOutlined />} type="primary" onClick={() => openCreate('markdown')} />
             </Tooltip>
-          </Space>
+          </Space> : null}
         </div>
 
         <Space orientation="vertical" size={8} className="docs-list-controls">
@@ -1135,24 +1238,27 @@ export function KnowledgeContentPage() {
             onChange={(event) => setItemSearch(event.target.value)}
           />
           <Select
+            aria-label="内容列表范围"
             value={itemListMode}
             onChange={setItemListMode}
             options={[
               { value: 'all', label: '全部内容' },
               { value: 'recent', label: '最近访问' },
               { value: 'favorites', label: '收藏内容' },
+              { value: 'subscribed', label: '关注内容' },
             ]}
           />
           <div className="docs-archive-toggle">
             <span>显示归档</span>
-            <Switch size="small" checked={includeArchived} onChange={setIncludeArchived} />
+            <Switch aria-label="显示归档内容" size="small" checked={includeArchived} onChange={setIncludeArchived} />
           </div>
         </Space>
 
-        {activeItem ? (
+        {activeItem && canEdit ? (
           <Space wrap className="docs-tree-actions">
             <Tooltip title="上移">
               <Button
+                aria-label="上移当前节点"
                 icon={<ArrowUpOutlined />}
                 disabled={activeSiblingIndex <= 0 || activeItem.archived}
                 loading={moveMutation.isPending}
@@ -1161,6 +1267,7 @@ export function KnowledgeContentPage() {
             </Tooltip>
             <Tooltip title="下移">
               <Button
+                aria-label="下移当前节点"
                 icon={<ArrowDownOutlined />}
                 disabled={activeSiblingIndex < 0 || activeSiblingIndex >= activeSiblings.length - 1 || activeItem.archived}
                 loading={moveMutation.isPending}
@@ -1168,11 +1275,12 @@ export function KnowledgeContentPage() {
               />
             </Tooltip>
             <Tooltip title="移动到">
-              <Button icon={<FolderOpenOutlined />} disabled={activeItem.archived} onClick={openMove} />
+              <Button aria-label="移动当前节点" icon={<FolderOpenOutlined />} disabled={activeItem.archived} onClick={openMove} />
             </Tooltip>
             {activeItem.archived ? (
               <Tooltip title="恢复">
                 <Button
+                  aria-label="恢复当前节点"
                   icon={<RollbackOutlined />}
                   loading={restoreItemMutation.isPending}
                   onClick={() => restoreItemMutation.mutate(activeItem.id)}
@@ -1180,7 +1288,7 @@ export function KnowledgeContentPage() {
               </Tooltip>
             ) : (
               <Tooltip title="归档">
-                <Button danger icon={<InboxOutlined />} loading={archiveMutation.isPending} onClick={archiveActiveItem} />
+                <Button aria-label="归档当前节点" danger icon={<InboxOutlined />} loading={archiveMutation.isPending} onClick={archiveActiveItem} />
               </Tooltip>
             )}
           </Space>
@@ -1197,7 +1305,7 @@ export function KnowledgeContentPage() {
               onSelect={(keys) => {
                 const key = String(keys[0] ?? '')
                 if (key) {
-                  navigateToContent(key)
+                  activateKnowledgeItem(key)
                 }
               }}
             />
@@ -1211,7 +1319,7 @@ export function KnowledgeContentPage() {
                   className={`doc-list-item${document.id === activeItemId ? ' active' : ''}${document.archived ? ' archived' : ''}`}
                   type="button"
                   onClick={() => {
-                    navigateToContent(document.id)
+                    activateKnowledgeItem(document.id)
                   }}
                 >
                   {document.contentType === 'markdown' ? <FileTextOutlined /> : <FolderOutlined />}
@@ -1235,11 +1343,12 @@ export function KnowledgeContentPage() {
         )}
       </aside>
 
-      <main className="docs-main">
+      <section className="docs-main" aria-label="知识内容正文">
+        <h1 className="sr-only">知识内容：{titleDraft || activeKnowledgeItem?.title || '未命名'}</h1>
         {activeKnowledgeContentContext && activeKnowledgeItem ? (
           <div className="docs-knowledge-context-bar">
-            <Button type="primary" onClick={() => navigate(returnToKnowledgeBasePath)}>
-              返回知识库
+            <Button onClick={() => navigate('/knowledge-bases')}>
+              全部知识库
             </Button>
             <div className="docs-knowledge-context-main">
               <Typography.Text strong>{activeKnowledgeContentContext.spaceName}</Typography.Text>
@@ -1248,16 +1357,33 @@ export function KnowledgeContentPage() {
             <Space wrap size={6} className="docs-knowledge-context-tags">
               <Tag color={knowledgeStatusColor(activeKnowledgeItem.knowledgeStatus)}>{knowledgeStatusText(activeKnowledgeItem.knowledgeStatus)}</Tag>
               <Tag>{permissionText(activeKnowledgeItem.permissionLevel)}</Tag>
-              <Tag>{activeKnowledgeItem.maintainerName ? `维护人 ${activeKnowledgeItem.maintainerName}` : '维护人未指定'}</Tag>
-              <Tag>更新 {new Date(activeKnowledgeItem.updatedAt).toLocaleDateString()}</Tag>
+              {spaceQuery.data?.homeItem.id && spaceQuery.data.homeItem.id !== activeItemId ? (
+                <Tooltip title="打开首页">
+                  <Button aria-label="打开知识库首页" icon={<HomeOutlined />} onClick={() => navigateToContent(spaceQuery.data!.homeItem.id)} />
+                </Tooltip>
+              ) : null}
+              {canManage ? (
+                <Button icon={<SettingOutlined />} onClick={() => navigate(`/knowledge-bases/${spaceId}?view=management`)}>
+                  空间管理
+                </Button>
+              ) : null}
             </Space>
           </div>
+        ) : null}
+        {spaceQuery.data?.space.status === 'disabled' ? (
+          <Alert showIcon type="warning" message="知识库已停用" description="内容保留为只读状态；请联系管理员在管理后台恢复。" />
+        ) : null}
+        {spaceQuery.data?.space.status === 'archived' ? (
+          <Alert showIcon type="info" message="知识库已归档" description="当前内容仅供查阅；恢复后才能继续编辑。" />
+        ) : null}
+        {contentQuery.data?.item.archived ? (
+          <Alert showIcon type="info" message="内容已归档" description="该节点仍可通过旧链接查看，恢复后可继续编辑。" />
         ) : null}
         {pathQuery.data && pathQuery.data.length > 0 ? (
           <div className="docs-breadcrumb-bar">
             <Breadcrumb
               items={pathQuery.data.map((item) => ({
-                title: item.id === activeItemId ? item.title : <button type="button" onClick={() => navigateToContent(item.id)}>{item.title}</button>,
+                title: item.id === activeItemId ? item.title : <button type="button" onClick={() => activateKnowledgeItem(item.id)}>{item.title}</button>,
               }))}
             />
           </div>
@@ -1276,7 +1402,7 @@ export function KnowledgeContentPage() {
             )}
           />
         ) : null}
-        {contentQuery.data ? (
+        {contentQuery.data?.item.contentType === 'markdown' ? (
           <KnowledgeContentWorkspace
             detail={contentQuery.data}
             titleDraft={titleDraft}
@@ -1322,6 +1448,8 @@ export function KnowledgeContentPage() {
             onOpenLocalDraft={openLocalDraft}
             onOpenPermission={openPermissionSettings}
             onOpenRelation={() => setRelationOpen(true)}
+            onRemoveRelation={(relation) => removeRelationMutation.mutate(relation)}
+            removingRelationId={removeRelationMutation.variables?.id}
             onOpenNamedVersion={() => setNamedVersionOpen(true)}
             onOpenImportMarkdown={() => {
               importMarkdownForm.setFieldsValue({ title: titleDraft, content: contentDraft })
@@ -1359,39 +1487,33 @@ export function KnowledgeContentPage() {
             resolvingCommentId={resolveCommentMutation.variables}
             onReopenComment={(commentId) => reopenCommentMutation.mutate(commentId)}
             reopeningCommentId={reopenCommentMutation.variables}
-            onActivateComment={(commentId) => navigate(contentRouteFor(contentQuery.data.item.id, `?commentId=${commentId}`))}
+            onActivateComment={(commentId) => activeItemId && navigate(contentRouteFor(activeItemId, `?commentId=${commentId}`))}
+          />
+        ) : contentQuery.data && ['space', 'folder'].includes(contentQuery.data.item.contentType) ? (
+          <KnowledgeDirectorySurface
+            item={contentQuery.data.item}
+            children={activeDirectoryChildren}
+            canCreate={canEdit}
+            onOpen={activateKnowledgeItem}
+            onCreateContent={() => openCreate('markdown')}
+            onCreateDirectory={() => openCreate('folder')}
+          />
+        ) : contentQuery.data ? (
+          <KnowledgeObjectEntrySurface
+            item={contentQuery.data.item}
+            onOpen={() => void openKnowledgeTarget(contentQuery.data!.item)}
           />
         ) : contentQuery.isError && activeItemId ? (
-          <div className="doc-access-request">
-            <Alert
-              type="warning"
-              showIcon
-              message="无法访问该知识内容"
-              description="你可以向知识库管理员申请查看、评论或编辑权限。"
-            />
-            <Form
-              form={permissionRequestForm}
-              layout="vertical"
-              onFinish={(values) => permissionRequestMutation.mutate(values)}
-              initialValues={{ permissionLevel: 'view' }}
-            >
-              <Form.Item name="permissionLevel" label="申请权限" rules={[{ required: true }]}>
-                <Select
-                  options={[
-                    { label: '可查看', value: 'view' },
-                    { label: '可评论', value: 'comment' },
-                    { label: '可编辑', value: 'edit' },
-                  ]}
-                />
-              </Form.Item>
-              <Form.Item name="reason" label="原因">
-                <Input.TextArea rows={3} />
-              </Form.Item>
-              <Button type="primary" loading={permissionRequestMutation.isPending} onClick={() => permissionRequestForm.submit()}>
-                提交申请
-              </Button>
-            </Form>
-          </div>
+          <KnowledgeContentErrorState
+            error={contentQuery.error}
+            permissionForm={permissionRequestForm}
+            requesting={permissionRequestMutation.isPending}
+            onRequest={(values) => permissionRequestMutation.mutate(values)}
+            onRetry={() => contentQuery.refetch()}
+            onBack={() => navigate('/knowledge-bases')}
+          />
+        ) : contentQuery.isLoading || itemsQuery.isLoading || spaceQuery.isLoading ? (
+          <div className="doc-content-state" aria-live="polite"><Spin size="large" /><span>正在加载知识内容...</span></div>
         ) : (
           <Empty description="暂无知识内容">
             <Button type="primary" icon={<PlusOutlined />} onClick={() => openCreate('markdown')}>
@@ -1399,7 +1521,7 @@ export function KnowledgeContentPage() {
             </Button>
           </Empty>
         )}
-      </main>
+      </section>
 
       <Modal
         title={createContentType === 'folder' ? '新建文件夹' : '新建内容页'}
@@ -1679,6 +1801,11 @@ export function KnowledgeContentPage() {
                     {activeShareLink.enabled ? '停用' : '启用'}
                   </Button>
                 ) : null}
+                {activeShareLink ? (
+                  <Button danger loading={shareLinkRevokeMutation.isPending} onClick={() => shareLinkRevokeMutation.mutate()}>
+                    撤销链接
+                  </Button>
+                ) : null}
               </Space>
             </Form>
           </section>
@@ -1751,6 +1878,135 @@ export function KnowledgeContentPage() {
   )
 }
 
+function KnowledgeDirectorySurface({
+  item,
+  children,
+  canCreate,
+  onOpen,
+  onCreateContent,
+  onCreateDirectory,
+}: {
+  item: KnowledgeBaseItem
+  children: KnowledgeBaseItem[]
+  canCreate: boolean
+  onOpen: (itemId: string) => void
+  onCreateContent: () => void
+  onCreateDirectory: () => void
+}) {
+  return (
+    <section className="doc-directory-surface">
+      <header className="doc-directory-header">
+        <div>
+          <Space wrap>
+            <span className="doc-directory-icon"><FolderOpenOutlined /></span>
+            <Typography.Title level={2}>{item.title}</Typography.Title>
+          </Space>
+          <Typography.Paragraph type="secondary">
+            {item.description || (children.length > 0 ? `${children.length} 个子内容` : '这个目录还没有内容')}
+          </Typography.Paragraph>
+        </div>
+        {canCreate ? (
+          <Space wrap>
+            <Button icon={<FileTextOutlined />} onClick={onCreateContent}>新建内容页</Button>
+            <Button icon={<FolderOutlined />} onClick={onCreateDirectory}>新建子目录</Button>
+          </Space>
+        ) : null}
+      </header>
+      {children.length > 0 ? (
+        <div className="doc-directory-grid">
+          {children.map((child) => (
+            <button className="doc-directory-entry" key={child.id} type="button" onClick={() => onOpen(child.id)}>
+              <span className="doc-directory-entry-icon">
+                {child.contentType === 'markdown' ? <FileTextOutlined /> : child.contentType === 'folder' ? <FolderOutlined /> : child.contentType === 'external_link' ? <LinkOutlined /> : <AppstoreOutlined />}
+              </span>
+              <span>
+                <strong>{child.title}</strong>
+                <small>{contentTypeText(child.contentType)} · 更新 {new Date(child.updatedAt).toLocaleDateString()}</small>
+              </span>
+              {child.targetSummary && child.targetSummary.accessState !== 'available' ? <Tag>{targetAccessText(child.targetSummary.accessState)}</Tag> : null}
+            </button>
+          ))}
+        </div>
+      ) : (
+        <Empty className="doc-directory-empty" image={Empty.PRESENTED_IMAGE_SIMPLE} description="这个目录暂无内容">
+          {canCreate ? (
+            <Space wrap>
+              <Button type="primary" icon={<PlusOutlined />} onClick={onCreateContent}>创建内容页</Button>
+              <Button icon={<FolderOutlined />} onClick={onCreateDirectory}>创建子目录</Button>
+            </Space>
+          ) : null}
+        </Empty>
+      )}
+    </section>
+  )
+}
+
+function KnowledgeObjectEntrySurface({ item, onOpen }: { item: KnowledgeBaseItem; onOpen: () => void }) {
+  const external = item.contentType === 'external_link'
+  const available = external ? Boolean(item.targetRoute) : item.targetSummary?.accessState === 'available' && Boolean(item.targetRoute)
+  return (
+    <section className="doc-object-surface">
+      <span className="doc-object-surface-icon">{external ? <LinkOutlined /> : <AppstoreOutlined />}</span>
+      <Tag color={available ? 'green' : 'default'}>{available ? '可打开' : targetAccessText(item.targetSummary?.accessState)}</Tag>
+      <Typography.Title level={2}>{item.title}</Typography.Title>
+      <Typography.Paragraph type="secondary">
+        {external ? '外部协作入口将在新窗口打开。' : item.targetSummary?.subtitle || '协作对象入口'}
+      </Typography.Paragraph>
+      <Space wrap>
+        <Tag>{external ? '外部链接' : targetObjectTypeText(item.targetObjectType)}</Tag>
+        {item.displayMode ? <Tag>{item.displayMode}</Tag> : null}
+      </Space>
+      <Button type="primary" disabled={!available} onClick={onOpen}>
+        {external ? '打开链接' : '打开对象'}
+      </Button>
+      {!available ? <Typography.Text type="secondary">目标不可用时不会展示原目标标题或路径。</Typography.Text> : null}
+    </section>
+  )
+}
+
+function KnowledgeContentErrorState({
+  error,
+  permissionForm,
+  requesting,
+  onRequest,
+  onRetry,
+  onBack,
+}: {
+  error: unknown
+  permissionForm: FormInstance<PermissionRequestForm>
+  requesting: boolean
+  onRequest: (values: PermissionRequestForm) => void
+  onRetry: () => void
+  onBack: () => void
+}) {
+  const status = error instanceof ApiRequestError ? error.status : undefined
+  if (status === 403) {
+    return (
+      <div className="doc-access-request">
+        <Alert type="warning" showIcon message="无法访问该知识内容" description="你可以向知识库管理员申请查看、评论或编辑权限。" />
+        <Form form={permissionForm} layout="vertical" onFinish={onRequest} initialValues={{ permissionLevel: 'view' }}>
+          <Form.Item name="permissionLevel" label="申请权限" rules={[{ required: true }]}>
+            <Select options={[{ label: '可查看', value: 'view' }, { label: '可评论', value: 'comment' }, { label: '可编辑', value: 'edit' }]} />
+          </Form.Item>
+          <Form.Item name="reason" label="原因"><Input.TextArea rows={3} /></Form.Item>
+          <Button type="primary" loading={requesting} onClick={() => permissionForm.submit()}>提交申请</Button>
+        </Form>
+      </div>
+    )
+  }
+  if (status === 404) {
+    return <Result status="404" title="内容不存在或当前不可见" subTitle="为避免泄露信息，此处不会展示原目录或标题。" extra={<Button onClick={onBack}>返回知识库</Button>} />
+  }
+  return (
+    <Result
+      status="error"
+      title="知识内容加载失败"
+      subTitle="请检查网络后重试；当前 URL 会保留，恢复后仍打开同一内容。"
+      extra={<Space><Button type="primary" onClick={onRetry}>重试</Button><Button onClick={onBack}>返回知识库</Button></Space>}
+    />
+  )
+}
+
 function KnowledgeContentWorkspace({
   detail,
   titleDraft,
@@ -1779,6 +2035,8 @@ function KnowledgeContentWorkspace({
   onOpenLocalDraft,
   onOpenPermission,
   onOpenRelation,
+  onRemoveRelation,
+  removingRelationId,
   onOpenNamedVersion,
   onOpenImportMarkdown,
   onOpenSelectionIssue,
@@ -1831,6 +2089,8 @@ function KnowledgeContentWorkspace({
   onOpenLocalDraft: () => void
   onOpenPermission: () => void
   onOpenRelation: () => void
+  onRemoveRelation: (relation: KnowledgeContentRelation) => void
+  removingRelationId?: string
   onOpenNamedVersion: () => void
   onOpenImportMarkdown: () => void
   onOpenSelectionIssue: () => void
@@ -1980,17 +2240,20 @@ function KnowledgeContentWorkspace({
           type="info"
           message={canComment ? '当前为评论模式' : '当前为只读模式'}
           description={canComment ? '你可以发表评论和回复，正文需要编辑权限。' : '你可以阅读内容、打开对象卡片或通过分享入口申请更高权限。'}
-          action={<Button onClick={onOpenPermission}>分享与权限</Button>}
+          action={canManage ? <Button onClick={onOpenPermission}>分享与权限</Button> : undefined}
         />
       ) : null}
 
       <div className="doc-mobile-action-bar">
         <Button onClick={() => document.querySelector<HTMLElement>('.docs-sidebar')?.scrollIntoView({ block: 'start' })}>目录</Button>
         <Button onClick={() => document.getElementById('doc-comments-panel')?.scrollIntoView({ block: 'start' })}>评论</Button>
-        <Button onClick={onOpenPermission}>分享</Button>
+        {canManage ? <Button onClick={onOpenPermission}>分享</Button> : null}
       </div>
 
-      <section className="doc-meta-grid">
+      {canEdit || canManage ? (
+        <details className="doc-management-details">
+          <summary><SettingOutlined /> 内容设置与治理</summary>
+          <section className="doc-meta-grid">
         {detail.context ? (
           <div className="doc-panel doc-knowledge-context">
             <Typography.Title level={5}>知识库位置</Typography.Title>
@@ -2118,14 +2381,27 @@ function KnowledgeContentWorkspace({
             {detail.relations.length > 0 ? (
               detail.relations.map((relation) => (
                 <div className="doc-relation-item" key={relation.id}>
-                  {relation.webPath ? (
-                    <InternalLinkCard link={relation.webPath} />
-                  ) : (
-                    <>
-                      <Tag>{relation.targetType}</Tag>
-                      <span>{relation.title}</span>
-                    </>
-                  )}
+                  <div className="doc-relation-main">
+                    {relation.webPath ? (
+                      <InternalLinkCard link={relation.webPath} />
+                    ) : (
+                      <>
+                        <Tag>{relation.targetType}</Tag>
+                        <span>{relation.title}</span>
+                      </>
+                    )}
+                  </div>
+                  {canEdit ? (
+                    <Popconfirm title="移除这个关联？" okText="移除" cancelText="取消" onConfirm={() => onRemoveRelation(relation)}>
+                      <Button
+                        aria-label={`移除关联 ${relation.title}`}
+                        danger
+                        size="small"
+                        icon={<DeleteOutlined />}
+                        loading={removingRelationId === relation.id}
+                      />
+                    </Popconfirm>
+                  ) : null}
                 </div>
               ))
             ) : (
@@ -2188,6 +2464,11 @@ function KnowledgeContentWorkspace({
           </Space>
         </div>
 
+          </section>
+        </details>
+      ) : null}
+
+      <section className="doc-comments-surface">
         <div className="doc-panel" id="doc-comments-panel">
           <Space className="doc-panel-title" wrap>
             <Typography.Title level={5}>
@@ -2207,6 +2488,11 @@ function KnowledgeContentWorkspace({
                   <strong>{comment.authorName}</strong>
                   {focusedCommentIds.has(comment.id) ? <Tag color="blue">当前位置</Tag> : null}
                   <Tag>{commentAnchorLabel(detail.blocks, comment)}</Tag>
+                  {comment.anchorState === 'detached' ? (
+                    <Tooltip title={comment.anchorInvalidReason === 'block_deleted' ? '原内容块已删除，评论上下文仍保留' : '原选区已无法在当前版本中定位'}>
+                      <Tag color="red">锚点已失效</Tag>
+                    </Tooltip>
+                  ) : null}
                   {comment.resolved ? <Tag color="green">已解决</Tag> : <Tag color="orange">未解决</Tag>}
                 </Space>
                 {comment.anchorText ? <Typography.Text className="doc-comment-anchor-text" type="secondary">"{comment.anchorText}"</Typography.Text> : null}
@@ -2222,7 +2508,7 @@ function KnowledgeContentWorkspace({
                   </div>
                 ) : null}
                 <Space wrap>
-                  {comment.anchorType === 'selection' || comment.blockId ? (
+                  {(comment.anchorType === 'selection' || comment.blockId) && comment.anchorState !== 'detached' ? (
                     <Button
                       size="small"
                       href={comment.blockId ? `#doc-block-${comment.blockId}` : undefined}
@@ -2377,6 +2663,26 @@ function contentTypeText(contentType: string) {
   return { space: '根目录', folder: '文件夹', markdown: '内容页', object_ref: '对象入口', external_link: '外部链接' }[contentType] ?? contentType
 }
 
+function targetObjectTypeText(targetObjectType?: string | null) {
+  return {
+    base: '多维表格',
+    project: '项目',
+    file: '文件',
+    knowledge_content: '知识内容',
+  }[targetObjectType ?? ''] ?? '协作对象'
+}
+
+function targetAccessText(accessState?: string | null) {
+  return {
+    available: '可打开',
+    forbidden: '无权访问',
+    disabled: '目标已停用',
+    deleted: '目标已删除',
+    not_found: '目标不存在或不可见',
+    invalid: '入口配置无效',
+  }[accessState ?? ''] ?? '目标不可用'
+}
+
 function versionTypeText(versionType: string) {
   return {
     auto_snapshot: '自动快照',
@@ -2455,7 +2761,13 @@ function buildKnowledgeItemTreeData(
     key: node.item.id,
     title: (
       <span className={`doc-tree-title${node.item.id === activeItemId ? ' active' : ''}${node.item.archived ? ' archived' : ''}`}>
-        {node.item.contentType === 'markdown' ? <FileTextOutlined /> : <FolderOutlined />}
+        {node.item.contentType === 'markdown'
+          ? <FileTextOutlined />
+          : node.item.contentType === 'external_link'
+            ? <LinkOutlined />
+            : node.item.contentType === 'object_ref'
+              ? <AppstoreOutlined />
+              : <FolderOutlined />}
         <span>{node.item.title}</span>
         {node.item.contentType === 'space' ? <Tag color="green">知识库</Tag> : node.item.contentType !== 'markdown' ? <Tag>{contentTypeText(node.item.contentType)}</Tag> : null}
         {favoriteItemIds.has(node.item.id) ? <StarFilled className="doc-tree-star" /> : null}

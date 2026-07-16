@@ -13,6 +13,8 @@ public interface KnowledgeBaseItemRepository {
 
     List<KnowledgeBaseItem> listKnowledgeBaseItems(UUID workspaceId, UUID rootItemId);
 
+    List<KnowledgeBaseItem> listObjectReferences(UUID workspaceId, String targetObjectType, UUID targetObjectId);
+
     void updateKnowledgeNodeMetadata(UUID workspaceId, UUID itemId, String itemKind,
         String targetObjectType, UUID targetObjectId, String targetRoute, String displayMode,
         String targetTitleStrategy, String entryAlias, UUID actorId);

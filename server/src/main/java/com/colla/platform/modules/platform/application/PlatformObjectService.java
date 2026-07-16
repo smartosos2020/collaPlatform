@@ -3,6 +3,7 @@ package com.colla.platform.modules.platform.application;
 import com.colla.platform.modules.platform.domain.PlatformModels.ObjectAccessState;
 import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectAction;
 import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectCard;
+import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectChoicePage;
 import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectNavigation;
 import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectReference;
 import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectSummary;
@@ -18,11 +19,14 @@ import com.colla.platform.shared.auth.CurrentUser;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.LinkedHashSet;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 
 @Service
 public class PlatformObjectService {
+    private static final Set<String> SELECTABLE_OBJECT_TYPES = Set.of("base", "project", "file", PlatformObjectTypes.KNOWLEDGE_CONTENT);
     private final PlatformObjectResolverRegistry resolverRegistry;
     private final PlatformObjectRepository objectRepository;
     private final PermissionDecisionService permissionDecisionService;
@@ -133,6 +137,41 @@ public class PlatformObjectService {
             .toList();
     }
 
+    public PlatformObjectChoicePage choices(
+        CurrentUser currentUser,
+        List<String> objectTypes,
+        String query,
+        String source,
+        int limit,
+        int offset
+    ) {
+        int normalizedLimit = Math.min(Math.max(limit, 1), 50);
+        int normalizedOffset = Math.max(offset, 0);
+        List<String> normalizedTypes = normalizeChoiceTypes(objectTypes);
+        String normalizedSource = source == null || source.isBlank() ? "all" : source.trim().toLowerCase(Locale.ROOT);
+        if (!List.of("all", "recent").contains(normalizedSource)) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                org.springframework.http.HttpStatus.BAD_REQUEST,
+                "Invalid object choice source"
+            );
+        }
+        List<PlatformObjectReference> references = "recent".equals(normalizedSource)
+            ? objectRepository.listRecentAccesses(currentUser.workspaceId(), currentUser.id(), 50).stream()
+                .filter(reference -> normalizedTypes.contains(PlatformObjectTypes.canonicalize(reference.objectType())))
+                .filter(reference -> matchesQuery(reference.titleSnapshot(), query))
+                .toList()
+            : objectRepository.listObjectCandidates(currentUser.workspaceId(), normalizedTypes, query, 500);
+        List<PlatformObjectSummary> available = references.stream()
+            .map(reference -> resolveReference(currentUser, reference))
+            .filter(summary -> summary.accessState() == ObjectAccessState.available)
+            .toList();
+        List<PlatformObjectSummary> page = available.stream()
+            .skip(normalizedOffset)
+            .limit(normalizedLimit)
+            .toList();
+        return new PlatformObjectChoicePage(page, available.size(), normalizedLimit, normalizedOffset);
+    }
+
     public PlatformObjectSummary addFavorite(CurrentUser currentUser, String objectType, UUID objectId) {
         String canonicalType = PlatformObjectTypes.canonicalize(objectType);
         PlatformObjectSummary summary = resolverRegistry.resolve(currentUser, canonicalType, objectId);
@@ -155,6 +194,34 @@ public class PlatformObjectService {
 
     private PlatformObjectSummary resolveReference(CurrentUser currentUser, PlatformObjectReference reference) {
         return resolverRegistry.resolve(currentUser, reference.objectType(), reference.objectId());
+    }
+
+    private List<String> normalizeChoiceTypes(List<String> objectTypes) {
+        List<String> source = objectTypes == null || objectTypes.isEmpty()
+            ? List.copyOf(SELECTABLE_OBJECT_TYPES)
+            : objectTypes;
+        LinkedHashSet<String> normalized = new LinkedHashSet<>();
+        for (String objectType : source) {
+            if (objectType == null || objectType.isBlank()) {
+                continue;
+            }
+            String canonicalType = PlatformObjectTypes.canonicalize(objectType.trim());
+            if (!SELECTABLE_OBJECT_TYPES.contains(canonicalType)) {
+                throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST,
+                    "Object type is not selectable"
+                );
+            }
+            normalized.add(canonicalType);
+        }
+        return List.copyOf(normalized);
+    }
+
+    private boolean matchesQuery(String title, String query) {
+        if (query == null || query.isBlank()) {
+            return true;
+        }
+        return title != null && title.toLowerCase(Locale.ROOT).contains(query.trim().toLowerCase(Locale.ROOT));
     }
 
     private List<PlatformObjectAction> cardActions(PlatformObjectSummary summary, String presentationContext, boolean adminContextAllowed) {

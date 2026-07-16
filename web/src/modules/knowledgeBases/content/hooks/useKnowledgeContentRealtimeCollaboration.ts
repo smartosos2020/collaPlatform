@@ -1,9 +1,12 @@
-import { HocuspocusProvider, type WebSocketStatus } from '@hocuspocus/provider'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { HocuspocusProvider, WebSocketStatus } from '@hocuspocus/provider'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import * as Y from 'yjs'
 
 import type { CurrentUser } from '../../../auth/authStore'
 import { createKnowledgeCollaborationTicket, type KnowledgeCollaborationTicket } from '../api/knowledgeContentApi'
+
+const OFFLINE_MAX_UPDATES = positiveInteger(import.meta.env.VITE_COLLABORATION_OFFLINE_MAX_UPDATES, 500)
+const OFFLINE_MAX_BYTES = positiveInteger(import.meta.env.VITE_COLLABORATION_OFFLINE_MAX_BYTES, 1024 * 1024)
 
 export type CollaborationOnlineUser = {
   clientId: number
@@ -22,6 +25,14 @@ export type KnowledgeContentRealtimeSession = {
   canEdit: boolean
   error: string | null
   localUser: { id: string; name: string; color: string } | null
+  recovery: {
+    state: 'online' | 'offline' | 'overflow'
+    queuedUpdates: number
+    queuedBytes: number
+    maxUpdates: number
+    maxBytes: number
+  }
+  exportOfflineCopy: () => void
 }
 
 type Options = {
@@ -41,6 +52,12 @@ export function useKnowledgeContentRealtimeCollaboration({ spaceId, itemId, enab
   const [onlineUsers, setOnlineUsers] = useState<CollaborationOnlineUser[]>([])
   const [canEdit, setCanEdit] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [recoveryState, setRecoveryState] = useState<'online' | 'offline' | 'overflow'>('online')
+  const [queuedUpdates, setQueuedUpdates] = useState(0)
+  const [queuedBytes, setQueuedBytes] = useState(0)
+  const statusRef = useRef<KnowledgeContentRealtimeSession['status']>('initializing')
+  const authorizedCanEditRef = useRef(false)
+  const queueRef = useRef({ updates: 0, bytes: 0 })
 
   useEffect(() => () => document.destroy(), [document])
 
@@ -52,6 +69,42 @@ export function useKnowledgeContentRealtimeCollaboration({ spaceId, itemId, enab
     let activeProvider: HocuspocusProvider | null = null
     let tokenTimer: number | null = null
 
+    const resetQueue = () => {
+      queueRef.current = { updates: 0, bytes: 0 }
+      setQueuedUpdates(0)
+      setQueuedBytes(0)
+      setRecoveryState('online')
+    }
+
+    const handleDocumentUpdate = (update: Uint8Array, origin: unknown) => {
+      if (origin === activeProvider || statusRef.current !== 'disconnected' || !authorizedCanEditRef.current) return
+      const next = { updates: queueRef.current.updates + 1, bytes: queueRef.current.bytes + update.byteLength }
+      queueRef.current = next
+      setQueuedUpdates(next.updates)
+      setQueuedBytes(next.bytes)
+      if (next.updates > OFFLINE_MAX_UPDATES || next.bytes > OFFLINE_MAX_BYTES) {
+        setRecoveryState('overflow')
+        setCanEdit(false)
+        setError('离线修改已达到本地恢复上限，请导出副本后重新连接')
+      } else {
+        setRecoveryState('offline')
+      }
+    }
+    const handleOffline = () => {
+      statusRef.current = WebSocketStatus.Disconnected
+      setStatus(WebSocketStatus.Disconnected)
+      setRecoveryState('offline')
+      setCanEdit(authorizedCanEditRef.current)
+      activeProvider?.disconnect()
+    }
+    const handleOnline = () => {
+      setError(null)
+      activeProvider?.connect()
+    }
+    document.on('update', handleDocumentUpdate)
+    window.addEventListener('offline', handleOffline)
+    window.addEventListener('online', handleOnline)
+
     const issueTicket = async () => {
       const current = ticketRef.current
       if (current && new Date(current.expiresAt).getTime() - Date.now() > 60_000 && current.documentName.endsWith(itemId)) {
@@ -59,7 +112,10 @@ export function useKnowledgeContentRealtimeCollaboration({ spaceId, itemId, enab
       }
       const next = await createKnowledgeCollaborationTicket(spaceId, itemId)
       ticketRef.current = next
-      if (!disposed) setCanEdit(next.canEdit)
+      if (!disposed) {
+        authorizedCanEditRef.current = next.canEdit
+        setCanEdit(next.canEdit)
+      }
       return next
     }
 
@@ -72,10 +128,40 @@ export function useKnowledgeContentRealtimeCollaboration({ spaceId, itemId, enab
         token: async () => (await issueTicket()).ticket,
         forceSyncInterval: 10_000,
         flushDelay: 120,
-        onAuthenticated: ({ scope }) => { if (!disposed) setCanEdit(scope === 'read-write') },
-        onStatus: ({ status: nextStatus }) => { if (!disposed) setStatus(nextStatus) },
-        onClose: () => { if (!disposed) setCanEdit(false) },
-        onSynced: ({ state }) => { if (!disposed) setSynced(state) },
+        onAuthenticated: ({ scope }) => {
+          if (disposed) return
+          authorizedCanEditRef.current = scope === 'read-write'
+          setCanEdit(authorizedCanEditRef.current)
+          setError(null)
+        },
+        onStatus: ({ status: nextStatus }) => {
+          if (disposed) return
+          statusRef.current = nextStatus
+          setStatus(nextStatus)
+          if (nextStatus === 'disconnected') setRecoveryState('offline')
+        },
+        onClose: ({ event }) => {
+          if (disposed) return
+          statusRef.current = WebSocketStatus.Disconnected
+          setStatus(WebSocketStatus.Disconnected)
+          if (event.code === 4401 || event.code === 4403) {
+            authorizedCanEditRef.current = false
+            setCanEdit(false)
+            setError(event.reason || '实时协作权限已失效')
+          } else {
+            setCanEdit(authorizedCanEditRef.current)
+            setRecoveryState('offline')
+          }
+        },
+        onSynced: ({ state }) => {
+          if (disposed) return
+          setSynced(state)
+          if (state) {
+            resetQueue()
+            setCanEdit(authorizedCanEditRef.current)
+            setError(null)
+          }
+        },
         onUnsyncedChanges: ({ number }) => { if (!disposed) setUnsyncedChanges(number) },
         onAuthenticationFailed: ({ reason }) => {
           if (!disposed) {
@@ -89,7 +175,8 @@ export function useKnowledgeContentRealtimeCollaboration({ spaceId, itemId, enab
           try {
             const message = JSON.parse(payload) as { type?: string; protocolVersion?: string; canView?: boolean; canEdit?: boolean }
             if (message.type !== 'permission' || message.protocolVersion !== 'colla-yjs-v1') return
-            setCanEdit(message.canView === true && message.canEdit === true)
+            authorizedCanEditRef.current = message.canView === true && message.canEdit === true
+            setCanEdit(authorizedCanEditRef.current)
             if (message.canView !== true) {
               setStatus('error')
               setError('知识内容访问权限已失效')
@@ -128,6 +215,9 @@ export function useKnowledgeContentRealtimeCollaboration({ spaceId, itemId, enab
     return () => {
       disposed = true
       if (tokenTimer != null) window.clearInterval(tokenTimer)
+      document.off('update', handleDocumentUpdate)
+      window.removeEventListener('offline', handleOffline)
+      window.removeEventListener('online', handleOnline)
       activeProvider?.destroy()
       setProvider(null)
       setOnlineUsers([])
@@ -139,7 +229,26 @@ export function useKnowledgeContentRealtimeCollaboration({ spaceId, itemId, enab
     name: currentUser.displayName || currentUser.username,
     color: colorFor(currentUser.id),
   } : null, [currentUser])
-  return { document, provider, status, synced, unsyncedChanges, onlineUsers, canEdit, error, localUser }
+  const exportOfflineCopy = useCallback(() => {
+    const payload = Y.encodeStateAsUpdate(document)
+    const copy = new Uint8Array(payload.byteLength)
+    copy.set(payload)
+    const blob = new Blob([copy.buffer], { type: 'application/octet-stream' })
+    const url = URL.createObjectURL(blob)
+    const anchor = window.document.createElement('a')
+    anchor.href = url
+    anchor.download = `knowledge-${itemId ?? 'content'}-${Date.now()}.yjs`
+    anchor.click()
+    URL.revokeObjectURL(url)
+  }, [document, itemId])
+  return {
+    document, provider, status, synced, unsyncedChanges, onlineUsers, canEdit, error, localUser,
+    recovery: {
+      state: recoveryState, queuedUpdates, queuedBytes,
+      maxUpdates: OFFLINE_MAX_UPDATES, maxBytes: OFFLINE_MAX_BYTES,
+    },
+    exportOfflineCopy,
+  }
 }
 
 function onlineUsersEqual(left: CollaborationOnlineUser[], right: CollaborationOnlineUser[]) {
@@ -163,4 +272,9 @@ function collaborationWebSocketUrl(value: string) {
   if (!value.startsWith('/')) return value
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
   return `${protocol}//${window.location.host}${value}`
+}
+
+function positiveInteger(value: string | undefined, fallback: number) {
+  const parsed = Number.parseInt(value ?? '', 10)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
 }

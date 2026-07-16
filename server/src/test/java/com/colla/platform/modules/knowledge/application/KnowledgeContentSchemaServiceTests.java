@@ -115,6 +115,25 @@ class KnowledgeContentSchemaServiceTests {
     }
 
     @Test
+    void collaborationProjectionPersistsOnlyTopLevelBusinessBlocks() {
+        KnowledgeContentCanonicalDocument canonical = schemaService.fromLegacy(ITEM_ID, List.of(
+            new KnowledgeContentBlockDraft(
+                "table",
+                "{\"columns\":[\"Name\",\"State\"],\"rows\":[[\"A\",\"active\"]]}",
+                0
+            ),
+            new KnowledgeContentBlockDraft("callout", "Review this content", 1)
+        ), null);
+
+        List<KnowledgeContentBlockDraft> drafts = schemaService.toBlockDrafts(canonical);
+
+        assertEquals(2, drafts.size());
+        assertEquals(List.of("table", "callout"), drafts.stream().map(KnowledgeContentBlockDraft::blockType).toList());
+        assertTrue(drafts.get(0).richContent().toString().contains("tableRow"));
+        assertTrue(drafts.stream().noneMatch(block -> Set.of("tableRow", "tableCell", "paragraph").contains(block.blockType())));
+    }
+
+    @Test
     void markdownConversionSupportsHeadingsTasksCodeAndDividers() {
         KnowledgeContentCanonicalDocument result = schemaService.fromLegacy(
             ITEM_ID,

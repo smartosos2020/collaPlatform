@@ -12,6 +12,7 @@
     "test": "node --test"
   },
   "dependencies": {
+    "@hocuspocus/extension-redis": "4.4.0",
     "@hocuspocus/server": "4.4.0",
     "@hocuspocus/transformer": "4.4.0",
     "@tiptap/core": "3.26.1",
@@ -25,5 +26,9 @@
     "@tiptap/pm": "3.26.1",
     "@tiptap/starter-kit": "3.26.1",
     "yjs": "13.6.31"
+  },
+  "devDependencies": {
+    "@hocuspocus/provider": "4.4.0",
+    "ws": "8.18.3"
   }
 }

@@ -12,6 +12,7 @@ public final class PlatformModels {
     public enum ObjectAccessState {
         available,
         forbidden,
+        disabled,
         deleted,
         not_found,
         invalid
@@ -74,6 +75,14 @@ public final class PlatformModels {
         String deepLink,
         String titleSnapshot,
         Instant touchedAt
+    ) {
+    }
+
+    public record PlatformObjectChoicePage(
+        List<PlatformObjectSummary> items,
+        int total,
+        int limit,
+        int offset
     ) {
     }
 

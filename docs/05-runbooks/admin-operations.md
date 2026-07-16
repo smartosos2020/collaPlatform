@@ -1,7 +1,7 @@
 ---
 title: Admin Operations Runbook
 status: active
-updated_at: 2026-07-13
+updated_at: 2026-07-16
 ---
 
 # Admin Operations Runbook
@@ -89,7 +89,7 @@ blocker rather than a successful health result.
 
 ## Release And Rollback Decision Tree
 
-1. Code-only rollback: use when the release is incompatible only at the application layer, no migration or data corruption is observed, and the previous immutable server/web image pair is available. Run `rollback.ps1` without `-RestoreData`, then run health and smoke checks.
+1. Code-only rollback: use when the release is incompatible only at the application layer, no migration or data corruption is observed, and the previous immutable server/web/collaboration image set is available. Run `rollback.ps1` without `-RestoreData`, then run health and smoke checks.
 2. Compatibility rollback: use when a migration is backward-compatible and the previous application can still read the current schema. Keep the database, roll back to the version-tagged application images, and verify health, login, and the affected route before deciding whether a data restore is needed.
 3. Data rollback: use only for corruption, deletion, or an unrecoverable migration. Select a manifest-verified backup, run the restore drill, obtain explicit confirmation, restore PostgreSQL and MinIO, compare key object counts, then run health and smoke checks.
 
@@ -97,13 +97,14 @@ Never combine a code rollback and data restore by default. A data restore is
 destructive and requires `-ConfirmRollback`, `-RestoreData`, and a concrete
 `-BackupPath`.
 
-Rollback images must not use `latest`; both must expose the same full OCI
+Rollback images must not use `latest`; all three must expose the same full OCI
 `org.opencontainers.image.revision`. The script deploys with `--no-build` and
 does not switch or modify the Git worktree.
 
 ## Release Gate And CI Boundary
 
-The current release gate is a manually executed single-node gate:
+The current release gate validates the single-backend Compose baseline and its
+two collaboration sidecars:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File deploy/scripts/release-check.ps1 -EnvFile deploy/.env.prod

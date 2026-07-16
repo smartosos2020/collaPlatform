@@ -3,6 +3,7 @@ package com.colla.platform.modules.permission.api;
 import com.colla.platform.modules.permission.application.ResourcePermissionManagementService;
 import com.colla.platform.modules.permission.domain.PermissionModels.ResourcePermissionEntry;
 import com.colla.platform.modules.permission.domain.PermissionModels.ResourcePermissionRequest;
+import com.colla.platform.modules.permission.domain.PermissionModels.ResourcePermissionTransitionPreview;
 import com.colla.platform.shared.auth.CurrentUser;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -17,6 +18,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -35,6 +37,19 @@ public class ResourcePermissionController {
         Authentication authentication
     ) {
         return resourcePermissionManagementService.list(currentUser(authentication), resourceType, resourceId);
+    }
+
+    @GetMapping("/knowledge_content/{resourceId}/transition-preview")
+    public ResourcePermissionTransitionPreview previewKnowledgeContentTransition(
+        @PathVariable UUID resourceId,
+        @RequestParam(required = false) UUID targetParentId,
+        Authentication authentication
+    ) {
+        return resourcePermissionManagementService.previewKnowledgeContentTransition(
+            currentUser(authentication),
+            resourceId,
+            targetParentId
+        );
     }
 
     @PostMapping("/{resourceType}/{resourceId}")

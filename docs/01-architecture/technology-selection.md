@@ -1,7 +1,7 @@
 ---
 title: 当前技术选型
 status: active
-last_code_check: 2026-07-12
+last_code_check: 2026-07-16
 ---
 
 # 当前技术选型
@@ -18,8 +18,8 @@ last_code_check: 2026-07-12
 | WebSocket | Spring WebSocket | `spring-boot-starter-websocket`, `/ws/events` |
 | 安全 | Spring Security + JWT | `SecurityConfig`, `JwtTokenService` |
 | 数据库 | PostgreSQL 16 | `docker-compose.yml`, Flyway migrations |
-| 数据库迁移 | Flyway | `server/src/main/resources/db/migration/V001...V049` |
-| Redis | Redis 7 | `docker-compose.yml`, `spring-boot-starter-data-redis` |
+| 数据库迁移 | Flyway | `server/src/main/resources/db/migration/V001...V052` |
+| Redis | Redis 7 | `docker-compose.yml`, Spring Data Redis, collaboration Redis extension |
 | 对象存储 | MinIO | `docker-compose.yml`, `minio` dependency |
 | OpenAPI | springdoc-openapi | `springdoc-openapi-starter-webmvc-ui` |
 | 测试 | JUnit 5、Spring Boot Test、Spring Security Test、Testcontainers PostgreSQL | `server/pom.xml`, `server/src/test/java`, `application-test.yml` |
@@ -38,6 +38,17 @@ last_code_check: 2026-07-12
 | 结构化块编辑基础 | TipTap 3.26 | `web/package.json`, `web/src/modules/knowledgeBases/content` |
 | 图标 | `@ant-design/icons` | `web/package.json` |
 | 质量 | ESLint, TypeScript build, Vite build | `pnpm web:lint`, `pnpm web:build` |
+
+## Knowledge Collaboration Runtime
+
+| 方向 | 当前选型 | 代码依据 |
+| --- | --- | --- |
+| Runtime | Node.js 22 | root `Dockerfile`, `collaboration/package.json` |
+| Collaboration server | Hocuspocus 4.4 | `collaboration/src/server.js` |
+| CRDT | Yjs 13.6 | collaboration and web dependencies |
+| Cross-node rooms | Hocuspocus Redis extension | `collaboration/src/server.js` |
+| Durable recovery | PostgreSQL Yjs snapshot and update log | Flyway V052, knowledge collaboration gateway |
+| Browser transport | Hocuspocus provider over WebSocket | realtime collaboration hook |
 
 ## 本地依赖
 
@@ -58,7 +69,7 @@ last_code_check: 2026-07-12
 
 ## 脚本入口
 
-根 `package.json` 只提供可随项目提交的前端命令：
+根 `package.json` 提供前端、质量、运维和知识库合同检查入口；具体实现位于已跟踪的 `scripts/` 与 `deploy/scripts/`。
 
 | 命令 | 用途 |
 | --- | --- |
@@ -66,7 +77,7 @@ last_code_check: 2026-07-12
 | `pnpm web:build` | 前端构建 |
 | `pnpm web:lint` | 前端 lint |
 
-本地 AI 工作循环、质量门禁、运维和知识库检查位于被 Git 忽略的 `scripts/`、`deploy/scripts/`，必须直接调用 PowerShell；完整入口见 `scripts/README.md`。这样远程 `package.json` 不会引用远程仓库不存在的文件。
+完整脚本入口和验证层级见 `scripts/README.md`。本地运行产生的日志、报告缓存、测试账号和备份仍保存在忽略目录中，不应提交。
 
 ## 当前质量门禁
 

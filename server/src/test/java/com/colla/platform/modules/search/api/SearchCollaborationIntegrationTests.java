@@ -10,6 +10,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.colla.platform.modules.event.application.DomainEventWorker;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
@@ -31,6 +32,9 @@ class SearchCollaborationIntegrationTests {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Autowired
+    private DomainEventWorker domainEventWorker;
 
     @Test
     void searchStatsDiffBaseViewsAndMessageEnhancementsFlow() throws Exception {
@@ -134,6 +138,119 @@ class SearchCollaborationIntegrationTests {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.revokedAt", not(blankOrNullString())))
             .andExpect(jsonPath("$.content").value(""));
+    }
+
+    @Test
+    void m10KnowledgeSearchLocatesBlocksAndCommentsAndRevokesImmediately() throws Exception {
+        String adminToken = login("admin", "admin123456", "m10-search-admin-" + UUID.randomUUID());
+        String memberUsername = "m10search" + UUID.randomUUID().toString().substring(0, 8);
+        UUID memberId = createMember(adminToken, memberUsername, "M10 Search Member");
+        String memberToken = login(memberUsername, "member123456", "m10-search-member-" + UUID.randomUUID());
+        KnowledgeFixture fixture = createAndUpdateKnowledgeContent(adminToken, memberId);
+
+        String detailResponse = mockMvc.perform(get(itemPath(fixture))
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andReturn().getResponse().getContentAsString();
+        JsonNode detail = objectMapper.readTree(detailResponse);
+        JsonNode firstBlock = detail.path("blocks").get(0);
+        UUID blockId = UUID.fromString(firstBlock.path("id").asText());
+        int versionNo = detail.path("item").path("currentVersionNo").asInt();
+
+        mockMvc.perform(patch(itemPath(fixture) + "/metadata")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "maintainerId", memberId,
+                    "tags", List.of("研发", "架构"),
+                    "category", "runbook",
+                    "knowledgeStatus", "verified"
+                ))))
+            .andExpect(status().isOk());
+        mockMvc.perform(patch(itemPath(fixture) + "/blocks")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "baseVersionNo", versionNo,
+                    "blocks", List.of(Map.of(
+                        "id", blockId,
+                        "blockType", "paragraph",
+                        "content", "分布式事务排障手册正文",
+                        "sortOrder", 0,
+                        "schemaVersion", 2,
+                        "attrs", Map.of(),
+                        "richContent", Map.of(),
+                        "plainText", "分布式事务排障手册正文",
+                        "deleted", false
+                    ))
+                ))))
+            .andExpect(status().isOk());
+        String commentResponse = mockMvc.perform(post(itemPath(fixture) + "/comments")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "blockId", blockId,
+                    "anchorType", "block",
+                    "content", "@" + memberUsername + " 幂等补偿检查清单"
+                ))))
+            .andExpect(status().isOk())
+            .andReturn().getResponse().getContentAsString();
+        UUID commentId = UUID.fromString(objectMapper.readTree(commentResponse).path("comments").get(0).path("id").asText());
+        domainEventWorker.processPendingEvents();
+        String notificationsResponse = mockMvc.perform(get("/api/notifications").param("targetType", "knowledge_content")
+                .header("Authorization", "Bearer " + memberToken))
+            .andExpect(status().isOk())
+            .andReturn().getResponse().getContentAsString();
+        long mentionCount = java.util.stream.StreamSupport.stream(objectMapper.readTree(notificationsResponse).spliterator(), false)
+            .filter(notification -> fixture.itemId().toString().equals(notification.path("targetId").asText()))
+            .filter(notification -> "knowledge_content_comment_mention".equals(notification.path("notificationType").asText()))
+            .count();
+        org.junit.jupiter.api.Assertions.assertEquals(1L, mentionCount);
+
+        mockMvc.perform(get("/api/search").param("q", "分布式事务").param("limit", "20")
+                .header("Authorization", "Bearer " + memberToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.items[?(@.objectId == '" + fixture.itemId() + "')].hitSource").value(hasItem("body_block")))
+            .andExpect(jsonPath("$.items[?(@.objectId == '" + fixture.itemId() + "')].webPath").value(hasItem(org.hamcrest.Matchers.containsString("#doc-block-" + blockId))));
+        mockMvc.perform(get("/api/search").param("q", "幂等补偿").param("limit", "20")
+                .header("Authorization", "Bearer " + memberToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.items[?(@.objectId == '" + fixture.itemId() + "')].hitSource").value(hasItem("comment")))
+            .andExpect(jsonPath("$.items[?(@.objectId == '" + fixture.itemId() + "')].webPath").value(hasItem(org.hamcrest.Matchers.containsString("commentId=" + commentId))));
+        mockMvc.perform(get("/api/search")
+                .param("q", "排障手册")
+                .param("knowledgeBaseId", fixture.spaceId().toString())
+                .param("contentType", "markdown")
+                .param("tags", "研发")
+                .param("maintainerId", memberId.toString())
+                .param("knowledgeStatus", "verified")
+                .header("Authorization", "Bearer " + memberToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.items[?(@.objectId == '" + fixture.itemId() + "')].knowledgeStatus").value(hasItem("verified")));
+
+        revokeSubjectPermissions(adminToken, "knowledge_base", fixture.spaceId(), memberId);
+        revokeSubjectPermissions(adminToken, "knowledge_content", fixture.itemId(), memberId);
+        mockMvc.perform(get("/api/search").param("q", "分布式事务").param("limit", "20")
+                .header("Authorization", "Bearer " + memberToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.items[?(@.objectId == '" + fixture.itemId() + "')]").isEmpty());
+    }
+
+    private void revokeSubjectPermissions(String token, String resourceType, UUID resourceId, UUID subjectId) throws Exception {
+        String response = mockMvc.perform(get("/api/resource-permissions/" + resourceType + "/" + resourceId)
+                .header("Authorization", "Bearer " + token))
+            .andExpect(status().isOk())
+            .andReturn().getResponse().getContentAsString();
+        JsonNode permissions = objectMapper.readTree(response);
+        for (JsonNode permission : permissions) {
+            if (subjectId.toString().equals(permission.path("subjectId").asText()) && "active".equals(permission.path("status").asText())) {
+                mockMvc.perform(post("/api/resource-permissions/" + permission.path("id").asText() + "/revoke")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"confirmHighRisk\":true}"))
+                    .andExpect(status().isOk());
+            }
+        }
     }
 
     private JsonNode createProject(String token, UUID memberId) throws Exception {

@@ -6,6 +6,7 @@ import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectT
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.List;
+import java.util.ArrayList;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.dao.EmptyResultDataAccessException;
@@ -197,6 +198,35 @@ public class JdbcPlatformObjectRepository implements PlatformObjectRepository {
             workspaceId,
             userId,
             Math.min(Math.max(limit, 1), 50)
+        );
+    }
+
+    @Override
+    public List<PlatformObjectReference> listObjectCandidates(UUID workspaceId, List<String> objectTypes, String query, int limit) {
+        if (objectTypes == null || objectTypes.isEmpty()) {
+            return List.of();
+        }
+        String placeholders = String.join(", ", java.util.Collections.nCopies(objectTypes.size(), "?"));
+        String normalizedQuery = query == null ? "" : query.trim().toLowerCase(java.util.Locale.ROOT);
+        List<Object> arguments = new ArrayList<>();
+        arguments.add(workspaceId);
+        arguments.addAll(objectTypes);
+        arguments.add(normalizedQuery);
+        arguments.add("%" + normalizedQuery + "%");
+        arguments.add(Math.min(Math.max(limit, 1), 500));
+        return jdbcTemplate.query(
+            """
+                select object_type, object_id, web_path, deep_link, title_snapshot, updated_at touched_at
+                from object_links
+                where workspace_id = ?
+                  and deleted_at is null
+                  and object_type in (%s)
+                  and (? = '' or lower(coalesce(title_snapshot, '')) like ?)
+                order by updated_at desc, object_type, object_id
+                limit ?
+                """.formatted(placeholders),
+            this::mapReference,
+            arguments.toArray()
         );
     }
 

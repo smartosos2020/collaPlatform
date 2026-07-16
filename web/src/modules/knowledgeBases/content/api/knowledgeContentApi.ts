@@ -66,6 +66,7 @@ export type KnowledgeContentComment = {
   id: string; threadId: string; parentCommentId?: string | null; itemId: string; blockId?: string | null; authorId: string; authorName: string
   content: string; anchorType: 'document' | 'block' | 'selection'; anchorStart?: number | null; anchorEnd?: number | null; anchorText?: string | null
   anchorPrefix?: string | null; anchorSuffix?: string | null; anchorVersionNo?: number | null; root: boolean; resolved: boolean
+  anchorState: 'active' | 'detached'; anchorInvalidReason?: 'block_deleted' | 'selection_not_found' | string | null; anchorUpdatedAt?: string | null
   resolvedAt?: string | null; resolvedBy?: string | null; resolvedByName?: string | null; reopenedAt?: string | null; reopenedBy?: string | null
   reopenedByName?: string | null; createdAt: string; replies: KnowledgeContentComment[]
 }
@@ -76,7 +77,7 @@ export type KnowledgeContentContext = {
 
 export type KnowledgeContentBlock = {
   id: string; itemId: string; parentId?: string | null
-  blockType: 'paragraph' | 'heading' | 'list' | 'bullet_list' | 'ordered_list' | 'task' | 'task_item' | 'quote' | 'code' | 'code_block' | 'table' | 'divider' | 'image' | 'legacy_html' | 'embed' | 'embed_object' | 'base_view' | 'issue_embed' | 'message_embed' | 'file_embed' | 'link_card'
+  blockType: 'paragraph' | 'heading' | 'list' | 'bullet_list' | 'ordered_list' | 'task' | 'task_item' | 'quote' | 'callout' | 'code' | 'code_block' | 'table' | 'divider' | 'image' | 'legacy_html' | 'embed' | 'embed_object' | 'base_view' | 'issue_embed' | 'message_embed' | 'file_embed' | 'link_card'
   content: string; sortOrder: number; schemaVersion: number; attrs?: Record<string, unknown> | null; richContent?: Record<string, unknown> | null
   plainText?: string | null; anchorId?: string | null; blockVersion: number; createdBy: string; createdAt: string; updatedBy: string; updatedAt: string
   embedSummary?: PlatformObjectSummary | null; metadata?: Record<string, unknown> | null
@@ -96,8 +97,9 @@ export type KnowledgeContentVersion = {
 }
 export type KnowledgeContentDiffLine = { type: string; oldLineNo: number; newLineNo: number; content: string; scope?: string | null; blockIndex?: number | null; blockType?: KnowledgeContentBlock['blockType'] | null; blockId?: string | null }
 export type KnowledgeContentVersionDiff = { itemId: string; fromVersionNo: number; toVersionNo: number; lines: KnowledgeContentDiffLine[] }
-export type KnowledgeContentTemplate = { id: string; title: string; description?: string | null; category: string; content: string; builtIn: boolean; scopeType: string; knowledgeBaseId?: string | null; knowledgeBaseName?: string | null; createdAt: string }
-export type KnowledgeContentPerformance = { itemId: string; blockCount: number; embedCount: number; commentCount: number; contentLength: number; lineCount: number; largeContent: boolean; recommendedMode: string }
+export type KnowledgeContentTemplate = { id: string; title: string; description?: string | null; category: string; content: string; builtIn: boolean; scopeType: string; knowledgeBaseId?: string | null; knowledgeBaseName?: string | null; versionNo: number; supersedesTemplateId?: string | null; createdAt: string }
+export type KnowledgeContentPerformance = { itemId: string; blockCount: number; embedCount: number; commentCount: number; contentLength: number; lineCount: number; snapshotBytes: number; budgetTier: 100 | 500 | 1000; initialRenderBlocks: number; loadBudgetMs: number; inputBudgetMs: number; saveBudgetMs: number; searchBudgetMs: number; collaborationBudgetMs: number; largeContent: boolean; recommendedMode: string }
+export type KnowledgeContentDiagnostics = { itemId: string; versionNo: number; blockCount: number; snapshotBytes: number; permissionCount: number; objectReferenceCount: number; unavailableObjectCount: number; searchProjectionReady: boolean; shareLinkEnabled: boolean; collaborationServerClock: number; collaborationDirty: boolean; collaborationLastSavedAt?: string | null; generatedAt: string; redacted: true }
 export type KnowledgeContentMigrationPreview = { itemId: string; currentVersionNo: number; contentBlockCount: number; storedBlockCount: number; contentLength: number; blockProjectionCurrent: boolean; rollbackAvailable: boolean; migrationMode: string }
 export type KnowledgeContentSchemaIssue = { code: string; path: string; message: string; severity: 'info' | 'warning' | 'error' | string }
 export type KnowledgeContentCanonicalMigrationPreview = {
@@ -120,6 +122,7 @@ const contentPath = (spaceId: string, itemId: string) => `/knowledge-bases/${spa
 
 export const getKnowledgeContent = (spaceId: string, itemId: string) => apiGet<KnowledgeContentDetail>(contentPath(spaceId, itemId))
 export const getKnowledgeContentPerformance = (spaceId: string, itemId: string) => apiGet<KnowledgeContentPerformance>(`${contentPath(spaceId, itemId)}/performance`)
+export const getKnowledgeContentDiagnostics = (spaceId: string, itemId: string) => apiGet<KnowledgeContentDiagnostics>(`${contentPath(spaceId, itemId)}/diagnostics`)
 export const getKnowledgeContentMigrationPreview = (spaceId: string, itemId: string) => apiGet<KnowledgeContentMigrationPreview>(`${contentPath(spaceId, itemId)}/migration-preview`)
 export const getKnowledgeContentCanonicalMigrationPreview = (spaceId: string, itemId: string) => apiGet<KnowledgeContentCanonicalMigrationPreview>(`${contentPath(spaceId, itemId)}/migration/preview`)
 export const getKnowledgeContentCollaborationHealth = (spaceId: string, itemId: string) => apiGet<KnowledgeContentCollaborationHealth>(`${contentPath(spaceId, itemId)}/collaboration/health`)
@@ -158,8 +161,10 @@ export const restoreKnowledgeContentVersion = (spaceId: string, itemId: string, 
 export const grantKnowledgeContentPermission = (spaceId: string, itemId: string, request: { userId?: string; subjectType?: string; subjectId?: string; permissionLevel: string }) => apiPost<KnowledgeContentDetail>(`${contentPath(spaceId, itemId)}/permissions`, request)
 export const updateKnowledgeContentShareLink = (spaceId: string, itemId: string, request: { scope?: string; permissionLevel: string; enabled?: boolean; expiresAt?: string | null }) => apiPost<KnowledgeContentShareLink>(`${contentPath(spaceId, itemId)}/share-link`, request)
 export const setKnowledgeContentShareLinkEnabled = (spaceId: string, itemId: string, enabled: boolean) => apiPost<KnowledgeContentShareLink>(`${contentPath(spaceId, itemId)}/share-link/${enabled ? 'enable' : 'disable'}`)
+export const revokeKnowledgeContentShareLink = (spaceId: string, itemId: string) => apiPost<KnowledgeContentShareLink>(`${contentPath(spaceId, itemId)}/share-link/revoke`)
 export const requestKnowledgeContentPermission = (spaceId: string, itemId: string, request: { permissionLevel: string; reason?: string }) => apiPost<KnowledgeContentPermissionRequest>(`${contentPath(spaceId, itemId)}/permission-requests`, request)
 export const addKnowledgeContentRelation = (spaceId: string, itemId: string, request: { targetType: string; targetId: string }) => apiPost<KnowledgeContentDetail>(`${contentPath(spaceId, itemId)}/relations`, request)
+export function removeKnowledgeContentRelation(spaceId: string, itemId: string, targetType: string, targetId: string) { const params = new URLSearchParams({ targetType, targetId }); return apiDelete<KnowledgeContentDetail>(`${contentPath(spaceId, itemId)}/relations?${params}`) }
 export const createIssueFromKnowledgeSelection = (spaceId: string, itemId: string, request: { projectId: string; issueType?: string; title?: string; description?: string; priority?: string; assigneeId?: string; dueAt?: string; anchorStart?: number; anchorEnd?: number; anchorText?: string }) => apiPost<IssueDetail>(`${contentPath(spaceId, itemId)}/issues/from-selection`, request)
 export type AddKnowledgeContentCommentRequest = { blockId?: string | null; anchorType?: KnowledgeContentComment['anchorType']; anchorStart?: number | null; anchorEnd?: number | null; anchorText?: string | null; anchorPrefix?: string | null; anchorSuffix?: string | null; content: string }
 export const addKnowledgeContentComment = (spaceId: string, itemId: string, request: AddKnowledgeContentCommentRequest) => apiPost<KnowledgeContentDetail>(`${contentPath(spaceId, itemId)}/comments`, request)

@@ -27,4 +27,6 @@ public interface PlatformObjectRepository {
     void removeFavorite(UUID workspaceId, UUID userId, String objectType, UUID objectId);
 
     List<PlatformObjectReference> listFavorites(UUID workspaceId, UUID userId, int limit);
+
+    List<PlatformObjectReference> listObjectCandidates(UUID workspaceId, List<String> objectTypes, String query, int limit);
 }

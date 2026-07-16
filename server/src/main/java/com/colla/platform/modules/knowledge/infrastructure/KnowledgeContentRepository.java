@@ -108,6 +108,12 @@ public interface KnowledgeContentRepository {
         String clientId, int schemaVersion
     );
 
+    Optional<UUID> findLatestCollaborationActor(UUID workspaceId, UUID itemId);
+
+    int compactCollaborationUpdates(UUID workspaceId, UUID itemId, int retainedUpdates);
+
+    int purgeExpiredCollaborationTickets(Instant cutoff);
+
     void storeCollaborationSnapshot(
         UUID workspaceId, UUID itemId, byte[] snapshot, byte[] stateVector, String snapshotHash,
         int schemaVersion, String canonicalSnapshot, String clientId, UUID actorId
@@ -132,6 +138,8 @@ public interface KnowledgeContentRepository {
         String content,
         UUID actorId
     );
+
+    UUID upgradeTemplate(UUID workspaceId, UUID templateId, String content, UUID actorId);
 
     void updateKnowledgeMetadata(
         UUID workspaceId,
@@ -210,6 +218,8 @@ public interface KnowledgeContentRepository {
 
     void addRelation(UUID workspaceId, UUID itemId, String targetType, UUID targetId, UUID createdBy);
 
+    void removeRelation(UUID workspaceId, UUID itemId, String targetType, UUID targetId);
+
     List<KnowledgeContentRelation> listRelations(UUID workspaceId, UUID itemId);
 
     Optional<KnowledgeContentComment> findComment(UUID workspaceId, UUID itemId, UUID commentId);
@@ -219,6 +229,10 @@ public interface KnowledgeContentRepository {
     UUID addCommentReply(UUID workspaceId, UUID itemId, UUID threadId, UUID parentCommentId, UUID authorId, String content);
 
     void updateCommentThreadSelectionAnchor(UUID workspaceId, UUID itemId, UUID threadId, int anchorStart, int anchorEnd);
+
+    void updateCommentThreadAnchorState(UUID workspaceId, UUID itemId, UUID threadId, String anchorState, String reason);
+
+    void updateCommentThreadsAnchorStateByBlock(UUID workspaceId, UUID itemId, UUID blockId, String anchorState, String reason);
 
     void resolveCommentThread(UUID workspaceId, UUID itemId, UUID commentId, UUID resolvedBy);
 

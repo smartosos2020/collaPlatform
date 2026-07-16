@@ -39,6 +39,9 @@ public class KnowledgeContentPlatformObjectResolver implements PlatformObjectRes
     public Optional<PlatformObjectSummary> resolve(CurrentUser currentUser, UUID objectId) {
         try {
             KnowledgeBaseItem document = contentService.requireView(currentUser, objectId);
+            if (document.archived()) {
+                return Optional.of(PlatformObjectSummary.unavailable(objectType(), objectId, ObjectAccessState.deleted));
+            }
             KnowledgeContentContext knowledgeContext = contentService.knowledgeContext(currentUser, objectId);
             Map<String, Object> metadata = new LinkedHashMap<>();
             metadata.put("versionNo", document.currentVersionNo());

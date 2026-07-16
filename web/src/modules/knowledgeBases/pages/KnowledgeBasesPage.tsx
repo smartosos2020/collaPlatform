@@ -3,7 +3,6 @@ import {
   DeleteOutlined,
   EditOutlined,
   EyeOutlined,
-  FileTextOutlined,
   PlusOutlined,
   PoweroffOutlined,
   ReloadOutlined,
@@ -67,7 +66,7 @@ export function KnowledgeBasesPage() {
       form.resetFields()
       message.success('知识库已创建')
       await refresh()
-      navigate(`/knowledge-bases/${detail.space.id}`)
+      navigate(detail.space.navigation?.webPath ?? `/knowledge-bases/${detail.space.id}/items/${detail.homeItem.id}`)
     },
     onError: () => message.error('知识库创建失败'),
   })
@@ -195,11 +194,12 @@ export function KnowledgeBasesPage() {
                 <div className="kb-card-footer">
                   <Typography.Text type="secondary">维护人 {space.ownerName}</Typography.Text>
                   <Space size={4}>
-                    <Tooltip title="进入知识库">
-                      <Button icon={<EyeOutlined />} onClick={() => navigate(`/knowledge-bases/${space.id}`)} />
-                    </Tooltip>
-                    <Tooltip title="打开首页内容">
-                      <Button icon={<FileTextOutlined />} onClick={() => navigate(`/knowledge-bases/${space.id}/items/${space.homeItemId}`)} />
+                    <Tooltip title="打开知识库">
+                      <Button
+                        aria-label={`打开 ${space.name}`}
+                        icon={<EyeOutlined />}
+                        onClick={() => navigate(space.navigation?.webPath ?? `/knowledge-bases/${space.id}`)}
+                      />
                     </Tooltip>
                     <Tooltip title="编辑设置">
                       <Button icon={<EditOutlined />} onClick={() => openEdit(space)} />

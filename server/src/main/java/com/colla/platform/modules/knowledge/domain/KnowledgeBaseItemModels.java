@@ -27,6 +27,12 @@ public final class KnowledgeBaseItemModels {
     ) {
     }
 
+    public record KnowledgeObjectReference(
+        UUID spaceId, String spaceName, UUID itemId, String title, String webPath,
+        String displayMode, String targetTitleStrategy, String entryAlias
+    ) {
+    }
+
     public record KnowledgeBaseMarkdownImportItem(String title, String content, String category, List<String> tags) {
     }
 

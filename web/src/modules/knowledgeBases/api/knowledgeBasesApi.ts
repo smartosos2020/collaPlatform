@@ -206,6 +206,33 @@ export function createKnowledgeBaseItem(
   return apiPost<KnowledgeContentDetail>(`/knowledge-bases/${spaceId}/items`, request)
 }
 
+export function createKnowledgeBaseBaseEntry(
+  spaceId: string,
+  request: {
+    parentId?: string | null
+    existingBaseId?: string
+    newBaseName?: string
+    newBaseDescription?: string
+    displayMode?: KnowledgeBaseItem['displayMode']
+    targetTitleStrategy?: KnowledgeBaseItem['targetTitleStrategy']
+    entryAlias?: string
+  },
+) {
+  return apiPost<KnowledgeContentDetail>(`/knowledge-bases/${spaceId}/items/base-entry`, request)
+}
+
+export function updateKnowledgeObjectEntry(
+  spaceId: string,
+  itemId: string,
+  request: {
+    displayMode?: KnowledgeBaseItem['displayMode']
+    targetTitleStrategy?: KnowledgeBaseItem['targetTitleStrategy']
+    entryAlias?: string
+  },
+) {
+  return apiPatch<KnowledgeContentDetail>(`/knowledge-bases/${spaceId}/items/${itemId}/object-entry`, request)
+}
+
 export function createKnowledgeBaseItemFromTemplate(
   spaceId: string,
   request: { templateId: string; parentId?: string | null; title?: string },
@@ -215,6 +242,14 @@ export function createKnowledgeBaseItemFromTemplate(
 
 export function moveKnowledgeBaseItem(spaceId: string, itemId: string, request: { parentId?: string | null; sortOrder?: number }) {
   return apiPost<KnowledgeContentDetail>(`/knowledge-bases/${spaceId}/items/${itemId}/move`, request)
+}
+
+export function copyKnowledgeBaseItem(spaceId: string, itemId: string, request: { parentId?: string | null; title?: string }) {
+  return apiPost<KnowledgeContentDetail>(`/knowledge-bases/${spaceId}/items/${itemId}/copy`, request)
+}
+
+export function upgradeKnowledgeBaseTemplate(spaceId: string, templateId: string, content: string) {
+  return apiPost<KnowledgeContentTemplate>(`/knowledge-bases/${spaceId}/templates/${templateId}/upgrade`, { content })
 }
 
 export function archiveKnowledgeBaseItem(spaceId: string, itemId: string) {

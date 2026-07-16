@@ -22,6 +22,7 @@ import java.security.SecureRandom;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Base64;
+import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
@@ -70,6 +71,7 @@ public class KnowledgeCollaborationGatewayService {
     @Transactional
     public KnowledgeCollaborationTicket issue(CurrentUser user, UUID itemId) {
         var item = contentService.requireView(user, itemId);
+        repository.purgeExpiredCollaborationTickets(Instant.now().minus(properties.getExpiredTicketRetention()));
         byte[] tokenBytes = new byte[32];
         secureRandom.nextBytes(tokenBytes);
         String token = Base64.getUrlEncoder().withoutPadding().encodeToString(tokenBytes);
@@ -159,40 +161,89 @@ public class KnowledgeCollaborationGatewayService {
         String clientId
     ) {
         KnowledgeCollaborationAuthorization authorization = requireEditable(ticket, documentName);
+        return persistSnapshot(
+            authorization.workspaceId(), authorization.itemId(), asCurrentUser(authorization), encodedSnapshot,
+            encodedStateVector, canonicalDocument, schemaVersion,
+            normalizeClientId(clientId, authorization.clientId()), null
+        );
+    }
+
+    @Transactional
+    public CollaborationSnapshotAck storeSnapshotFromNode(
+        String documentName,
+        String encodedSnapshot,
+        String encodedStateVector,
+        JsonNode canonicalDocument,
+        int schemaVersion,
+        String clientId,
+        String nodeId
+    ) {
+        DocumentKey key = parseDocumentName(documentName);
+        UUID actorId = repository.findLatestCollaborationActor(key.workspaceId(), key.itemId())
+            .orElseThrow(() -> failure(HttpStatus.CONFLICT, "COLLAB_SNAPSHOT_NO_ACTOR", "No persisted collaboration update can own this snapshot"));
+        var account = identityRepository.findUserById(actorId)
+            .filter(user -> key.workspaceId().equals(user.workspaceId()) && "active".equals(user.status()))
+            .orElseThrow(() -> failure(HttpStatus.CONFLICT, "COLLAB_SNAPSHOT_ACTOR_UNAVAILABLE", "Snapshot actor is no longer available"));
+        CurrentUser actor = new CurrentUser(
+            account.id(), account.workspaceId(), null, account.username(), account.displayName(), Set.of(), Set.of()
+        );
+        return persistSnapshot(
+            key.workspaceId(), key.itemId(), actor, encodedSnapshot, encodedStateVector, canonicalDocument,
+            schemaVersion, normalizeClientId(clientId, "node:" + normalizeNodeId(nodeId)), normalizeNodeId(nodeId)
+        );
+    }
+
+    private CollaborationSnapshotAck persistSnapshot(
+        UUID workspaceId,
+        UUID itemId,
+        CurrentUser actor,
+        String encodedSnapshot,
+        String encodedStateVector,
+        JsonNode canonicalDocument,
+        int schemaVersion,
+        String clientId,
+        String nodeId
+    ) {
         requireSchema(schemaVersion);
         byte[] snapshot = decode(encodedSnapshot, properties.getMaxUpdateBytes() * 20L);
         byte[] stateVector = decode(encodedStateVector, properties.getMaxUpdateBytes());
-        KnowledgeContentCanonicalDocument canonical = schemaService.normalizeDocument(canonicalDocument, authorization.itemId());
+        KnowledgeContentCanonicalDocument canonical = schemaService.normalizeDocument(canonicalDocument, itemId);
         if (canonical.issues().stream().anyMatch(issue -> issue.isError())) {
             throw failure(HttpStatus.BAD_REQUEST, "COLLAB_SCHEMA_INVALID", "Canonical projection contains schema errors");
         }
-        CurrentUser actor = asCurrentUser(authorization);
         String title = canonicalDocument.path("collaborationTitle").asText(null);
         if (title == null || title.isBlank()) {
-            title = contentService.requireView(actor, authorization.itemId()).title();
+            title = repository.findItem(workspaceId, itemId)
+                .map(com.colla.platform.modules.knowledge.domain.KnowledgeBaseItemModels.KnowledgeBaseItem::title)
+                .orElseThrow(() -> failure(HttpStatus.NOT_FOUND, "COLLAB_DOCUMENT_NOT_FOUND", "Collaboration document no longer exists"));
         }
         repository.updateContentSnapshot(
-            authorization.workspaceId(), authorization.itemId(), title, canonical.markdown(), authorization.userId()
+            workspaceId, itemId, title, canonical.markdown(), actor.id()
         );
         repository.replaceBlocks(
-            authorization.workspaceId(), authorization.itemId(), schemaService.toBlockDrafts(canonical), authorization.userId()
+            workspaceId, itemId, schemaService.toBlockDrafts(canonical), actor.id()
         );
-        contentService.reanchorSelectionComments(authorization.workspaceId(), authorization.itemId(), canonical.markdown());
+        contentService.reanchorSelectionComments(workspaceId, itemId, canonical.markdown());
         repository.storeCollaborationSnapshot(
-            authorization.workspaceId(), authorization.itemId(), snapshot, stateVector, sha256(snapshot), schemaVersion,
-            writeJson(canonical.document()), normalizeClientId(clientId, authorization.clientId()), authorization.userId()
+            workspaceId, itemId, snapshot, stateVector, sha256(snapshot), schemaVersion,
+            writeJson(canonical.document()), clientId, actor.id()
         );
+        int compactedUpdates = repository.compactCollaborationUpdates(workspaceId, itemId, properties.getRetainedUpdates());
         if (repository.markCollaborationAuditCheckpoint(
-            authorization.workspaceId(), authorization.itemId(), Instant.now().minus(1, ChronoUnit.MINUTES)
+            workspaceId, itemId, Instant.now().minus(1, ChronoUnit.MINUTES)
         )) {
-            auditService.log(actor, "knowledge.content.collaboration.checkpoint", "knowledge_content", authorization.itemId(), Map.of(
-                "protocolVersion", PROTOCOL_VERSION,
-                "schemaVersion", schemaVersion,
-                "clientId", normalizeClientId(clientId, authorization.clientId()),
-                "snapshotHash", sha256(snapshot)
-            ));
+            Map<String, Object> context = new HashMap<>();
+            context.put("protocolVersion", PROTOCOL_VERSION);
+            context.put("schemaVersion", schemaVersion);
+            context.put("clientId", clientId);
+            context.put("snapshotHash", sha256(snapshot));
+            context.put("compactedUpdates", compactedUpdates);
+            if (nodeId != null) context.put("nodeId", nodeId);
+            auditService.log(actor, "knowledge.content.collaboration.checkpoint", "knowledge_content", itemId, context);
         }
-        return new CollaborationSnapshotAck(sha256(snapshot), stateVector.length, canonical.checksum(), Instant.now());
+        return new CollaborationSnapshotAck(
+            sha256(snapshot), stateVector.length, canonical.checksum(), compactedUpdates, nodeId, Instant.now()
+        );
     }
 
     public boolean validInternalSecret(String supplied) {
@@ -260,6 +311,25 @@ public class KnowledgeCollaborationGatewayService {
         return candidate.length() > 128 ? candidate.substring(0, 128) : candidate;
     }
 
+    private String normalizeNodeId(String value) {
+        if (value == null || value.isBlank()) {
+            throw failure(HttpStatus.BAD_REQUEST, "COLLAB_NODE_REQUIRED", "Collaboration node id is required");
+        }
+        return value.length() > 128 ? value.substring(0, 128) : value;
+    }
+
+    private DocumentKey parseDocumentName(String value) {
+        String[] parts = value == null ? new String[0] : value.split(":", -1);
+        if (parts.length != 3 || !"knowledge".equals(parts[0])) {
+            throw failure(HttpStatus.BAD_REQUEST, "COLLAB_INVALID_DOCUMENT", "Invalid collaboration document name");
+        }
+        try {
+            return new DocumentKey(UUID.fromString(parts[1]), UUID.fromString(parts[2]));
+        } catch (IllegalArgumentException exception) {
+            throw failure(HttpStatus.BAD_REQUEST, "COLLAB_INVALID_DOCUMENT", "Invalid collaboration document name");
+        }
+    }
+
     private String documentName(UUID workspaceId, UUID itemId) {
         return "knowledge:" + workspaceId + ":" + itemId;
     }
@@ -289,7 +359,10 @@ public class KnowledgeCollaborationGatewayService {
     ) {}
     public record CollaborationUpdate(long sequence, String updateId, String update, UUID actorId, String clientId, Instant createdAt) {}
     public record CollaborationUpdateAck(long sequence, String updateId, boolean accepted) {}
-    public record CollaborationSnapshotAck(String snapshotHash, int stateVectorBytes, String canonicalChecksum, Instant savedAt) {}
+    private record DocumentKey(UUID workspaceId, UUID itemId) {}
+    public record CollaborationSnapshotAck(
+        String snapshotHash, int stateVectorBytes, String canonicalChecksum, int compactedUpdates, String nodeId, Instant savedAt
+    ) {}
 
     public static final class CollaborationFailure extends RuntimeException {
         private final HttpStatus status;

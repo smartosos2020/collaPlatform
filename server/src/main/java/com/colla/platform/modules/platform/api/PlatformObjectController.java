@@ -5,6 +5,7 @@ import com.colla.platform.modules.platform.application.PlatformObjectService;
 import com.colla.platform.modules.platform.application.PlatformObjectResolverRegistry;
 import com.colla.platform.modules.platform.domain.PlatformModels.ParsedInternalLink;
 import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectCard;
+import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectChoicePage;
 import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectNavigation;
 import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectSummary;
 import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectTypeRule;
@@ -58,6 +59,18 @@ public class PlatformObjectController {
     @GetMapping("/object-types")
     public List<PlatformObjectTypeRule> objectTypes() {
         return platformObjectService.objectTypes();
+    }
+
+    @GetMapping("/object-choices")
+    public PlatformObjectChoicePage objectChoices(
+        @RequestParam(required = false) List<String> types,
+        @RequestParam(required = false) String query,
+        @RequestParam(defaultValue = "all") String source,
+        @RequestParam(defaultValue = "20") int limit,
+        @RequestParam(defaultValue = "0") int offset,
+        Authentication authentication
+    ) {
+        return platformObjectService.choices(currentUser(authentication), types, query, source, limit, offset);
     }
 
     @GetMapping("/objects/{type}/{id}/navigation")

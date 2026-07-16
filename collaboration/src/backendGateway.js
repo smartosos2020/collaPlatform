@@ -2,8 +2,9 @@ import { collaborationConfig } from './config.js'
 import { protocolError } from './protocol.js'
 
 export class CollaborationBackendGateway {
-  constructor(config = collaborationConfig) {
+  constructor(config = collaborationConfig, onFailure = () => {}) {
     this.config = config
+    this.onFailure = onFailure
   }
 
   authenticate(ticket, documentName) {
@@ -18,37 +19,46 @@ export class CollaborationBackendGateway {
     return this.request('/document/update', { ticket, documentName, update, clientId, updateId, schemaVersion })
   }
 
-  storeSnapshot(ticket, documentName, snapshot, stateVector, canonicalDocument, schemaVersion, clientId, title) {
+  storeSnapshot(ticket, documentName, snapshot, stateVector, canonicalDocument, schemaVersion, clientId, title, nodeId) {
     return this.request('/document/snapshot', {
-      ticket, documentName, snapshot, stateVector, canonicalDocument, schemaVersion, clientId, title,
+      ticket, documentName, snapshot, stateVector, canonicalDocument, schemaVersion, clientId, title, nodeId,
     })
   }
 
   async request(path, body) {
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 5000)
-    try {
-      const response = await fetch(`${this.config.backendUrl}${path}`, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'x-colla-collaboration-secret': this.config.internalSecret,
-        },
-        body: JSON.stringify(body),
-        signal: controller.signal,
-      })
-      const payload = await response.json().catch(() => ({}))
-      if (!response.ok) {
-        throw protocolError(payload.code ?? 'COLLAB_BACKEND_REJECTED', payload.message ?? `Backend rejected collaboration request (${response.status})`)
+    let lastError
+    for (let attempt = 0; attempt <= this.config.backendRetries; attempt += 1) {
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), this.config.backendTimeoutMs)
+      try {
+        const response = await fetch(`${this.config.backendUrl}${path}`, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'x-colla-collaboration-secret': this.config.internalSecret,
+          },
+          body: JSON.stringify(body),
+          signal: controller.signal,
+        })
+        const payload = await response.json().catch(() => ({}))
+        if (!response.ok) {
+          const error = protocolError(payload.code ?? 'COLLAB_BACKEND_REJECTED', payload.message ?? `Backend rejected collaboration request (${response.status})`)
+          error.retryable = response.status === 429 || response.status >= 500
+          throw error
+        }
+        return payload
+      } catch (error) {
+        lastError = error?.name === 'AbortError'
+          ? protocolError('COLLAB_PERSISTENCE_UNAVAILABLE', 'Collaboration backend timed out')
+          : error
+        const retryable = error?.name === 'AbortError' || error?.retryable === true || error instanceof TypeError
+        if (!retryable || attempt >= this.config.backendRetries) break
+        await new Promise((resolve) => setTimeout(resolve, Math.min(1000, 100 * (2 ** attempt))))
+      } finally {
+        clearTimeout(timeout)
       }
-      return payload
-    } catch (error) {
-      if (error?.name === 'AbortError') {
-        throw protocolError('COLLAB_PERSISTENCE_UNAVAILABLE', 'Collaboration backend timed out')
-      }
-      throw error
-    } finally {
-      clearTimeout(timeout)
     }
+    this.onFailure(path, lastError)
+    throw lastError
   }
 }

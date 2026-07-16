@@ -100,23 +100,58 @@ services:
       retries: 12
       start_period: 20s
 
-  collaboration:
+  collaboration-a:
     image: ${COLLABORATION_IMAGE:-colla-platform-collaboration:latest}
     build:
       context: ..
-      dockerfile: collaboration/Dockerfile
+      dockerfile: Dockerfile
+      args:
+        SOURCE_COMMIT: ${SOURCE_COMMIT:-unknown}
     restart: unless-stopped
     logging: *default-logging
     environment:
       COLLA_BACKEND_INTERNAL_URL: http://server:8080/api/internal/knowledge-collaboration
       COLLA_COLLABORATION_INTERNAL_SECRET: ${COLLA_COLLABORATION_INTERNAL_SECRET}
       COLLA_COLLABORATION_PORT: 1234
+      COLLA_COLLABORATION_NODE_ID: collaboration-a
+      COLLA_COLLABORATION_REDIS_HOST: redis
+      COLLA_COLLABORATION_REDIS_PORT: 6379
       COLLA_COLLABORATION_MAX_UPDATE_BYTES: 1048576
     depends_on:
       server:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:1234/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:1234/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
+  collaboration-b:
+    image: ${COLLABORATION_IMAGE:-colla-platform-collaboration:latest}
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        SOURCE_COMMIT: ${SOURCE_COMMIT:-unknown}
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      COLLA_BACKEND_INTERNAL_URL: http://server:8080/api/internal/knowledge-collaboration
+      COLLA_COLLABORATION_INTERNAL_SECRET: ${COLLA_COLLABORATION_INTERNAL_SECRET}
+      COLLA_COLLABORATION_PORT: 1234
+      COLLA_COLLABORATION_NODE_ID: collaboration-b
+      COLLA_COLLABORATION_REDIS_HOST: redis
+      COLLA_COLLABORATION_REDIS_PORT: 6379
+      COLLA_COLLABORATION_MAX_UPDATE_BYTES: 1048576
+    depends_on:
+      server:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:1234/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
       interval: 10s
       timeout: 5s
       retries: 6
@@ -151,7 +186,9 @@ services:
         condition: service_healthy
       server:
         condition: service_healthy
-      collaboration:
+      collaboration-a:
+        condition: service_healthy
+      collaboration-b:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1/api/health"]

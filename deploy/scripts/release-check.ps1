@@ -92,7 +92,7 @@ try {
     if (-not [string]::IsNullOrWhiteSpace($ExpectedProjectName) -and $actualProjectName -cne $ExpectedProjectName) {
         throw "Release target mismatch. Expected '$ExpectedProjectName', compose resolves to '$actualProjectName'."
     }
-    foreach ($requiredService in @("postgres", "redis", "minio", "server", "web", "nginx")) {
+    foreach ($requiredService in @("postgres", "redis", "minio", "server", "collaboration-a", "collaboration-b", "web", "nginx")) {
         if (-not ($model.services.PSObject.Properties.Name -contains $requiredService)) {
             throw "Production compose is missing required service: $requiredService"
         }
@@ -101,8 +101,10 @@ try {
         }
     }
     if ([string] $model.services.server.image -cne [string] $environment["SERVER_IMAGE"] -or
-        [string] $model.services.web.image -cne [string] $environment["WEB_IMAGE"]) {
-        throw "Compose application images do not match SERVER_IMAGE/WEB_IMAGE"
+        [string] $model.services.web.image -cne [string] $environment["WEB_IMAGE"] -or
+        [string] $model.services.'collaboration-a'.image -cne [string] $environment["COLLABORATION_IMAGE"] -or
+        [string] $model.services.'collaboration-b'.image -cne [string] $environment["COLLABORATION_IMAGE"]) {
+        throw "Compose application images do not match SERVER_IMAGE/WEB_IMAGE/COLLABORATION_IMAGE"
     }
     foreach ($dependencyService in @("postgres", "redis", "minio", "nginx")) {
         $dependencyImage = [string] $model.services.$dependencyService.image
@@ -111,7 +113,7 @@ try {
         }
     }
     $publishedPorts = @($model.services.nginx.ports | ForEach-Object { $_.published }) -join ", "
-    Add-Result "- PASS: compose config contains the complete single-node stack (published ports: $publishedPorts)"
+    Add-Result "- PASS: compose config contains the backend plus dual collaboration-node stack (published ports: $publishedPorts)"
 
     if (-not $SkipBackupCheck) {
         if ($CreateBackup) {
@@ -156,17 +158,20 @@ try {
     }
 
     if (-not $SkipImageBuild) {
-        docker compose --env-file $EnvPath -f $ComposePath build server web
+        docker compose --env-file $EnvPath -f $ComposePath build server web collaboration-a
         if ($LASTEXITCODE -ne 0) {
             throw "Production image build failed"
         }
         $serverImage = [string] $environment["SERVER_IMAGE"]
         $webImage = [string] $environment["WEB_IMAGE"]
+        $collaborationImage = [string] $environment["COLLABORATION_IMAGE"]
         $serverDetails = (& docker image inspect $serverImage --format '{{json .}}' | Out-String) | ConvertFrom-Json
         $webDetails = (& docker image inspect $webImage --format '{{json .}}' | Out-String) | ConvertFrom-Json
+        $collaborationDetails = (& docker image inspect $collaborationImage --format '{{json .}}' | Out-String) | ConvertFrom-Json
         $serverRevision = [string] $serverDetails.Config.Labels.'org.opencontainers.image.revision'
         $webRevision = [string] $webDetails.Config.Labels.'org.opencontainers.image.revision'
-        if ($serverRevision -cne $headCommit -or $webRevision -cne $headCommit) {
+        $collaborationRevision = [string] $collaborationDetails.Config.Labels.'org.opencontainers.image.revision'
+        if ($serverRevision -cne $headCommit -or $webRevision -cne $headCommit -or $collaborationRevision -cne $headCommit) {
             throw "Built image revision labels do not match the release source commit"
         }
         $artifactEvidence = [ordered]@{
@@ -176,6 +181,7 @@ try {
             composeProject = $actualProjectName
             server = [ordered]@{ image = $serverImage; id = [string] $serverDetails.Id; revision = $serverRevision }
             web = [ordered]@{ image = $webImage; id = [string] $webDetails.Id; revision = $webRevision }
+            collaboration = [ordered]@{ image = $collaborationImage; id = [string] $collaborationDetails.Id; revision = $collaborationRevision }
         }
         $artifactEvidence | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $ArtifactPath -Encoding UTF8
         Add-Result "- PASS: production images built with immutable tags and matching OCI revision labels"

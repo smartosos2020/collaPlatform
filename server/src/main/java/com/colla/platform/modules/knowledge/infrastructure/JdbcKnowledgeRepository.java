@@ -228,6 +228,20 @@ public class JdbcKnowledgeRepository implements KnowledgeBaseItemRepository, Kno
 
     @Override
     public void copyParentPermissions(UUID workspaceId, UUID itemId, UUID parentId, UUID actorId) {
+        jdbcTemplate.update(
+            """
+                update resource_permissions
+                set status = 'revoked', updated_by = ?, updated_at = now()
+                where workspace_id = ?
+                  and resource_type = 'knowledge_content'
+                  and resource_id = ?
+                  and source_type = 'inherited'
+                  and status = 'active'
+                """,
+            actorId,
+            workspaceId,
+            itemId
+        );
         if (parentId == null) {
             return;
         }
@@ -781,6 +795,48 @@ public class JdbcKnowledgeRepository implements KnowledgeBaseItemRepository, Kno
     }
 
     @Override
+    public Optional<UUID> findLatestCollaborationActor(UUID workspaceId, UUID itemId) {
+        try {
+            return Optional.ofNullable(jdbcTemplate.queryForObject(
+                """
+                    select actor_id
+                    from knowledge_content_collaboration_updates
+                    where workspace_id = ? and item_id = ?
+                    order by sequence_no desc
+                    limit 1
+                    """,
+                UUID.class,
+                workspaceId, itemId
+            ));
+        } catch (EmptyResultDataAccessException exception) {
+            return Optional.empty();
+        }
+    }
+
+    @Override
+    public int compactCollaborationUpdates(UUID workspaceId, UUID itemId, int retainedUpdates) {
+        return jdbcTemplate.update(
+            """
+                delete from knowledge_content_collaboration_updates updates
+                using knowledge_content_collaboration_states states
+                where states.workspace_id = ? and states.item_id = ?
+                  and updates.workspace_id = states.workspace_id
+                  and updates.item_id = states.item_id
+                  and updates.sequence_no <= greatest(states.snapshot_sequence - ?, 0)
+                """,
+            workspaceId, itemId, Math.max(0, retainedUpdates)
+        );
+    }
+
+    @Override
+    public int purgeExpiredCollaborationTickets(Instant cutoff) {
+        return jdbcTemplate.update(
+            "delete from knowledge_content_collaboration_tickets where expires_at < ?",
+            Timestamp.from(cutoff)
+        );
+    }
+
+    @Override
     public void storeCollaborationSnapshot(
         UUID workspaceId,
         UUID itemId,
@@ -882,7 +938,8 @@ public class JdbcKnowledgeRepository implements KnowledgeBaseItemRepository, Kno
         return jdbcTemplate.query(
             """
                 select dt.id, dt.title, dt.description, dt.category, dt.blocks::text blocks, dt.built_in,
-                       dt.scope_type, dt.knowledge_base_id, kb.name knowledge_base_name, dt.created_at
+                       dt.scope_type, dt.knowledge_base_id, kb.name knowledge_base_name, dt.version_no,
+                       dt.supersedes_template_id, dt.created_at
                 from knowledge_content_templates dt
                 left join knowledge_base_spaces kb on kb.id = dt.knowledge_base_id and kb.workspace_id = dt.workspace_id
                 where dt.status = 'active'
@@ -910,7 +967,8 @@ public class JdbcKnowledgeRepository implements KnowledgeBaseItemRepository, Kno
             return Optional.ofNullable(jdbcTemplate.queryForObject(
                 """
                     select dt.id, dt.title, dt.description, dt.category, dt.blocks::text blocks, dt.built_in,
-                           dt.scope_type, dt.knowledge_base_id, kb.name knowledge_base_name, dt.created_at
+                           dt.scope_type, dt.knowledge_base_id, kb.name knowledge_base_name, dt.version_no,
+                           dt.supersedes_template_id, dt.created_at
                     from knowledge_content_templates dt
                     left join knowledge_base_spaces kb on kb.id = dt.knowledge_base_id and kb.workspace_id = dt.workspace_id
                     where dt.id = ?
@@ -956,6 +1014,43 @@ public class JdbcKnowledgeRepository implements KnowledgeBaseItemRepository, Kno
             actorId
         );
         return id;
+    }
+
+    @Override
+    public UUID upgradeTemplate(UUID workspaceId, UUID templateId, String content, UUID actorId) {
+        UUID nextId = UUID.randomUUID();
+        int inserted = jdbcTemplate.update(
+            """
+                insert into knowledge_content_templates
+                    (id, workspace_id, title, description, category, blocks, built_in, status,
+                     scope_type, knowledge_base_id, version_no, supersedes_template_id,
+                     created_by, created_at, updated_by, updated_at)
+                select ?, workspace_id, title, description, category, ?::jsonb, false, 'active',
+                       scope_type, knowledge_base_id, version_no + 1, id, ?, now(), ?, now()
+                from knowledge_content_templates
+                where workspace_id = ? and id = ? and status = 'active' and built_in = false
+                """,
+            nextId,
+            blockSnapshotFromContent(content),
+            actorId,
+            actorId,
+            workspaceId,
+            templateId
+        );
+        if (inserted == 0) {
+            throw new EmptyResultDataAccessException(1);
+        }
+        jdbcTemplate.update(
+            """
+                update knowledge_content_templates
+                set status = 'superseded', updated_by = ?, updated_at = now()
+                where workspace_id = ? and id = ? and status = 'active'
+                """,
+            actorId,
+            workspaceId,
+            templateId
+        );
+        return nextId;
     }
 
     @Override
@@ -1364,7 +1459,8 @@ public class JdbcKnowledgeRepository implements KnowledgeBaseItemRepository, Kno
                      created_by, created_at, updated_by, updated_at, disabled_at)
                 values (?, ?, ?, ?, ?, ?, ?, ?, ?, now(), ?, now(), case when ? then null else now() end)
                 on conflict (item_id)
-                do update set scope = excluded.scope,
+                do update set token = excluded.token,
+                    scope = excluded.scope,
                     permission_level = excluded.permission_level,
                     enabled = excluded.enabled,
                     expires_at = excluded.expires_at,
@@ -1529,6 +1625,21 @@ public class JdbcKnowledgeRepository implements KnowledgeBaseItemRepository, Kno
     }
 
     @Override
+    public void removeRelation(UUID workspaceId, UUID itemId, String targetType, UUID targetId) {
+        jdbcTemplate.update(
+            """
+                update knowledge_item_relations
+                set deleted_at = now()
+                where workspace_id = ? and item_id = ? and target_type = ? and target_id = ? and deleted_at is null
+                """,
+            workspaceId,
+            itemId,
+            targetType,
+            targetId
+        );
+    }
+
+    @Override
     public List<KnowledgeContentRelation> listRelations(UUID workspaceId, UUID itemId) {
         return jdbcTemplate.query(
             """
@@ -1563,7 +1674,8 @@ public class JdbcKnowledgeRepository implements KnowledgeBaseItemRepository, Kno
                     select c.id, c.thread_id, c.parent_comment_id, c.item_id, c.block_id, c.author_id,
                            u.display_name author_name, c.content,
                            c.anchor_type, c.anchor_start, c.anchor_end, c.anchor_text, c.anchor_prefix, c.anchor_suffix,
-                           c.anchor_version_no, c.resolved_at, c.resolved_by, resolved_user.display_name resolved_by_name,
+                           c.anchor_version_no, c.anchor_state, c.anchor_invalid_reason, c.anchor_updated_at,
+                           c.resolved_at, c.resolved_by, resolved_user.display_name resolved_by_name,
                            c.reopened_at, c.reopened_by, reopened_user.display_name reopened_by_name, c.created_at
                     from knowledge_content_comments c
                     join users u on u.id = c.author_id
@@ -1641,6 +1753,9 @@ public class JdbcKnowledgeRepository implements KnowledgeBaseItemRepository, Kno
                 update knowledge_content_comments
                 set anchor_start = ?,
                     anchor_end = ?,
+                    anchor_state = 'active',
+                    anchor_invalid_reason = null,
+                    anchor_updated_at = now(),
                     anchor_version_no = (
                         select current_version_no
                         from knowledge_base_items
@@ -1659,6 +1774,44 @@ public class JdbcKnowledgeRepository implements KnowledgeBaseItemRepository, Kno
             workspaceId,
             itemId,
             threadId
+        );
+    }
+
+    @Override
+    public void updateCommentThreadAnchorState(UUID workspaceId, UUID itemId, UUID threadId, String anchorState, String reason) {
+        jdbcTemplate.update(
+            """
+                update knowledge_content_comments
+                set anchor_state = ?, anchor_invalid_reason = ?, anchor_updated_at = now()
+                where workspace_id = ? and item_id = ? and thread_id = ? and deleted_at is null
+                """,
+            anchorState,
+            reason,
+            workspaceId,
+            itemId,
+            threadId
+        );
+    }
+
+    @Override
+    public void updateCommentThreadsAnchorStateByBlock(
+        UUID workspaceId,
+        UUID itemId,
+        UUID blockId,
+        String anchorState,
+        String reason
+    ) {
+        jdbcTemplate.update(
+            """
+                update knowledge_content_comments
+                set anchor_state = ?, anchor_invalid_reason = ?, anchor_updated_at = now()
+                where workspace_id = ? and item_id = ? and block_id = ? and deleted_at is null
+                """,
+            anchorState,
+            reason,
+            workspaceId,
+            itemId,
+            blockId
         );
     }
 
@@ -1716,7 +1869,8 @@ public class JdbcKnowledgeRepository implements KnowledgeBaseItemRepository, Kno
                 select c.id, c.thread_id, c.parent_comment_id, c.item_id, c.block_id, c.author_id,
                        u.display_name author_name, c.content,
                        c.anchor_type, c.anchor_start, c.anchor_end, c.anchor_text, c.anchor_prefix, c.anchor_suffix,
-                       c.anchor_version_no, c.resolved_at, c.resolved_by, resolved_user.display_name resolved_by_name,
+                       c.anchor_version_no, c.anchor_state, c.anchor_invalid_reason, c.anchor_updated_at,
+                       c.resolved_at, c.resolved_by, resolved_user.display_name resolved_by_name,
                        c.reopened_at, c.reopened_by, reopened_user.display_name reopened_by_name, c.created_at
                 from knowledge_content_comments c
                 join knowledge_content_comments root_comment on root_comment.id = c.thread_id
@@ -1901,6 +2055,39 @@ public class JdbcKnowledgeRepository implements KnowledgeBaseItemRepository, Kno
     }
 
     @Override
+    public List<KnowledgeBaseItem> listObjectReferences(UUID workspaceId, String targetObjectType, UUID targetObjectId) {
+        return jdbcTemplate.query(
+            """
+                select d.id, d.parent_id, d.title, d.content_type, d.current_version_no,
+                       'owner' permission_level,
+                       d.created_by, cu.display_name created_by_name, d.created_at,
+                       d.updated_by, uu.display_name updated_by_name, d.updated_at,
+                       d.sort_order, d.description, d.cover_url, d.default_permission_level, d.knowledge_base,
+                       d.archived_at is not null archived,
+                       d.maintainer_id, coalesce(mu.display_name, mu.username) maintainer_name,
+                       d.tags, d.category, d.knowledge_status, d.review_due_at, d.verified_at,
+                       d.item_kind, d.target_object_type, d.target_object_id, d.target_route,
+                       d.display_mode, d.target_title_strategy, d.entry_alias
+                from knowledge_base_items d
+                join users cu on cu.id = d.created_by
+                join users uu on uu.id = d.updated_by
+                left join users mu on mu.id = d.maintainer_id and mu.workspace_id = d.workspace_id and mu.deleted_at is null
+                where d.workspace_id = ?
+                  and d.content_type = 'object_ref'
+                  and d.target_object_type = ?
+                  and d.target_object_id = ?
+                  and d.deleted_at is null
+                  and d.archived_at is null
+                order by d.updated_at desc
+                """,
+            this::mapKnowledgeBaseItem,
+            workspaceId,
+            targetObjectType,
+            targetObjectId
+        );
+    }
+
+    @Override
     public List<KnowledgeBaseItem> listDueForReview(UUID workspaceId, LocalDate beforeDate, int limit) {
         return jdbcTemplate.query(
             """
@@ -2053,6 +2240,8 @@ public class JdbcKnowledgeRepository implements KnowledgeBaseItemRepository, Kno
             rs.getString("scope_type"),
             rs.getObject("knowledge_base_id", UUID.class),
             rs.getString("knowledge_base_name"),
+            rs.getInt("version_no"),
+            rs.getObject("supersedes_template_id", UUID.class),
             rs.getTimestamp("created_at").toInstant()
         );
     }
@@ -2076,6 +2265,9 @@ public class JdbcKnowledgeRepository implements KnowledgeBaseItemRepository, Kno
             rs.getString("anchor_prefix"),
             rs.getString("anchor_suffix"),
             rs.getObject("anchor_version_no", Integer.class),
+            rs.getString("anchor_state"),
+            rs.getString("anchor_invalid_reason"),
+            rs.getTimestamp("anchor_updated_at") == null ? null : rs.getTimestamp("anchor_updated_at").toInstant(),
             id.equals(threadId),
             rs.getTimestamp("resolved_at") != null,
             rs.getTimestamp("resolved_at") == null ? null : rs.getTimestamp("resolved_at").toInstant(),
@@ -2106,6 +2298,9 @@ public class JdbcKnowledgeRepository implements KnowledgeBaseItemRepository, Kno
             comment.anchorPrefix(),
             comment.anchorSuffix(),
             comment.anchorVersionNo(),
+            comment.anchorState(),
+            comment.anchorInvalidReason(),
+            comment.anchorUpdatedAt(),
             comment.root(),
             comment.resolved(),
             comment.resolvedAt(),

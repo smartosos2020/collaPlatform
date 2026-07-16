@@ -14,6 +14,7 @@ import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.Knowle
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContentCommentAnchor;
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContent;
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContentDiffLine;
+import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContentDiagnostics;
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContentMigrationPreview;
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContentPathItem;
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContentPerformance;
@@ -21,6 +22,7 @@ import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.Knowle
 import com.colla.platform.modules.knowledge.domain.KnowledgeBaseItemModels.KnowledgeBaseItem;
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContentShareLink;
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContentTemplate;
+import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContentTransferReport;
 import com.colla.platform.modules.knowledge.domain.KnowledgeBaseItemModels.KnowledgeBaseItemTreeNode;
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContentVersion;
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContentVersionDiff;
@@ -57,6 +59,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.nio.charset.StandardCharsets;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.springframework.http.HttpStatus;
@@ -356,16 +359,99 @@ public class KnowledgeContentService {
         return html.toString();
     }
 
+    public KnowledgeContentTransferReport previewImport(CurrentUser currentUser, UUID itemId, String format, String source) {
+        requireEdit(currentUser, itemId);
+        String normalizedFormat = normalizeTransferFormat(format);
+        String normalizedSource = source == null ? "" : source;
+        validateImportSourceSize(normalizedSource);
+        List<KnowledgeContentBlockDraft> blocks = "html".equals(normalizedFormat)
+            ? blocksFromHtml(normalizedSource)
+            : blocksFromContent(normalizedSource);
+        List<String> degraded = new ArrayList<>();
+        String lower = normalizedSource.toLowerCase(Locale.ROOT);
+        if ("html".equals(normalizedFormat) && (lower.contains("<script") || lower.contains("<style"))) {
+            degraded.add("unsafe_html_omitted");
+        }
+        if ("html".equals(normalizedFormat) && Pattern.compile("(?is)<(iframe|video|svg|canvas|form)\\b").matcher(normalizedSource).find()) {
+            degraded.add("unsupported_html_preserved_as_legacy");
+        }
+        if ("markdown".equals(normalizedFormat) && normalizedSource.split("```", -1).length % 2 == 0) {
+            degraded.add("unclosed_code_fence");
+        }
+        return transferReport("import", normalizedFormat, blocks, degraded, normalizedSource, !normalizedSource.isBlank());
+    }
+
+    public KnowledgeContentTransferReport exportManifest(CurrentUser currentUser, UUID itemId, String format) {
+        requireView(currentUser, itemId);
+        String normalizedFormat = normalizeTransferFormat(format);
+        List<KnowledgeContentBlockDraft> blocks = contentRepository.listBlocks(currentUser.workspaceId(), itemId).stream()
+            .map(this::draftFromStoredBlock)
+            .toList();
+        String payload = "html".equals(normalizedFormat) ? exportHtml(currentUser, itemId) : exportMarkdown(currentUser, itemId);
+        List<String> degraded = blocks.stream().anyMatch(block -> "legacy_html".equals(block.blockType()))
+            ? List.of("legacy_html_requires_review")
+            : List.of();
+        return transferReport("export", normalizedFormat, blocks, degraded, payload, true);
+    }
+
+    private KnowledgeContentTransferReport transferReport(
+        String direction,
+        String format,
+        List<KnowledgeContentBlockDraft> blocks,
+        List<String> degraded,
+        String payload,
+        boolean safeToApply
+    ) {
+        Set<String> features = blocks.stream().map(KnowledgeContentBlockDraft::blockType)
+            .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        int attachmentCount = (int) blocks.stream().filter(block -> Set.of("image", "file", "file_embed").contains(block.blockType())).count();
+        int objectReferenceCount = (int) blocks.stream().filter(block -> EMBED_BLOCK_TYPES.contains(block.blockType())).count();
+        String fingerprint = UUID.nameUUIDFromBytes(payload.getBytes(StandardCharsets.UTF_8)).toString();
+        return new KnowledgeContentTransferReport(
+            direction,
+            format,
+            blocks.size(),
+            attachmentCount,
+            objectReferenceCount,
+            List.copyOf(features),
+            List.copyOf(degraded),
+            fingerprint,
+            safeToApply && !degraded.contains("unclosed_code_fence")
+        );
+    }
+
+    private String normalizeTransferFormat(String format) {
+        String normalized = format == null ? "" : format.trim().toLowerCase(Locale.ROOT);
+        if (!Set.of("markdown", "html").contains(normalized)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Transfer format must be markdown or html");
+        }
+        return normalized;
+    }
+
+    private void validateImportSourceSize(String source) {
+        if (source != null && source.length() > 1_000_000) {
+            throw new ResponseStatusException(HttpStatus.PAYLOAD_TOO_LARGE, "Import source exceeds 1 MB");
+        }
+    }
+
     public KnowledgeContentPerformance performanceProfile(CurrentUser currentUser, UUID itemId) {
         KnowledgeContent detail = getContent(currentUser, itemId);
         String content = detail.content() == null ? "" : detail.content();
         int embedCount = (int) detail.blocks().stream()
             .filter(block -> EMBED_BLOCK_TYPES.contains(block.blockType()) || "table".equals(block.blockType()))
             .count();
-        boolean largeDocument = detail.blocks().size() >= 1000
+        boolean largeDocument = detail.blocks().size() >= 500
             || embedCount >= 50
             || detail.comments().size() >= 100
             || content.length() >= 100_000;
+        int budgetTier = detail.blocks().size() <= 100 ? 100 : detail.blocks().size() <= 500 ? 500 : 1000;
+        int loadBudgetMs = budgetTier == 100 ? 1500 : budgetTier == 500 ? 2500 : 4000;
+        int inputBudgetMs = budgetTier == 100 ? 100 : budgetTier == 500 ? 120 : 150;
+        int saveBudgetMs = budgetTier == 100 ? 1500 : budgetTier == 500 ? 2500 : 4000;
+        int searchBudgetMs = budgetTier == 100 ? 1000 : budgetTier == 500 ? 1500 : 2000;
+        int collaborationBudgetMs = budgetTier == 100 ? 800 : budgetTier == 500 ? 1000 : 1500;
+        long snapshotBytes = blockSnapshot(detail.blocks().stream().map(this::draftFromStoredBlock).toList())
+            .getBytes(StandardCharsets.UTF_8).length;
         return new KnowledgeContentPerformance(
             itemId,
             detail.blocks().size(),
@@ -373,8 +459,47 @@ public class KnowledgeContentService {
             detail.comments().size(),
             content.length(),
             lineCount(content),
+            snapshotBytes,
+            budgetTier,
+            Math.min(detail.blocks().size(), 160),
+            loadBudgetMs,
+            inputBudgetMs,
+            saveBudgetMs,
+            searchBudgetMs,
+            collaborationBudgetMs,
             largeDocument,
             largeDocument ? "lazy-preview" : "full-editor"
+        );
+    }
+
+    public KnowledgeContentDiagnostics diagnostics(CurrentUser currentUser, UUID itemId) {
+        requireManage(currentUser, itemId);
+        KnowledgeContent detail = getContent(currentUser, itemId);
+        List<KnowledgeContentBlockDraft> drafts = detail.blocks().stream().map(this::draftFromStoredBlock).toList();
+        long snapshotBytes = blockSnapshot(drafts).getBytes(StandardCharsets.UTF_8).length;
+        int objectReferenceCount = (int) detail.blocks().stream()
+            .filter(block -> EMBED_BLOCK_TYPES.contains(block.blockType()))
+            .count();
+        int unavailableObjectCount = (int) detail.blocks().stream()
+            .filter(block -> EMBED_BLOCK_TYPES.contains(block.blockType()))
+            .filter(block -> block.embedSummary() == null || block.embedSummary().accessState() != ObjectAccessState.available)
+            .count();
+        var collaboration = contentRepository.findCollaborationState(currentUser.workspaceId(), itemId).orElse(null);
+        return new KnowledgeContentDiagnostics(
+            itemId,
+            detail.item().currentVersionNo(),
+            detail.blocks().size(),
+            snapshotBytes,
+            detail.permissions().size(),
+            objectReferenceCount,
+            unavailableObjectCount,
+            detail.content() != null,
+            detail.shareLinks().stream().anyMatch(link -> link.enabled() && (link.expiresAt() == null || link.expiresAt().isAfter(Instant.now()))),
+            collaboration == null ? 0 : collaboration.serverClock(),
+            collaboration != null && !Objects.equals(collaboration.snapshotContent(), detail.content()),
+            collaboration == null ? null : collaboration.lastSavedAt(),
+            Instant.now(),
+            true
         );
     }
 
@@ -476,6 +601,70 @@ public class KnowledgeContentService {
     }
 
     @Transactional
+    public KnowledgeContent copyItem(CurrentUser currentUser, UUID itemId, UUID parentId, String title) {
+        KnowledgeContent source = getContent(currentUser, itemId);
+        if (!"markdown".equals(source.item().contentType())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Only knowledge pages can be copied");
+        }
+        String copyTitle = title == null || title.isBlank() ? source.item().title() + " 副本" : normalizeTitle(title);
+        KnowledgeContent created = createItem(
+            currentUser,
+            parentId,
+            copyTitle,
+            "markdown",
+            source.content(),
+            source.item().description(),
+            source.item().coverUrl(),
+            source.item().defaultPermissionLevel(),
+            false
+        );
+        Map<UUID, UUID> copiedBlockIds = source.blocks().stream().collect(java.util.stream.Collectors.toMap(
+            KnowledgeContentBlock::id,
+            ignored -> UUID.randomUUID(),
+            (left, right) -> left,
+            java.util.LinkedHashMap::new
+        ));
+        List<KnowledgeContentBlockDraft> sourceBlocks = source.blocks().stream().map(block -> new KnowledgeContentBlockDraft(
+            copiedBlockIds.get(block.id()),
+            block.parentId() == null ? null : copiedBlockIds.get(block.parentId()),
+            block.blockType(),
+            block.content(),
+            block.sortOrder(),
+            block.schemaVersion(),
+            block.attrs(),
+            block.richContent(),
+            block.plainText(),
+            null,
+            false
+        )).toList();
+        KnowledgeContent copied = sourceBlocks.isEmpty()
+            ? created
+            : saveBlocks(currentUser, created.item().id(), created.item().currentVersionNo(), copyTitle, sourceBlocks);
+        copied = updateKnowledgeMetadata(
+            currentUser,
+            copied.item().id(),
+            source.item().maintainerId(),
+            source.item().tags(),
+            source.item().category(),
+            source.item().knowledgeStatus(),
+            source.item().reviewDueAt(),
+            source.item().verifiedAt()
+        );
+        auditService.log(
+            currentUser,
+            "knowledge.content.copied",
+            "knowledge_content",
+            copied.item().id(),
+            Map.of(
+                "sourceItemId", itemId.toString(),
+                "targetParentId", parentId == null ? "" : parentId.toString(),
+                "explicitPermissionsCopied", "false"
+            )
+        );
+        return copied;
+    }
+
+    @Transactional
     public KnowledgeContent archiveItem(CurrentUser currentUser, UUID itemId) {
         requireManage(currentUser, itemId);
         contentRepository.archiveItemTree(currentUser.workspaceId(), itemId, currentUser.id());
@@ -543,7 +732,7 @@ public class KnowledgeContentService {
             normalizeTitle(title),
             normalizeNullableText(description, 512),
             normalizeTemplateCategory(category),
-            content == null ? "" : content,
+            sanitizeTemplateContent(currentUser, content),
             currentUser.id()
         );
         auditService.log(
@@ -555,6 +744,37 @@ public class KnowledgeContentService {
         );
         return contentRepository.findTemplate(currentUser.workspaceId(), templateId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Document template was not created"));
+    }
+
+    @Transactional
+    public KnowledgeContentTemplate upgradeTemplate(CurrentUser currentUser, UUID templateId, String content) {
+        KnowledgeContentTemplate source = contentRepository.findTemplate(currentUser.workspaceId(), templateId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Document template not found"));
+        if (source.builtIn()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Built-in templates cannot be upgraded in place");
+        }
+        if (source.knowledgeBaseId() == null) {
+            if (!currentUser.hasRole("admin")) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Workspace template requires admin role");
+            }
+        } else {
+            requireKnowledgeBaseManage(currentUser, source.knowledgeBaseId());
+        }
+        UUID upgradedId = contentRepository.upgradeTemplate(
+            currentUser.workspaceId(),
+            templateId,
+            sanitizeTemplateContent(currentUser, content),
+            currentUser.id()
+        );
+        auditService.log(
+            currentUser,
+            "knowledge.content.template.upgraded",
+            source.knowledgeBaseId() == null ? "workspace" : "knowledge_base",
+            source.knowledgeBaseId() == null ? currentUser.workspaceId() : source.knowledgeBaseId(),
+            Map.of("previousTemplateId", templateId.toString(), "templateId", upgradedId.toString())
+        );
+        return contentRepository.findTemplate(currentUser.workspaceId(), upgradedId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Document template upgrade was not created"));
     }
 
     @Transactional
@@ -677,13 +897,25 @@ public class KnowledgeContentService {
         StringBuilder export = new StringBuilder();
         export.append("# ").append(space.name()).append("\n\n");
         export.append("> 导出时间：").append(Instant.now()).append("\n\n");
+        export.append("<!-- colla-space-export: version=1 spaceId=").append(spaceId).append(" -->\n\n");
+        int attachmentCount = 0;
+        int objectReferenceCount = 0;
         for (KnowledgeBaseItem document : knowledge_base_items) {
             List<KnowledgeContentBlock> blocks = contentRepository.listBlocks(currentUser.workspaceId(), document.id());
+            int itemAttachments = (int) blocks.stream().filter(block -> Set.of("image", "file", "file_embed").contains(block.blockType())).count();
+            int itemObjectReferences = (int) blocks.stream().filter(block -> EMBED_BLOCK_TYPES.contains(block.blockType())).count();
+            attachmentCount += itemAttachments;
+            objectReferenceCount += itemObjectReferences;
+            String path = documentPath(currentUser, document.id()).stream().map(KnowledgeContentPathItem::title)
+                .reduce((left, right) -> left + " / " + right).orElse(document.title());
             String content = blocks.isEmpty()
                 ? contentRepository.findContent(currentUser.workspaceId(), document.id()).orElse("")
                 : exportMarkdownFromBlocks(blocks);
             export.append("\n---\n\n");
             export.append("# ").append(document.title()).append("\n\n");
+            export.append("<!-- itemId: ").append(document.id()).append(" -->\n");
+            export.append("<!-- path: ").append(path).append(" -->\n");
+            export.append("<!-- attachments: ").append(itemAttachments).append("; objectReferences: ").append(itemObjectReferences).append(" -->\n");
             if (document.category() != null || !document.tags().isEmpty() || document.reviewDueAt() != null) {
                 export.append("<!-- category: ").append(document.category() == null ? "" : document.category()).append(" -->\n");
                 export.append("<!-- tags: ").append(String.join(",", document.tags())).append(" -->\n");
@@ -695,6 +927,9 @@ public class KnowledgeContentService {
             }
             export.append(content).append("\n");
         }
+        export.append("\n<!-- export-summary: items=").append(knowledge_base_items.size())
+            .append(" attachments=").append(attachmentCount)
+            .append(" objectReferences=").append(objectReferenceCount).append(" -->\n");
         return export.toString();
     }
 
@@ -831,6 +1066,7 @@ public class KnowledgeContentService {
     public KnowledgeContent importMarkdown(CurrentUser currentUser, UUID itemId, String title, String content) {
         KnowledgeBaseItem before = requireEdit(currentUser, itemId);
         String normalizedContent = content == null ? "" : content;
+        validateImportSourceSize(normalizedContent);
         String normalizedTitle = title == null || title.isBlank() ? before.title() : title.trim();
         List<KnowledgeContentBlockDraft> importedBlocks = blocksFromContent(normalizedContent);
         int nextVersionNo = before.currentVersionNo() + 1;
@@ -875,6 +1111,7 @@ public class KnowledgeContentService {
     public KnowledgeContent importHtml(CurrentUser currentUser, UUID itemId, String title, String html) {
         KnowledgeBaseItem before = requireEdit(currentUser, itemId);
         String normalizedHtml = html == null ? "" : html;
+        validateImportSourceSize(normalizedHtml);
         String normalizedTitle = title == null || title.isBlank() ? before.title() : title.trim();
         List<KnowledgeContentBlockDraft> importedBlocks = normalizeBlocks(blocksFromHtml(normalizedHtml));
         String normalizedContent = contentFromBlocks(importedBlocks);
@@ -1059,6 +1296,9 @@ public class KnowledgeContentService {
         if (remaining.size() == contentRepository.listBlocks(currentUser.workspaceId(), itemId).size()) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Document block not found");
         }
+        contentRepository.updateCommentThreadsAnchorStateByBlock(
+            currentUser.workspaceId(), itemId, blockId, "detached", "block_deleted"
+        );
         return saveBlocks(currentUser, itemId, baseVersionNo, null, remaining);
     }
 
@@ -1248,6 +1488,41 @@ public class KnowledgeContentService {
     }
 
     @Transactional
+    public KnowledgeContentShareLink revokeShareLink(CurrentUser currentUser, UUID itemId) {
+        requireManage(currentUser, itemId);
+        KnowledgeContentShareLink existing = contentRepository.listShareLinks(currentUser.workspaceId(), itemId).stream()
+            .findFirst()
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Document share link not found"));
+        KnowledgeContentShareLink revoked = contentRepository.upsertShareLink(
+            currentUser.workspaceId(),
+            itemId,
+            newShareToken(),
+            existing.scope(),
+            existing.permissionLevel(),
+            false,
+            existing.expiresAt(),
+            currentUser.id()
+        );
+        eventRepository.append(
+            currentUser.workspaceId(),
+            "knowledge.content.share_link.revoked",
+            "knowledge_content",
+            itemId,
+            currentUser.id(),
+            Map.of("itemId", itemId.toString(), "shareLinkId", revoked.id().toString()),
+            "knowledge.content.share_link.revoked:" + itemId + ":" + System.nanoTime()
+        );
+        auditService.log(
+            currentUser,
+            "knowledge.content.share_link.revoked",
+            "knowledge_content",
+            itemId,
+            Map.of("shareLinkId", revoked.id().toString(), "tokenRotated", "true")
+        );
+        return revoked;
+    }
+
+    @Transactional
     public KnowledgeContent updateKnowledgeBaseSettings(
         CurrentUser currentUser,
         UUID itemId,
@@ -1355,6 +1630,33 @@ public class KnowledgeContentService {
             currentUser.id(),
             Map.of("itemId", itemId.toString(), "targetType", type, "targetId", targetId.toString()),
             "knowledge.content.relation.added:" + itemId + ":" + type + ":" + targetId
+        );
+        return getContent(currentUser, itemId);
+    }
+
+    @Transactional
+    public KnowledgeContent removeRelation(CurrentUser currentUser, UUID itemId, String targetType, UUID targetId) {
+        requireEdit(currentUser, itemId);
+        String type = normalizeTargetType(targetType);
+        contentRepository.removeRelation(currentUser.workspaceId(), itemId, type, targetId);
+        if ("knowledge_content".equals(type) && !itemId.equals(targetId)) {
+            contentRepository.removeRelation(currentUser.workspaceId(), targetId, "knowledge_content", itemId);
+        }
+        eventRepository.append(
+            currentUser.workspaceId(),
+            "knowledge.content.relation.removed",
+            "knowledge_content",
+            itemId,
+            currentUser.id(),
+            Map.of("itemId", itemId.toString(), "targetType", type, "targetId", targetId.toString()),
+            "knowledge.content.relation.removed:" + itemId + ":" + type + ":" + targetId
+        );
+        auditService.log(
+            currentUser,
+            "knowledge.content.relation.removed",
+            "knowledge_content",
+            itemId,
+            Map.of("targetType", type, "targetId", targetId.toString())
         );
         return getContent(currentUser, itemId);
     }
@@ -1572,6 +1874,10 @@ public class KnowledgeContentService {
     }
 
     private void syncReverseRelation(CurrentUser currentUser, UUID itemId, String targetType, UUID targetId) {
+        if ("knowledge_content".equals(targetType) && !itemId.equals(targetId)) {
+            contentRepository.addRelation(currentUser.workspaceId(), targetId, "knowledge_content", itemId, currentUser.id());
+            return;
+        }
         if ("issue".equals(targetType)) {
             projectRepository.addRelation(currentUser.workspaceId(), targetId, "knowledge_content", itemId, currentUser.id());
             projectRepository.addActivity(currentUser.workspaceId(), targetId, currentUser.id(), "relation.added", null, "document:" + itemId);
@@ -1703,15 +2009,28 @@ public class KnowledgeContentService {
 
     public void reanchorSelectionComments(UUID workspaceId, UUID itemId, String content) {
         String normalizedContent = content == null ? "" : content;
+        Set<UUID> activeBlockIds = contentRepository.listBlocks(workspaceId, itemId).stream()
+            .map(KnowledgeContentBlock::id)
+            .collect(java.util.stream.Collectors.toSet());
         for (KnowledgeContentComment comment : contentRepository.listComments(workspaceId, itemId)) {
+            if (comment.root() && comment.blockId() != null && !activeBlockIds.contains(comment.blockId())) {
+                contentRepository.updateCommentThreadAnchorState(workspaceId, itemId, comment.threadId(), "detached", "block_deleted");
+                continue;
+            }
+            if (comment.root() && comment.blockId() != null && activeBlockIds.contains(comment.blockId()) && !"selection".equals(comment.anchorType())) {
+                contentRepository.updateCommentThreadAnchorState(workspaceId, itemId, comment.threadId(), "active", null);
+            }
             if (!"selection".equals(comment.anchorType()) || comment.resolved() || comment.anchorText() == null || comment.anchorText().isBlank()) {
                 continue;
             }
             AnchorRange nextRange = locateSelectionAnchor(normalizedContent, comment);
             if (nextRange == null) {
+                contentRepository.updateCommentThreadAnchorState(workspaceId, itemId, comment.threadId(), "detached", "selection_not_found");
                 continue;
             }
-            if (!Integer.valueOf(nextRange.start()).equals(comment.anchorStart()) || !Integer.valueOf(nextRange.end()).equals(comment.anchorEnd())) {
+            if (!Integer.valueOf(nextRange.start()).equals(comment.anchorStart())
+                || !Integer.valueOf(nextRange.end()).equals(comment.anchorEnd())
+                || !"active".equals(comment.anchorState())) {
                 contentRepository.updateCommentThreadSelectionAnchor(workspaceId, itemId, comment.threadId(), nextRange.start(), nextRange.end());
             }
         }
@@ -2240,6 +2559,38 @@ public class KnowledgeContentService {
         return normalized.length() <= 64 ? normalized : normalized.substring(0, 64);
     }
 
+    private String sanitizeTemplateContent(CurrentUser currentUser, String content) {
+        List<KnowledgeContentBlockDraft> sanitized = new ArrayList<>();
+        for (KnowledgeContentBlockDraft block : blocksFromContent(content == null ? "" : content)) {
+            if (!EMBED_BLOCK_TYPES.contains(block.blockType())) {
+                sanitized.add(block);
+                continue;
+            }
+            Map<String, Object> metadata = new HashMap<>(block.attrs() == null ? Map.of() : block.attrs());
+            parseJsonObject(block.content()).ifPresent(metadata::putAll);
+            String objectType = normalizeEmbedObjectType(
+                block.blockType(),
+                asString(metadata.getOrDefault("objectType", metadata.get("targetType")))
+            );
+            UUID objectId = parseUuid(asString(metadata.getOrDefault("objectId", metadata.get("targetId"))));
+            boolean allowed = objectId == null && objectType.isBlank();
+            if (objectId != null && !objectType.isBlank()) {
+                PlatformObjectSummary summary = objectResolverRegistryProvider.getObject().resolve(currentUser, objectType, objectId);
+                allowed = summary.accessState() == ObjectAccessState.available;
+            }
+            if (allowed) {
+                sanitized.add(block);
+            } else {
+                sanitized.add(new KnowledgeContentBlockDraft(
+                    "paragraph",
+                    "对象引用已在模板发布时移除，请在使用模板后重新选择有权访问的对象。",
+                    sanitized.size()
+                ));
+            }
+        }
+        return contentFromBlocks(sanitized);
+    }
+
     private List<String> normalizeTags(List<String> tags) {
         if (tags == null || tags.isEmpty()) {
             return List.of();
@@ -2357,7 +2708,8 @@ public class KnowledgeContentService {
             case "quote" -> "> " + safeExportText(block.content());
             case "code", "code_block" -> "```\n" + (block.content() == null ? "" : block.content()) + "\n```";
             case "table" -> exportTableMarkdown(block.content());
-            case "image", "file", "embed_object", "base_view", "issue_embed", "message_embed", "file_embed", "link_card" -> exportEmbedMarkdown(block);
+            case "image" -> "![" + escapeMarkdownLabel(block.plainText()) + "](" + safeImageSource(block.attrs().get("src")) + ")";
+            case "file", "embed_object", "base_view", "issue_embed", "message_embed", "file_embed", "link_card" -> exportEmbedMarkdown(block);
             case "divider" -> "---";
             case "legacy_html" -> "<!-- legacy_html retained; review before final rich-text removal -->\n" + (block.content() == null ? "" : block.content());
             default -> safeExportText(block.content());
@@ -2370,7 +2722,16 @@ public class KnowledgeContentService {
         if (columns instanceof List<?> columnList && !columnList.isEmpty()) {
             String header = columnList.stream().map(String::valueOf).map(this::safeExportText).reduce((left, right) -> left + " | " + right).orElse("");
             String divider = columnList.stream().map(column -> "---").reduce((left, right) -> left + " | " + right).orElse("---");
-            return "| " + header + " |\n| " + divider + " |\n<!-- table rows are preserved in block JSON when re-importing from the system export. -->";
+            StringBuilder markdown = new StringBuilder("| " + header + " |\n| " + divider + " |");
+            if (table.get("rows") instanceof List<?> rows) {
+                for (Object row : rows) {
+                    if (row instanceof List<?> cells) {
+                        markdown.append("\n| ").append(cells.stream().map(String::valueOf).map(this::safeExportText)
+                            .reduce((left, right) -> left + " | " + right).orElse("")).append(" |");
+                    }
+                }
+            }
+            return markdown.toString();
         }
         return "[table] " + (content == null ? "{}" : content);
     }
@@ -2401,12 +2762,41 @@ public class KnowledgeContentService {
             case "quote" -> "<blockquote>" + escapeHtml(block.content()) + "</blockquote>\n";
             case "code", "code_block" -> "<pre><code>" + escapeHtml(block.content()) + "</code></pre>\n";
             case "divider" -> "<hr>\n";
-            case "table" -> "<pre data-block-type=\"table\">" + escapeHtml(block.content()) + "</pre>\n";
-            case "image", "file", "embed_object", "base_view", "issue_embed", "message_embed", "file_embed", "link_card" ->
+            case "table" -> exportTableHtml(block.content());
+            case "image" -> "<img src=\"" + escapeHtml(safeImageSource(block.attrs().get("src"))) + "\" alt=\"" + escapeHtml(block.plainText()) + "\">\n";
+            case "file", "embed_object", "base_view", "issue_embed", "message_embed", "file_embed", "link_card" ->
                 "<p class=\"doc-export-embed\">" + escapeHtml(exportEmbedMarkdown(block)) + "</p>\n";
             case "legacy_html" -> "<div data-block-type=\"legacy_html\">" + (block.content() == null ? "" : block.content()) + "</div>\n";
             default -> "<p>" + escapeHtml(block.content()) + "</p>\n";
         };
+    }
+
+    private String exportTableHtml(String content) {
+        Map<String, Object> table = parseJsonObject(content).orElse(Map.of());
+        StringBuilder html = new StringBuilder("<table><thead><tr>");
+        if (table.get("columns") instanceof List<?> columns) {
+            columns.forEach(column -> html.append("<th>").append(escapeHtml(String.valueOf(column))).append("</th>"));
+        }
+        html.append("</tr></thead><tbody>");
+        if (table.get("rows") instanceof List<?> rows) {
+            for (Object row : rows) {
+                html.append("<tr>");
+                if (row instanceof List<?> cells) {
+                    cells.forEach(cell -> html.append("<td>").append(escapeHtml(String.valueOf(cell))).append("</td>"));
+                }
+                html.append("</tr>");
+            }
+        }
+        return html.append("</tbody></table>\n").toString();
+    }
+
+    private String safeImageSource(Object value) {
+        String source = value == null ? "" : String.valueOf(value).trim();
+        return source.matches("(?i)^(https?://|/api/files/|data:image/).+") ? source : "";
+    }
+
+    private String escapeMarkdownLabel(String value) {
+        return safeExportText(value).replace("[", "\\[").replace("]", "\\]");
     }
 
     private String exportHtmlFromMarkdown(String content) {
@@ -2459,31 +2849,93 @@ public class KnowledgeContentService {
     List<KnowledgeContentBlockDraft> blocksFromContent(String content) {
         String[] lines = splitLines(content);
         List<KnowledgeContentBlockDraft> blocks = new ArrayList<>();
-        for (String line : lines) {
+        for (int index = 0; index < lines.length; index++) {
+            String line = lines[index];
             String trimmed = line.trim();
             if (trimmed.isBlank()) {
                 continue;
             }
+            if (trimmed.startsWith("```")) {
+                String language = trimmed.substring(3).trim();
+                StringBuilder code = new StringBuilder();
+                while (++index < lines.length && !lines[index].trim().startsWith("```")) {
+                    if (code.length() > 0) {
+                        code.append('\n');
+                    }
+                    code.append(lines[index]);
+                }
+                blocks.add(importedBlockDraft("code_block", code.toString(), blocks.size(), Map.of("language", language)));
+                continue;
+            }
+            Matcher image = Pattern.compile("^!\\[([^]]*)]\\(([^)\\s]+)(?:\\s+\"[^\"]*\")?\\)$").matcher(trimmed);
+            if (image.matches()) {
+                blocks.add(importedBlockDraft("image", image.group(1), blocks.size(), Map.of("src", image.group(2), "alt", image.group(1))));
+                continue;
+            }
+            if (isMarkdownTableHeader(lines, index)) {
+                List<String> columns = markdownTableCells(lines[index]);
+                List<List<String>> rows = new ArrayList<>();
+                index += 2;
+                while (index < lines.length && lines[index].contains("|") && !lines[index].trim().isBlank()) {
+                    rows.add(markdownTableCells(lines[index]));
+                    index++;
+                }
+                index--;
+                blocks.add(importedBlockDraft(
+                    "table",
+                    writeJson(Map.of("columns", columns, "rows", rows)),
+                    blocks.size(),
+                    Map.of()
+                ));
+                continue;
+            }
             String blockType = inferBlockType(trimmed);
             String blockContent = normalizeBlockContent(trimmed);
-            blocks.add(new KnowledgeContentBlockDraft(
-                null,
-                null,
-                blockType,
-                blockContent,
-                blocks.size(),
-                2,
-                defaultAttrs(blockType, blockContent),
-                defaultRichContent(blockType, blockContent),
-                plainTextForBlock(blockType, blockContent),
-                null,
-                false
-            ));
+            Map<String, Object> attrs = "heading".equals(blockType)
+                ? Map.of("level", Math.min(6, trimmed.indexOf(' ') < 0 ? 1 : trimmed.indexOf(' ')))
+                : "task".equals(blockType)
+                    ? Map.of("checked", trimmed.toLowerCase(Locale.ROOT).startsWith("- [x]"))
+                    : Map.of();
+            blocks.add(importedBlockDraft(blockType, blockContent, blocks.size(), attrs));
         }
         if (blocks.isEmpty()) {
             blocks.add(defaultBlockDraft("paragraph", "", 0));
         }
         return blocks;
+    }
+
+    private KnowledgeContentBlockDraft importedBlockDraft(
+        String blockType,
+        String content,
+        int sortOrder,
+        Map<String, Object> importedAttrs
+    ) {
+        Map<String, Object> attrs = new HashMap<>(defaultAttrs(blockType, content));
+        attrs.putAll(importedAttrs);
+        return new KnowledgeContentBlockDraft(
+            null,
+            null,
+            blockType,
+            content,
+            sortOrder,
+            2,
+            attrs,
+            defaultRichContent(blockType, content),
+            plainTextForBlock(blockType, content),
+            null,
+            false
+        );
+    }
+
+    private boolean isMarkdownTableHeader(String[] lines, int index) {
+        return index + 1 < lines.length
+            && lines[index].contains("|")
+            && lines[index + 1].trim().matches("^\\|?\\s*:?-{3,}:?\\s*(\\|\\s*:?-{3,}:?\\s*)+\\|?$");
+    }
+
+    private List<String> markdownTableCells(String line) {
+        String normalized = line.trim().replaceFirst("^\\|", "").replaceFirst("\\|$", "");
+        return java.util.Arrays.stream(normalized.split("\\|", -1)).map(String::trim).toList();
     }
 
     List<KnowledgeContentBlockDraft> blocksFromHtml(String html) {
@@ -2495,13 +2947,26 @@ public class KnowledgeContentService {
         if (lower.contains("<script") || lower.contains("<style")) {
             return List.of(defaultBlockDraft("legacy_html", "<!-- unsafe HTML omitted during import -->", 0));
         }
-        if (Pattern.compile("(?is)<(table|iframe|video|svg|canvas|form)\\b").matcher(value).find()) {
+        if (Pattern.compile("(?is)<(iframe|video|svg|canvas|form)\\b").matcher(value).find()) {
             return List.of(defaultBlockDraft("legacy_html", value, 0));
         }
         List<KnowledgeContentBlockDraft> blocks = new ArrayList<>();
-        Matcher matcher = Pattern.compile("(?is)<(h[1-6]|p|li|blockquote|pre)[^>]*>(.*?)</\\1>|<hr\\b[^>]*>").matcher(value);
+        Matcher imageMatcher = Pattern.compile("(?is)<img\\b([^>]*)>").matcher(value);
+        while (imageMatcher.find()) {
+            String attrs = imageMatcher.group(1);
+            String src = htmlAttribute(attrs, "src");
+            String alt = htmlAttribute(attrs, "alt");
+            if (!src.isBlank()) {
+                blocks.add(importedBlockDraft("image", alt, blocks.size(), Map.of("src", src, "alt", alt)));
+            }
+        }
+        Matcher matcher = Pattern.compile("(?is)<(h[1-6]|p|li|blockquote|pre|table)[^>]*>(.*?)</\\1>|<hr\\b[^>]*>").matcher(value);
         while (matcher.find()) {
             String tag = matcher.group(1) == null ? "hr" : matcher.group(1).toLowerCase(Locale.ROOT);
+            if ("table".equals(tag)) {
+                blocks.add(importedBlockDraft("table", writeJson(parseHtmlTable(matcher.group(2))), blocks.size(), Map.of()));
+                continue;
+            }
             String body = matcher.group(2) == null ? "" : htmlToPlainText(matcher.group(2));
             String blockType = switch (tag) {
                 case "h1", "h2", "h3", "h4", "h5", "h6" -> "heading";
@@ -2518,6 +2983,28 @@ public class KnowledgeContentService {
             return plainText.isBlank() ? List.of(defaultBlockDraft("legacy_html", value, 0)) : blocksFromContent(plainText);
         }
         return blocks;
+    }
+
+    private String htmlAttribute(String attrs, String name) {
+        Matcher matcher = Pattern.compile("(?is)\\b" + Pattern.quote(name) + "\\s*=\\s*(['\"])(.*?)\\1").matcher(attrs == null ? "" : attrs);
+        return matcher.find() ? htmlToPlainText(matcher.group(2)) : "";
+    }
+
+    private Map<String, Object> parseHtmlTable(String html) {
+        List<List<String>> rows = new ArrayList<>();
+        Matcher rowMatcher = Pattern.compile("(?is)<tr[^>]*>(.*?)</tr>").matcher(html == null ? "" : html);
+        while (rowMatcher.find()) {
+            List<String> cells = new ArrayList<>();
+            Matcher cellMatcher = Pattern.compile("(?is)<t[hd][^>]*>(.*?)</t[hd]>").matcher(rowMatcher.group(1));
+            while (cellMatcher.find()) {
+                cells.add(htmlToPlainText(cellMatcher.group(1)));
+            }
+            if (!cells.isEmpty()) {
+                rows.add(cells);
+            }
+        }
+        List<String> columns = rows.isEmpty() ? List.of("列 1") : rows.remove(0);
+        return Map.of("columns", columns, "rows", rows);
     }
 
     private KnowledgeContentBlockDraft defaultBlockDraft(String blockType, String content, int sortOrder) {
@@ -2551,7 +3038,7 @@ public class KnowledgeContentService {
 
     private List<KnowledgeContentBlockDraft> normalizeBlocks(List<KnowledgeContentBlockDraft> blocks) {
         if (blocks == null || blocks.isEmpty()) {
-            return List.of(new KnowledgeContentBlockDraft("paragraph", "", 0));
+            return List.of(defaultBlockDraft("paragraph", "", 0));
         }
         List<KnowledgeContentBlockDraft> normalized = new ArrayList<>();
         for (KnowledgeContentBlockDraft block : blocks) {
@@ -2644,6 +3131,9 @@ public class KnowledgeContentService {
         if (line.startsWith("- ")) {
             return "list";
         }
+        if (line.matches("^\\d+\\.\\s+.*$")) {
+            return "ordered_list";
+        }
         if (line.startsWith(">")) {
             return "quote";
         }
@@ -2663,6 +3153,7 @@ public class KnowledgeContentService {
             .replaceFirst("^#{1,6}\\s*", "")
             .replaceFirst("^- \\[[ xX]\\]\\s*", "")
             .replaceFirst("^-\\s+", "")
+            .replaceFirst("^\\d+\\.\\s+", "")
             .replaceFirst("^>\\s*", "");
     }
 

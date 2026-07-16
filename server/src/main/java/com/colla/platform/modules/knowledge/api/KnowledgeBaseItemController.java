@@ -21,6 +21,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -62,6 +63,23 @@ public class KnowledgeBaseItemController {
             request.targetRoute(), request.displayMode(), request.targetTitleStrategy(), request.entryAlias()));
     }
 
+    @PostMapping("/items/base-entry")
+    public KnowledgeContentDetailView createBaseEntry(@PathVariable UUID spaceId,
+                                                       @Valid @RequestBody CreateBaseEntryRequest request,
+                                                       Authentication authentication) {
+        return KnowledgeApiDtos.detail(itemService.createBaseEntry(currentUser(authentication), spaceId, request.parentId(),
+            request.existingBaseId(), request.newBaseName(), request.newBaseDescription(), request.displayMode(),
+            request.targetTitleStrategy(), request.entryAlias()));
+    }
+
+    @PatchMapping("/items/{itemId}/object-entry")
+    public KnowledgeContentDetailView updateObjectEntry(@PathVariable UUID spaceId, @PathVariable UUID itemId,
+                                                         @Valid @RequestBody UpdateObjectEntryRequest request,
+                                                         Authentication authentication) {
+        return KnowledgeApiDtos.detail(itemService.updateObjectEntry(currentUser(authentication), spaceId, itemId,
+            request.displayMode(), request.targetTitleStrategy(), request.entryAlias()));
+    }
+
     @PostMapping("/items/from-template")
     public KnowledgeContentDetailView createItemFromTemplate(@PathVariable UUID spaceId,
                                                               @Valid @RequestBody CreateKnowledgeBaseItemFromTemplateRequest request,
@@ -76,6 +94,14 @@ public class KnowledgeBaseItemController {
                                                 Authentication authentication) {
         return KnowledgeApiDtos.detail(itemService.moveItem(currentUser(authentication), spaceId, itemId,
             request.parentId(), request.sortOrder()));
+    }
+
+    @PostMapping("/items/{itemId}/copy")
+    public KnowledgeContentDetailView copyItem(@PathVariable UUID spaceId, @PathVariable UUID itemId,
+                                                @RequestBody CopyKnowledgeBaseItemRequest request,
+                                                Authentication authentication) {
+        return KnowledgeApiDtos.detail(itemService.copyItem(currentUser(authentication), spaceId, itemId,
+            request.parentId(), request.title()));
     }
 
     @PostMapping("/items/{itemId}/archive")
@@ -101,6 +127,14 @@ public class KnowledgeBaseItemController {
                                                         Authentication authentication) {
         return KnowledgeApiDtos.template(contentService.createTemplate(currentUser(authentication), spaceId,
             request.title(), request.description(), request.category(), request.content()));
+    }
+
+    @PostMapping("/templates/{templateId}/upgrade")
+    public KnowledgeContentTemplateView upgradeTemplate(@PathVariable UUID spaceId,
+                                                         @PathVariable UUID templateId,
+                                                         @Valid @RequestBody UpgradeKnowledgeBaseTemplateRequest request,
+                                                         Authentication authentication) {
+        return KnowledgeApiDtos.template(contentService.upgradeTemplate(currentUser(authentication), templateId, request.content()));
     }
 
     @PostMapping("/import/markdown-batch")
@@ -129,10 +163,21 @@ public class KnowledgeBaseItemController {
     public record CreateKnowledgeBaseItemFromTemplateRequest(@NotNull UUID templateId, UUID parentId,
         @Size(max = 255) String title) { }
 
+    public record CreateBaseEntryRequest(UUID parentId, UUID existingBaseId, @Size(max = 255) String newBaseName,
+        @Size(max = 1024) String newBaseDescription, @Size(max = 32) String displayMode,
+        @Size(max = 32) String targetTitleStrategy, @Size(max = 255) String entryAlias) { }
+
+    public record UpdateObjectEntryRequest(@Size(max = 32) String displayMode,
+        @Size(max = 32) String targetTitleStrategy, @Size(max = 255) String entryAlias) { }
+
     public record MoveKnowledgeBaseItemRequest(UUID parentId, Integer sortOrder) { }
+
+    public record CopyKnowledgeBaseItemRequest(UUID parentId, @Size(max = 255) String title) { }
 
     public record CreateKnowledgeBaseTemplateRequest(@NotBlank @Size(max = 128) String title,
         @Size(max = 512) String description, @Size(max = 64) String category, String content) { }
+
+    public record UpgradeKnowledgeBaseTemplateRequest(@NotNull String content) { }
 
     public record ImportKnowledgeBaseMarkdownBatchRequest(UUID parentId,
         @NotNull List<KnowledgeBaseMarkdownImportItem> items) { }

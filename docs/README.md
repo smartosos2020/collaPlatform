@@ -1,12 +1,12 @@
 ---
 title: 文档入口
 status: active
-last_code_check: 2026-07-12
+last_code_check: 2026-07-16
 ---
 
 # 文档入口
 
-本文档是 Colla Platform 当前文档体系的入口。2026-07-13 已按当前代码、路由、V049 schema、脚本和测试重新核对；默认上下文只读取当前事实，历史过程按需查询。
+本文档是 Colla Platform 当前文档体系的入口。2026-07-16 已按当前代码、路由、V052 schema、脚本和测试重新核对；默认上下文只读取当前事实，历史过程按需查询。
 
 ## 默认读取
 
@@ -66,7 +66,8 @@ M31/M40 仿真和试运行材料已经归档，不再作为默认数据或发布
 | `05-runbooks/local-dev.md` | 本地开发和启动 |
 | `05-runbooks/quality-gate.md` | 本地质量门禁 |
 | `05-runbooks/browser-smoke.md` | 浏览器冒烟验证 |
-| `05-runbooks/admin-operations.md` | 单节点管理员运维手册 |
+| `05-runbooks/admin-operations.md` | 管理员部署、备份、恢复和回退手册 |
+| `05-runbooks/knowledge-collaboration.md` | 双协作节点、重连、故障恢复和指标手册 |
 | `05-runbooks/local-artifacts.md` | 本地生成物和忽略规则 |
 
 ## 历史文档读取规则

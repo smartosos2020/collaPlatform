@@ -28,6 +28,7 @@ function blockToTiptapNode(block: KnowledgeContentEditorBlock): JSONContent | nu
   if (type === 'legacy_html') return withBlockIdentity(paragraphNode(text || stripHtml(block.content)), block)
   if (type === 'heading') return withBlockIdentity({ type: 'heading', attrs: { level: Number(block.attrs?.level ?? 1) }, content: inlineText(text) }, block)
   if (type === 'quote') return withBlockIdentity({ type: 'blockquote', content: [paragraphNode(text)] }, block)
+  if (type === 'callout') return withBlockIdentity({ type: 'callout', attrs: { tone: String(block.attrs?.tone ?? 'info') }, content: [paragraphNode(text)] }, block)
   if (type === 'code_block') return withBlockIdentity({ type: 'codeBlock', attrs: { language: block.attrs?.language ?? null }, content: text ? [{ type: 'text', text }] : undefined }, block)
   if (type === 'bullet_list') return withBlockIdentity({ type: 'bulletList', content: [{ type: 'listItem', content: [paragraphNode(text)] }] }, block)
   if (type === 'ordered_list') return withBlockIdentity({ type: 'orderedList', attrs: { start: 1 }, content: [{ type: 'listItem', content: [paragraphNode(text)] }] }, block)
@@ -47,6 +48,9 @@ function flattenTiptapNodes(nodes: JSONContent[]): KnowledgeContentBlockDraft[] 
         break
       case 'blockquote':
         result.push(blockDraftFromNode(node, 'quote', textFromNode(node)))
+        break
+      case 'callout':
+        result.push(blockDraftFromNode(node, 'callout', textFromNode(node), { tone: String(node.attrs?.tone ?? 'info') }))
         break
       case 'codeBlock':
         result.push(blockDraftFromNode(node, 'code_block', textFromNode(node), node.attrs ?? {}))
@@ -74,6 +78,9 @@ function flattenTiptapNodes(nodes: JSONContent[]): KnowledgeContentBlockDraft[] 
         break
       case 'objectCard':
         result.push(withNodeIdentity(objectCardNodeToBlockDraft(node), node))
+        break
+      case 'embed':
+        result.push(withNodeIdentity(legacyEmbedNodeToBlockDraft(node), node))
         break
       case 'fileCard':
         result.push(withNodeIdentity(fileCardNodeToBlockDraft(node), node))
@@ -198,6 +205,20 @@ function objectCardNodeToBlockDraft(node: JSONContent): KnowledgeContentBlockDra
   }
 }
 
+function legacyEmbedNodeToBlockDraft(node: JSONContent): KnowledgeContentBlockDraft {
+  const object = node.attrs?.object && typeof node.attrs.object === 'object'
+    ? node.attrs.object as Record<string, unknown>
+    : {}
+  const objectType = String(object.objectType ?? object.targetType ?? 'knowledge_content')
+  const objectId = String(object.objectId ?? object.targetId ?? '')
+  return {
+    blockType: blockTypeForObjectType(objectType),
+    content: JSON.stringify({ ...object, objectType, objectId }),
+    attrs: { objectType, objectId },
+    plainText: String(object.title ?? objectId ?? objectType),
+  }
+}
+
 function fileCardNodeToBlockDraft(node: JSONContent): KnowledgeContentBlockDraft {
   const fileId = String(node.attrs?.fileId ?? '')
   const content = JSON.stringify({
@@ -207,11 +228,12 @@ function fileCardNodeToBlockDraft(node: JSONContent): KnowledgeContentBlockDraft
     fileName: String(node.attrs?.fileName ?? ''),
     contentType: String(node.attrs?.contentType ?? ''),
     kind: String(node.attrs?.kind ?? 'file'),
+    caption: String(node.attrs?.caption ?? ''),
   })
   return {
     blockType: 'file_embed',
     content,
-    attrs: { objectType: 'file', objectId: fileId, fileId },
+    attrs: { objectType: 'file', objectId: fileId, fileId, caption: String(node.attrs?.caption ?? '') },
     plainText: String(node.attrs?.fileName || fileId || '文件'),
   }
 }

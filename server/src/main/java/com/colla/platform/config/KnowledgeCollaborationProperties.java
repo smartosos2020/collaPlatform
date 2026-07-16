@@ -11,6 +11,8 @@ public class KnowledgeCollaborationProperties {
     private String internalSecret = "colla-local-collaboration-secret";
     private Duration ticketTtl = Duration.ofMinutes(5);
     private int maxUpdateBytes = 1024 * 1024;
+    private int retainedUpdates = 100;
+    private Duration expiredTicketRetention = Duration.ofHours(1);
 
     public String getPublicUrl() { return publicUrl; }
     public void setPublicUrl(String publicUrl) { this.publicUrl = publicUrl; }
@@ -20,4 +22,8 @@ public class KnowledgeCollaborationProperties {
     public void setTicketTtl(Duration ticketTtl) { this.ticketTtl = ticketTtl; }
     public int getMaxUpdateBytes() { return maxUpdateBytes; }
     public void setMaxUpdateBytes(int maxUpdateBytes) { this.maxUpdateBytes = maxUpdateBytes; }
+    public int getRetainedUpdates() { return retainedUpdates; }
+    public void setRetainedUpdates(int retainedUpdates) { this.retainedUpdates = retainedUpdates; }
+    public Duration getExpiredTicketRetention() { return expiredTicketRetention; }
+    public void setExpiredTicketRetention(Duration expiredTicketRetention) { this.expiredTicketRetention = expiredTicketRetention; }
 }

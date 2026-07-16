@@ -27,32 +27,25 @@ test('@smoke KB-PRODUCT-M3 canonical editor keeps focus and saves blocks', async
 
     const editor = page.locator('.doc-prosemirror[role="textbox"]')
     await expect(editor).toBeVisible()
-    const blockRequests: string[] = []
     const legacyRootRequests: string[] = []
     page.on('request', (requestEvent) => {
       if (requestEvent.method() !== 'PATCH' || !requestEvent.url().includes(`/knowledge-bases/${space.id}/items/${first.item.id}`)) {
         return
       }
-      if (requestEvent.url().endsWith('/blocks')) {
-        blockRequests.push(requestEvent.url())
-      } else {
+      if (!requestEvent.url().endsWith('/blocks')) {
         legacyRootRequests.push(requestEvent.url())
       }
     })
 
     await editor.click()
-    const blocksResponse = page.waitForResponse((response) =>
-      response.request().method() === 'PATCH'
-      && response.url().endsWith('/blocks')
-      && response.ok(),
-      { timeout: 15_000 },
-    )
     await editor.pressSequentially(' M3 continuous input')
     await expect(editor).toContainText('M3 continuous input')
-    await blocksResponse
-    expect(blockRequests.length).toBeGreaterThan(0)
     expect(legacyRootRequests).toEqual([])
 
+    await expect.poll(async () => {
+      const current = await getKnowledgeContent(request, session, space.id, first.item.id)
+      return current.blocks.some((block) => block.content.includes('M3 continuous input'))
+    }, { timeout: 15_000 }).toBeTruthy()
     const saved = await getKnowledgeContent(request, session, space.id, first.item.id)
     expect(saved.blocks.some((block) => block.content.includes('M3 continuous input'))).toBeTruthy()
     expect(saved.blocks.every((block) => Boolean(block.id))).toBeTruthy()

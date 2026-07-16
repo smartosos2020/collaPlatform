@@ -1,6 +1,6 @@
 import { apiGet, apiPost } from '../../../shared/api/httpClient'
 
-export type ObjectAccessState = 'available' | 'forbidden' | 'deleted' | 'not_found' | 'invalid'
+export type ObjectAccessState = 'available' | 'forbidden' | 'disabled' | 'deleted' | 'not_found' | 'invalid'
 
 export type PlatformObjectSummary = {
   objectType: string
@@ -19,6 +19,29 @@ export type PlatformObjectNavigation = {
   webPath?: string | null
   deepLink?: string | null
   mobileFallbackPath?: string | null
+}
+
+export type PlatformObjectChoicePage = {
+  items: PlatformObjectSummary[]
+  total: number
+  limit: number
+  offset: number
+}
+
+export function listPlatformObjectChoices(options: {
+  types: string[]
+  query?: string
+  source?: 'all' | 'recent'
+  limit?: number
+  offset?: number
+}) {
+  const params = new URLSearchParams()
+  options.types.forEach((type) => params.append('types', type))
+  if (options.query) params.set('query', options.query)
+  params.set('source', options.source ?? 'all')
+  params.set('limit', String(options.limit ?? 8))
+  params.set('offset', String(options.offset ?? 0))
+  return apiGet<PlatformObjectChoicePage>(`/platform/object-choices?${params.toString()}`)
 }
 
 export type PermissionExplanation = {

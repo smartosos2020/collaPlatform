@@ -1,7 +1,7 @@
 ---
 title: 当前技术架构
 status: active
-last_code_check: 2026-07-12
+last_code_check: 2026-07-16
 ---
 
 # 当前技术架构
@@ -14,9 +14,9 @@ Colla Platform 当前是模块化单体：
 
 - 后端：单个 Spring Boot 应用，按业务模块分包。
 - 前端：单个 React SPA，用户工作台和管理后台使用独立 Shell、导航和路由边界。
-- 数据库：单个 PostgreSQL schema，通过 Flyway V001-V049 演进。
+- 数据库：单个 PostgreSQL schema，通过 Flyway V001-V052 演进。
 - 基础设施：Redis、MinIO、WebSocket、平台对象、权限、事件、审计和搜索由模块共享。
-- 交付：本地 Docker 依赖；生产基线是单节点 Docker Compose + Nginx。
+- 交付：本地 Docker 依赖；生产基线是单后端、双协作节点的 Docker Compose + Nginx。
 
 当前不拆微服务、不拆前后端仓库，也不把管理后台复制成第二套后端服务。
 
@@ -100,11 +100,13 @@ Colla Platform 当前是模块化单体：
 - active blocks、版本 `block_snapshot`、模板 blocks 和协同 payload blocks 是持久化正文来源。
 - 平台对象类型只使用 `knowledge_content`。
 - 用户 API 和路由必须同时携带 `spaceId + itemId` 并校验归属。
+- `/knowledge-bases/{spaceId}` 是入口解析路由，服务端返回的有效 `homeItemId` 决定规范 `/knowledge-bases/{spaceId}/items/{itemId}`；首页缺失时回退到根 item，正文、目录、对象入口和外链共用该 item 上下文。
+- 用户默认内容路径不得渲染治理仪表盘；空间管理保留为显式 `view=management` 辅助路径，权限和元数据面板在正文中默认折叠且按权限出现。
 - `/api/docs`、`Document*` 产品类型、`documents/document_*` 活动表和旧兼容 resolver 已删除。
 
 ## 数据库迁移
 
-当前 Flyway 版本为 V049。历史迁移文件不可修改。
+当前 Flyway 版本为 V053。历史迁移文件不可修改。
 
 知识库最后四个迁移：
 
@@ -116,6 +118,10 @@ Colla Platform 当前是模块化单体：
 | V047 | 删除旧权限和兼容结构，并阻止活动表重新写入旧产品类型 |
 | V048 | 注册项目平台对象类型及规范路由元数据 |
 | V049 | 增加用户通知偏好及用户维度索引 |
+| V050 | 建立知识内容 canonical 文档和迁移批次合同 |
+| V051 | 为版本、模板和协同状态补齐 canonical snapshot/schema 字段 |
+| V052 | 建立 Yjs snapshot、update log 和短期协同 ticket 合同 |
+| V053 | 回填可选择的平台对象并建立对象引用查询索引 |
 
 数据库规则：
 
@@ -170,8 +176,10 @@ Colla Platform 当前是模块化单体：
 - WebSocket 统一入口为 `/ws/events`。
 - 事件由 `DomainEventWorker` 从持久化事件表消费并推送。
 - IM、通知、项目和知识内容使用该通道更新客户端状态。
-- 知识内容已有单节点 snapshot/presence/自动保存能力。
-- 当前没有多节点 Redis pub/sub 协同广播，也没有 Yjs CRDT update 合并。
+- 知识内容使用 Hocuspocus/Yjs 协议统一标题、正文块、presence 和远端选择区。
+- 两个协作节点通过 Redis 广播房间更新；每个节点使用唯一 node ID，Nginx 以 least-connections 分配连接。
+- PostgreSQL 的 Yjs snapshot 和去重 update log 是恢复事实来源；Redis 只负责瞬时广播、awareness 和协调。
+- 浏览器短暂离线可在有限更新数和字节预算内继续编辑，恢复时交换缺失状态；超限前可导出 `.yjs` 恢复副本。
 
 ## 文件与对象存储
 
@@ -183,13 +191,13 @@ Colla Platform 当前是模块化单体：
 
 生产基线位于 `deploy/`：
 
-- `docker-compose.prod.yml`：PostgreSQL、Redis、MinIO、后端、Web 和 Nginx。
-- `nginx/colla.conf`：Web、API、WebSocket 和健康检查代理。
+- `docker-compose.prod.yml`：PostgreSQL、Redis、MinIO、后端、两个 collaboration sidecar、Web 和 Nginx。
+- `nginx/colla.conf`：Web、API、事件 WebSocket、双节点知识协同和健康检查代理。
 - `deploy/scripts/backup.ps1`、`restore.ps1`、`restore-drill.ps1`：备份、恢复和恢复演练。
 - `deploy/scripts/health-check.ps1`：健康与可选 Prometheus 检查。
 - `deploy/scripts/release-check.ps1`、`rollback.ps1`：发布检查和显式回滚。
 
-当前是单节点交付，不承诺高可用、自动扩缩容或 Kubernetes。
+当前只在知识协同进程层提供双节点重连恢复。Spring 后端、PostgreSQL、Redis 和 MinIO 仍是单实例，因此不承诺整个平台高可用、自动扩缩容或 Kubernetes。
 
 ## 测试与质量门禁
 
@@ -203,12 +211,12 @@ Colla Platform 当前是模块化单体：
 - 安全扫描、Flyway 顺序、生成物、文档结构和工作循环契约。
 - 知识命名守卫。
 
-最近一次路线级全量验证为 KB-NAME-M11：后端 60/60，通过 V001-V047 空库迁移、后端 package、前端 build、安全审计、命名和文档门禁；PILOT-V2 后续目标验证已应用 V048-V049，新的 V001-V049 路线级全量验证按路线计划在 M11 执行。
+最近一次路线级全量验证为 KB-NAME-M11：后端 60/60，通过当时的空库迁移、后端 package、前端 build、安全审计、命名和文档门禁；后续已应用 V048-V052，新的 V001-V052 路线级全量验证按 KB-PRODUCT-M12 计划执行。
 
 ## 当前架构 Gap
 
 - 用户工作台和管理后台仍共享一个 SPA 与后端进程，边界依赖路由、facade、权限和 DTO 纪律维持。
-- 知识内容多人协同仍是单节点快照协议，未实现 CRDT 和多节点广播。
+- 双协作节点已经消除单个 Hocuspocus 进程的房间内存依赖，但共享 Redis、Spring 后端和 PostgreSQL 仍是单点故障域。
 - Base 尚缺公式、自动化、字段级和记录级权限策略。
 - 通知矩阵已覆盖 Base 授权、审批细分动作和直接资源授权变化；M5-T09/T10 仍需完成集成与端到端验收。
 - 平台对象 file resolver、对象关系全局图谱仍不完整。

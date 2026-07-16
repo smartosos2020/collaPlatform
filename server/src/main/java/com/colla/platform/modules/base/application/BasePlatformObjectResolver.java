@@ -29,6 +29,9 @@ public class BasePlatformObjectResolver implements PlatformObjectResolver {
     public Optional<PlatformObjectSummary> resolve(CurrentUser currentUser, UUID objectId) {
         try {
             BaseSummary base = baseService.requireView(currentUser, objectId);
+            if (!"active".equals(base.status())) {
+                return Optional.of(PlatformObjectSummary.unavailable(objectType(), objectId, ObjectAccessState.disabled));
+            }
             return Optional.of(new PlatformObjectSummary(
                 objectType(),
                 objectId,

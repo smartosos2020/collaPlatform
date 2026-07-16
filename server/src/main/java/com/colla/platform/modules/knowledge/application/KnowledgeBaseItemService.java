@@ -2,6 +2,7 @@ package com.colla.platform.modules.knowledge.application;
 
 import com.colla.platform.modules.knowledge.domain.KnowledgeBaseItemModels.KnowledgeBaseItem;
 import com.colla.platform.modules.knowledge.domain.KnowledgeBaseItemModels.KnowledgeBaseItemTreeNode;
+import com.colla.platform.modules.knowledge.domain.KnowledgeBaseItemModels.KnowledgeObjectReference;
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContent;
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContentTemplate;
 import com.colla.platform.shared.auth.CurrentUser;
@@ -38,8 +39,23 @@ public class KnowledgeBaseItemService {
         return spaceService.createItemFromTemplate(user, spaceId, templateId, parentId, title);
     }
 
+    public KnowledgeContent createBaseEntry(CurrentUser user, UUID spaceId, UUID parentId, UUID existingBaseId,
+        String newBaseName, String newBaseDescription, String displayMode, String targetTitleStrategy, String entryAlias) {
+        return spaceService.createBaseEntry(user, spaceId, parentId, existingBaseId, newBaseName, newBaseDescription,
+            displayMode, targetTitleStrategy, entryAlias);
+    }
+
+    public KnowledgeContent updateObjectEntry(CurrentUser user, UUID spaceId, UUID itemId, String displayMode,
+        String targetTitleStrategy, String entryAlias) {
+        return spaceService.updateObjectEntry(user, spaceId, itemId, displayMode, targetTitleStrategy, entryAlias);
+    }
+
     public KnowledgeContent moveItem(CurrentUser user, UUID spaceId, UUID itemId, UUID parentId, Integer sortOrder) {
         return spaceService.moveItem(user, spaceId, itemId, parentId, sortOrder);
+    }
+
+    public KnowledgeContent copyItem(CurrentUser user, UUID spaceId, UUID itemId, UUID parentId, String title) {
+        return spaceService.copyItem(user, spaceId, itemId, parentId, title);
     }
 
     public KnowledgeContent archiveItem(CurrentUser user, UUID spaceId, UUID itemId) {
@@ -52,5 +68,9 @@ public class KnowledgeBaseItemService {
 
     public List<KnowledgeContentTemplate> listTemplates(CurrentUser user, UUID spaceId) {
         return spaceService.listTemplates(user, spaceId);
+    }
+
+    public List<KnowledgeObjectReference> listObjectReferences(CurrentUser user, String targetObjectType, UUID targetObjectId) {
+        return spaceService.listObjectReferences(user, targetObjectType, targetObjectId);
     }
 }

@@ -47,7 +47,13 @@ export function getFileDownloadUrl(fileId: string) {
   return apiGet<DownloadUrlResponse>(`/files/${fileId}/download-url`)
 }
 
-export async function uploadFileForTarget(file: File, targetType: string, targetId: string) {
+export async function uploadFileForTarget(
+  file: File,
+  targetType: string,
+  targetId: string,
+  onProgress?: (percent: number) => void,
+) {
+  onProgress?.(0)
   const upload = await createUploadUrl({
     fileName: file.name,
     contentType: file.type || 'application/octet-stream',
@@ -55,10 +61,37 @@ export async function uploadFileForTarget(file: File, targetType: string, target
     targetType,
     targetId,
   })
-  await fetch(upload.uploadUrl, {
-    method: 'PUT',
-    headers: upload.headers,
-    body: file,
+  await uploadToSignedUrl(upload.uploadUrl, upload.headers, file, onProgress)
+  onProgress?.(95)
+  const metadata = await completeUpload({ fileId: upload.uploadId, targetType, targetId })
+  onProgress?.(100)
+  return metadata
+}
+
+function uploadToSignedUrl(
+  url: string,
+  headers: Record<string, string>,
+  file: File,
+  onProgress?: (percent: number) => void,
+) {
+  return new Promise<void>((resolve, reject) => {
+    const request = new XMLHttpRequest()
+    request.open('PUT', url)
+    Object.entries(headers).forEach(([name, value]) => request.setRequestHeader(name, value))
+    request.upload.addEventListener('progress', (event) => {
+      if (event.lengthComputable) {
+        onProgress?.(Math.min(90, Math.round((event.loaded / event.total) * 90)))
+      }
+    })
+    request.addEventListener('load', () => {
+      if (request.status >= 200 && request.status < 300) {
+        resolve()
+      } else {
+        reject(new Error(`File upload failed with status ${request.status}`))
+      }
+    })
+    request.addEventListener('error', () => reject(new Error('File upload failed because the network is unavailable')))
+    request.addEventListener('abort', () => reject(new Error('File upload was cancelled')))
+    request.send(file)
   })
-  return completeUpload({ fileId: upload.uploadId, targetType, targetId })
 }

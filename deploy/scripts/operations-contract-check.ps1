@@ -114,8 +114,9 @@ try {
         "-File", (Join-Path $PSScriptRoot "rollback.ps1"),
         "-ServerImage", "colla/server:1.0.0",
         "-WebImage", "colla/web:1.0.0",
+        "-CollaborationImage", "colla/collaboration:1.0.0",
         "-ExpectedProjectName", "contract-target",
-        "-ConfirmationText", "ROLLBACK:contract-target:colla/server:1.0.0:colla/web:1.0.0"
+        "-ConfirmationText", "ROLLBACK:contract-target:colla/server:1.0.0:colla/web:1.0.0:colla/collaboration:1.0.0"
     )
     Assert-ProcessFails -Description "release skips require explicit partial mode" -Pattern "makes the check partial" -Arguments @(
         "-File", (Join-Path $PSScriptRoot "release-check.ps1"),

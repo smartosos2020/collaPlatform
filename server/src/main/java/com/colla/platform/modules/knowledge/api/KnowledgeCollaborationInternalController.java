@@ -50,6 +50,12 @@ public class KnowledgeCollaborationInternalController {
         if (document.isObject()) {
             ((com.fasterxml.jackson.databind.node.ObjectNode) document).put("collaborationTitle", request.title());
         }
+        if (request.nodeId() != null && !request.nodeId().isBlank()) {
+            return service.storeSnapshotFromNode(
+                request.documentName(), request.snapshot(), request.stateVector(), document,
+                request.schemaVersion(), request.clientId(), request.nodeId()
+            );
+        }
         return service.storeSnapshot(
             request.ticket(), request.documentName(), request.snapshot(), request.stateVector(), document,
             request.schemaVersion(), request.clientId()
@@ -71,6 +77,6 @@ public class KnowledgeCollaborationInternalController {
     public record UpdateRequest(String ticket, String documentName, String update, String clientId, String updateId, int schemaVersion) {}
     public record SnapshotRequest(
         String ticket, String documentName, String snapshot, String stateVector, JsonNode canonicalDocument,
-        int schemaVersion, String clientId, String title
+        int schemaVersion, String clientId, String title, String nodeId
     ) {}
 }

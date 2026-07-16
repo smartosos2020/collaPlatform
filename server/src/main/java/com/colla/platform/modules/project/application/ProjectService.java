@@ -311,6 +311,7 @@ public class ProjectService {
                 currentUser.id().equals(memberId) ? "owner" : "member"
             );
         }
+        registerProjectObject(currentUser.workspaceId(), projectId, name.trim());
         eventRepository.append(
             currentUser.workspaceId(),
             "project.created",
@@ -906,6 +907,17 @@ public class ProjectService {
             "/issues/" + issueId,
             "colla://issue/" + issueId,
             issueKey + " " + title
+        );
+    }
+
+    private void registerProjectObject(UUID workspaceId, UUID projectId, String name) {
+        objectRepository.upsertObjectLink(
+            workspaceId,
+            "project",
+            projectId,
+            "/projects/" + projectId,
+            "colla://project/" + projectId,
+            name
         );
     }
 

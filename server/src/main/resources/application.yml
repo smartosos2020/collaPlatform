@@ -76,3 +76,5 @@ colla:
     internal-secret: ${COLLA_COLLABORATION_INTERNAL_SECRET:colla-local-collaboration-secret}
     ticket-ttl: 5m
     max-update-bytes: 1048576
+    retained-updates: 100
+    expired-ticket-retention: 1h

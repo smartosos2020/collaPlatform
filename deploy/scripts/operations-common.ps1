@@ -127,6 +127,7 @@ function Assert-CollaProductionEnvironment {
         "APP_BASE_URL",
         "SERVER_IMAGE",
         "WEB_IMAGE",
+        "COLLABORATION_IMAGE",
         "SOURCE_COMMIT"
     )
     $values = Read-CollaEnvironment -EnvPath $EnvPath
@@ -141,7 +142,7 @@ function Assert-CollaProductionEnvironment {
     if ($values["JWT_ACCESS_SECRET"].Length -lt 32 -or $values["JWT_REFRESH_SECRET"].Length -lt 32) {
         throw "JWT secrets must contain at least 32 characters"
     }
-    foreach ($imageName in @("SERVER_IMAGE", "WEB_IMAGE")) {
+    foreach ($imageName in @("SERVER_IMAGE", "WEB_IMAGE", "COLLABORATION_IMAGE")) {
         $image = [string] $values[$imageName]
         if ($image -notmatch '^[^\s:]+(?:/[^\s:]+)*:[^\s:]+$' -or $image.EndsWith(":latest")) {
             throw "$imageName must use an explicit immutable release tag"

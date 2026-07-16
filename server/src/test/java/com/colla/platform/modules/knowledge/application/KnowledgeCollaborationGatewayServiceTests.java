@@ -13,6 +13,7 @@ import static org.mockito.Mockito.when;
 
 import com.colla.platform.config.KnowledgeCollaborationProperties;
 import com.colla.platform.modules.audit.application.AuditService;
+import com.colla.platform.modules.identity.domain.AuthModels.UserAccount;
 import com.colla.platform.modules.identity.infrastructure.IdentityRepository;
 import com.colla.platform.modules.knowledge.domain.KnowledgeBaseItemModels.KnowledgeBaseItem;
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeCollaborationTicketRecord;
@@ -128,6 +129,34 @@ class KnowledgeCollaborationGatewayServiceTests {
             any(), eq("client:test"), eq(user.id())
         );
         verify(auditService, never()).log(any(CurrentUser.class), any(), any(), any(), any());
+    }
+
+    @Test
+    void trustedNodeSnapshotUsesLatestPersistedActorAndCompactsTheUpdateTail() {
+        properties.setMaxUpdateBytes(1024);
+        properties.setRetainedUpdates(25);
+        ObjectNode document = objectMapper.createObjectNode();
+        document.put("type", "doc");
+        document.put("schemaVersion", 3);
+        document.put("collaborationTitle", "Node checkpoint");
+        document.putArray("content");
+        when(repository.findLatestCollaborationActor(user.workspaceId(), itemId)).thenReturn(Optional.of(user.id()));
+        when(identityRepository.findUserById(user.id())).thenReturn(Optional.of(new UserAccount(
+            user.id(), user.workspaceId(), user.username(), "hash", user.displayName(), null, "editor@colla.local", "active"
+        )));
+        when(repository.compactCollaborationUpdates(user.workspaceId(), itemId, 25)).thenReturn(17);
+
+        var ack = service.storeSnapshotFromNode(
+            documentName,
+            Base64.getEncoder().encodeToString("node-snapshot".getBytes(StandardCharsets.UTF_8)),
+            Base64.getEncoder().encodeToString("node-vector".getBytes(StandardCharsets.UTF_8)),
+            document, 3, "client:test", "collaboration-a"
+        );
+
+        assertThat(ack.compactedUpdates()).isEqualTo(17);
+        assertThat(ack.nodeId()).isEqualTo("collaboration-a");
+        verify(repository).compactCollaborationUpdates(user.workspaceId(), itemId, 25);
+        verify(repository).updateContentSnapshot(user.workspaceId(), itemId, "Node checkpoint", "", user.id());
     }
 
     @Test

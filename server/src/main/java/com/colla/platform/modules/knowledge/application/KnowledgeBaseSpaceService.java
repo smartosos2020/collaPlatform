@@ -1,10 +1,14 @@
 package com.colla.platform.modules.knowledge.application;
 
 import com.colla.platform.modules.audit.application.AuditService;
+import com.colla.platform.modules.base.application.BaseService;
+import com.colla.platform.modules.base.domain.BaseModels.BaseDetail;
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContent;
 import com.colla.platform.modules.knowledge.domain.KnowledgeBaseItemModels.KnowledgeBaseItem;
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContentTemplate;
 import com.colla.platform.modules.knowledge.domain.KnowledgeBaseItemModels.KnowledgeBaseItemTreeNode;
+import com.colla.platform.modules.knowledge.domain.KnowledgeBaseItemModels.KnowledgeObjectReference;
+import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContentContext;
 import com.colla.platform.modules.knowledge.domain.KnowledgeBaseItemModels.KnowledgeBaseAccessItemStat;
 import com.colla.platform.modules.knowledge.domain.KnowledgeBaseItemModels.KnowledgeBaseAccessStats;
 import com.colla.platform.modules.knowledge.domain.KnowledgeBaseItemModels.KnowledgeBaseBulkGovernanceResult;
@@ -53,6 +57,7 @@ public class KnowledgeBaseSpaceService {
     private final PermissionDecisionService permissionDecisionService;
     private final PlatformObjectResolverRegistry objectResolverRegistry;
     private final AuditService auditService;
+    private final BaseService baseService;
     private final JdbcTemplate jdbcTemplate;
 
     public KnowledgeBaseSpaceService(
@@ -63,6 +68,7 @@ public class KnowledgeBaseSpaceService {
         PermissionDecisionService permissionDecisionService,
         PlatformObjectResolverRegistry objectResolverRegistry,
         AuditService auditService,
+        BaseService baseService,
         JdbcTemplate jdbcTemplate
     ) {
         this.knowledgeBaseSpaceRepository = knowledgeBaseSpaceRepository;
@@ -72,6 +78,7 @@ public class KnowledgeBaseSpaceService {
         this.permissionDecisionService = permissionDecisionService;
         this.objectResolverRegistry = objectResolverRegistry;
         this.auditService = auditService;
+        this.baseService = baseService;
         this.jdbcTemplate = jdbcTemplate;
     }
 
@@ -89,8 +96,9 @@ public class KnowledgeBaseSpaceService {
         KnowledgeBaseSpaceSummary space = requireView(currentUser, spaceId);
         KnowledgeBaseItem root = itemRepository.findItem(currentUser.workspaceId(), space.rootItemId())
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Knowledge base root document not found"));
-        KnowledgeBaseItem home = itemRepository.findItem(currentUser.workspaceId(), space.homeItemId())
-            .orElse(root);
+        KnowledgeBaseItem home = space.homeItemId() == null
+            ? root
+            : itemRepository.findItem(currentUser.workspaceId(), space.homeItemId()).orElse(root);
         return new KnowledgeBaseSpaceDetail(space, root, home);
     }
 
@@ -106,19 +114,42 @@ public class KnowledgeBaseSpaceService {
     }
 
     public KnowledgeContent getItem(CurrentUser currentUser, UUID spaceId, UUID itemId) {
-        KnowledgeBaseSpaceSummary space = requireView(currentUser, spaceId);
-        requireContentItem(currentUser, space, itemId);
+        requireContentRoute(currentUser, spaceId, itemId);
         return hydrateDetailTargetSummary(currentUser, contentService.getContent(currentUser, itemId));
     }
 
     public void requireItemAccess(CurrentUser currentUser, UUID spaceId, UUID itemId) {
-        KnowledgeBaseSpaceSummary space = requireView(currentUser, spaceId);
-        requireContentItem(currentUser, space, itemId);
+        requireContentRoute(currentUser, spaceId, itemId);
     }
 
     public List<KnowledgeContentTemplate> listTemplates(CurrentUser currentUser, UUID spaceId) {
         requireView(currentUser, spaceId);
         return contentService.listTemplates(currentUser, spaceId);
+    }
+
+    public List<KnowledgeObjectReference> listObjectReferences(CurrentUser currentUser, String targetObjectType, UUID targetObjectId) {
+        String normalizedType = normalizeTargetObjectType("object_ref", targetObjectType);
+        PlatformObjectSummary target = objectResolverRegistry.resolve(currentUser, normalizedType, targetObjectId);
+        if (target.accessState() == ObjectAccessState.forbidden) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Target object is not accessible");
+        }
+        if (target.accessState() != ObjectAccessState.available) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Target object does not exist");
+        }
+        return itemRepository.listObjectReferences(currentUser.workspaceId(), normalizedType, targetObjectId).stream()
+            .filter(item -> currentUser.id().equals(item.createdBy())
+                || permissionDecisionService.decide(currentUser, "knowledge_content", item.id(), "view").allowed())
+            .map(item -> {
+                KnowledgeBaseItem hydrated = hydrateTargetSummary(currentUser, item);
+                KnowledgeContentContext context = contentService.knowledgeContext(currentUser, item.id());
+                return new KnowledgeObjectReference(
+                    context == null ? null : context.spaceId(),
+                    context == null ? null : context.spaceName(),
+                    item.id(), hydrated.title(), context == null ? null : context.webPath(),
+                    item.displayMode(), item.targetTitleStrategy(), item.entryAlias()
+                );
+            })
+            .toList();
     }
 
     @Transactional
@@ -165,6 +196,56 @@ public class KnowledgeBaseSpaceService {
     }
 
     @Transactional
+    public KnowledgeContent createBaseEntry(
+        CurrentUser currentUser,
+        UUID spaceId,
+        UUID parentId,
+        UUID existingBaseId,
+        String newBaseName,
+        String newBaseDescription,
+        String displayMode,
+        String targetTitleStrategy,
+        String entryAlias
+    ) {
+        boolean attachExisting = existingBaseId != null;
+        boolean createNew = newBaseName != null && !newBaseName.isBlank();
+        if (attachExisting == createNew) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Exactly one existing base or new base name is required");
+        }
+        BaseDetail base = attachExisting
+            ? baseService.getBase(currentUser, existingBaseId)
+            : baseService.createBase(currentUser, newBaseName, newBaseDescription);
+        String title = entryAlias == null || entryAlias.isBlank() ? base.base().name() : entryAlias.trim();
+        return createItem(currentUser, spaceId, parentId, title, "object_ref", null, "base", base.base().id(),
+            null, displayMode, targetTitleStrategy, entryAlias);
+    }
+
+    @Transactional
+    public KnowledgeContent updateObjectEntry(
+        CurrentUser currentUser,
+        UUID spaceId,
+        UUID itemId,
+        String displayMode,
+        String targetTitleStrategy,
+        String entryAlias
+    ) {
+        KnowledgeBaseSpaceSummary space = requireView(currentUser, spaceId);
+        requireContentItem(currentUser, space, itemId);
+        KnowledgeBaseItem item = contentService.requireEdit(currentUser, itemId);
+        if (!"object_ref".equals(item.contentType()) || item.targetObjectType() == null || item.targetObjectId() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Knowledge item is not an object entry");
+        }
+        String canonicalRoute = resolveCanonicalTargetRoute(currentUser, item.targetObjectType(), item.targetObjectId());
+        itemRepository.updateKnowledgeNodeMetadata(currentUser.workspaceId(), itemId, "object_ref", item.targetObjectType(),
+            item.targetObjectId(), canonicalRoute, normalizeDisplayMode(displayMode), normalizeTitleStrategy(targetTitleStrategy),
+            normalizeEntryAlias(entryAlias), currentUser.id());
+        KnowledgeContent updated = hydrateDetailTargetSummary(currentUser, contentService.getContent(currentUser, itemId));
+        auditService.log(currentUser, "knowledge.node.object_entry.updated", "knowledge_content", itemId,
+            knowledgeNodeAuditPayload(spaceId, updated.item()));
+        return updated;
+    }
+
+    @Transactional
     public KnowledgeContent createItemFromTemplate(CurrentUser currentUser, UUID spaceId, UUID templateId, UUID parentId, String title) {
         KnowledgeBaseSpaceSummary space = requireView(currentUser, spaceId);
         UUID targetParentId = parentId == null ? space.rootItemId() : parentId;
@@ -181,6 +262,26 @@ public class KnowledgeBaseSpaceService {
         KnowledgeContent moved = hydrateDetailTargetSummary(currentUser, contentService.moveItem(currentUser, itemId, targetParentId, sortOrder));
         auditService.log(currentUser, "knowledge.node.moved", "knowledge_content", itemId, knowledgeNodeAuditPayload(spaceId, moved.item()));
         return moved;
+    }
+
+    @Transactional
+    public KnowledgeContent copyItem(CurrentUser currentUser, UUID spaceId, UUID itemId, UUID parentId, String title) {
+        KnowledgeBaseSpaceSummary space = requireView(currentUser, spaceId);
+        requireContentItem(currentUser, space, itemId);
+        UUID targetParentId = parentId == null ? space.rootItemId() : parentId;
+        requireItemInsideKnowledgeBase(currentUser, space.rootItemId(), targetParentId);
+        KnowledgeContent copied = hydrateDetailTargetSummary(
+            currentUser,
+            contentService.copyItem(currentUser, itemId, targetParentId, title)
+        );
+        auditService.log(
+            currentUser,
+            "knowledge.node.copied",
+            "knowledge_content",
+            copied.item().id(),
+            knowledgeNodeAuditPayload(spaceId, copied.item())
+        );
+        return copied;
     }
 
     @Transactional
@@ -1135,7 +1236,17 @@ public class KnowledgeBaseSpaceService {
             );
             return copyKnowledgeBaseItem(document, unavailableTargetTitle(targetSummary.accessState()), null, targetSummary);
         }
-        return copyKnowledgeBaseItem(document, document.title(), document.targetRoute(), targetSummary);
+        String title = switch (document.targetTitleStrategy() == null ? "manual" : document.targetTitleStrategy()) {
+            case "follow_target" -> targetSummary.title();
+            case "alias" -> document.entryAlias() == null || document.entryAlias().isBlank() ? document.title() : document.entryAlias();
+            default -> document.title();
+        };
+        String canonicalRoute = targetSummary.webPath();
+        if ("base".equals(document.targetObjectType()) && document.targetRoute() != null
+            && canonicalRoute != null && document.targetRoute().startsWith(canonicalRoute)) {
+            canonicalRoute = document.targetRoute();
+        }
+        return copyKnowledgeBaseItem(document, title, canonicalRoute, targetSummary);
     }
 
     private KnowledgeContent hydrateDetailTargetSummary(CurrentUser currentUser, KnowledgeContent detail) {
@@ -1197,6 +1308,7 @@ public class KnowledgeBaseSpaceService {
     private String unavailableTargetTitle(ObjectAccessState accessState) {
         return switch (accessState) {
             case forbidden -> "无权限对象入口";
+            case disabled -> "已停用对象入口";
             case deleted -> "已删除对象入口";
             case not_found -> "不存在对象入口";
             case invalid -> "无效对象入口";
@@ -1267,7 +1379,7 @@ public class KnowledgeBaseSpaceService {
     }
 
     private String normalizeTargetRoute(String contentType, String targetRoute) {
-        if (!"object_ref".equals(contentType) && !"external_link".equals(contentType)) {
+        if (!"external_link".equals(contentType)) {
             return null;
         }
         if (targetRoute == null || targetRoute.isBlank()) {
@@ -1418,6 +1530,12 @@ public class KnowledgeBaseSpaceService {
         if (!space.id().equals(actualSpace.id())) {
             throw itemNotFound();
         }
+    }
+
+    private void requireContentRoute(CurrentUser currentUser, UUID spaceId, UUID itemId) {
+        KnowledgeBaseSpaceSummary space = knowledgeBaseSpaceRepository.findSpace(currentUser.workspaceId(), spaceId)
+            .orElseThrow(this::itemNotFound);
+        requireContentItem(currentUser, space, itemId);
     }
 
     private ResponseStatusException itemNotFound() {

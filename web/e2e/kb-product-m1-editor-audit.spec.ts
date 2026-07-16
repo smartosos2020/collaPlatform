@@ -41,7 +41,6 @@ test('@smoke @kb-product-m1 editor interaction baseline is observable in a real 
 
     const editor = page.getByRole('textbox', { name: '知识内容正文编辑器' })
     await expect(editor).toBeVisible()
-    await expect(page.getByText('块编辑器', { exact: true })).toBeVisible()
     const unavailableObject = page.getByText(/对象不可(用|访问)/)
     await expect(unavailableObject).toBeVisible()
 

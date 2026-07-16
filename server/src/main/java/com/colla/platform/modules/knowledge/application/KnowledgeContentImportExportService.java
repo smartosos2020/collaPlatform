@@ -3,6 +3,7 @@ package com.colla.platform.modules.knowledge.application;
 import com.colla.platform.modules.knowledge.domain.KnowledgeBaseItemModels.KnowledgeBaseMarkdownImportItem;
 import com.colla.platform.modules.knowledge.domain.KnowledgeBaseItemModels.KnowledgeBaseMarkdownImportResult;
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContent;
+import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContentTransferReport;
 import com.colla.platform.shared.auth.CurrentUser;
 import java.util.List;
 import java.util.UUID;
@@ -40,5 +41,13 @@ public class KnowledgeContentImportExportService {
 
     public String exportSpace(CurrentUser user, UUID spaceId) {
         return workflow.exportKnowledgeBaseMarkdown(user, spaceId);
+    }
+
+    public KnowledgeContentTransferReport previewImport(CurrentUser user, UUID itemId, String format, String source) {
+        return workflow.previewImport(user, itemId, format, source);
+    }
+
+    public KnowledgeContentTransferReport exportManifest(CurrentUser user, UUID itemId, String format) {
+        return workflow.exportManifest(user, itemId, format);
     }
 }

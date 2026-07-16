@@ -17,7 +17,7 @@ const BlockIdentity = Extension.create({
   name: 'collaborationBlockIdentity',
   addGlobalAttributes() {
     return [{
-      types: ['paragraph', 'heading', 'blockquote', 'codeBlock', 'bulletList', 'orderedList', 'taskList', 'table', 'image', 'horizontalRule', 'objectCard', 'fileCard'],
+      types: ['paragraph', 'heading', 'blockquote', 'callout', 'codeBlock', 'bulletList', 'orderedList', 'taskList', 'table', 'image', 'horizontalRule', 'embed', 'objectCard', 'fileCard'],
       attributes: blockAttributes,
     }]
   },
@@ -41,10 +41,29 @@ const FileCard = Node.create({
   atom: true,
   addAttributes: () => ({
     fileId: { default: '' }, fileName: { default: '' }, contentType: { default: 'application/octet-stream' },
-    sizeBytes: { default: 0 }, kind: { default: 'file' }, itemId: { default: '' },
+    sizeBytes: { default: 0 }, kind: { default: 'file' }, itemId: { default: '' }, caption: { default: '' },
   }),
   parseHTML: () => [{ tag: 'div[data-doc-file-card]' }],
   renderHTML: ({ HTMLAttributes }) => ['div', { ...HTMLAttributes, 'data-doc-file-card': 'true' }],
+})
+
+const Callout = Node.create({
+  name: 'callout',
+  group: 'block',
+  content: 'block+',
+  defining: true,
+  addAttributes: () => ({ tone: { default: 'info' } }),
+  parseHTML: () => [{ tag: 'aside[data-doc-callout]' }],
+  renderHTML: ({ HTMLAttributes }) => ['aside', { ...HTMLAttributes, 'data-doc-callout': 'true' }, 0],
+})
+
+const LegacyEmbed = Node.create({
+  name: 'embed',
+  group: 'block',
+  atom: true,
+  addAttributes: () => ({ object: { default: {} } }),
+  parseHTML: () => [{ tag: 'div[data-doc-legacy-embed]' }],
+  renderHTML: ({ HTMLAttributes }) => ['div', { ...HTMLAttributes, 'data-doc-legacy-embed': 'true' }],
 })
 
 export const collaborationExtensions = [
@@ -58,5 +77,7 @@ export const collaborationExtensions = [
   Image.configure({ allowBase64: false }),
   ObjectCard,
   FileCard,
+  Callout,
+  LegacyEmbed,
   BlockIdentity,
 ]

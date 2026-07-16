@@ -1,12 +1,13 @@
 import { SearchOutlined } from '@ant-design/icons'
 import { useQuery } from '@tanstack/react-query'
-import { Alert, Button, Empty, Input, Space, Tag, Typography } from 'antd'
+import { Alert, Button, Empty, Input, Select, Space, Tag, Typography } from 'antd'
 import { useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
 import { resolveNavigationPath } from '../../../shared/client/collaClient'
-import { searchAll, type SearchResult } from '../api/searchApi'
+import { searchAll, type SearchFilters, type SearchResult } from '../api/searchApi'
 import { objectTypeText } from '../../platform/objectTypeLabels'
+import { listKnowledgeBases } from '../../knowledgeBases/api/knowledgeBasesApi'
 
 export function SearchPage() {
   const navigate = useNavigate()
@@ -14,10 +15,18 @@ export function SearchPage() {
   const queryParam = params.get('q') ?? ''
   const [draft, setDraft] = useState(queryParam)
   const normalizedQuery = queryParam.trim()
+  const searchFilters = useMemo<SearchFilters>(() => ({
+    knowledgeBaseId: params.get('knowledgeBaseId') || undefined,
+    contentType: params.get('contentType') || undefined,
+    knowledgeStatus: params.get('knowledgeStatus') || undefined,
+    tags: params.getAll('tags').filter(Boolean),
+  }), [params])
+
+  const spacesQuery = useQuery({ queryKey: ['knowledge-bases', 'search-filter'], queryFn: () => listKnowledgeBases() })
 
   const searchQuery = useQuery({
-    queryKey: ['search', normalizedQuery],
-    queryFn: () => searchAll(normalizedQuery),
+    queryKey: ['search', normalizedQuery, searchFilters],
+    queryFn: () => searchAll(normalizedQuery, 20, searchFilters),
     enabled: normalizedQuery.length >= 2,
   })
 
@@ -28,6 +37,19 @@ export function SearchPage() {
     if (next.length >= 2) {
       setParams({ q: next })
     }
+  }
+
+  const updateFilter = (key: 'knowledgeBaseId' | 'contentType' | 'knowledgeStatus' | 'tags', value?: string) => {
+    const next = new URLSearchParams(params)
+    next.delete(key)
+    if (value?.trim()) {
+      if (key === 'tags') {
+        value.split(',').map((tag) => tag.trim()).filter(Boolean).forEach((tag) => next.append('tags', tag))
+      } else {
+        next.set(key, value)
+      }
+    }
+    setParams(next)
   }
 
   return (
@@ -44,6 +66,50 @@ export function SearchPage() {
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
           onSearch={submit}
+        />
+      </Space>
+
+      <Space wrap className="search-filter-bar" aria-label="知识内容筛选">
+        <Select
+          allowClear
+          placeholder="全部知识库"
+          value={searchFilters.knowledgeBaseId}
+          loading={spacesQuery.isLoading}
+          options={(spacesQuery.data ?? []).map((space) => ({ value: space.id, label: space.name }))}
+          onChange={(value) => updateFilter('knowledgeBaseId', value)}
+        />
+        <Select
+          allowClear
+          placeholder="全部内容类型"
+          value={searchFilters.contentType}
+          options={[
+            { value: 'markdown', label: '知识内容' },
+            { value: 'folder', label: '目录' },
+            { value: 'object_ref', label: '对象入口' },
+            { value: 'external_link', label: '外部链接' },
+          ]}
+          onChange={(value) => updateFilter('contentType', value)}
+        />
+        <Select
+          allowClear
+          placeholder="全部知识状态"
+          value={searchFilters.knowledgeStatus}
+          options={[
+            { value: 'draft', label: '草稿' },
+            { value: 'verified', label: '已核验' },
+            { value: 'needs_review', label: '待复核' },
+            { value: 'outdated', label: '已过期' },
+            { value: 'archived', label: '已归档' },
+          ]}
+          onChange={(value) => updateFilter('knowledgeStatus', value)}
+        />
+        <Input
+          allowClear
+          aria-label="按标签筛选"
+          placeholder="标签，多个用逗号分隔"
+          defaultValue={searchFilters.tags?.join(',')}
+          onPressEnter={(event) => updateFilter('tags', event.currentTarget.value)}
+          onBlur={(event) => updateFilter('tags', event.currentTarget.value)}
         />
       </Space>
 
@@ -68,12 +134,12 @@ export function SearchPage() {
                         {item.accessState === 'available' ? <Tag color="green">可访问</Tag> : <Tag color="orange">{accessStateText(item.accessState)}</Tag>}
                         {item.objectType === 'knowledge_content' && item.contentType ? <Tag>{contentTypeText(item.contentType)}</Tag> : null}
                         {item.objectType === 'knowledge_content' && item.knowledgeBaseName ? <Tag color="purple">{item.knowledgeBaseName}</Tag> : null}
-                        <Typography.Text strong>{resultTitle(item)}</Typography.Text>
+                        <Typography.Text strong><HighlightedText text={resultTitle(item)} query={normalizedQuery} /></Typography.Text>
                       </Space>
                       {item.objectType === 'knowledge_content' && item.directoryPath ? (
-                        <Typography.Text type="secondary">路径：{item.directoryPath}</Typography.Text>
+                        <Typography.Text type="secondary">路径：<HighlightedText text={item.directoryPath} query={normalizedQuery} /></Typography.Text>
                       ) : null}
-                      <Typography.Paragraph type="secondary">{item.excerpt || item.permissionExplanation || item.webPath}</Typography.Paragraph>
+                      <Typography.Paragraph type="secondary"><HighlightedText text={item.excerpt || item.permissionExplanation || item.webPath || ''} query={normalizedQuery} /></Typography.Paragraph>
                       {item.objectType === 'knowledge_content' && item.tags?.length ? (
                         <Space wrap size={4}>
                           {item.tags.map((tag) => <Tag key={tag}>{tag}</Tag>)}
@@ -97,6 +163,13 @@ export function SearchPage() {
       )}
     </div>
   )
+}
+
+function HighlightedText({ text, query }: { text: string; query: string }) {
+  if (!query.trim()) return text
+  const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const parts = text.split(new RegExp(`(${escaped})`, 'gi'))
+  return <>{parts.map((part, index) => part.toLocaleLowerCase() === query.toLocaleLowerCase() ? <mark key={`${part}-${index}`}>{part}</mark> : part)}</>
 }
 
 function accessStateText(value: SearchResult['accessState']) {

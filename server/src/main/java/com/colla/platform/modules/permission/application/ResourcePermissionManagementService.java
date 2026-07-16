@@ -10,6 +10,7 @@ import com.colla.platform.modules.permission.domain.PermissionModels.PermissionD
 import com.colla.platform.modules.permission.domain.PermissionModels.ResourcePermissionEntry;
 import com.colla.platform.modules.permission.domain.PermissionModels.ResourcePermissionGrant;
 import com.colla.platform.modules.permission.domain.PermissionModels.ResourcePermissionRequest;
+import com.colla.platform.modules.permission.domain.PermissionModels.ResourcePermissionTransitionPreview;
 import com.colla.platform.modules.permission.infrastructure.ResourcePermissionRepository;
 import com.colla.platform.shared.auth.CurrentUser;
 import java.sql.ResultSet;
@@ -61,6 +62,53 @@ public class ResourcePermissionManagementService {
         String normalizedResourceType = normalizeResourceType(resourceType);
         requireManage(currentUser, normalizedResourceType, resourceId);
         return resourcePermissionRepository.listGrants(currentUser.workspaceId(), normalizedResourceType, resourceId);
+    }
+
+    public ResourcePermissionTransitionPreview previewKnowledgeContentTransition(
+        CurrentUser currentUser,
+        UUID resourceId,
+        UUID targetParentId
+    ) {
+        requireManage(currentUser, "knowledge_content", resourceId);
+        KnowledgeBaseItem item = contentRepository.findItem(currentUser.workspaceId(), resourceId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Knowledge content not found"));
+        if (targetParentId != null) {
+            requireManage(currentUser, "knowledge_content", targetParentId);
+            if (resourceId.equals(targetParentId) || contentRepository.isDescendant(currentUser.workspaceId(), resourceId, targetParentId)) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Knowledge content cannot move below itself");
+            }
+        }
+        List<ResourcePermissionEntry> current = resourcePermissionRepository
+            .listGrants(currentUser.workspaceId(), "knowledge_content", resourceId).stream()
+            .filter(this::isActivePermission)
+            .toList();
+        List<ResourcePermissionEntry> retainedDirect = current.stream()
+            .filter(entry -> !"inherited".equals(entry.sourceType()))
+            .toList();
+        List<ResourcePermissionEntry> removedInherited = current.stream()
+            .filter(entry -> "inherited".equals(entry.sourceType()))
+            .toList();
+        Map<String, Integer> retainedRanks = retainedDirect.stream().collect(java.util.stream.Collectors.toMap(
+            this::permissionSubjectKey,
+            entry -> permissionRank(entry.permissionLevel()),
+            Math::max
+        ));
+        List<ResourcePermissionEntry> addedInherited = targetParentId == null ? List.of() : resourcePermissionRepository
+            .listGrants(currentUser.workspaceId(), "knowledge_content", targetParentId).stream()
+            .filter(this::isActivePermission)
+            .filter(entry -> permissionRank(entry.permissionLevel()) > retainedRanks.getOrDefault(permissionSubjectKey(entry), 0))
+            .toList();
+        boolean highPrivilegeAdded = addedInherited.stream()
+            .anyMatch(entry -> permissionRank(entry.permissionLevel()) >= permissionRank("manage"));
+        return new ResourcePermissionTransitionPreview(
+            resourceId,
+            item.parentId(),
+            targetParentId,
+            retainedDirect,
+            removedInherited,
+            addedInherited,
+            highPrivilegeAdded
+        );
     }
 
     public List<ResourcePermissionRequest> listRequests(CurrentUser currentUser, String resourceType, UUID resourceId, String status) {
@@ -911,6 +959,25 @@ public class ResourcePermissionManagementService {
         }
         PermissionDecision decision = permissionDecisionService.decide(currentUser, resourceType, resourceId, "manage");
         permissionDecisionService.requireAllowed(decision);
+    }
+
+    private boolean isActivePermission(ResourcePermissionEntry entry) {
+        return "active".equals(entry.status()) && !"expired".equals(entry.effectiveStatus());
+    }
+
+    private String permissionSubjectKey(ResourcePermissionEntry entry) {
+        return entry.subjectType() + ":" + entry.subjectId();
+    }
+
+    private int permissionRank(String permissionLevel) {
+        return switch (permissionLevel == null ? "" : permissionLevel.trim().toLowerCase()) {
+            case "owner" -> 5;
+            case "manage" -> 4;
+            case "edit" -> 3;
+            case "comment" -> 2;
+            case "view" -> 1;
+            default -> 0;
+        };
     }
 
     private String normalizeResourceType(String resourceType) {

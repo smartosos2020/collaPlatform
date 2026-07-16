@@ -33,10 +33,13 @@ import { searchAll, type SearchResult } from '../../search/api/searchApi'
 import { ResourcePermissionsModal } from '../../permissions/components/ResourcePermissionsModal'
 import { requestResourcePermission, type ManagedResourceType } from '../../permissions/api/resourcePermissionsApi'
 import { listFavoriteObjects } from '../../platform/api/platformObjectsApi'
-import { createBase, getBase, getTable, listBases, queryRecords, type BaseField, type BaseRecord } from '../../bases/api/basesApi'
+import { PlatformObjectPicker } from '../../platform/components/PlatformObjectPicker'
+import { getFileDownloadUrl } from '../../files/api/filesApi'
+import { getBase, getTable, queryRecords, type BaseField, type BaseRecord } from '../../bases/api/basesApi'
 import { ApiRequestError } from '../../../shared/api/httpClient'
 import {
   createKnowledgeBaseItem,
+  createKnowledgeBaseBaseEntry,
   createKnowledgeBaseItemFromTemplate,
   getKnowledgeBase,
   getKnowledgeBaseDiscovery,
@@ -47,6 +50,7 @@ import {
   subscribeKnowledgeTarget,
   unsubscribeKnowledgeTarget,
   updateKnowledgeBase,
+  updateKnowledgeObjectEntry,
   type KnowledgeBaseSpaceSummary,
 } from '../api/knowledgeBasesApi'
 
@@ -78,6 +82,12 @@ type MoveNodeForm = {
   parentId?: string
 }
 
+type ObjectEntryForm = {
+  displayMode?: KnowledgeBaseItem['displayMode']
+  targetTitleStrategy?: KnowledgeBaseItem['targetTitleStrategy']
+  entryAlias?: string
+}
+
 type PermissionTarget = {
   resourceType: ManagedResourceType
   resourceId: string
@@ -106,11 +116,13 @@ export function KnowledgeBaseDetailPage() {
   const [createOpen, setCreateOpen] = useState(false)
   const [templateOpen, setTemplateOpen] = useState(false)
   const [moveOpen, setMoveOpen] = useState(false)
+  const [objectEntryOpen, setObjectEntryOpen] = useState(false)
   const [permissionTarget, setPermissionTarget] = useState<PermissionTarget | null>(null)
   const [expandedKeysBySpace, setExpandedKeysBySpace] = useState<Record<string, string[]>>({})
   const [createForm] = Form.useForm<CreateNodeForm>()
   const [templateForm] = Form.useForm<TemplateCreateForm>()
   const [moveForm] = Form.useForm<MoveNodeForm>()
+  const [objectEntryForm] = Form.useForm<ObjectEntryForm>()
   const [accessRequestForm] = Form.useForm<{ reason?: string }>()
   const mainScrollRef = useRef<HTMLElement | null>(null)
   const createContentType = Form.useWatch('contentType', createForm)
@@ -147,11 +159,6 @@ export function KnowledgeBaseDetailPage() {
     queryKey: ['knowledge-bases', spaceId, 'templates'],
     queryFn: () => listKnowledgeBaseTemplates(spaceId),
     enabled: Boolean(spaceId),
-  })
-  const basesQuery = useQuery({
-    queryKey: ['bases', 'kb-object-picker'],
-    queryFn: listBases,
-    enabled: createOpen,
   })
   const createTargetBaseQuery = useQuery({
     queryKey: ['bases', createTargetBaseId, 'kb-object-picker'],
@@ -361,6 +368,12 @@ export function KnowledgeBaseDetailPage() {
           navigate(directoryPath(itemId), { replace: options?.replace })
           return
         }
+        if (document.targetObjectType === 'file' && document.targetObjectId) {
+          void getFileDownloadUrl(document.targetObjectId)
+            .then((response) => window.open(response.downloadUrl, '_blank', 'noopener,noreferrer'))
+            .catch(() => message.error('文件打开失败'))
+          return
+        }
         if (!document.targetRoute) {
           message.warning('目标不可访问')
           return
@@ -397,30 +410,18 @@ export function KnowledgeBaseDetailPage() {
   const createMutation = useMutation({
     mutationFn: async (values: CreateNodeForm) => {
       if (values.contentType === 'object_ref' && values.targetObjectType === 'base') {
-        let baseId = values.targetBaseId || values.targetObjectId
-        let baseName = values.title
-        if (values.targetBaseMode === 'new') {
-          const detail = await createBase({
-            name: values.newBaseName || values.title,
-            description: values.newBaseDescription,
-          })
-          baseId = detail.base.id
-          baseName = values.title || detail.base.name
-        }
-        if (!baseId) {
+        const baseId = values.targetBaseId || values.targetObjectId
+        if (values.targetBaseMode !== 'new' && !baseId) {
           throw new Error('Base target is required')
         }
-        return createKnowledgeBaseItem(spaceId, {
+        return createKnowledgeBaseBaseEntry(spaceId, {
           parentId: normalizeParentId(values.parentId),
-          title: values.title || baseName,
-          contentType: 'object_ref',
-          content: '',
-          targetObjectType: 'base',
-          targetObjectId: baseId,
-          targetRoute: baseTargetRoute(baseId, values.targetBaseTableId, values.targetBaseViewId),
-          displayMode: 'inline',
+          existingBaseId: values.targetBaseMode === 'new' ? undefined : baseId,
+          newBaseName: values.targetBaseMode === 'new' ? (values.newBaseName || values.title) : undefined,
+          newBaseDescription: values.newBaseDescription,
+          displayMode: values.displayMode ?? 'inline',
           targetTitleStrategy: values.targetTitleStrategy ?? 'alias',
-          entryAlias: values.entryAlias || values.title || baseName,
+          entryAlias: values.entryAlias || values.title,
         })
       }
       return createKnowledgeBaseItem(spaceId, {
@@ -430,7 +431,7 @@ export function KnowledgeBaseDetailPage() {
         content: values.contentType === 'markdown' ? `# ${values.title}` : '',
         targetObjectType: values.targetObjectType,
         targetObjectId: values.targetObjectId,
-        targetRoute: values.targetRoute,
+        targetRoute: values.contentType === 'external_link' ? values.targetRoute : undefined,
         displayMode: values.displayMode,
         targetTitleStrategy: values.targetTitleStrategy,
         entryAlias: values.entryAlias,
@@ -445,12 +446,43 @@ export function KnowledgeBaseDetailPage() {
       await refresh(detail.item.id)
       if (detail.item.contentType === 'external_link') {
         navigate(directoryPath(detail.item.parentId ?? detail.item.id), { replace: true })
-      } else {
-        openItemOrDirectory(detail.item.id)
+      } else if (detail.item.contentType === 'markdown') {
+        navigate(contentPath(detail.item.id))
+      } else if (detail.item.contentType === 'object_ref' && detail.item.targetObjectType === 'file' && detail.item.targetObjectId) {
+        void getFileDownloadUrl(detail.item.targetObjectId)
+          .then((response) => window.open(response.downloadUrl, '_blank', 'noopener,noreferrer'))
+          .catch(() => message.error('文件打开失败'))
+      } else if (detail.item.contentType === 'object_ref' && detail.item.targetObjectType !== 'base' && detail.item.targetRoute) {
+        navigate(normalizeKnowledgePath(detail.item.targetRoute))
+      } else if (detail.item.contentType === 'folder') {
+        navigate(directoryPath(detail.item.id))
       }
     },
     onError: () => message.error('创建失败'),
   })
+
+  const objectEntryMutation = useMutation({
+    mutationFn: (values: ObjectEntryForm) => {
+      if (!selectedItem?.id) throw new Error('Object entry is required')
+      return updateKnowledgeObjectEntry(spaceId, selectedItem.id, values)
+    },
+    onSuccess: async (detail) => {
+      setObjectEntryOpen(false)
+      message.success('入口设置已更新')
+      await refresh(detail.item.id)
+    },
+    onError: () => message.error('入口设置更新失败'),
+  })
+
+  const openObjectEntrySettings = () => {
+    if (!selectedItem || selectedItem.contentType !== 'object_ref') return
+    objectEntryForm.setFieldsValue({
+      displayMode: selectedItem.displayMode,
+      targetTitleStrategy: selectedItem.targetTitleStrategy,
+      entryAlias: selectedItem.entryAlias ?? undefined,
+    })
+    setObjectEntryOpen(true)
+  }
 
   const templateMutation = useMutation({
     mutationFn: (values: TemplateCreateForm) =>
@@ -915,7 +947,23 @@ export function KnowledgeBaseDetailPage() {
               <Button type="primary" onClick={() => openItemOrDirectory(selectedItem.id)}>打开正文</Button>
             </div>
           ) : isBaseObjectEntry(selectedItem) ? (
-            <KnowledgeBaseBasePreview document={selectedItem} onOpenFull={(path) => navigate(path)} />
+            <KnowledgeBaseBasePreview document={selectedItem!} onOpenFull={(path) => navigate(path)} />
+          ) : selectedItem?.contentType === 'object_ref' ? (
+            <div className="kb-content-fallback">
+              <span className="kb-directory-item-icon">{nodeIcon(selectedItem)}</span>
+              <Typography.Title level={4}>{selectedItem.title}</Typography.Title>
+              <Space wrap>
+                <Tag>{targetObjectTypeText(selectedItem.targetObjectType)}</Tag>
+                <Tag>{displayModeText(selectedItem.displayMode)}</Tag>
+                <Tag>{titleStrategyText(selectedItem.targetTitleStrategy)}</Tag>
+                {selectedItem.targetSummary ? <Tag color={selectedItem.targetSummary.accessState === 'available' ? 'green' : 'default'}>{targetAccessText(selectedItem.targetSummary.accessState)}</Tag> : null}
+              </Space>
+              <Typography.Paragraph type="secondary">{selectedItem.targetSummary?.subtitle || '协作对象入口'}</Typography.Paragraph>
+              <Space>
+                <Button type="primary" disabled={selectedItem.targetSummary?.accessState !== 'available'} onClick={() => openItemOrDirectory(selectedItem.id)}>打开对象</Button>
+                <Button onClick={openObjectEntrySettings}>编辑入口</Button>
+              </Space>
+            </div>
           ) : selectedDirectoryChildren.length > 0 ? (
             <div className="kb-directory-grid">
               {selectedDirectoryChildren.map((document) => (
@@ -1117,22 +1165,14 @@ export function KnowledgeBaseDetailPage() {
                   {createTargetBaseMode !== 'new' ? (
                     <>
                       <Form.Item name="targetBaseId" label="选择多维表格" rules={[{ required: true, message: '请选择多维表格' }]}>
-                        <Select
-                          showSearch
-                          loading={basesQuery.isLoading}
-                          optionFilterProp="label"
-                          options={(basesQuery.data ?? []).map((base) => ({
-                            value: base.id,
-                            label: `${base.name} / ${base.tableCount} 表 · ${base.recordCount} 记录`,
-                          }))}
-                          onChange={(baseId) => {
-                            const base = (basesQuery.data ?? []).find((item) => item.id === baseId)
+                        <PlatformObjectPicker
+                          objectTypes={['base']}
+                          onChange={(baseId, base) => {
                             const currentTitle = createForm.getFieldValue('title')
                             createForm.setFieldsValue({
                               targetObjectId: baseId,
-                              targetRoute: baseTargetRoute(baseId),
-                              title: currentTitle || base?.name,
-                              entryAlias: createForm.getFieldValue('entryAlias') || base?.name,
+                              title: currentTitle || base?.title,
+                              entryAlias: createForm.getFieldValue('entryAlias') || currentTitle || base?.title,
                               targetBaseTableId: undefined,
                               targetBaseViewId: undefined,
                             })
@@ -1185,15 +1225,29 @@ export function KnowledgeBaseDetailPage() {
                   )}
                 </>
               ) : (
-                <>
-                  <Form.Item name="targetObjectId" label="目标对象 ID" rules={[{ required: true, message: '请输入目标对象 ID' }]}>
-                    <Input placeholder="目标对象 UUID" />
-                  </Form.Item>
-                  <Form.Item name="targetRoute" label="目标路由" rules={[{ required: true, message: '请输入目标路由' }]}>
-                    <Input placeholder="/knowledge-bases/... 或 /bases/..." maxLength={1024} />
-                  </Form.Item>
-                </>
+                <Form.Item name="targetObjectId" label="选择目标对象" rules={[{ required: true, message: '请选择目标对象' }]}>
+                  <PlatformObjectPicker
+                    key={createTargetObjectType}
+                    objectTypes={createTargetObjectType ? [createTargetObjectType] : []}
+                    onChange={(objectId, object) => {
+                      const currentTitle = createForm.getFieldValue('title')
+                      createForm.setFieldsValue({
+                        targetObjectId: objectId,
+                        title: currentTitle || object?.title,
+                        entryAlias: createForm.getFieldValue('entryAlias') || currentTitle || object?.title,
+                      })
+                    }}
+                  />
+                </Form.Item>
               )}
+              <Form.Item name="displayMode" label="展示方式">
+                <Select options={[
+                  { value: 'default', label: '默认' },
+                  { value: 'inline', label: '嵌入预览' },
+                  { value: 'preview', label: '预览卡片' },
+                  { value: 'link', label: '链接' },
+                ]} />
+              </Form.Item>
               <Form.Item name="targetTitleStrategy" label="标题策略">
                 <Select options={[
                   { value: 'manual', label: '手动标题' },
@@ -1219,6 +1273,36 @@ export function KnowledgeBaseDetailPage() {
               </Form.Item>
             </>
           ) : null}
+        </Form>
+      </Modal>
+
+      <Modal
+        title="编辑对象入口"
+        open={objectEntryOpen}
+        onCancel={() => setObjectEntryOpen(false)}
+        onOk={() => objectEntryForm.submit()}
+        confirmLoading={objectEntryMutation.isPending}
+        destroyOnClose
+      >
+        <Form form={objectEntryForm} layout="vertical" onFinish={(values) => objectEntryMutation.mutate(values)}>
+          <Form.Item name="displayMode" label="展示方式">
+            <Select options={[
+              { value: 'default', label: '默认' },
+              { value: 'inline', label: '嵌入预览' },
+              { value: 'preview', label: '预览卡片' },
+              { value: 'link', label: '链接' },
+            ]} />
+          </Form.Item>
+          <Form.Item name="targetTitleStrategy" label="标题策略">
+            <Select options={[
+              { value: 'manual', label: '手动标题' },
+              { value: 'alias', label: '入口别名' },
+              { value: 'follow_target', label: '跟随目标' },
+            ]} />
+          </Form.Item>
+          <Form.Item name="entryAlias" label="入口别名">
+            <Input maxLength={255} />
+          </Form.Item>
         </Form>
       </Modal>
 
@@ -1634,7 +1718,7 @@ function normalizeParentId(value?: string | null) {
   return !value || value === ROOT_PARENT_VALUE ? null : value
 }
 
-function isBaseObjectEntry(document?: KnowledgeBaseItem | null): document is KnowledgeBaseItem {
+function isBaseObjectEntry(document?: KnowledgeBaseItem | null) {
   return document?.contentType === 'object_ref' && document.targetObjectType === 'base'
 }
 
@@ -1778,11 +1862,20 @@ function nodeIcon(document?: KnowledgeBaseItem | null) {
 function targetAccessText(accessState?: string | null) {
   return {
     forbidden: '目标无权限',
+    disabled: '目标已停用',
     deleted: '目标已删除',
     not_found: '目标不存在',
     invalid: '目标无效',
     available: '目标可访问',
   }[accessState ?? ''] ?? '目标不可访问'
+}
+
+function displayModeText(displayMode?: string | null) {
+  return { default: '默认展示', inline: '嵌入预览', preview: '预览卡片', link: '链接入口' }[displayMode ?? ''] ?? '默认展示'
+}
+
+function titleStrategyText(strategy?: string | null) {
+  return { manual: '手动标题', alias: '入口别名', follow_target: '跟随目标' }[strategy ?? ''] ?? '手动标题'
 }
 
 function categoryText(category: string) {

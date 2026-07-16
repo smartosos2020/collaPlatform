@@ -22,6 +22,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -31,6 +32,9 @@ class KnowledgeContentControllerIntegrationTests {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     @Test
     void canonicalKnowledgeApiCoversContentAndCollaborationCapabilities() throws Exception {
@@ -213,12 +217,19 @@ class KnowledgeContentControllerIntegrationTests {
                 ))))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.permissions[?(@.subjectId == '" + adminId + "')].permissionLevel", hasItem("owner")));
-        mockMvc.perform(post(itemPath(spaceId, itemId) + "/share-link")
+        String shareResponse = mockMvc.perform(post(itemPath(spaceId, itemId) + "/share-link")
                 .header("Authorization", bearer(token))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"scope\":\"workspace\",\"permissionLevel\":\"view\",\"enabled\":true}"))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.itemId").value(itemId.toString()));
+            .andExpect(jsonPath("$.itemId").value(itemId.toString()))
+            .andReturn().getResponse().getContentAsString();
+        String originalShareToken = objectMapper.readTree(shareResponse).path("token").asText();
+        mockMvc.perform(post(itemPath(spaceId, itemId) + "/share-link/revoke")
+                .header("Authorization", bearer(token)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.enabled").value(false))
+            .andExpect(jsonPath("$.token").value(not(originalShareToken)));
 
         mockMvc.perform(post(itemPath(spaceId, itemId) + "/relations")
                 .header("Authorization", bearer(token))
@@ -231,7 +242,16 @@ class KnowledgeContentControllerIntegrationTests {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$[*].id", hasItem(itemId.toString())));
         mockMvc.perform(get(itemPath(spaceId, itemId) + "/performance").header("Authorization", bearer(token)))
-            .andExpect(status().isOk()).andExpect(jsonPath("$.itemId").value(itemId.toString()));
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.itemId").value(itemId.toString()))
+            .andExpect(jsonPath("$.budgetTier").value(100))
+            .andExpect(jsonPath("$.snapshotBytes").isNumber())
+            .andExpect(jsonPath("$.inputBudgetMs").value(100));
+        mockMvc.perform(get(itemPath(spaceId, itemId) + "/diagnostics").header("Authorization", bearer(token)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.redacted").value(true))
+            .andExpect(jsonPath("$.blockCount").isNumber())
+            .andExpect(jsonPath("$..content").doesNotExist());
         mockMvc.perform(get(itemPath(spaceId, itemId) + "/migration-preview").header("Authorization", bearer(token)))
             .andExpect(status().isOk()).andExpect(jsonPath("$.itemId").value(itemId.toString()));
         mockMvc.perform(get(itemPath(spaceId, itemId) + "/collaboration/health").header("Authorization", bearer(token)))
@@ -249,14 +269,35 @@ class KnowledgeContentControllerIntegrationTests {
             .andExpect(jsonPath("$.knowledgeBaseId").value(spaceId.toString()))
             .andReturn().getResponse().getContentAsString();
         UUID templateId = UUID.fromString(objectMapper.readTree(templateResponse).path("id").asText());
-        mockMvc.perform(post("/api/knowledge-bases/" + spaceId + "/items/from-template")
+        String fromTemplateResponse = mockMvc.perform(post("/api/knowledge-bases/" + spaceId + "/items/from-template")
                 .header("Authorization", bearer(token))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(Map.of(
                     "templateId", templateId, "parentId", rootItemId, "title", "From M2 Template"
                 ))))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.item.title").value("From M2 Template"));
+            .andExpect(jsonPath("$.item.title").value("From M2 Template"))
+            .andReturn().getResponse().getContentAsString();
+        UUID fromTemplateItemId = uuid(objectMapper.readTree(fromTemplateResponse), "item", "id");
+        mockMvc.perform(post("/api/knowledge-bases/" + spaceId + "/templates/" + templateId + "/upgrade")
+                .header("Authorization", bearer(token))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"content\":\"# Template v2\"}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.versionNo").value(2))
+            .andExpect(jsonPath("$.supersedesTemplateId").value(templateId.toString()));
+        mockMvc.perform(get(itemPath(spaceId, fromTemplateItemId)).header("Authorization", bearer(token)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.content", containsString("Template")))
+            .andExpect(jsonPath("$.content", not(containsString("Template v2"))));
+
+        mockMvc.perform(post("/api/knowledge-bases/" + spaceId + "/items/" + itemId + "/copy")
+                .header("Authorization", bearer(token))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of("parentId", rootItemId, "title", "Canonical copy " + suffix))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.item.title").value("Canonical copy " + suffix))
+            .andExpect(jsonPath("$.content", containsString("Saved through canonical API")));
 
         mockMvc.perform(post("/api/knowledge-bases/" + spaceId + "/items/" + itemId + "/move")
                 .header("Authorization", bearer(token))
@@ -269,6 +310,215 @@ class KnowledgeContentControllerIntegrationTests {
         mockMvc.perform(post("/api/knowledge-bases/" + spaceId + "/items/" + itemId + "/restore")
                 .header("Authorization", bearer(token)))
             .andExpect(status().isOk()).andExpect(jsonPath("$.item.archived").value(false));
+    }
+
+    @Test
+    void m11PermissionTransitionAndRequestApprovalUseTheCentralPermissionModel() throws Exception {
+        String adminToken = login("admin", "admin123456");
+        String suffix = UUID.randomUUID().toString().substring(0, 8);
+        JsonNode space = createSpace(adminToken, "M11 Permissions " + suffix, "m11-perm-" + suffix);
+        UUID spaceId = uuid(space, "space", "id");
+        UUID rootItemId = uuid(space, "space", "rootItemId");
+        UUID folderA = uuid(createFolder(adminToken, spaceId, rootItemId, "M11 A " + suffix), "item", "id");
+        UUID folderB = uuid(createFolder(adminToken, spaceId, rootItemId, "M11 B " + suffix), "item", "id");
+        UUID memberId = createMember(adminToken, "m11member" + suffix, "M11 Member " + suffix);
+
+        mockMvc.perform(post("/api/resource-permissions/knowledge_content/" + folderA)
+                .header("Authorization", bearer(adminToken))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "subjectType", "user",
+                    "subjectId", memberId,
+                    "permissionLevel", "view",
+                    "confirmHighRisk", false
+                ))))
+            .andExpect(status().isOk());
+        UUID childId = uuid(createMarkdownItem(adminToken, spaceId, folderA, "M11 child " + suffix, "permission transition"), "item", "id");
+
+        mockMvc.perform(get("/api/resource-permissions/knowledge_content/" + childId + "/transition-preview")
+                .header("Authorization", bearer(adminToken))
+                .param("targetParentId", folderB.toString()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.currentParentId").value(folderA.toString()))
+            .andExpect(jsonPath("$.targetParentId").value(folderB.toString()))
+            .andExpect(jsonPath("$.removedInherited[*].subjectId", hasItem(memberId.toString())))
+            .andExpect(jsonPath("$.addedInherited").isEmpty());
+
+        mockMvc.perform(post("/api/knowledge-bases/" + spaceId + "/items/" + childId + "/move")
+                .header("Authorization", bearer(adminToken))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of("parentId", folderB))))
+            .andExpect(status().isOk());
+        Integer staleInherited = jdbcTemplate.queryForObject(
+            """
+                select count(*) from resource_permissions
+                where resource_type = 'knowledge_content' and resource_id = ? and subject_type = 'user'
+                  and subject_id = ? and source_type = 'inherited' and status = 'active'
+                """,
+            Integer.class,
+            childId,
+            memberId
+        );
+        org.junit.jupiter.api.Assertions.assertEquals(0, staleInherited);
+
+        String memberToken = login("m11member" + suffix, "member123456");
+        String requestResponse = mockMvc.perform(post(itemPath(spaceId, childId) + "/permission-requests")
+                .header("Authorization", bearer(memberToken))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"permissionLevel\":\"view\",\"reason\":\"Need the runbook\"}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.status").value("submitted"))
+            .andReturn().getResponse().getContentAsString();
+        UUID requestId = UUID.fromString(objectMapper.readTree(requestResponse).path("requestId").asText());
+
+        mockMvc.perform(get("/api/resource-permissions/knowledge_content/" + childId + "/requests")
+                .header("Authorization", bearer(adminToken)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$[*].id", hasItem(requestId.toString())));
+        mockMvc.perform(post("/api/resource-permissions/requests/" + requestId + "/approve")
+                .header("Authorization", bearer(adminToken))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"note\":\"approved for M11\"}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.status").value("approved"));
+        mockMvc.perform(get(itemPath(spaceId, childId)).header("Authorization", bearer(memberToken)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.item.id").value(childId.toString()));
+    }
+
+    @Test
+    void m10CommentsRelationsAndImportExportRemainBoundToCanonicalBlocks() throws Exception {
+        String token = login("admin", "admin123456");
+        String suffix = UUID.randomUUID().toString().substring(0, 8);
+        JsonNode space = createSpace(token, "M10 Content " + suffix, "m10-content-" + suffix);
+        UUID spaceId = uuid(space, "space", "id");
+        UUID rootItemId = uuid(space, "space", "rootItemId");
+        JsonNode source = createMarkdownItem(token, spaceId, rootItemId, "M10 Source " + suffix, "前缀 目标文本 后缀");
+        JsonNode target = createMarkdownItem(token, spaceId, rootItemId, "M10 Target " + suffix, "Target body");
+        UUID sourceId = uuid(source, "item", "id");
+        UUID targetId = uuid(target, "item", "id");
+        JsonNode sourceBlock = source.path("blocks").get(0);
+        UUID sourceBlockId = UUID.fromString(sourceBlock.path("id").asText());
+
+        String commentResponse = mockMvc.perform(post(itemPath(spaceId, sourceId) + "/comments")
+                .header("Authorization", bearer(token))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "blockId", sourceBlockId,
+                    "anchorType", "selection",
+                    "anchorStart", 3,
+                    "anchorEnd", 7,
+                    "anchorText", "目标文本",
+                    "anchorPrefix", "前缀 ",
+                    "anchorSuffix", " 后缀",
+                    "content", "@admin 请复核锚点"
+                ))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.comments[0].anchorState").value("active"))
+            .andReturn().getResponse().getContentAsString();
+        UUID commentId = UUID.fromString(objectMapper.readTree(commentResponse).path("comments").get(0).path("id").asText());
+
+        String shiftedResponse = mockMvc.perform(patch(itemPath(spaceId, sourceId) + "/blocks")
+                .header("Authorization", bearer(token))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "baseVersionNo", source.path("item").path("currentVersionNo").asInt(),
+                    "title", "M10 Source " + suffix,
+                    "blocks", List.of(Map.of(
+                        "id", sourceBlockId,
+                        "blockType", "paragraph",
+                        "content", "新增 前缀 目标文本 后缀",
+                        "sortOrder", 0,
+                        "schemaVersion", 2,
+                        "attrs", Map.of(),
+                        "richContent", Map.of(),
+                        "deleted", false
+                    ))
+                ))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.comments[0].anchorStart").value(6))
+            .andExpect(jsonPath("$.comments[0].anchorEnd").value(10))
+            .andExpect(jsonPath("$.comments[0].anchorState").value("active"))
+            .andReturn().getResponse().getContentAsString();
+        int shiftedVersion = objectMapper.readTree(shiftedResponse).path("item").path("currentVersionNo").asInt();
+
+        String deletedResponse = mockMvc.perform(delete(itemPath(spaceId, sourceId) + "/blocks/" + sourceBlockId)
+                .header("Authorization", bearer(token))
+                .param("baseVersionNo", Integer.toString(shiftedVersion)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.comments[0].anchorState").value("detached"))
+            .andExpect(jsonPath("$.comments[0].anchorInvalidReason").value("block_deleted"))
+            .andReturn().getResponse().getContentAsString();
+        org.junit.jupiter.api.Assertions.assertFalse(objectMapper.readTree(deletedResponse).path("comments").get(0).path("content").asText().isBlank());
+
+        mockMvc.perform(post(itemPath(spaceId, sourceId) + "/versions/" + shiftedVersion + "/restore")
+                .header("Authorization", bearer(token)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.comments[0].id").value(commentId.toString()))
+            .andExpect(jsonPath("$.comments[0].anchorState").value("active"))
+            .andExpect(jsonPath("$.comments[0].anchorInvalidReason").doesNotExist());
+
+        mockMvc.perform(post(itemPath(spaceId, sourceId) + "/relations")
+                .header("Authorization", bearer(token))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of("targetType", "knowledge_content", "targetId", targetId))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.relations[?(@.targetId == '" + targetId + "')].targetType").value(hasItem("knowledge_content")));
+        mockMvc.perform(get(itemPath(spaceId, targetId)).header("Authorization", bearer(token)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.relations[?(@.targetId == '" + sourceId + "')].targetType").value(hasItem("knowledge_content")));
+        mockMvc.perform(delete(itemPath(spaceId, sourceId) + "/relations")
+                .header("Authorization", bearer(token))
+                .param("targetType", "knowledge_content")
+                .param("targetId", targetId.toString()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.relations[?(@.targetId == '" + targetId + "')]").isEmpty());
+        mockMvc.perform(get(itemPath(spaceId, targetId)).header("Authorization", bearer(token)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.relations[?(@.targetId == '" + sourceId + "')]").isEmpty());
+
+        String markdown = """
+            # 导入验收
+            | 名称 | 状态 |
+            | --- | --- |
+            | 知识库 | 正常 |
+            ```java
+            System.out.println("m10");
+            ```
+            ![架构图](https://example.com/architecture.png)
+            """;
+        mockMvc.perform(post(itemPath(spaceId, sourceId) + "/import/preview")
+                .header("Authorization", bearer(token))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of("format", "markdown", "source", markdown))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.convertedFeatures", hasItem("table")))
+            .andExpect(jsonPath("$.convertedFeatures", hasItem("code_block")))
+            .andExpect(jsonPath("$.convertedFeatures", hasItem("image")))
+            .andExpect(jsonPath("$.safeToApply").value(true));
+        mockMvc.perform(post(itemPath(spaceId, sourceId) + "/import/markdown")
+                .header("Authorization", bearer(token))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of("title", "M10 Imported", "content", markdown))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.blocks[*].blockType", hasItem("table")))
+            .andExpect(jsonPath("$.blocks[*].blockType", hasItem("code_block")))
+            .andExpect(jsonPath("$.blocks[*].blockType", hasItem("image")));
+        mockMvc.perform(get(itemPath(spaceId, sourceId) + "/export/markdown").header("Authorization", bearer(token)))
+            .andExpect(status().isOk())
+            .andExpect(content().string(containsString("| 知识库 | 正常 |")))
+            .andExpect(content().string(containsString("![架构图](https://example.com/architecture.png)")));
+        mockMvc.perform(get(itemPath(spaceId, sourceId) + "/export/manifest")
+                .header("Authorization", bearer(token)).param("format", "markdown"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.attachmentCount").value(1))
+            .andExpect(jsonPath("$.fingerprint").isNotEmpty());
+        mockMvc.perform(post(itemPath(spaceId, sourceId) + "/import/preview")
+                .header("Authorization", bearer(token))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of("format", "html", "source", "<script>alert(1)</script>"))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.degradedFeatures", hasItem("unsafe_html_omitted")));
     }
 
     @Test
@@ -517,6 +767,36 @@ class KnowledgeContentControllerIntegrationTests {
             .andExpect(status().isOk())
             .andReturn().getResponse().getContentAsString();
         return objectMapper.readTree(response);
+    }
+
+    private JsonNode createFolder(String token, UUID spaceId, UUID parentId, String title) throws Exception {
+        String response = mockMvc.perform(post("/api/knowledge-bases/" + spaceId + "/items")
+                .header("Authorization", bearer(token))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "parentId", parentId,
+                    "title", title,
+                    "contentType", "folder"
+                ))))
+            .andExpect(status().isOk())
+            .andReturn().getResponse().getContentAsString();
+        return objectMapper.readTree(response);
+    }
+
+    private UUID createMember(String token, String username, String displayName) throws Exception {
+        String response = mockMvc.perform(post("/api/admin/users")
+                .header("Authorization", bearer(token))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                    "username", username,
+                    "password", "member123456",
+                    "displayName", displayName,
+                    "email", username + "@example.com",
+                    "roleCode", "member"
+                ))))
+            .andExpect(status().isOk())
+            .andReturn().getResponse().getContentAsString();
+        return UUID.fromString(objectMapper.readTree(response).path("id").asText());
     }
 
     private UUID createBaseObject(String token, String name) throws Exception {

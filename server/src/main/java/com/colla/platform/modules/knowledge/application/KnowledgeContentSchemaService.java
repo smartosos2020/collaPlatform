@@ -173,7 +173,10 @@ public class KnowledgeContentSchemaService {
     }
 
     public List<KnowledgeContentBlockDraft> toBlockDrafts(KnowledgeContentCanonicalDocument canonical) {
-        return canonical.blocks().stream().map(block -> {
+        // Active block rows represent top-level editor blocks. Nested table/list/callout
+        // nodes stay inside the top-level richContent snapshot and must not be written
+        // as independent rows with schema-only node types such as tableRow/tableCell.
+        return canonical.blocks().stream().filter(block -> block.parentId() == null).map(block -> {
             JsonNode node = block.node();
             Map<String, Object> attrs = node.path("attrs").isObject()
                 ? objectMapper.convertValue(node.path("attrs"), STRING_OBJECT_MAP)

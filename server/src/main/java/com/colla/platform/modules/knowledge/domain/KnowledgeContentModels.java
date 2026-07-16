@@ -65,7 +65,8 @@ public final class KnowledgeContentModels {
 
     public record KnowledgeContentTemplate(
         UUID id, String title, String description, String category, String content, boolean builtIn,
-        String scopeType, UUID knowledgeBaseId, String knowledgeBaseName, Instant createdAt
+        String scopeType, UUID knowledgeBaseId, String knowledgeBaseName, int versionNo,
+        UUID supersedesTemplateId, Instant createdAt
     ) {
     }
 
@@ -77,6 +78,12 @@ public final class KnowledgeContentModels {
 
     public record KnowledgeContentRelation(
         UUID id, UUID itemId, String targetType, UUID targetId, String title, String webPath, Instant createdAt
+    ) {
+    }
+
+    public record KnowledgeContentTransferReport(
+        String direction, String format, int blockCount, int attachmentCount, int objectReferenceCount,
+        List<String> convertedFeatures, List<String> degradedFeatures, String fingerprint, boolean safeToApply
     ) {
     }
 
@@ -103,7 +110,8 @@ public final class KnowledgeContentModels {
     public record KnowledgeContentComment(
         UUID id, UUID threadId, UUID parentCommentId, UUID itemId, UUID blockId, UUID authorId,
         String authorName, String content, String anchorType, Integer anchorStart, Integer anchorEnd,
-        String anchorText, String anchorPrefix, String anchorSuffix, Integer anchorVersionNo, boolean root,
+        String anchorText, String anchorPrefix, String anchorSuffix, Integer anchorVersionNo,
+        String anchorState, String anchorInvalidReason, Instant anchorUpdatedAt, boolean root,
         boolean resolved, Instant resolvedAt, UUID resolvedBy, String resolvedByName, Instant reopenedAt,
         UUID reopenedBy, String reopenedByName, Instant createdAt, List<KnowledgeContentComment> replies
     ) {
@@ -152,7 +160,17 @@ public final class KnowledgeContentModels {
 
     public record KnowledgeContentPerformance(
         UUID itemId, int blockCount, int embedCount, int commentCount, int contentLength,
-        int lineCount, boolean largeContent, String recommendedMode
+        int lineCount, long snapshotBytes, int budgetTier, int initialRenderBlocks,
+        int loadBudgetMs, int inputBudgetMs, int saveBudgetMs, int searchBudgetMs,
+        int collaborationBudgetMs, boolean largeContent, String recommendedMode
+    ) {
+    }
+
+    public record KnowledgeContentDiagnostics(
+        UUID itemId, int versionNo, int blockCount, long snapshotBytes, int permissionCount,
+        int objectReferenceCount, int unavailableObjectCount, boolean searchProjectionReady,
+        boolean shareLinkEnabled, long collaborationServerClock, boolean collaborationDirty,
+        Instant collaborationLastSavedAt, Instant generatedAt, boolean redacted
     ) {
     }
 

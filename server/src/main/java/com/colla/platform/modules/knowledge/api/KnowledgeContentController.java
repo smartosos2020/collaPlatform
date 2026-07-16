@@ -20,6 +20,8 @@ import com.colla.platform.modules.knowledge.application.KnowledgeContentCrossMod
 import com.colla.platform.modules.knowledge.application.KnowledgeContentService;
 import com.colla.platform.modules.knowledge.application.KnowledgeBaseSpaceService;
 import com.colla.platform.modules.project.domain.ProjectModels.IssueDetail;
+import com.colla.platform.modules.permission.application.ResourcePermissionManagementService;
+import com.colla.platform.modules.permission.domain.PermissionModels.ResourcePermissionRequest;
 import com.colla.platform.shared.auth.CurrentUser;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -51,6 +53,7 @@ public class KnowledgeContentController {
     private final KnowledgeContentCrossModuleService crossModuleService;
     private final KnowledgeContentService contentService;
     private final KnowledgeBaseSpaceService knowledgeBaseSpaceService;
+    private final ResourcePermissionManagementService resourcePermissionManagementService;
 
     public KnowledgeContentController(
         KnowledgeContentCollaborationService collaborationService,
@@ -58,7 +61,8 @@ public class KnowledgeContentController {
         KnowledgeContentCanonicalService canonicalService,
         KnowledgeContentCrossModuleService crossModuleService,
         KnowledgeContentService contentService,
-        KnowledgeBaseSpaceService knowledgeBaseSpaceService
+        KnowledgeBaseSpaceService knowledgeBaseSpaceService,
+        ResourcePermissionManagementService resourcePermissionManagementService
     ) {
         this.collaborationService = collaborationService;
         this.collaborationGatewayService = collaborationGatewayService;
@@ -66,6 +70,7 @@ public class KnowledgeContentController {
         this.crossModuleService = crossModuleService;
         this.contentService = contentService;
         this.knowledgeBaseSpaceService = knowledgeBaseSpaceService;
+        this.resourcePermissionManagementService = resourcePermissionManagementService;
     }
 
     @GetMapping
@@ -270,6 +275,28 @@ public class KnowledgeContentController {
         return KnowledgeApiDtos.detail(contentService.importHtml(user, itemId, request.title(), request.html()));
     }
 
+    @PostMapping("/import/preview")
+    public KnowledgeApiDtos.KnowledgeContentTransferReportView previewImport(
+        @PathVariable UUID spaceId,
+        @PathVariable UUID itemId,
+        @Valid @RequestBody PreviewKnowledgeContentTransferRequest request,
+        Authentication authentication
+    ) {
+        CurrentUser user = itemUser(authentication, spaceId, itemId);
+        return KnowledgeApiDtos.transferReport(contentService.previewImport(user, itemId, request.format(), request.source()));
+    }
+
+    @GetMapping("/export/manifest")
+    public KnowledgeApiDtos.KnowledgeContentTransferReportView exportManifest(
+        @PathVariable UUID spaceId,
+        @PathVariable UUID itemId,
+        @RequestParam(defaultValue = "markdown") String format,
+        Authentication authentication
+    ) {
+        CurrentUser user = itemUser(authentication, spaceId, itemId);
+        return KnowledgeApiDtos.transferReport(contentService.exportManifest(user, itemId, format));
+    }
+
     @GetMapping(value = "/export/markdown", produces = "text/markdown;charset=UTF-8")
     public ResponseEntity<String> exportMarkdown(
         @PathVariable UUID spaceId,
@@ -312,8 +339,20 @@ public class KnowledgeContentController {
         @Valid @RequestBody RequestKnowledgeContentPermissionRequest request,
         Authentication authentication
     ) {
-        CurrentUser user = itemUser(authentication, spaceId, itemId);
-        return KnowledgeApiDtos.permissionRequest(contentService.requestPermission(user, itemId, request.permissionLevel(), request.reason()));
+        ResourcePermissionRequest submitted = resourcePermissionManagementService.requestPermission(
+            currentUser(authentication),
+            "knowledge_content",
+            itemId,
+            request.permissionLevel(),
+            request.reason()
+        );
+        return new KnowledgeContentPermissionRequestView(
+            submitted.id(),
+            itemId,
+            submitted.permissionLevel(),
+            0,
+            submitted.status()
+        );
     }
 
     @PostMapping("/share-link")
@@ -349,6 +388,16 @@ public class KnowledgeContentController {
         return KnowledgeApiDtos.shareLink(contentService.setShareLinkEnabled(user, itemId, false));
     }
 
+    @PostMapping("/share-link/revoke")
+    public KnowledgeContentShareLinkView revokeShareLink(
+        @PathVariable UUID spaceId,
+        @PathVariable UUID itemId,
+        Authentication authentication
+    ) {
+        CurrentUser user = itemUser(authentication, spaceId, itemId);
+        return KnowledgeApiDtos.shareLink(contentService.revokeShareLink(user, itemId));
+    }
+
     @PostMapping("/relations")
     public KnowledgeContentDetailView addRelation(
         @PathVariable UUID spaceId,
@@ -358,6 +407,18 @@ public class KnowledgeContentController {
     ) {
         CurrentUser user = itemUser(authentication, spaceId, itemId);
         return KnowledgeApiDtos.detail(contentService.addRelation(user, itemId, request.targetType(), request.targetId()));
+    }
+
+    @DeleteMapping("/relations")
+    public KnowledgeContentDetailView removeRelation(
+        @PathVariable UUID spaceId,
+        @PathVariable UUID itemId,
+        @RequestParam String targetType,
+        @RequestParam UUID targetId,
+        Authentication authentication
+    ) {
+        CurrentUser user = itemUser(authentication, spaceId, itemId);
+        return KnowledgeApiDtos.detail(contentService.removeRelation(user, itemId, targetType, targetId));
     }
 
     @PostMapping("/issues/from-selection")
@@ -460,6 +521,16 @@ public class KnowledgeContentController {
         return KnowledgeApiDtos.performance(contentService.performanceProfile(user, itemId));
     }
 
+    @GetMapping("/diagnostics")
+    public KnowledgeApiDtos.KnowledgeContentDiagnosticsView diagnostics(
+        @PathVariable UUID spaceId,
+        @PathVariable UUID itemId,
+        Authentication authentication
+    ) {
+        CurrentUser user = itemUser(authentication, spaceId, itemId);
+        return KnowledgeApiDtos.diagnostics(contentService.diagnostics(user, itemId));
+    }
+
     @GetMapping("/migration-preview")
     public KnowledgeContentMigrationPreviewView migrationPreview(
         @PathVariable UUID spaceId,
@@ -554,6 +625,9 @@ public class KnowledgeContentController {
     }
 
     public record ImportKnowledgeHtmlRequest(@Size(max = 255) String title, String html) {
+    }
+
+    public record PreviewKnowledgeContentTransferRequest(@NotBlank String format, @NotNull String source) {
     }
 
     public record GrantKnowledgeContentPermissionRequest(UUID userId, String subjectType, UUID subjectId, @NotBlank String permissionLevel) {

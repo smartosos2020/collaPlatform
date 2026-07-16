@@ -5,6 +5,8 @@ param(
     [string] $ServerImage,
     [Parameter(Mandatory = $true)]
     [string] $WebImage,
+    [Parameter(Mandatory = $true)]
+    [string] $CollaborationImage,
     [string] $ExpectedSourceCommit = "",
     [string] $BackupPath = "",
     [string] $BaseUrl = "http://localhost",
@@ -56,7 +58,7 @@ function Get-ImageEvidence {
 if (-not $ConfirmRollback) {
     throw "Rollback changes the running environment. Add -ConfirmRollback after confirming the target."
 }
-$expectedConfirmation = "ROLLBACK:$ExpectedProjectName`:$ServerImage`:$WebImage"
+$expectedConfirmation = "ROLLBACK:$ExpectedProjectName`:$ServerImage`:$WebImage`:$CollaborationImage"
 if ($ConfirmationText -cne $expectedConfirmation) {
     throw "Confirmation text must exactly match $expectedConfirmation"
 }
@@ -76,21 +78,24 @@ New-Item -ItemType Directory -Force -Path $ReportDir | Out-Null
 
 $previousServerImage = $env:SERVER_IMAGE
 $previousWebImage = $env:WEB_IMAGE
+$previousCollaborationImage = $env:COLLABORATION_IMAGE
 $previousSourceCommit = $env:SOURCE_COMMIT
 try {
     $serverEvidence = Get-ImageEvidence -Image $ServerImage
     $webEvidence = Get-ImageEvidence -Image $WebImage
-    if ($serverEvidence.revision -cne $webEvidence.revision) {
-        throw "Server and web rollback images were built from different revisions"
+    $collaborationEvidence = Get-ImageEvidence -Image $CollaborationImage
+    if ($serverEvidence.revision -cne $webEvidence.revision -or $serverEvidence.revision -cne $collaborationEvidence.revision) {
+        throw "Server, web, and collaboration rollback images were built from different revisions"
     }
     if (-not [string]::IsNullOrWhiteSpace($ExpectedSourceCommit) -and
         $serverEvidence.revision -cne $ExpectedSourceCommit.ToLowerInvariant()) {
         throw "Rollback image revision '$($serverEvidence.revision)' does not match expected '$ExpectedSourceCommit'"
     }
-    Add-Result "- PASS: immutable server and web images share revision $($serverEvidence.revision)"
+    Add-Result "- PASS: immutable server, web, and collaboration images share revision $($serverEvidence.revision)"
 
     $env:SERVER_IMAGE = $ServerImage
     $env:WEB_IMAGE = $WebImage
+    $env:COLLABORATION_IMAGE = $CollaborationImage
     $env:SOURCE_COMMIT = $serverEvidence.revision
     $actualProjectName = Get-CollaComposeProjectName -ComposePath $ComposePath -EnvPath $EnvPath
     if ($actualProjectName -cne $ExpectedProjectName) {
@@ -143,6 +148,7 @@ try {
         "- Expected project: $ExpectedProjectName",
         "- Server image: $ServerImage",
         "- Web image: $WebImage",
+        "- Collaboration image: $CollaborationImage",
         "- Restore data: $RestoreData",
         "- Decision: $decision",
         "",
@@ -153,5 +159,6 @@ try {
 
     $env:SERVER_IMAGE = $previousServerImage
     $env:WEB_IMAGE = $previousWebImage
+    $env:COLLABORATION_IMAGE = $previousCollaborationImage
     $env:SOURCE_COMMIT = $previousSourceCommit
 }
