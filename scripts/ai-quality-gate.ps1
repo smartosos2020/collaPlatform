@@ -10,6 +10,9 @@ param(
     [ValidateSet("", "lint", "full", "skip")]
     [string] $FrontendStrategy = "",
 
+    [ValidateSet("", "test", "skip")]
+    [string] $CollaborationStrategy = "",
+
     [switch] $CompactOutput,
 
     [switch] $SkipDocker,
@@ -27,6 +30,7 @@ $ReportPath = Join-Path $ReportDir "quality-gate-$Timestamp.md"
 $Failures = New-Object System.Collections.Generic.List[string]
 $Warnings = New-Object System.Collections.Generic.List[string]
 $Results = New-Object System.Collections.Generic.List[string]
+$StepLogs = New-Object System.Collections.Generic.List[string]
 
 New-Item -ItemType Directory -Force -Path $ReportDir | Out-Null
 
@@ -127,6 +131,7 @@ function Invoke-LoggedCommand {
         $exitCode = $LASTEXITCODE
         $lines = @($output | ForEach-Object { $_.ToString() })
         Set-Content -Path $logPath -Value $lines -Encoding UTF8
+        $StepLogs.Add($logPath) | Out-Null
 
         Write-Host "Log: $logPath"
         if ($exitCode -ne 0) {
@@ -159,17 +164,6 @@ function Invoke-LoggedCommand {
     }
 }
 
-function Get-TextFiles {
-  $excludeDirs = @("\node_modules\", "\target\", "\dist\", "\.local-logs\", "\.local-reports\", "\.local-backups\", "\test-results\", "\playwright-report\", "\.git\", "\.idea\")
-    Get-ChildItem -Path $Root -Recurse -File | Where-Object {
-        $fullName = $_.FullName
-        -not ($excludeDirs | Where-Object { $fullName.Contains($_) }) -and
-        $fullName -ne (Join-Path $Root "scripts\ai-quality-gate.ps1") -and
-        $_.Length -lt 2MB -and
-        $_.Extension -notin @(".png", ".jpg", ".jpeg", ".gif", ".ico", ".jar", ".class", ".zip", ".gz")
-    }
-}
-
 function Get-NormalizedGitStatusPaths {
     if (-not (Test-CommandExists "git") -or -not (Test-Path (Join-Path $Root ".git"))) {
         return @()
@@ -193,6 +187,23 @@ function Get-NormalizedGitStatusPaths {
     }
 }
 
+function Get-GateFileSignature {
+    param([string] $Path)
+
+    $fullPath = Join-Path $Root $Path
+    if (-not (Test-Path -LiteralPath $fullPath)) {
+        return "<missing>"
+    }
+    $item = Get-Item -LiteralPath $fullPath
+    if ($item.PSIsContainer) {
+        return "<directory>"
+    }
+    if ($item.Length -le 2MB -and $item.Extension -notin @(".png", ".jpg", ".jpeg", ".gif", ".ico", ".jar", ".class", ".zip", ".gz")) {
+        return (Get-FileHash -LiteralPath $fullPath -Algorithm SHA256).Hash
+    }
+    return "$($item.Length):$($item.LastWriteTimeUtc.Ticks)"
+}
+
 function Test-DocumentChanged {
     param(
         [string] $Path,
@@ -204,6 +215,15 @@ function Test-DocumentChanged {
         return $true
     }
     $normalized = $Path.Replace("\", "/")
+
+    # Preferred: compare against the baseline signatures captured at Stage start, so a
+    # document that was already dirty before the cycle does not count as updated by it.
+    if ($null -ne $Context -and ($Context.PSObject.Properties.Name -contains "baselineFileSignatures")) {
+        $baseline = $Context.baselineFileSignatures
+        $baselineSignature = if ($baseline.PSObject.Properties.Name -contains $normalized) { [string] $baseline.$normalized } else { "<not-present-at-start>" }
+        return (Get-GateFileSignature -Path $normalized) -ne $baselineSignature
+    }
+
     if ($ChangedPaths -contains $normalized) {
         return $true
     }
@@ -232,7 +252,8 @@ function Get-MarkdownTableCells {
         return @()
     }
     $trimmed = $Line.Trim().Trim('|')
-    return @($trimmed -split "\|" | ForEach-Object { $_.Trim() })
+    # Split on unescaped pipes only; evidence cells may legitimately contain \| escapes.
+    return @($trimmed -split "(?<!\\)\|" | ForEach-Object { $_.Replace("\|", "|").Trim() })
 }
 
 function Assert-ConcreteEvidence {
@@ -437,6 +458,16 @@ if (-not $SkipFrontend) {
     }
 }
 
+$effectiveCollaborationStrategy = $CollaborationStrategy
+if ([string]::IsNullOrWhiteSpace($effectiveCollaborationStrategy)) {
+    $effectiveCollaborationStrategy = if ($Mode -eq "full") { "test" } else { "skip" }
+}
+if ($effectiveCollaborationStrategy -eq "test") {
+    Invoke-Step "Collaboration tests" {
+        Invoke-LoggedCommand "pnpm collaboration:test" $Root -Compact:$CompactOutput
+    }
+}
+
 if (-not $SkipAudit) {
     Invoke-Step "Mockito javaagent configuration" {
         $pomPath = Join-Path $Root "server\pom.xml"
@@ -447,32 +478,7 @@ if (-not $SkipAudit) {
     }
 
     Invoke-Step "Sensitive data scan" {
-        $patterns = @(
-            "BEGIN RSA PRIVATE KEY",
-            "BEGIN OPENSSH PRIVATE KEY",
-            "AKIA[0-9A-Z]{16}",
-            "xox[baprs]-[0-9A-Za-z-]+",
-            "ghp_[0-9A-Za-z_]{36,}",
-            "sk-[A-Za-z0-9]{20,}",
-            "password\s*=\s*['""][^'""]+['""]",
-            "secret\s*=\s*['""][^'""]+['""]",
-            "token\s*=\s*['""][^'""]+['""]"
-        )
-
-        $secretHits = New-Object System.Collections.Generic.List[string]
-        foreach ($file in Get-TextFiles) {
-            $content = Get-Content -LiteralPath $file.FullName -Raw -ErrorAction SilentlyContinue
-            foreach ($pattern in $patterns) {
-                if ($content -match $pattern) {
-                    $relative = Resolve-Path -Relative $file.FullName
-                    $secretHits.Add("$relative matches $pattern") | Out-Null
-                }
-            }
-        }
-
-        if ($secretHits.Count -gt 0) {
-            throw "Potential secrets found: $($secretHits -join '; ')"
-        }
+        Invoke-LoggedCommand "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/sensitive-data-scan.ps1 -SkipReport" $Root -Compact:$CompactOutput
     }
 
     Invoke-Step "Security audit guardrails" {
@@ -553,6 +559,8 @@ if (-not $SkipAudit) {
                 Add-Warning "Open implementation markers found. Review before release."
                 $todo | Select-Object -First 50 | ForEach-Object { Add-Warning "  $_" }
             }
+        } else {
+            Add-Warning "rg not found on PATH; TODO/FIXME inventory was skipped."
         }
     }
 
@@ -595,8 +603,11 @@ if (-not $SkipAudit) {
             throw "Milestone, roadmap, and report knowledge_base_items are not allowed in docs root: $($illegalRootPattern.Name -join ', ')"
         }
     }
+}
 
-    Invoke-Step "Work-cycle documentation contract" {
+# The work-cycle documentation contract is evidence enforcement, not a static audit:
+# it must also run in stage finishes (which skip the security/static audit block).
+Invoke-Step "Work-cycle documentation contract" {
         $contextPath = Join-Path $ReportDir "work-cycle-current.json"
         if (-not (Test-Path $contextPath)) {
             Add-Result "  no active work-cycle context; skipped strict document contract"
@@ -819,6 +830,21 @@ if (-not $SkipAudit) {
             }
         }
 
+        # Proof-of-run: the Validation section must reference at least one quality-gate
+        # log produced inside this work cycle, so claimed test results trace back to an
+        # actual gate execution instead of free-text assertions.
+        $referencedLogs = @([regex]::Matches($validationContent, "quality-gate-\d{8}-\d{6}[A-Za-z0-9_.-]*\.log") | ForEach-Object { $_.Value } | Select-Object -Unique)
+        $startedAtForLogs = [datetime]::Parse([string] $context.startedAt)
+        $freshReferencedLogs = @($referencedLogs | Where-Object {
+            $candidate = Join-Path $ReportDir $_
+            (Test-Path -LiteralPath $candidate) -and ((Get-Item -LiteralPath $candidate).LastWriteTime -ge $startedAtForLogs)
+        })
+        if ($freshReferencedLogs.Count -eq 0) {
+            $availableLogs = @($StepLogs | ForEach-Object { Split-Path $_ -Leaf })
+            $availableHint = if ($availableLogs.Count -gt 0) { " Fresh logs from this gate run that you can cite: $($availableLogs -join ', ')" } else { "" }
+            throw "Execution report Validation must reference at least one quality-gate log file produced during this work cycle (fresh after $($context.startedAt)).$availableHint"
+        }
+
         $gapsMatch = [regex]::Match($reportContent, "(?s)## Remaining Gaps\s*(.+?)\s*## Next Steps")
         if (-not $gapsMatch.Success) {
             throw "Execution report Remaining Gaps section cannot be parsed"
@@ -940,6 +966,14 @@ if (-not $SkipAudit) {
             $changedDocPaths = @()
         }
 
+        $allowedCycleDocs = New-Object System.Collections.Generic.List[string]
+        if ($context.PSObject.Properties.Name -contains "requiredDocs") {
+            foreach ($doc in @($context.requiredDocs)) { $allowedCycleDocs.Add([string] $doc) | Out-Null }
+        }
+        if ($context.PSObject.Properties.Name -contains "allowedActiveDocs") {
+            foreach ($doc in @($context.allowedActiveDocs)) { $allowedCycleDocs.Add([string] $doc) | Out-Null }
+        }
+
         foreach ($path in $changedDocPaths) {
             $fullChangedDocPath = Join-Path $Root $path
             if (-not (Test-Path $fullChangedDocPath)) {
@@ -954,6 +988,29 @@ if (-not $SkipAudit) {
             if ($path -match "^docs/m\d+.*\.md$") {
                 throw "Milestone knowledge_base_items are not allowed in docs root: $path"
             }
+            $isAllowedDoc = $allowedCycleDocs.Contains($path) -or
+                ($path -like "docs/90-reports/*.md") -or
+                ($path -like "docs/05-runbooks/*.md")
+            if (-not $isAllowedDoc) {
+                throw "Document change is outside the work-cycle allowlist (required docs, active truth docs, docs/90-reports, docs/05-runbooks): $path"
+            }
+        }
+    }
+
+if ($Mode -in @("stage", "full") -and (Test-CommandExists "git") -and (Test-Path (Join-Path $Root ".git"))) {
+    Invoke-Step "Git diff whitespace and conflict check" {
+        Push-Location $Root
+        try {
+            git diff --check
+            if ($LASTEXITCODE -ne 0) {
+                throw "git diff --check reported whitespace errors or conflict markers"
+            }
+            git diff --cached --check
+            if ($LASTEXITCODE -ne 0) {
+                throw "git diff --cached --check reported whitespace errors or conflict markers"
+            }
+        } finally {
+            Pop-Location
         }
     }
 }
@@ -987,6 +1044,25 @@ if ($Failures.Count -eq 0) {
 Set-Content -Path $ReportPath -Value ($report -join [Environment]::NewLine) -Encoding UTF8
 Write-Host ""
 Write-Host "Quality gate report: $ReportPath"
+
+# Record this run into the active work-cycle context so finishes and audits can trace
+# which gate executions (report, logs, mode, status) actually happened in the cycle.
+$contextPathForEvidence = Join-Path $ReportDir "work-cycle-current.json"
+if (Test-Path -LiteralPath $contextPathForEvidence) {
+    try {
+        $cycleContext = Get-Content -LiteralPath $contextPathForEvidence -Raw | ConvertFrom-Json
+        $cycleContext | Add-Member -NotePropertyName lastQualityGate -NotePropertyValue ([ordered]@{
+            reportPath = $ReportPath
+            mode = $Mode
+            status = $status
+            stepLogs = @($StepLogs)
+            completedAt = (Get-Date -Format o)
+        }) -Force
+        $cycleContext | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $contextPathForEvidence -Encoding UTF8
+    } catch {
+        Write-Warning "Could not record quality-gate evidence into the work-cycle context: $($_.Exception.Message)"
+    }
+}
 
 if ($Failures.Count -gt 0) {
     exit 1

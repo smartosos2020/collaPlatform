@@ -9,6 +9,8 @@ param(
     [ValidateSet("code-doc-report", "archive-only")]
     [string] $DocMode = "code-doc-report",
 
+    # Deprecated: validation profile is derived from the stage (checkpoint=light,
+    # finish=stage) or from -ValidationProfile. Kept only for CLI compatibility.
     [ValidateSet("quick", "full")]
     [string] $GateMode = "quick",
 
@@ -25,7 +27,9 @@ param(
     [ValidateSet("", "isolated", "shared-readonly", "mock")]
     [string] $BrowserEvidenceEnvironment = "",
 
-    [string] $BrowserNotRequiredReason = ""
+    [string] $BrowserNotRequiredReason = "",
+
+    [switch] $Force
 )
 
 $ErrorActionPreference = "Stop"
@@ -126,7 +130,10 @@ function Get-WorkCycleAffectedAreas {
         if ($path -match "^(web/|package\.json$|pnpm-lock\.yaml$|web\\)" -and -not $areas.Contains("frontend")) {
             $areas.Add("frontend") | Out-Null
         }
-        if ($path -match "^(docs/|scripts/)" -and -not $areas.Contains("workbench")) {
+        if ($path -match "^(collaboration/|collaboration\\)" -and -not $areas.Contains("collaboration")) {
+            $areas.Add("collaboration") | Out-Null
+        }
+        if ($path -match "^(docs/|scripts/|deploy/|deploy\\)" -and -not $areas.Contains("workbench")) {
             $areas.Add("workbench") | Out-Null
         }
     }
@@ -218,6 +225,7 @@ function New-WorkCycleContext {
     $reportPath = if ($milestone) { "docs/90-reports/$($milestone.ToLowerInvariant())-execution-report.md" } else { "" }
     $context = [ordered]@{
         goal = $Goal
+        status = "in-progress"
         taskRange = $TaskRange
         milestone = $milestone
         workScope = $workScope
@@ -415,6 +423,7 @@ function Invoke-QualityGate {
         [string] $BackendStrategy = "full",
         [string] $BackendTestPattern = "",
         [string] $FrontendStrategy = "full",
+        [string] $CollaborationStrategy = "skip",
         [bool] $SkipDocker = $false,
         [bool] $SkipAudit = $false
     )
@@ -431,6 +440,9 @@ function Invoke-QualityGate {
     }
     if (-not [string]::IsNullOrWhiteSpace($BackendTestPattern)) {
         $arguments.BackendTestPattern = $BackendTestPattern
+    }
+    if ($CollaborationStrategy -ne "skip") {
+        $arguments.CollaborationStrategy = $CollaborationStrategy
     }
     if ($SkipDocker) {
         $arguments.SkipDocker = $true
@@ -450,7 +462,6 @@ function Get-ValidationPlan {
     param(
         [string] $StageName,
         [string] $RequestedProfile,
-        [string] $RequestedGateMode,
         [string] $RequestedBackendTestPattern
     )
 
@@ -462,6 +473,7 @@ function Get-ValidationPlan {
     $affectedAreas = @(Get-WorkCycleAffectedAreas -Context $context)
     $hasBackendChanges = $affectedAreas -contains "backend"
     $hasFrontendChanges = $affectedAreas -contains "frontend"
+    $hasCollaborationChanges = $affectedAreas -contains "collaboration"
 
     $profile = $RequestedProfile
     if ([string]::IsNullOrWhiteSpace($profile)) {
@@ -475,6 +487,7 @@ function Get-ValidationPlan {
             backendStrategy = if ($hasBackendChanges) { "compile" } else { "skip" }
             backendTestPattern = ""
             frontendStrategy = if ($hasFrontendChanges) { "lint" } else { "skip" }
+            collaborationStrategy = if ($hasCollaborationChanges) { "test" } else { "skip" }
             skipDocker = $true
             skipAudit = $true
             snapshotProfile = "light"
@@ -503,6 +516,7 @@ function Get-ValidationPlan {
             } else {
                 "skip"
             }
+            collaborationStrategy = if ($hasCollaborationChanges) { "test" } else { "skip" }
             skipDocker = $true
             skipAudit = $true
             snapshotProfile = "light"
@@ -516,10 +530,11 @@ function Get-ValidationPlan {
         backendStrategy = "full"
         backendTestPattern = ""
         frontendStrategy = "full"
+        collaborationStrategy = "test"
         skipDocker = $false
         skipAudit = $false
         snapshotProfile = "full"
-        affectedAreas = @("backend", "frontend", "workbench")
+        affectedAreas = @("backend", "frontend", "collaboration", "workbench")
     }
 }
 
@@ -534,55 +549,10 @@ function Set-BrowserEvidence {
 function Assert-RealBrowserEvidenceSources {
     param([string] $Command)
 
-    $references = [regex]::Matches(
-        $Command,
-        "(?i)(?:[A-Za-z0-9_.-]+[\\/])*[A-Za-z0-9_.-]+(?:\.spec\.(?:ts|tsx|js)|\.ps1)"
-    ) | ForEach-Object { $_.Value } | Select-Object -Unique
-    if (@($references).Count -eq 0) {
-        throw "Real browser evidence must name a concrete Playwright spec or browser script; --grep alone is not sufficient."
-    }
-
-    $sources = New-Object System.Collections.Generic.List[string]
-    foreach ($reference in $references) {
-        foreach ($basePath in @($Root, (Join-Path $Root "web"), (Join-Path $Root "web/e2e"))) {
-            $candidate = Join-Path $basePath $reference
-            if ((Test-Path -LiteralPath $candidate) -and -not $sources.Contains($candidate)) {
-                $sources.Add($candidate) | Out-Null
-            }
-        }
-    }
-    if ($sources.Count -eq 0) {
-        throw "Real browser evidence must reference an existing Playwright spec or browser script."
-    }
-
-    $scriptSources = @($sources | Where-Object { $_ -match "\.ps1$" })
-    foreach ($scriptSource in $scriptSources) {
-        $scriptContent = Get-Content -LiteralPath $scriptSource -Raw
-        $nestedReferences = [regex]::Matches(
-            $scriptContent,
-            "(?i)(?:[A-Za-z0-9_.-]+[\\/])*[A-Za-z0-9_.-]+\.spec\.(?:ts|tsx|js)"
-        ) | ForEach-Object { $_.Value } | Select-Object -Unique
-        foreach ($reference in $nestedReferences) {
-            foreach ($basePath in @($Root, (Join-Path $Root "web"), (Join-Path $Root "web/e2e"))) {
-                $candidate = Join-Path $basePath $reference
-                if ((Test-Path -LiteralPath $candidate) -and -not $sources.Contains($candidate)) {
-                    $sources.Add($candidate) | Out-Null
-                }
-            }
-        }
-    }
-
-    $mockMarkers = "(?i)(?:\bpage\.route\s*\(|\broute\.fulfill\s*\(|\bpage\.addInitScript\s*\()"
-    $mockedSources = @()
-    foreach ($source in $sources | Where-Object { $_ -match "\.spec\.(ts|tsx|js)$" }) {
-        $content = Get-Content -LiteralPath $source -Raw
-        if ($content -match $mockMarkers) {
-            $mockedSources += $source
-        }
-    }
-    if ($mockedSources.Count -gt 0) {
-        throw "Browser evidence is declared real but the referenced spec mocks browser/API state: $($mockedSources -join ', ')"
-    }
+    # Runs in-process: a violation throws inside the assertion script and, with
+    # ErrorActionPreference=Stop, terminates this caller with the detailed message.
+    $assertScript = Join-Path $PSScriptRoot "assert-real-browser-evidence.ps1"
+    & $assertScript -Command $Command -Root $Root
 }
 
 function Invoke-BrowserEvidence {
@@ -659,6 +629,13 @@ function Invoke-BrowserEvidence {
 
 switch ($Stage) {
     "start" {
+        if ((Test-Path -LiteralPath $ContextPath) -and -not $Force) {
+            $existingContext = Get-Content -LiteralPath $ContextPath -Raw | ConvertFrom-Json
+            $existingStatus = if ($existingContext.PSObject.Properties.Name -contains "status") { [string] $existingContext.status } else { "in-progress" }
+            if ($existingStatus -ne "finished") {
+                throw "An unfinished work cycle already exists for goal '$($existingContext.goal)' started at $($existingContext.startedAt). Finish it first, or pass -Force to replace it."
+            }
+        }
         $context = New-WorkCycleContext
         Ensure-ExecutionReport -Context $context
         Write-DocumentContract -Context $context
@@ -666,16 +643,23 @@ switch ($Stage) {
         Write-Host "Start checkpoint created. Next: implement a small vertical slice, then run checkpoint."
     }
     "checkpoint" {
-        $plan = Get-ValidationPlan -StageName "checkpoint" -RequestedProfile $ValidationProfile -RequestedGateMode $GateMode -RequestedBackendTestPattern $BackendTestPattern
-        Write-Host "Validation profile: $($plan.profile); affected=$($plan.affectedAreas -join ','); backend=$($plan.backendStrategy); frontend=$($plan.frontendStrategy); mode=$($plan.mode); audit=$(-not $plan.skipAudit)"
-        Invoke-QualityGate -Mode $plan.mode -BackendStrategy $plan.backendStrategy -BackendTestPattern $plan.backendTestPattern -FrontendStrategy $plan.frontendStrategy -SkipDocker:$plan.skipDocker -SkipAudit:$plan.skipAudit
+        $plan = Get-ValidationPlan -StageName "checkpoint" -RequestedProfile $ValidationProfile -RequestedBackendTestPattern $BackendTestPattern
+        Write-Host "Validation profile: $($plan.profile); affected=$($plan.affectedAreas -join ','); backend=$($plan.backendStrategy); frontend=$($plan.frontendStrategy); collaboration=$($plan.collaborationStrategy); mode=$($plan.mode); audit=$(-not $plan.skipAudit)"
+        Invoke-QualityGate -Mode $plan.mode -BackendStrategy $plan.backendStrategy -BackendTestPattern $plan.backendTestPattern -FrontendStrategy $plan.frontendStrategy -CollaborationStrategy $plan.collaborationStrategy -SkipDocker:$plan.skipDocker -SkipAudit:$plan.skipAudit
         & (Join-Path $PSScriptRoot "ai-audit-snapshot.ps1") -Label "checkpoint-$Goal" -Profile $plan.snapshotProfile
     }
     "finish" {
-        $plan = Get-ValidationPlan -StageName "finish" -RequestedProfile $ValidationProfile -RequestedGateMode "full" -RequestedBackendTestPattern $BackendTestPattern
-        Write-Host "Validation profile: $($plan.profile); affected=$($plan.affectedAreas -join ','); backend=$($plan.backendStrategy); frontend=$($plan.frontendStrategy); mode=$($plan.mode); audit=$(-not $plan.skipAudit)"
+        if (-not (Test-Path -LiteralPath $ContextPath)) {
+            throw "No active work-cycle context found. Run scripts/ai-work-cycle.ps1 -Stage start before finish."
+        }
+        $plan = Get-ValidationPlan -StageName "finish" -RequestedProfile $ValidationProfile -RequestedBackendTestPattern $BackendTestPattern
+        Write-Host "Validation profile: $($plan.profile); affected=$($plan.affectedAreas -join ','); backend=$($plan.backendStrategy); frontend=$($plan.frontendStrategy); collaboration=$($plan.collaborationStrategy); mode=$($plan.mode); audit=$(-not $plan.skipAudit)"
         Invoke-BrowserEvidence
-        Invoke-QualityGate -Mode $plan.mode -BackendStrategy $plan.backendStrategy -BackendTestPattern $plan.backendTestPattern -FrontendStrategy $plan.frontendStrategy -SkipDocker:$plan.skipDocker -SkipAudit:$plan.skipAudit
+        Invoke-QualityGate -Mode $plan.mode -BackendStrategy $plan.backendStrategy -BackendTestPattern $plan.backendTestPattern -FrontendStrategy $plan.frontendStrategy -CollaborationStrategy $plan.collaborationStrategy -SkipDocker:$plan.skipDocker -SkipAudit:$plan.skipAudit
+        $finishedContext = Get-Content -LiteralPath $ContextPath -Raw | ConvertFrom-Json
+        $finishedContext | Add-Member -NotePropertyName status -NotePropertyValue "finished" -Force
+        $finishedContext | Add-Member -NotePropertyName finishedAt -NotePropertyValue (Get-Date -Format o) -Force
+        $finishedContext | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $ContextPath -Encoding UTF8
         & (Join-Path $PSScriptRoot "ai-audit-snapshot.ps1") -Label "finish-$Goal" -Profile $plan.snapshotProfile
         Write-Host "Finish checkpoint completed. Summarize changed files, documentation updates, validation, residual risks, and next tasks."
     }

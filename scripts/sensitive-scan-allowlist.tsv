@@ -1,0 +1,5 @@
+# Sensitive data scan allowlist.
+# Format: <relative path glob><TAB><exact pattern text or *><TAB><reason>
+# A hit is waived only when BOTH the file path and the matched pattern align with an entry.
+# Keep entries as narrow as possible; broad path globs with "*" pattern defeat the scan.
+web/e2e/*.spec.ts	password\s*=\s*['"][^'"]+['"]	Playwright real-flow specs use fixed dummy login credentials for isolated test members; real secrets (token/secret/sk-/keys) stay blocked in these files.

@@ -8,7 +8,9 @@ import org.springframework.stereotype.Component;
 @ConfigurationProperties(prefix = "colla.knowledge-collaboration")
 public class KnowledgeCollaborationProperties {
     private String publicUrl = "ws://localhost:1234";
-    private String internalSecret = "colla-local-collaboration-secret";
+    // Default comes from application.yml via COLLA_COLLABORATION_INTERNAL_SECRET placeholder;
+    // keep no secret literal in source so the sensitive-data scan stays clean.
+    private String internalSecret;
     private Duration ticketTtl = Duration.ofMinutes(5);
     private int maxUpdateBytes = 1024 * 1024;
     private int retainedUpdates = 100;
