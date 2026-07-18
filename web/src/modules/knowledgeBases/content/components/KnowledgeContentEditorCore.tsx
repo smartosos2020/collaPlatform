@@ -1223,7 +1223,7 @@ function BlockDragHandle({
     }
     const canvasRect = canvas.getBoundingClientRect()
     const blockRect = block.getBoundingClientRect()
-    const left = canvasRect.left + 8
+    const left = canvasRect.left + 2
     return {
       getBoundingClientRect: () => ({
         x: left,
