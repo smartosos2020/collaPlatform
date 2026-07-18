@@ -24,6 +24,8 @@ import java.util.regex.Pattern;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
@@ -340,22 +342,24 @@ public class ImService {
         }
         imRepository.markRead(currentUser.workspaceId(), conversationId, currentUser.id(), messageId);
         UnreadState state = unreadState(currentUser, conversationId);
-        webSocketMessageSender.sendToUser(
-            currentUser.id(),
-            "conversation.read",
-            currentUser.workspaceId(),
-            "conversation",
-            conversationId,
-            Map.of("conversationId", conversationId, "unread", state)
-        );
-        webSocketMessageSender.sendToUser(
-            currentUser.id(),
-            "unread.changed",
-            currentUser.workspaceId(),
-            "conversation",
-            conversationId,
-            Map.of("conversationId", conversationId, "unread", state)
-        );
+        runAfterCommit(() -> {
+            webSocketMessageSender.sendToUser(
+                currentUser.id(),
+                "conversation.read",
+                currentUser.workspaceId(),
+                "conversation",
+                conversationId,
+                Map.of("conversationId", conversationId, "unread", state)
+            );
+            webSocketMessageSender.sendToUser(
+                currentUser.id(),
+                "unread.changed",
+                currentUser.workspaceId(),
+                "conversation",
+                conversationId,
+                Map.of("conversationId", conversationId, "unread", state)
+            );
+        });
         return state;
     }
 
@@ -405,41 +409,62 @@ public class ImService {
         }
     }
 
+    /**
+     * Defers a WebSocket push until after the surrounding transaction commits.
+     * Without this, the frontend's event-driven refetch can race ahead of the
+     * commit and cache a stale (pre-commit) result, leaving the UI one message
+     * behind until the next event arrives.
+     */
+    private static void runAfterCommit(Runnable action) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    action.run();
+                }
+            });
+        } else {
+            action.run();
+        }
+    }
+
     private void pushMessageEvents(CurrentUser currentUser, UUID conversationId, MessageSummary message, String eventType) {
         ConversationDetail conversation = getConversation(currentUser, conversationId);
-        for (UUID memberId : imRepository.listMemberIds(currentUser.workspaceId(), conversationId)) {
-            webSocketMessageSender.sendToUser(
-                memberId,
-                eventType,
-                currentUser.workspaceId(),
-                "message",
-                message.id(),
-                Map.of("conversationId", conversationId, "message", message)
-            );
-            webSocketMessageSender.sendToUser(
-                memberId,
-                "conversation.updated",
-                currentUser.workspaceId(),
-                "conversation",
-                conversationId,
-                Map.of("conversationId", conversationId, "conversation", conversation)
-            );
-            webSocketMessageSender.sendToUser(
-                memberId,
-                "unread.changed",
-                currentUser.workspaceId(),
-                "conversation",
-                conversationId,
-                Map.of(
-                    "conversationId",
+        runAfterCommit(() -> {
+            for (UUID memberId : imRepository.listMemberIds(currentUser.workspaceId(), conversationId)) {
+                webSocketMessageSender.sendToUser(
+                    memberId,
+                    eventType,
+                    currentUser.workspaceId(),
+                    "message",
+                    message.id(),
+                    Map.of("conversationId", conversationId, "message", message)
+                );
+                webSocketMessageSender.sendToUser(
+                    memberId,
+                    "conversation.updated",
+                    currentUser.workspaceId(),
+                    "conversation",
                     conversationId,
-                    "unreadCount",
-                    imRepository.unreadCount(currentUser.workspaceId(), conversationId, memberId),
-                    "totalUnreadCount",
-                    imRepository.totalUnreadCount(currentUser.workspaceId(), memberId)
-                )
-            );
-        }
+                    Map.of("conversationId", conversationId, "conversation", conversation)
+                );
+                webSocketMessageSender.sendToUser(
+                    memberId,
+                    "unread.changed",
+                    currentUser.workspaceId(),
+                    "conversation",
+                    conversationId,
+                    Map.of(
+                        "conversationId",
+                        conversationId,
+                        "unreadCount",
+                        imRepository.unreadCount(currentUser.workspaceId(), conversationId, memberId),
+                        "totalUnreadCount",
+                        imRepository.totalUnreadCount(currentUser.workspaceId(), memberId)
+                    )
+                );
+            }
+        });
     }
 
     private void pushConversationEvents(CurrentUser currentUser, UUID conversationId, ConversationDetail conversation) {
@@ -447,13 +472,15 @@ public class ImService {
     }
 
     private void pushConversationPreferenceEvent(CurrentUser currentUser, UUID conversationId, ConversationDetail conversation) {
-        webSocketMessageSender.sendToUser(
-            currentUser.id(),
-            "conversation.updated",
-            currentUser.workspaceId(),
-            "conversation",
-            conversationId,
-            Map.of("conversationId", conversationId, "conversation", conversation)
+        runAfterCommit(() ->
+            webSocketMessageSender.sendToUser(
+                currentUser.id(),
+                "conversation.updated",
+                currentUser.workspaceId(),
+                "conversation",
+                conversationId,
+                Map.of("conversationId", conversationId, "conversation", conversation)
+            )
         );
     }
 
@@ -466,31 +493,33 @@ public class ImService {
         Set<UUID> recipientIds = new LinkedHashSet<>(imRepository.listMemberIds(currentUser.workspaceId(), conversationId));
         recipientIds.addAll(extraRecipientIds);
         conversation.members().stream().map(member -> member.userId()).forEach(recipientIds::add);
-        for (UUID memberId : recipientIds) {
-            webSocketMessageSender.sendToUser(
-                memberId,
-                "conversation.updated",
-                currentUser.workspaceId(),
-                "conversation",
-                conversationId,
-                Map.of("conversationId", conversationId, "conversation", conversation)
-            );
-            webSocketMessageSender.sendToUser(
-                memberId,
-                "unread.changed",
-                currentUser.workspaceId(),
-                "conversation",
-                conversationId,
-                Map.of(
-                    "conversationId",
+        runAfterCommit(() -> {
+            for (UUID memberId : recipientIds) {
+                webSocketMessageSender.sendToUser(
+                    memberId,
+                    "conversation.updated",
+                    currentUser.workspaceId(),
+                    "conversation",
                     conversationId,
-                    "unreadCount",
-                    imRepository.unreadCount(currentUser.workspaceId(), conversationId, memberId),
-                    "totalUnreadCount",
-                    imRepository.totalUnreadCount(currentUser.workspaceId(), memberId)
-                )
-            );
-        }
+                    Map.of("conversationId", conversationId, "conversation", conversation)
+                );
+                webSocketMessageSender.sendToUser(
+                    memberId,
+                    "unread.changed",
+                    currentUser.workspaceId(),
+                    "conversation",
+                    conversationId,
+                    Map.of(
+                        "conversationId",
+                        conversationId,
+                        "unreadCount",
+                        imRepository.unreadCount(currentUser.workspaceId(), conversationId, memberId),
+                        "totalUnreadCount",
+                        imRepository.totalUnreadCount(currentUser.workspaceId(), memberId)
+                    )
+                );
+            }
+        });
     }
 
     private void appendMessageCreatedEvent(CurrentUser currentUser, UUID conversationId, MessageSummary message) {
