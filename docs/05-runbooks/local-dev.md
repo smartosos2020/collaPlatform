@@ -24,8 +24,8 @@ The quality gate checks these tools automatically.
 
 Copy the example environment file when a local `.env` file does not exist:
 
-```powershell
-Copy-Item .env.example .env
+```shell
+cp .env.example .env
 ```
 
 Default local connection values:
@@ -47,13 +47,13 @@ Local-only connection notes can be kept in `.local-connection-info.md`; the file
 
 ## Start Dependencies
 
-```powershell
+```shell
 docker compose up -d postgres redis minio
 ```
 
 Check service state:
 
-```powershell
+```shell
 docker compose ps
 ```
 
@@ -65,7 +65,7 @@ Expected services:
 
 ## Start Backend
 
-```powershell
+```shell
 cd server
 mvn spring-boot:run
 ```
@@ -80,15 +80,15 @@ The backend runs Flyway migrations on startup.
 
 Useful operational checks after startup:
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File deploy/scripts/health-check.ps1
+```shell
+pnpm ops:health
 ```
 
 `ops:health` checks `/api/health`, `/actuator/health`, and direct-backend Prometheus metrics. The production Nginx config only exposes `/actuator/health`; Prometheus is intended for direct backend or internal network checks.
 
 ## Start Frontend
 
-```powershell
+```shell
 pnpm install
 pnpm web:dev
 ```
@@ -126,7 +126,7 @@ Backend integration tests use an isolated Testcontainers PostgreSQL database. Cr
 
 Stop app processes from their terminals, then stop dependencies when no longer needed:
 
-```powershell
+```shell
 docker compose down
 ```
 
@@ -136,14 +136,14 @@ Do not delete Docker volumes unless a clean database is explicitly required.
 
 Create a local backup:
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File deploy/scripts/backup.ps1
+```shell
+pnpm ops:backup
 ```
 
 Validate a generated backup without restoring it:
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File deploy/scripts/restore-drill.ps1 -BackupPath .local-backups\YYYYMMDD-HHMMSS
+```shell
+pnpm ops:restore-drill -- --backup-path .local-backups/YYYYMMDD-HHMMSS
 ```
 
-`ops:restore-drill` verifies manifest entries, SHA-256 hashes, and compose configuration. It does not run a destructive restore unless explicitly passed `-RunRestore -ConfirmRestore`.
+`ops:restore-drill` verifies manifest entries, SHA-256 hashes, and compose configuration. It does not run a destructive restore unless explicitly passed `--run-restore --confirm-restore`.

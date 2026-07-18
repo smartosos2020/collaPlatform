@@ -127,7 +127,7 @@ Spring Boot server
 - Docker Desktop，启用 Docker Compose。
 - Java 21。
 - Maven 3.9 或更高版本。
-- Node.js 20 或更高版本；容器构建使用 Node.js 24。
+- Node.js 22 或更高版本；容器和 CI 使用 Node.js 24。
 - pnpm 9.4.0。仓库通过 `packageManager` 固定 pnpm 版本。
 
 ## 本地开发
@@ -136,7 +136,7 @@ Spring Boot server
 
 在项目根目录执行：
 
-```powershell
+```shell
 docker compose up -d postgres redis minio
 ```
 
@@ -161,8 +161,8 @@ docker compose up -d postgres redis minio
 
 在单独的终端执行：
 
-```powershell
-Set-Location server
+```shell
+cd server
 mvn spring-boot:run
 ```
 
@@ -172,7 +172,7 @@ mvn spring-boot:run
 
 在另一个终端执行：
 
-```powershell
+```shell
 pnpm install
 pnpm web:dev
 ```
@@ -200,7 +200,7 @@ VITE_WS_BASE_URL=ws://localhost:8080/ws/events
 
 在项目根目录执行：
 
-```powershell
+```shell
 pnpm install --frozen-lockfile
 pnpm web:lint
 pnpm web:build
@@ -210,8 +210,8 @@ pnpm web:build
 
 ### 后端
 
-```powershell
-Set-Location server
+```shell
+cd server
 mvn test
 mvn -DskipTests package
 ```
@@ -220,7 +220,7 @@ mvn -DskipTests package
 
 ### 生产镜像构建
 
-```powershell
+```shell
 docker build -t colla-platform-server:local ./server
 docker build -t colla-platform-web:local -f web/Dockerfile .
 ```
@@ -240,23 +240,23 @@ docker build -t colla-platform-web:local -f web/Dockerfile .
 
 1. 创建生产环境变量文件：
 
-   ```powershell
-   Copy-Item deploy/.env.prod.example deploy/.env.prod
+   ```shell
+   cp deploy/.env.prod.example deploy/.env.prod
    ```
 
 2. 编辑 `deploy/.env.prod`，至少替换数据库密码、MinIO 密钥、JWT 密钥、初始管理员密码、允许的来源和站点地址。
 
 3. 构建并启动完整服务：
 
-   ```powershell
+   ```shell
    docker compose --env-file deploy/.env.prod -f deploy/docker-compose.prod.yml up -d --build
    ```
 
 4. 验证服务状态：
 
-   ```powershell
-   Invoke-WebRequest http://localhost/api/health
-   Invoke-WebRequest http://localhost/actuator/health
+   ```shell
+   curl --fail http://localhost/api/health
+   curl --fail http://localhost/actuator/health
    ```
 
 默认 HTTP 入口为 `http://localhost`。如需启用 HTTPS，应将证书挂载到 `deploy/certs`，并在 `deploy/nginx/colla.conf` 中补充 HTTPS server 配置。

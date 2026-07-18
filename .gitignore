@@ -14,8 +14,7 @@ logs/
 /.local-*
 **/.local-*/
 
-# Local-only generated reports and CI drafts
-/.github/workflows/
+# Local-only generated reports and issue drafts
 /.github/ISSUE_TEMPLATE/
 
 # Java

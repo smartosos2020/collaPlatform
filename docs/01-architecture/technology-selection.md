@@ -81,7 +81,7 @@ last_code_check: 2026-07-16
 
 ## 当前质量门禁
 
-`scripts/ai-quality-gate.ps1` 根据 validation profile 执行门禁：
+`pnpm verify` 根据 validation profile 执行跨平台门禁：
 
 - 工具链检查。
 - Docker 依赖启动。
