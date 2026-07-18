@@ -39,6 +39,7 @@ $ReportDir = Join-Path $Root ".local-reports"
 $ContextPath = Join-Path $ReportDir "work-cycle-current.json"
 $MaxMilestonesPerWorkCycle = 1
 New-Item -ItemType Directory -Force -Path $ReportDir | Out-Null
+. (Join-Path $PSScriptRoot "ai-work-cycle-git-state.ps1")
 
 function Get-Milestone {
     param([string] $Range, [string] $Name)
@@ -51,77 +52,10 @@ function Get-Milestone {
     return ""
 }
 
-function Get-NormalizedGitStatusPaths {
-    if (-not (Get-Command git -ErrorAction SilentlyContinue) -or -not (Test-Path (Join-Path $Root ".git"))) {
-        return @()
-    }
-
-    Push-Location $Root
-    try {
-        $status = git status --porcelain -uall
-        if (-not $status) {
-            return @()
-        }
-        return $status | ForEach-Object {
-            $path = $_.Substring(3).Trim()
-            if ($path -match " -> ") {
-                $path = ($path -split " -> ")[1]
-            }
-            $path.Replace("\", "/")
-        }
-    } finally {
-        Pop-Location
-    }
-}
-function Get-WorkCycleFileSignature {
-    param([string] $Path)
-
-    $fullPath = Join-Path $Root $Path
-    if (-not (Test-Path -LiteralPath $fullPath)) {
-        return "<missing>"
-    }
-
-    $item = Get-Item -LiteralPath $fullPath
-    if ($item.PSIsContainer) {
-        return "<directory>"
-    }
-
-    if ($item.Length -le 2MB -and $item.Extension -notin @(".png", ".jpg", ".jpeg", ".gif", ".ico", ".jar", ".class", ".zip", ".gz")) {
-        return (Get-FileHash -LiteralPath $fullPath -Algorithm SHA256).Hash
-    }
-    return "$($item.Length):$($item.LastWriteTimeUtc.Ticks)"
-}
-
-function Get-WorkCycleFileSignatures {
-    $signatures = [ordered]@{}
-    foreach ($path in @(Get-NormalizedGitStatusPaths)) {
-        $signatures[$path] = Get-WorkCycleFileSignature -Path $path
-    }
-    return $signatures
-}
-
-function Get-ChangedWorkCyclePaths {
-    param($Context)
-
-    $currentPaths = @(Get-NormalizedGitStatusPaths)
-    if ($null -eq $Context -or -not ($Context.PSObject.Properties.Name -contains "baselineFileSignatures")) {
-        return $currentPaths
-    }
-
-    $baseline = $Context.baselineFileSignatures
-    $baselinePaths = @($baseline.PSObject.Properties.Name)
-    $candidatePaths = @($currentPaths + $baselinePaths | Sort-Object -Unique)
-    return @($candidatePaths | Where-Object {
-        $currentSignature = Get-WorkCycleFileSignature -Path $_
-        $baselineSignature = if ($baseline.PSObject.Properties.Name -contains $_) { [string] $baseline.$_ } else { "<not-present-at-start>" }
-        $currentSignature -ne $baselineSignature
-    })
-}
-
 function Get-WorkCycleAffectedAreas {
     param($Context)
 
-    $paths = @(Get-ChangedWorkCyclePaths -Context $Context)
+    $paths = @(Get-ChangedWorkCyclePaths -RepositoryRoot $Root -Context $Context)
     $areas = New-Object System.Collections.Generic.List[string]
     foreach ($path in $paths) {
         if ($path -match "^(server/|pom\.xml$|server\\)" -and -not $areas.Contains("backend")) {
@@ -223,6 +157,12 @@ function New-WorkCycleContext {
     $workScope = Get-WorkScope -Range $TaskRange
     Assert-WorkScope -Scope $workScope
     $reportPath = if ($milestone) { "docs/90-reports/$($milestone.ToLowerInvariant())-execution-report.md" } else { "" }
+    $requiredDocs = @(
+        "docs/02-roadmap/current-roadmap.md",
+        $reportPath
+    ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+    $baselineChangedPaths = @(Get-WorkCycleGitStatusPaths -RepositoryRoot $Root)
+    $baselineSignaturePaths = @($baselineChangedPaths + $requiredDocs | Sort-Object -Unique)
     $context = [ordered]@{
         goal = $Goal
         status = "in-progress"
@@ -231,12 +171,10 @@ function New-WorkCycleContext {
         workScope = $workScope
         docMode = $DocMode
         startedAt = (Get-Date -Format o)
-            baselineChangedPaths = @(Get-NormalizedGitStatusPaths)
-            baselineFileSignatures = Get-WorkCycleFileSignatures
-        requiredDocs = @(
-            "docs/02-roadmap/current-roadmap.md",
-            $reportPath
-        ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+        baselineCommit = Get-WorkCycleHeadCommit -RepositoryRoot $Root
+        baselineChangedPaths = $baselineChangedPaths
+        baselineFileSignatures = Get-WorkCycleFileSignatures -RepositoryRoot $Root -Paths $baselineSignaturePaths
+        requiredDocs = $requiredDocs
         allowedActiveDocs = @(
             "docs/README.md",
             "docs/00-product/current-product-scope.md",

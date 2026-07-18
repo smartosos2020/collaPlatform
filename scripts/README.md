@@ -7,6 +7,7 @@
 | 脚本 | 用途 | 数据影响 |
 | --- | --- | --- |
 | `ai-work-cycle.ps1` | start/checkpoint/finish、阶段测试、浏览器证据执行和验收语义门禁 | 写 `.local-reports/` 与本地文档模板；浏览器命令按显式参数执行 |
+| `ai-work-cycle-git-state.ps1` | 工作循环内部 Git 基线、文件签名和已提交/未提交变更追踪 | 只读，由工作循环与质量门禁共同加载 |
 | `ai-quality-gate.ps1` | 编译、测试、前端、安全、迁移顺序和文档门禁 | 不重置共享数据库；测试使用 Testcontainers |
 | `ai-audit-snapshot.ps1` | 保存工具链、Docker 和 Git 本地快照 | 只读 |
 | `security-audit-gate.ps1` | 安全配置和审计调用静态检查 | 只读 |
@@ -33,6 +34,7 @@ pnpm audit:snapshot
 pnpm work:start -- -Goal "M25-delivery" -TaskRange "M25-T01 到 M25-T12"
 pnpm work:checkpoint -- -Goal "M25-delivery"
 pnpm work:finish -- -Goal "M25-delivery" -TaskRange "M25-T01 到 M25-T12"
+pnpm work:test
 pnpm verify
 pnpm verify:full
 pnpm security:audit
@@ -85,7 +87,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File deploy/scripts/release-check
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ai-work-cycle.ps1 -Stage finish -Goal "PILOT-V2-M5" -TaskRange "PILOT-V2-M5-T01 到 PILOT-V2-M5-T10" -BackendTestPattern "PermissionGovernanceControllerIntegrationTests" -BrowserTestCommand "powershell -NoProfile -ExecutionPolicy Bypass -File web/e2e/m5-permission-notification-e2e.ps1" -BrowserEvidenceKind real -BrowserEvidenceEnvironment isolated
 ```
 
-stage finish 和 route-final finish 会验证执行报告中的 `Acceptance Evidence` 六列表、任务级 `Verification Contract`、路线图状态、验证章节、结构化 Remaining Gaps 和本轮新鲜浏览器日志。checkpoint 只验证报告结构和任务行，不要求任务已经标记为 Done，也不要求浏览器收口证据。
+stage finish 和 route-final finish 会验证执行报告中的 `Acceptance Evidence` 六列表、任务级 `Verification Contract`、路线图状态、验证章节、结构化 Remaining Gaps 和本轮新鲜浏览器日志。start 同时记录基线提交、启动前脏文件和必更文档签名；后续影响范围同时覆盖 `baselineCommit..HEAD` 的已提交变更与当前工作区变更。checkpoint 只验证报告结构和任务行，不要求任务已经标记为 Done，也不要求浏览器收口证据。Git 基线回归测试可通过 `pnpm work:test` 独立运行。
 
 `-BrowserTestCommand` 必须显式声明证据类型和环境：
 

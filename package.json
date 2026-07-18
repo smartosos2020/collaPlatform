@@ -8,6 +8,7 @@
     "work:start": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ai-work-cycle.ps1 -Stage start",
     "work:checkpoint": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ai-work-cycle.ps1 -Stage checkpoint",
     "work:finish": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ai-work-cycle.ps1 -Stage finish",
+    "work:test": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/tests/run-ai-work-cycle-tests.ps1",
     "verify": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ai-quality-gate.ps1 -Mode quick",
     "verify:full": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ai-quality-gate.ps1 -Mode full",
     "security:audit": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/security-audit-gate.ps1",

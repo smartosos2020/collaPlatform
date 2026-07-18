@@ -434,6 +434,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ai-work-cycle.ps1 -S
 - `git diff --check` 空白与冲突标记检查。
 - proof-of-run：执行报告 Validation 必须引用本轮工作循环内产生的质量门禁日志（`quality-gate-*.log`），不接受纯文字声明。
 - 文档边界强制：必更新文档以 start 基线签名判定真实变更（start 前已脏不算本轮更新）；非必需的 docs 变更只允许落在活动真相文档、`docs/90-reports` 与 `docs/05-runbooks` 内。
+- 变更范围以 start 时的 `baselineCommit`、启动前脏文件签名和必更文档签名共同判定；即使本轮代码已经提交，`baselineCommit..HEAD` 仍必须进入受影响模块验证、文档边界和 `git diff --check`。
+- stage finish 与 route-final finish 使用同一套任务完成契约；两者只在测试广度和全仓静态审计范围上不同，stage 不得降级为仅警告后完成。
 
 ### 5.4 门禁失败处理
 

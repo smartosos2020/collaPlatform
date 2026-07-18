@@ -33,6 +33,7 @@ $Results = New-Object System.Collections.Generic.List[string]
 $StepLogs = New-Object System.Collections.Generic.List[string]
 
 New-Item -ItemType Directory -Force -Path $ReportDir | Out-Null
+. (Join-Path $PSScriptRoot "ai-work-cycle-git-state.ps1")
 
 function Add-Result {
     param([string] $Message)
@@ -164,46 +165,6 @@ function Invoke-LoggedCommand {
     }
 }
 
-function Get-NormalizedGitStatusPaths {
-    if (-not (Test-CommandExists "git") -or -not (Test-Path (Join-Path $Root ".git"))) {
-        return @()
-    }
-
-    Push-Location $Root
-    try {
-        $status = git status --porcelain -uall
-        if (-not $status) {
-            return @()
-        }
-        return $status | ForEach-Object {
-            $path = $_.Substring(3).Trim()
-            if ($path -match " -> ") {
-                $path = ($path -split " -> ")[1]
-            }
-            $path.Replace("\", "/")
-        }
-    } finally {
-        Pop-Location
-    }
-}
-
-function Get-GateFileSignature {
-    param([string] $Path)
-
-    $fullPath = Join-Path $Root $Path
-    if (-not (Test-Path -LiteralPath $fullPath)) {
-        return "<missing>"
-    }
-    $item = Get-Item -LiteralPath $fullPath
-    if ($item.PSIsContainer) {
-        return "<directory>"
-    }
-    if ($item.Length -le 2MB -and $item.Extension -notin @(".png", ".jpg", ".jpeg", ".gif", ".ico", ".jar", ".class", ".zip", ".gz")) {
-        return (Get-FileHash -LiteralPath $fullPath -Algorithm SHA256).Hash
-    }
-    return "$($item.Length):$($item.LastWriteTimeUtc.Ticks)"
-}
-
 function Test-DocumentChanged {
     param(
         [string] $Path,
@@ -220,8 +181,11 @@ function Test-DocumentChanged {
     # document that was already dirty before the cycle does not count as updated by it.
     if ($null -ne $Context -and ($Context.PSObject.Properties.Name -contains "baselineFileSignatures")) {
         $baseline = $Context.baselineFileSignatures
-        $baselineSignature = if ($baseline.PSObject.Properties.Name -contains $normalized) { [string] $baseline.$normalized } else { "<not-present-at-start>" }
-        return (Get-GateFileSignature -Path $normalized) -ne $baselineSignature
+        if ($baseline.PSObject.Properties.Name -contains $normalized) {
+            $baselineSignature = [string] $baseline.PSObject.Properties[$normalized].Value
+            return (Get-WorkCycleFileSignature -RepositoryRoot $Root -Path $normalized) -ne $baselineSignature
+        }
+        return $ChangedPaths -contains $normalized
     }
 
     if ($ChangedPaths -contains $normalized) {
@@ -623,7 +587,7 @@ Invoke-Step "Work-cycle documentation contract" {
         }
 
         $context = Get-Content -LiteralPath $contextPath -Raw | ConvertFrom-Json
-        $changedPaths = @(Get-NormalizedGitStatusPaths)
+        $changedPaths = @(Get-ChangedWorkCyclePaths -RepositoryRoot $Root -Context $context)
         $strictWorkCycle = $Mode -in @("stage", "full")
         if ($context.docMode -eq "archive-only") {
             Add-Result "  archive-only document mode; code-doc-report contract not required"
@@ -655,7 +619,7 @@ Invoke-Step "Work-cycle documentation contract" {
             }
         }
 
-        if ($Mode -ne "full") {
+        if (-not $strictWorkCycle) {
             foreach ($doc in $context.requiredDocs) {
                 if (-not (Test-DocumentChanged -Path $doc -ChangedPaths $changedPaths -Context $context)) {
                     Add-Warning "Work-cycle document has not changed yet: $doc"
@@ -965,11 +929,12 @@ Invoke-Step "Work-cycle documentation contract" {
         }
 
         $changedDocPaths = $changedPaths | Where-Object { $_ -like "docs/*.md" -or $_ -like "docs/*/*.md" -or $_ -like "docs/*/*/*.md" }
+        $hasSignatureBaseline = $context.PSObject.Properties.Name -contains "baselineFileSignatures"
         $hasBaseline = $context.PSObject.Properties.Name -contains "baselineChangedPaths"
-        if ($hasBaseline) {
+        if (-not $hasSignatureBaseline -and $hasBaseline) {
             $baselineChangedPaths = @($context.baselineChangedPaths)
             $changedDocPaths = $changedDocPaths | Where-Object { $baselineChangedPaths -notcontains $_ }
-        } else {
+        } elseif (-not $hasSignatureBaseline) {
             Add-Warning "Active work-cycle context has no baselineChangedPaths; non-required dirty document boundary checks are skipped for this legacy context."
             $changedDocPaths = @()
         }
@@ -1009,6 +974,16 @@ if ($Mode -in @("stage", "full") -and (Test-CommandExists "git") -and (Test-Path
     Invoke-Step "Git diff whitespace and conflict check" {
         Push-Location $Root
         try {
+            $contextPath = Join-Path $ReportDir "work-cycle-current.json"
+            if (Test-Path -LiteralPath $contextPath) {
+                $diffContext = Get-Content -LiteralPath $contextPath -Raw | ConvertFrom-Json
+                if ($diffContext.PSObject.Properties.Name -contains "baselineCommit" -and -not [string]::IsNullOrWhiteSpace([string] $diffContext.baselineCommit)) {
+                    git diff --check "$($diffContext.baselineCommit)..HEAD" --
+                    if ($LASTEXITCODE -ne 0) {
+                        throw "git diff --check reported errors in committed work-cycle changes"
+                    }
+                }
+            }
             git diff --check
             if ($LASTEXITCODE -ne 0) {
                 throw "git diff --check reported whitespace errors or conflict markers"
