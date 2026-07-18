@@ -1,5 +1,6 @@
 import {
   BookOutlined,
+  DeleteFilled,
   DeleteOutlined,
   EditOutlined,
   EyeOutlined,
@@ -12,9 +13,11 @@ import { App as AntdApp, Button, Empty, Form, Input, Modal, Select, Space, Switc
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
+import { useAuthStore } from '../../auth/authStore'
 import {
   archiveKnowledgeBase,
   createKnowledgeBase,
+  deleteKnowledgeBase,
   disableKnowledgeBase,
   listKnowledgeBases,
   restoreKnowledgeBase,
@@ -35,6 +38,7 @@ export function KnowledgeBasesPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { message, modal } = AntdApp.useApp()
+  const currentUser = useAuthStore((state) => state.currentUser)
   const [includeArchived, setIncludeArchived] = useState(false)
   const [searchDraft, setSearchDraft] = useState('')
   const [editingSpace, setEditingSpace] = useState<KnowledgeBaseSpaceSummary | null>(null)
@@ -109,6 +113,15 @@ export function KnowledgeBasesPage() {
     onError: () => message.error('知识库归档失败'),
   })
 
+  const deleteMutation = useMutation({
+    mutationFn: deleteKnowledgeBase,
+    onSuccess: async () => {
+      message.success('知识库已彻底删除')
+      await refresh()
+    },
+    onError: () => message.error('知识库删除失败'),
+  })
+
   const openCreate = () => {
     form.setFieldsValue({ visibility: 'private', defaultPermissionLevel: 'view' })
     setCreateOpen(true)
@@ -135,6 +148,18 @@ export function KnowledgeBasesPage() {
       okText: '归档',
       okButtonProps: { danger: true },
       onOk: () => archiveMutation.mutate(space.id),
+    })
+  }
+
+  const canManage = (space: KnowledgeBaseSpaceSummary) => currentUser?.id === space.ownerId
+
+  const confirmDelete = (space: KnowledgeBaseSpaceSummary) => {
+    modal.confirm({
+      title: `彻底删除 ${space.name}`,
+      content: '彻底删除会同步删除知识库及其全部内容树，操作不可恢复，请确认已备份需要保留的内容。',
+      okText: '彻底删除',
+      okButtonProps: { danger: true },
+      onOk: () => deleteMutation.mutate(space.id),
     })
   }
 
@@ -173,7 +198,12 @@ export function KnowledgeBasesPage() {
       ) : (
         <div className="kb-grid">
           {filteredSpaces.map((space) => (
-            <article className="kb-card" key={space.id}>
+            <article
+              className="kb-card"
+              key={space.id}
+              style={{ cursor: 'pointer' }}
+              onClick={() => navigate(space.navigation?.webPath ?? `/knowledge-bases/${space.id}`)}
+            >
               <div className="kb-card-cover" style={space.coverUrl ? { backgroundImage: `url(${space.coverUrl})` } : undefined}>
                 {!space.coverUrl ? <BookOutlined /> : null}
               </div>
@@ -193,7 +223,7 @@ export function KnowledgeBasesPage() {
                 </Space>
                 <div className="kb-card-footer">
                   <Typography.Text type="secondary">维护人 {space.ownerName}</Typography.Text>
-                  <Space size={4}>
+                  <Space size={4} onClick={(event) => event.stopPropagation()}>
                     <Tooltip title="打开知识库">
                       <Button
                         aria-label={`打开 ${space.name}`}
@@ -216,6 +246,11 @@ export function KnowledgeBasesPage() {
                     <Tooltip title="归档">
                       <Button danger icon={<DeleteOutlined />} onClick={() => confirmArchive(space)} />
                     </Tooltip>
+                    {canManage(space) ? (
+                      <Tooltip title="彻底删除">
+                        <Button danger icon={<DeleteFilled />} onClick={() => confirmDelete(space)} />
+                      </Tooltip>
+                    ) : null}
                   </Space>
                 </div>
               </div>

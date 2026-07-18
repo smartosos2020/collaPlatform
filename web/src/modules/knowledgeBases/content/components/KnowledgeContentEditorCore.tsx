@@ -649,7 +649,12 @@ export function KnowledgeContentEditorCore({
         },
       },
       onCreate: ({ editor: nextEditor }) => {
-        if (ensureEditorBlockIds(nextEditor) && !collaborationProvider) {
+        // In collaboration mode, the Y.Doc starts empty and ProseMirror forces an
+        // empty paragraph. Running ensureEditorBlockIds here would dispatch a
+        // transaction on the un-synced document, permanently inserting an empty
+        // line into the shared state. Block IDs come from the server content.
+        if (collaborationProvider) return
+        if (ensureEditorBlockIds(nextEditor)) {
           onDocumentChangeRef.current(nextEditor.getJSON())
         }
       },

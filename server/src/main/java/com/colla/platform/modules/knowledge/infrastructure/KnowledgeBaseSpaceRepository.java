@@ -41,6 +41,8 @@ public interface KnowledgeBaseSpaceRepository {
 
     void updateStatus(UUID workspaceId, UUID spaceId, String status, UUID actorId);
 
+    void deleteSpace(UUID workspaceId, UUID spaceId, UUID actorId);
+
     List<KnowledgeBaseSpaceSummary> listSpaces(UUID workspaceId, boolean includeArchived);
 
     Optional<KnowledgeBaseSpaceSummary> findSpace(UUID workspaceId, UUID spaceId);
