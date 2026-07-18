@@ -42,6 +42,7 @@ M31/M40 仿真和试运行材料已经归档，不再作为默认数据或发布
 | 文档 | 说明 |
 | --- | --- |
 | `00-product/current-product-scope.md` | 当前已经实现、部分实现、未完成的产品范围 |
+| `00-product/initiatives/README.md` | 机器可校验的 Active/Paused 长期专项索引；保留暂停专项的剩余承诺和恢复入口 |
 | `00-product/initiatives/project-platform-program.md` | PROJECT-PLATFORM 长期目标、Stage 索引、滚动规划和变更记录；不是第二执行路线 |
 | `01-architecture/current-architecture.md` | 当前后端、前端、数据库、事件、测试现实 |
 | `01-architecture/project-platform-target-architecture.md` | PROJECT-PLATFORM 目标架构；不代表当前已经实现 |
@@ -61,7 +62,7 @@ M31/M40 仿真和试运行材料已经归档，不再作为默认数据或发布
 | `00-product/references/lark-product-shape-analysis.md` | Lark 产品形态阶段性分析 |
 | `00-product/references/org-usergroup-permission-requirements.md` | 已完成 ORG 路线的原始需求参考 |
 
-任何参考资料衍生的可执行 Milestone 和 Task 必须写入 `02-roadmap/current-roadmap.md`，不得在 `02-roadmap/` 下新增第二份路线图。长期专项可以在 `00-product/initiatives/` 维护 Program 和 Stage 索引，但不能包含可直接执行的 Task 状态；当前路线必须通过 front matter 的 `program_doc`、`program_revision`、`stage` 和 `stage_final_milestone` 显式引用它。
+任何参考资料衍生的可执行 Milestone 和 Task 必须写入 `02-roadmap/current-roadmap.md`，不得在 `02-roadmap/` 下新增第二份路线图。长期专项可以在 `00-product/initiatives/` 维护专项索引、Program 和 Stage 索引，但不能包含可直接执行的 Task 状态；当前路线必须通过 front matter 的 `program_doc`、`program_revision`、`stage` 和 `stage_final_milestone` 显式引用它，Program 必须通过 `initiative_index_doc` 和 `target_architecture_doc` 连接专项索引及目标架构。
 
 ## 当前 Runbook
 

@@ -1,4 +1,4 @@
-import { spawn, spawnSync, type SpawnOptions } from 'node:child_process'
+import { spawn, spawnSync, type ChildProcess, type SpawnOptions } from 'node:child_process'
 
 export interface RunOptions {
   cwd?: string
@@ -56,5 +56,15 @@ export function run(command: string, args: string[], options: RunOptions = {}): 
       if (code === 0 || options.allowFailure) resolve(options.trimOutput === false ? output : output.trim())
       else reject(new Error(`${command} ${args.join(' ')} failed (${code})\n${output.trim()}`))
     })
+  })
+}
+
+export function spawnManaged(command: string, args: string[], options: SpawnOptions = {}): ChildProcess {
+  const target = invocation(command, args)
+  return spawn(target.executable, target.args, {
+    ...options,
+    env: { ...process.env, ...options.env },
+    windowsHide: options.windowsHide ?? true,
+    windowsVerbatimArguments: process.platform === 'win32' && target.executable === (process.env.ComSpec || 'cmd.exe'),
   })
 }

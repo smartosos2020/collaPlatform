@@ -4,7 +4,8 @@ import { changedSinceBaseline, fileSignatures, gitHead, gitStatusPaths, type Git
 import { repositoryRoot } from '../lib/paths.js'
 import { run } from '../lib/process.js'
 import { assertRealBrowserEvidence } from '../security/browserEvidence.js'
-import { runQualityGate, type BackendStrategy, type FrontendStrategy } from './quality.js'
+import { auditSnapshot } from '../audit/snapshot.js'
+import { runQualityGate, type BackendStrategy, type FrontendStrategy, type QualityGateEvidence } from './quality.js'
 import { assertTaskScopeInPlanning, loadActivePlanningContract } from './planning.js'
 
 export interface WorkCycleOptions {
@@ -29,9 +30,12 @@ interface WorkContext extends GitBaseline {
   allowedActiveDocs: string[]; allowedReportDir: string
   evidencePolicy: { contractVersion: number }
   browserEvidence?: Record<string, string>
+  lastQualityGate?: QualityGateEvidence
+  auditSnapshots?: string[]
   planning: {
     program: string
     programDoc: string
+    initiativeIndexDoc: string
     targetArchitectureDoc: string
     programRevision: number
     stage: string
@@ -74,7 +78,7 @@ function start(options: WorkCycleOptions): void {
   if (planning) assertTaskScopeInPlanning(planning, scope.milestone, scope.expectedTasks)
   const report = scope.milestone ? `docs/90-reports/${scope.milestone.toLowerCase()}-execution-report.md` : ''
   const isStageFinalMilestone = planning?.stageFinalMilestone === scope.milestone
-  const requiredDocs = options.docMode === 'archive-only' ? [] : ['docs/02-roadmap/current-roadmap.md', report, ...(isStageFinalMilestone && planning ? [planning.programDoc] : [])].filter(Boolean)
+  const requiredDocs = options.docMode === 'archive-only' ? [] : ['docs/02-roadmap/current-roadmap.md', report, ...(isStageFinalMilestone && planning ? [planning.programDoc, planning.initiativeIndexDoc, planning.targetArchitectureDoc] : [])].filter(Boolean)
   const baselineChangedPaths = gitStatusPaths(repositoryRoot)
   const context: WorkContext = {
     goal: options.goal ?? '', status: 'in-progress', taskRange, milestone: scope.milestone, docMode: options.docMode ?? 'code-doc-report', startedAt: new Date().toISOString(),
@@ -82,6 +86,7 @@ function start(options: WorkCycleOptions): void {
     allowedActiveDocs: [
       'docs/README.md',
       'docs/00-product/current-product-scope.md',
+      ...(planning ? [planning.initiativeIndexDoc] : []),
       ...(planning ? [planning.programDoc] : []),
       'docs/01-architecture/current-architecture.md',
       ...(planning ? [planning.targetArchitectureDoc] : []),
@@ -95,19 +100,22 @@ function start(options: WorkCycleOptions): void {
     planning: planning ? {
       program: planning.program,
       programDoc: planning.programDoc,
+      initiativeIndexDoc: planning.initiativeIndexDoc,
       targetArchitectureDoc: planning.targetArchitectureDoc,
       programRevision: planning.programRevision,
       stage: planning.stage,
       stageFinalMilestone: planning.stageFinalMilestone,
       isStageFinalMilestone: Boolean(isStageFinalMilestone),
     } : {
-      program: '', programDoc: '', targetArchitectureDoc: '', programRevision: 0, stage: '', stageFinalMilestone: '', isStageFinalMilestone: false,
+      program: '', programDoc: '', initiativeIndexDoc: '', targetArchitectureDoc: '', programRevision: 0, stage: '', stageFinalMilestone: '', isStageFinalMilestone: false,
     },
   }
   if (report && !existsSync(join(repositoryRoot, report))) {
     mkdirSync(join(repositoryRoot, 'docs/90-reports'), { recursive: true })
     writeFileSync(join(repositoryRoot, report), reportTemplate(context))
   }
+  writeContext(context)
+  context.auditSnapshots = [auditSnapshot(repositoryRoot, `start-${context.goal}`, 'full')]
   writeContext(context)
   console.log(`Work cycle started: ${context.goal}; milestone=${context.milestone}; tasks=${context.workScope.expectedTasks.length}`)
 }
@@ -178,8 +186,12 @@ async function verify(options: WorkCycleOptions): Promise<void> {
     context.browserEvidence = { status: 'not_required', kind: 'not-required', environment: 'not-required', reason, completedAt: new Date().toISOString() }
   }
   writeContext(context)
-  await runQualityGate(repositoryRoot, { mode: profile === 'route-final' ? 'full' : options.stage === 'finish' ? 'stage' : 'quick', backend, backendTestPattern: options.backendTestPattern, frontend, collaboration: areas.has('collaboration') || profile === 'route-final' ? 'test' : 'skip', skipDocker: profile !== 'route-final', skipAudit: profile !== 'route-final', compact: true })
-  if (options.stage === 'finish') { context.status = 'complete'; context.completedAt = new Date().toISOString(); writeContext(context) }
+  const quality = await runQualityGate(repositoryRoot, { mode: profile === 'route-final' ? 'full' : options.stage === 'finish' ? 'stage' : 'quick', backend, backendTestPattern: options.backendTestPattern, frontend, collaboration: areas.has('collaboration') || profile === 'route-final' ? 'test' : 'skip', skipDocker: profile !== 'route-final', skipAudit: profile !== 'route-final', compact: true })
+  context.lastQualityGate = quality.evidence
+  if (options.stage === 'finish') { context.status = 'complete'; context.completedAt = new Date().toISOString() }
+  const snapshot = auditSnapshot(repositoryRoot, `${options.stage}-${context.goal}`, profile === 'route-final' ? 'full' : 'light')
+  context.auditSnapshots = [...(context.auditSnapshots ?? []), snapshot]
+  writeContext(context)
   console.log(`Work cycle ${options.stage} completed; affected=${[...areas].join(',') || 'none'}; profile=${profile}`)
 }
 
