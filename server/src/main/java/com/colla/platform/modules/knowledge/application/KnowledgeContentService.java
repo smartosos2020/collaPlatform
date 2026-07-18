@@ -124,6 +124,7 @@ public class KnowledgeContentService {
     private final PermissionDecisionService permissionDecisionService;
     private final ObjectMapper objectMapper;
     private final ObjectProvider<PlatformObjectResolverRegistry> objectResolverRegistryProvider;
+    private final ObjectProvider<KnowledgeCollaborationGatewayService> collaborationGatewayProvider;
 
     public KnowledgeContentService(
         KnowledgeContentRepository contentRepository,
@@ -137,7 +138,8 @@ public class KnowledgeContentService {
         UserGroupRepository userGroupRepository,
         PermissionDecisionService permissionDecisionService,
         ObjectMapper objectMapper,
-        ObjectProvider<PlatformObjectResolverRegistry> objectResolverRegistryProvider
+        ObjectProvider<PlatformObjectResolverRegistry> objectResolverRegistryProvider,
+        ObjectProvider<KnowledgeCollaborationGatewayService> collaborationGatewayProvider
     ) {
         this.contentRepository = contentRepository;
         this.knowledgeBaseSpaceRepository = knowledgeBaseSpaceRepository;
@@ -151,6 +153,14 @@ public class KnowledgeContentService {
         this.permissionDecisionService = permissionDecisionService;
         this.objectMapper = objectMapper;
         this.objectResolverRegistryProvider = objectResolverRegistryProvider;
+        this.collaborationGatewayProvider = collaborationGatewayProvider;
+    }
+
+    private void invalidateCollaborationState(UUID workspaceId, UUID itemId) {
+        KnowledgeCollaborationGatewayService gateway = collaborationGatewayProvider.getIfAvailable();
+        if (gateway != null) {
+            gateway.invalidateCollaborationState(workspaceId, itemId);
+        }
     }
 
     public List<KnowledgeBaseItem> listItems(CurrentUser currentUser, boolean includeArchived) {
@@ -553,6 +563,7 @@ public class KnowledgeContentService {
         contentRepository.replaceBlocks(currentUser.workspaceId(), itemId, blocksFromContent(normalizedContent), currentUser.id());
         reanchorSelectionComments(currentUser.workspaceId(), itemId, normalizedContent);
         registerDocumentObject(currentUser.workspaceId(), itemId, normalizedTitle);
+        invalidateCollaborationState(currentUser.workspaceId(), itemId);
         eventRepository.append(
             currentUser.workspaceId(),
             "knowledge.content.updated",
@@ -1095,6 +1106,7 @@ public class KnowledgeContentService {
         contentRepository.replaceBlocks(currentUser.workspaceId(), itemId, importedBlocks, currentUser.id());
         reanchorSelectionComments(currentUser.workspaceId(), itemId, normalizedContent);
         registerDocumentObject(currentUser.workspaceId(), itemId, normalizedTitle);
+        invalidateCollaborationState(currentUser.workspaceId(), itemId);
         eventRepository.append(
             currentUser.workspaceId(),
             "knowledge.content.markdown.imported",
@@ -1141,6 +1153,7 @@ public class KnowledgeContentService {
         contentRepository.replaceBlocks(currentUser.workspaceId(), itemId, importedBlocks, currentUser.id());
         reanchorSelectionComments(currentUser.workspaceId(), itemId, normalizedContent);
         registerDocumentObject(currentUser.workspaceId(), itemId, normalizedTitle);
+        invalidateCollaborationState(currentUser.workspaceId(), itemId);
         eventRepository.append(
             currentUser.workspaceId(),
             "knowledge.content.html.imported",
@@ -1213,6 +1226,7 @@ public class KnowledgeContentService {
         contentRepository.replaceBlocks(currentUser.workspaceId(), itemId, normalizedBlocks, currentUser.id());
         reanchorSelectionComments(currentUser.workspaceId(), itemId, normalizedContent);
         registerDocumentObject(currentUser.workspaceId(), itemId, normalizedTitle);
+        invalidateCollaborationState(currentUser.workspaceId(), itemId);
         eventRepository.append(
             currentUser.workspaceId(),
             "knowledge.content.blocks.updated",
@@ -1349,6 +1363,7 @@ public class KnowledgeContentService {
         contentRepository.replaceBlocks(currentUser.workspaceId(), itemId, restoredBlocks, currentUser.id());
         reanchorSelectionComments(currentUser.workspaceId(), itemId, restoredContent);
         registerDocumentObject(currentUser.workspaceId(), itemId, version.title());
+        invalidateCollaborationState(currentUser.workspaceId(), itemId);
         eventRepository.append(
             currentUser.workspaceId(),
             "knowledge.content.version.restored",

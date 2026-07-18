@@ -121,7 +121,7 @@ class KnowledgeSchemaMigrationIntegrationTests {
             dataSource.setUser(container.getUsername());
             dataSource.setPassword(container.getPassword());
             JdbcTemplate upgradeJdbcTemplate = new JdbcTemplate(dataSource);
-            assertEquals("051", upgradeJdbcTemplate.queryForObject(
+            assertEquals("055", upgradeJdbcTemplate.queryForObject(
                 "select max(version) from flyway_schema_history",
                 String.class
             ));

@@ -173,6 +173,51 @@ test('a restarted node reloads the persisted room and accepts the existing clien
   await eventually(() => assert.equal(right.getText('title').toString(), 'persisted-before-restart-while-away'), 8000)
 })
 
+test('POST /internal/invalidate drops the in-memory document and forces a fresh backend load', { timeout: 20_000 }, async (t) => {
+  const documentName = `knowledge:${randomUUID()}:${randomUUID()}`
+  const gateway = new MemoryGateway()
+  const prefix = `colla:test:${randomUUID()}`
+  const node = createCollaborationServer({ config: testConfig(12439, 'test-node-i', prefix), gateway })
+  await node.listen()
+  t.after(async () => Promise.allSettled([node.destroy()]))
+
+  const doc = new Y.Doc()
+  const docProvider = provider(12439, documentName, doc, 'left-ticket')
+  t.after(() => {
+    docProvider.destroy()
+    doc.destroy()
+  })
+  await synced(docProvider)
+  doc.getText('title').insert(0, 'stale')
+  await eventually(() => assert.equal(gateway.updateIds.size, 1))
+  const loadedDocument = node.hocuspocus.documents.get(documentName)
+  assert.ok(loadedDocument)
+
+  const invalidate = (options = {}) => fetch('http://127.0.0.1:12439/internal/invalidate', {
+    method: options.method ?? 'POST',
+    headers: {
+      'content-type': 'application/json',
+      ...(options.secret ? { 'x-colla-collaboration-secret': options.secret } : {}),
+    },
+    ...(options.method === 'GET' ? {} : { body: JSON.stringify({ documentName: options.documentName ?? documentName }) }),
+  })
+  assert.equal((await invalidate()).status, 401)
+  assert.equal((await invalidate({ secret: 'test-secret', method: 'GET' })).status, 405)
+  assert.equal((await invalidate({ secret: 'test-secret', documentName: 'bogus' })).status, 400)
+
+  const loadsBefore = gateway.loadCalls
+  const response = await invalidate({ secret: 'test-secret' })
+  assert.equal(response.status, 200)
+  assert.equal((await response.json()).invalidated, true)
+  assert.equal(node.hocuspocus.documents.has(documentName), false)
+
+  // The disconnected provider reconnects and the document reloads from the backend.
+  await eventually(() => assert.equal(gateway.loadCalls > loadsBefore, true))
+  await eventually(() => assert.equal(node.hocuspocus.documents.has(documentName), true))
+  assert.notEqual(node.hocuspocus.documents.get(documentName), loadedDocument)
+  assert.equal((await invalidate({ secret: 'test-secret', documentName: `knowledge:${randomUUID()}:${randomUUID()}` })).status, 200)
+})
+
 class MemoryGateway {
   constructor() {
     this.sequence = 0
@@ -180,6 +225,7 @@ class MemoryGateway {
     this.updates = []
     this.snapshot = ''
     this.appendCalls = 0
+    this.loadCalls = 0
   }
 
   async authenticate(ticket) {
@@ -190,6 +236,7 @@ class MemoryGateway {
   }
 
   async load() {
+    this.loadCalls += 1
     return {
       title: '', snapshot: this.snapshot, updates: this.updates,
       canonicalDocument: { type: 'doc', schemaVersion: 3, content: [] },

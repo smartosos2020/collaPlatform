@@ -48,6 +48,10 @@ Invoke-RestMethod http://collaboration-a:1234/metrics `
 - `/ready` returns HTTP 503 while Redis is degraded, so new traffic is not
   deliberately assigned to a node that cannot broadcast.
 - `/metrics` is not published by Nginx and rejects a missing or invalid secret.
+- `POST /internal/invalidate` shares the same internal-secret guard; the
+  backend calls it after REST content mutations (save/restore/import) so nodes
+  drop the stale in-memory room and reload the canonical document from
+  PostgreSQL.
 - Use `nodeId`, room `spaceId/itemId`, connection count, update watermark,
   pending updates, persistence latency, recoveries and failure counters to
   isolate the affected room and node.

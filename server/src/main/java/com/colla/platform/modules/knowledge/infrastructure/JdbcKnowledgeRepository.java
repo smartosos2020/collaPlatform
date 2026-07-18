@@ -837,6 +837,18 @@ public class JdbcKnowledgeRepository implements KnowledgeBaseItemRepository, Kno
     }
 
     @Override
+    public void deleteCollaborationState(UUID workspaceId, UUID itemId) {
+        jdbcTemplate.update(
+            "delete from knowledge_content_collaboration_updates where workspace_id = ? and item_id = ?",
+            workspaceId, itemId
+        );
+        jdbcTemplate.update(
+            "delete from knowledge_content_collaboration_states where workspace_id = ? and item_id = ?",
+            workspaceId, itemId
+        );
+    }
+
+    @Override
     public void storeCollaborationSnapshot(
         UUID workspaceId,
         UUID itemId,

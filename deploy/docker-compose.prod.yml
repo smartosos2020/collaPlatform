@@ -83,6 +83,7 @@ services:
       MAX_UPLOAD_SIZE_BYTES: ${MAX_UPLOAD_SIZE_BYTES}
       COLLA_COLLABORATION_INTERNAL_SECRET: ${COLLA_COLLABORATION_INTERNAL_SECRET}
       COLLA_COLLABORATION_PUBLIC_URL: /collaboration
+      COLLA_COLLABORATION_INTERNAL_URL: http://collaboration-a:1234,http://collaboration-b:1234
       LOG_PATH: /app/logs
     volumes:
       - server_logs:/app/logs

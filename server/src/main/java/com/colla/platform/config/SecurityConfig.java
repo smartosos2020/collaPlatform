@@ -40,6 +40,7 @@ public class SecurityConfig {
                     "/api/internal/knowledge-collaboration/**",
                     "/actuator/health",
                     "/actuator/prometheus",
+                    "/error",
                     "/ws/**",
                     "/v3/api-docs/**",
                     "/swagger-ui/**",

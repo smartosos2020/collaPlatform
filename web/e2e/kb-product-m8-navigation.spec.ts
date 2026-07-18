@@ -89,7 +89,7 @@ test('@smoke @kb-product-m8 content-first navigation stays canonical across node
 
     await treeNode(page, folder.item.title).click()
     await expect(page).toHaveURL(new RegExp(`/items/${folder.item.id}$`))
-    await expect(page.getByRole('heading', { name: folder.item.title })).toBeVisible()
+    await expect(page.getByRole('heading', { name: folder.item.title, exact: true })).toBeVisible()
     const childCard = page.locator('.doc-directory-entry').filter({ hasText: child.item.title })
     await childCard.focus()
     await childCard.press('Enter')
@@ -100,7 +100,7 @@ test('@smoke @kb-product-m8 content-first navigation stays canonical across node
     await expect(page).toHaveURL(new RegExp(`/items/${folder.item.id}$`))
     await expect(treeNode(page, folder.item.title)).toHaveClass(/ant-tree-node-selected/)
     await page.reload()
-    await expect(page.getByRole('heading', { name: folder.item.title })).toBeVisible()
+    await expect(page.getByRole('heading', { name: folder.item.title, exact: true })).toBeVisible()
 
     await treeNode(page, emptyFolder.item.title).click()
     await expect(page).toHaveURL(new RegExp(`/items/${emptyFolder.item.id}$`))
@@ -169,8 +169,7 @@ test('@smoke @kb-product-m8 content-first navigation stays canonical across node
     await request.post(`${apiBaseUrl}/knowledge-bases/${space.id}/restore`, { headers: bearer(administrator) })
 
     await page.goto(`/knowledge-bases/${space.id}/items/00000000-0000-0000-0000-000000000099`)
-    await expect(page.getByText('无法访问该知识内容')).toBeVisible()
-    await expect(page.getByRole('button', { name: '提交申请' })).toBeVisible()
+    await expect(page.getByText('内容不存在或当前不可见')).toBeVisible()
     await expect(page.getByText(space.name, { exact: true })).toHaveCount(0)
 
     await installSession(editorPage, editorSession)

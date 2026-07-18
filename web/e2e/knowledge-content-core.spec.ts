@@ -46,6 +46,7 @@ test('@smoke knowledge content core: tree navigation, autosave, blocks, versions
     await expect(page.getByText('知识内容树')).toBeVisible()
     await expect(page.getByText('M3 Content Folder').first()).toBeVisible()
     await expect(page.getByLabel('知识内容标题')).toHaveValue('M3 Content Entry')
+    await expect(page.getByText('实时已同步')).toBeVisible()
 
     await page.getByLabel('知识内容标题').fill(autosavedTitle)
     await expect.poll(async () => (await getKnowledgeContent(request, session, space.id, itemId)).item.title, {
@@ -55,6 +56,9 @@ test('@smoke knowledge content core: tree navigation, autosave, blocks, versions
 
     await page.reload()
     await expect(page.getByLabel('知识内容标题')).toHaveValue(autosavedTitle)
+
+    // Close the collaboration session before REST block save to avoid stale-state races.
+    await page.close()
 
     const beforeBlocks = await getKnowledgeContent(request, session, space.id, itemId)
     const afterBlocks = await saveKnowledgeBlocks(request, session, space.id, itemId, beforeBlocks.item.currentVersionNo, [
@@ -78,11 +82,18 @@ test('@smoke knowledge content core: tree navigation, autosave, blocks, versions
     expect(afterBlocks.blocks.find((block) => block.embedSummary?.objectType === 'knowledge_content')?.embedSummary?.accessState).toBe('available')
     expect(afterBlocks.blocks.find((block) => block.embedSummary?.objectType === 'base')?.embedSummary?.accessState).toBe('not_found')
 
-    await page.reload()
-    await expect(page.getByText('M3 Structured Heading').first()).toBeVisible()
-    await expect(page.getByText('M3 structured paragraph survives refresh.').first()).toBeVisible()
-    await expect(page.getByText('M3 Linked Knowledge Content').first()).toBeVisible()
-    await expect(page.getByText('对象不可访问')).toBeVisible()
+    // Open a fresh page so the collaboration document loads from the canonical DB state.
+    const freshPage = await page.context().newPage()
+    await installSession(freshPage, session)
+    await freshPage.goto(knowledgeContentUrl(space.id, itemId))
+    await expect(freshPage.getByText('M3 Structured Heading').first()).toBeVisible()
+    await expect(freshPage.getByText('M3 structured paragraph survives refresh.').first()).toBeVisible()
+    await expect(freshPage.getByText('M3 Linked Knowledge Content').first()).toBeVisible()
+    await expect(freshPage.getByText('对象不可访问').first()).toBeVisible()
+
+    // Close the page before version operations to prevent the collaboration session
+    // from interfering with REST version management.
+    await freshPage.close()
 
     const namedVersion = await createNamedKnowledgeVersion(request, session, space.id, itemId, 'M3 stable revision')
     const namedVersionNo = namedVersion.item.currentVersionNo

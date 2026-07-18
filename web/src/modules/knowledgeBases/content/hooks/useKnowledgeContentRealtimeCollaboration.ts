@@ -95,7 +95,10 @@ export function useKnowledgeContentRealtimeCollaboration({ spaceId, itemId, enab
       setStatus(WebSocketStatus.Disconnected)
       setRecoveryState('offline')
       setCanEdit(authorizedCanEditRef.current)
-      activeProvider?.disconnect()
+      // Do not call provider.disconnect() here. The socket dies on its own when
+      // the network drops, and the provider's built-in retry will reconnect when
+      // connectivity returns. An explicit disconnect() sets shouldConnect=false,
+      // which permanently suppresses the automatic reconnect.
     }
     const handleOnline = () => {
       setError(null)

@@ -8,6 +8,9 @@ import org.springframework.stereotype.Component;
 @ConfigurationProperties(prefix = "colla.knowledge-collaboration")
 public class KnowledgeCollaborationProperties {
     private String publicUrl = "ws://localhost:1234";
+    // HTTP base URL(s) of the collaboration nodes used for server-to-server calls
+    // (e.g. state invalidation); comma-separated when multiple nodes run behind a balancer.
+    private String internalUrl = "http://localhost:1234";
     // Default comes from application.yml via COLLA_COLLABORATION_INTERNAL_SECRET placeholder;
     // keep no secret literal in source so the sensitive-data scan stays clean.
     private String internalSecret;
@@ -18,6 +21,8 @@ public class KnowledgeCollaborationProperties {
 
     public String getPublicUrl() { return publicUrl; }
     public void setPublicUrl(String publicUrl) { this.publicUrl = publicUrl; }
+    public String getInternalUrl() { return internalUrl; }
+    public void setInternalUrl(String internalUrl) { this.internalUrl = internalUrl; }
     public String getInternalSecret() { return internalSecret; }
     public void setInternalSecret(String internalSecret) { this.internalSecret = internalSecret; }
     public Duration getTicketTtl() { return ticketTtl; }

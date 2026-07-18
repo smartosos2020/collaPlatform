@@ -171,7 +171,10 @@ export async function createNamedKnowledgeVersion(request: APIRequestContext, se
 
 export async function restoreKnowledgeVersion(request: APIRequestContext, session: E2eSession, spaceId: string, itemId: string, versionNo: number) {
   const response = await request.post(`${itemPath(spaceId, itemId)}/versions/${versionNo}/restore`, { headers: bearer(session) })
-  expect(response.ok(), `knowledge version ${versionNo} restore failed`).toBeTruthy()
+  if (!response.ok()) {
+    const body = await response.text().catch(() => '<unreadable>')
+    throw new Error(`knowledge version ${versionNo} restore failed: HTTP ${response.status()} ${body.slice(0, 200)}`)
+  }
   return await response.json() as KnowledgeContentDetail
 }
 

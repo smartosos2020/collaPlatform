@@ -20,7 +20,7 @@ export function KnowledgeBaseSpaceRoute() {
     retry: false,
   })
 
-  if (params.get('view') === 'management') {
+  if (params.get('view') === 'management' || params.get('view') === 'directory') {
     return <KnowledgeBaseDetailPage />
   }
 
