@@ -6,6 +6,7 @@ import { namingGuard } from '../knowledge/checks.js'
 import { runSecurityAudit } from '../security/audit.js'
 import { scanSensitiveData } from '../security/sensitiveScan.js'
 import { activePlatformViolations } from '../security/platformGuard.js'
+import { loadActivePlanningContract, planningSummary } from './planning.js'
 
 export type BackendStrategy = 'compile' | 'targeted' | 'full' | 'skip'
 export type FrontendStrategy = 'lint' | 'full' | 'skip'
@@ -40,6 +41,15 @@ interface WorkCycleContext extends GitBaseline {
     completedAt?: string
   }
   workScope: { scopeValid: boolean; expectedTasks: string[]; milestoneCount: number; maxMilestonesPerCycle: number }
+  planning?: {
+    program: string
+    programDoc: string
+    targetArchitectureDoc: string
+    programRevision: number
+    stage: string
+    stageFinalMilestone: string
+    isStageFinalMilestone: boolean
+  }
 }
 
 interface VerificationContract {
@@ -170,6 +180,14 @@ export function assertWorkCycleDocuments(root: string, strict: boolean, freshLog
   if (context.status && !['in-progress', 'in_progress'].includes(context.status)) return
   if (context.docMode === 'archive-only') return
   if (!context.workScope?.scopeValid || context.workScope.milestoneCount > (context.workScope.maxMilestonesPerCycle ?? 1)) throw new Error('Active work-cycle scope is invalid')
+  if (context.planning?.program) {
+    const planning = loadActivePlanningContract(root)
+    if (planning.program !== context.planning.program || planning.stage !== context.planning.stage) throw new Error('Work-cycle planning context no longer matches the active Program and Stage')
+    if (context.planning.isStageFinalMilestone && strict && planning.roadmapStatus !== 'completed') throw new Error(`Final Stage milestone requires ${planning.roadmapPath} status = completed before finish`)
+    if (context.planning.isStageFinalMilestone && strict && planning.programRevision <= context.planning.programRevision) throw new Error('Final Stage milestone must increment program_revision and update the Program change record')
+    if (!context.planning.isStageFinalMilestone && planning.programRevision !== context.planning.programRevision) throw new Error('A non-final milestone cannot close against a changed Program revision; restart the cycle')
+    if (!context.planning.isStageFinalMilestone && planning.roadmapStatus !== 'active') throw new Error('A non-final milestone cannot finish against a completed Stage roadmap')
+  }
   const changed = changedSinceBaseline(root, context)
   for (const doc of context.requiredDocs) {
     if (!existsSync(join(root, doc))) throw new Error(`Required work-cycle document is missing: ${doc}`)
@@ -262,6 +280,7 @@ export async function runQualityGate(root: string, options: QualityOptions): Pro
   })
 
   step('Toolchain', () => { for (const [cmd, args] of [['java', ['-version']], ['mvn', ['-version']], ['node', ['--version']], ['pnpm', ['--version']], ['docker', ['--version']]] as const) runSync(cmd, [...args], { cwd: root }) })
+  step('Active planning contract', () => console.log(planningSummary(loadActivePlanningContract(root))))
   if (!options.skipDocker) command('Docker dependencies', 'docker', ['compose', 'up', '-d', 'postgres', 'redis', 'minio'])
   if (options.backend === 'compile') command('Backend compile', 'mvn', ['-DskipTests', 'test'], join(root, 'server'))
   if (options.backend === 'targeted') {

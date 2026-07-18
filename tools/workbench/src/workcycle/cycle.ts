@@ -5,6 +5,7 @@ import { repositoryRoot } from '../lib/paths.js'
 import { run } from '../lib/process.js'
 import { assertRealBrowserEvidence } from '../security/browserEvidence.js'
 import { runQualityGate, type BackendStrategy, type FrontendStrategy } from './quality.js'
+import { assertTaskScopeInPlanning, loadActivePlanningContract } from './planning.js'
 
 export interface WorkCycleOptions {
   stage: 'start' | 'checkpoint' | 'finish'
@@ -28,12 +29,21 @@ interface WorkContext extends GitBaseline {
   allowedActiveDocs: string[]; allowedReportDir: string
   evidencePolicy: { contractVersion: number }
   browserEvidence?: Record<string, string>
+  planning: {
+    program: string
+    programDoc: string
+    targetArchitectureDoc: string
+    programRevision: number
+    stage: string
+    stageFinalMilestone: string
+    isStageFinalMilestone: boolean
+  }
 }
 
 const reportDir = join(repositoryRoot, '.local-reports')
 const contextPath = join(reportDir, 'work-cycle-current.json')
 
-function taskScope(range: string): WorkContext['workScope'] & { milestone: string } {
+export function parseTaskScope(range: string): WorkContext['workScope'] & { milestone: string } {
   const refs = [...range.toUpperCase().matchAll(/(?<![A-Z0-9])((?:[A-Z][A-Z0-9]*-)*M\d{1,3})-T(\d{2})(?!\d)/g)]
   const milestones = [...new Set(refs.map((match) => match[1]))]
   const valid = !range || (refs.length > 0 && milestones.length === 1)
@@ -58,10 +68,13 @@ function start(options: WorkCycleOptions): void {
     if (existing.status === 'in-progress') throw new Error(`A work cycle is already active: ${existing.goal}`)
   }
   const taskRange = options.taskRange ?? ''
-  const scope = taskScope(taskRange)
+  const scope = parseTaskScope(taskRange)
   if (options.docMode !== 'archive-only' && !scope.scopeValid) throw new Error('Task range must remain within one milestone and use PREFIX-MX-TYY references')
+  const planning = options.docMode === 'archive-only' ? undefined : loadActivePlanningContract(repositoryRoot)
+  if (planning) assertTaskScopeInPlanning(planning, scope.milestone, scope.expectedTasks)
   const report = scope.milestone ? `docs/90-reports/${scope.milestone.toLowerCase()}-execution-report.md` : ''
-  const requiredDocs = options.docMode === 'archive-only' ? [] : ['docs/02-roadmap/current-roadmap.md', report].filter(Boolean)
+  const isStageFinalMilestone = planning?.stageFinalMilestone === scope.milestone
+  const requiredDocs = options.docMode === 'archive-only' ? [] : ['docs/02-roadmap/current-roadmap.md', report, ...(isStageFinalMilestone && planning ? [planning.programDoc] : [])].filter(Boolean)
   const baselineChangedPaths = gitStatusPaths(repositoryRoot)
   const context: WorkContext = {
     goal: options.goal ?? '', status: 'in-progress', taskRange, milestone: scope.milestone, docMode: options.docMode ?? 'code-doc-report', startedAt: new Date().toISOString(),
@@ -69,7 +82,9 @@ function start(options: WorkCycleOptions): void {
     allowedActiveDocs: [
       'docs/README.md',
       'docs/00-product/current-product-scope.md',
+      ...(planning ? [planning.programDoc] : []),
       'docs/01-architecture/current-architecture.md',
+      ...(planning ? [planning.targetArchitectureDoc] : []),
       'docs/01-architecture/technology-selection.md',
       'docs/01-architecture/platform-object-model.md',
       'docs/02-roadmap/current-roadmap.md',
@@ -77,6 +92,17 @@ function start(options: WorkCycleOptions): void {
     ],
     allowedReportDir: 'docs/90-reports',
     evidencePolicy: { contractVersion: 2 },
+    planning: planning ? {
+      program: planning.program,
+      programDoc: planning.programDoc,
+      targetArchitectureDoc: planning.targetArchitectureDoc,
+      programRevision: planning.programRevision,
+      stage: planning.stage,
+      stageFinalMilestone: planning.stageFinalMilestone,
+      isStageFinalMilestone: Boolean(isStageFinalMilestone),
+    } : {
+      program: '', programDoc: '', targetArchitectureDoc: '', programRevision: 0, stage: '', stageFinalMilestone: '', isStageFinalMilestone: false,
+    },
   }
   if (report && !existsSync(join(repositoryRoot, report))) {
     mkdirSync(join(repositoryRoot, 'docs/90-reports'), { recursive: true })
@@ -108,12 +134,20 @@ export function assertFinishBrowserOptions(options: WorkCycleOptions, docMode: s
   if (options.browserEvidenceKind === 'mock' && options.browserEvidenceEnvironment !== 'mock') throw new Error('Mock browser evidence must use the mock environment')
 }
 
+export function assertStageFinalValidationProfile(stage: WorkCycleOptions['stage'], isStageFinalMilestone: boolean, profile: NonNullable<WorkCycleOptions['validationProfile']>, milestone: string): void {
+  if (stage === 'finish' && isStageFinalMilestone && profile !== 'route-final') throw new Error(`The final milestone ${milestone} must finish with --validation-profile route-final`)
+}
+
 async function verify(options: WorkCycleOptions): Promise<void> {
   if (!existsSync(contextPath)) throw new Error('No active work cycle; run work:start first')
   const context = JSON.parse(readFileSync(contextPath, 'utf8')) as WorkContext
   if (context.status !== 'in-progress') throw new Error(`Work cycle is ${context.status}, not in-progress`)
   const areas = affected(context)
   const profile = options.validationProfile ?? (options.stage === 'finish' ? 'stage' : 'light')
+  const planning = loadActivePlanningContract(repositoryRoot)
+  if (context.planning?.program && (planning.program !== context.planning.program || planning.stage !== context.planning.stage)) throw new Error('Active Program or Stage changed during the work cycle; restart the cycle after reviewing the planning change')
+  if (context.planning?.program && planning.programRevision !== context.planning.programRevision && !(options.stage === 'finish' && context.planning.isStageFinalMilestone)) throw new Error('Program revision changed during the work cycle; restart after reviewing the planning change')
+  assertStageFinalValidationProfile(options.stage, Boolean(context.planning?.isStageFinalMilestone), profile, context.milestone)
   let backend: BackendStrategy = areas.has('backend') ? 'compile' : 'skip'
   let frontend: FrontendStrategy = areas.has('frontend') ? 'lint' : 'skip'
   if (profile === 'stage' && areas.has('backend')) backend = 'targeted'

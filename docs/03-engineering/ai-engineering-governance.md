@@ -80,9 +80,9 @@ AI 工作循环不是单纯的代码实现流程，而是固定闭环：
 代码实现 + 文档同步 + 验证报告
 ```
 
-当用户输入“按 AI 工作循环推进 MXX-T01 到 MXX-T08”时，默认必须执行该闭环。
+当用户输入“按 AI 工作循环推进 MXX-T01 到 MXX-T08”或 `PROJECT-PLATFORM-S01-M1-T01` 这类带 Program/Stage 的任务范围时，默认必须执行该闭环。
 
-M31/M40 仿真数据和试运行准入已经归档，不再作为当前标准基线。当前禁止为了普通验证自动重置共享开发数据；若未来需要新的固定数据或试运行基线，必须先按当前 V049 schema 重新设计并单独建立路线。
+M31/M40 仿真数据和试运行准入已经归档，不再作为当前标准基线。当前禁止为了普通验证自动重置共享开发数据；若未来需要新的固定数据或试运行基线，必须先按当时活动 schema 重新设计并单独建立路线。
 
 ### 4.1 开始前
 
@@ -99,6 +99,7 @@ pnpm work:start -- --goal M25-delivery --task-range "M25-T01 到 M25-T12"
 - 明确本轮目标和不做范围。
 - 写入 `.local-reports/work-cycle-current.json`。
 - 输出 Document Contract。
+- 校验 `Program -> Stage -> Milestone -> Task` 规划合同：当前路线只包含一个 Stage，任务真实存在且未完成，长期专项只有一个匹配的 Active Stage。
 - 如果能识别里程碑，自动创建或复用对应执行报告；专题前缀必须保留，例如 `M25` 对应 `m25-execution-report.md`，`KB-NAME-M1` 对应 `kb-name-m1-execution-report.md`。
 
 ### 4.2 工作中
@@ -152,6 +153,8 @@ pnpm work:finish -- --goal identity-permission-route --validation-profile route-
 
 `route-final` 才运行完整 `mvn test`、完整 Spring Boot 集成测试集合和由测试触发的 Flyway 空库迁移验证。
 
+当当前路线属于长期专项 Stage 时，`stage_final_milestone` 指定的最终里程碑必须使用 `route-final`。该里程碑 finish 前必须把当前路线状态改为 `completed`，把长期专项中的当前 Stage 改为 `Completed`、把 `current_stage` 暂置为 `none`、递增专项修订号并更新规划变更记录；工作台会把 `program_doc` 加入该轮必更文档并阻断未同步收口。归档当前路线并生成下一路线时，才把下一 Stage 改为 `Active`。
+
 ### 4.4 文档同步契约
 
 默认 `DocMode` 为 `code-doc-report`。除非用户明确要求归档整理，否则不得切换为其他模式。
@@ -167,6 +170,7 @@ pnpm work:finish -- --goal identity-permission-route --validation-profile route-
   - 平台对象、内部链接、对象卡片、搜索对象类型变化：`docs/01-architecture/platform-object-model.md`
   - 技术栈变化：`docs/01-architecture/technology-selection.md`
   - AI 工作规则、脚本、门禁变化：`docs/03-engineering/ai-engineering-governance.md`
+  - 长期专项 Stage 最终里程碑：当前路线 `program_doc` 指向的专项规划和对应目标架构
 
 每轮工作循环禁止：
 
@@ -286,6 +290,29 @@ finish 的严格门禁必须：
 
 质量门在浏览器命令和目标测试完成后执行自动独立证据核对：验证任务级 Contract、真实/mock 类型、隔离环境、路线图/报告状态与 Gap 表。该核对失败即表示本里程碑未收口。
 
+#### 4.4.3 Program、Stage 与当前路线合同
+
+大型长期方向采用四级结构：
+
+```text
+Program -> Stage -> Milestone -> Task
+```
+
+- Program 文档位于 `docs/00-product/initiatives/`，维护长期目标、Stage 索引、依赖、退出条件、候选池和规划变更，并通过 `target_architecture_doc` 指向目标架构；它不直接维护可执行 Task 状态。
+- `docs/02-roadmap/current-roadmap.md` 仍是唯一执行入口，每次只承载一个 Stage，可包含该 Stage 内多个 Milestone。
+- 当前路线 front matter 必须声明 `program`、`program_doc`、`program_revision`、`stage` 和 `stage_final_milestone`；`route` 必须等于 `stage`。
+- Program 文档必须存在且修订号一致，Stage 总览中恰好一个 `Active`，并与当前路线和 `current_stage` 一致。
+- Task 使用 `{PROGRAM}-SXX-MX-TYY`，必须在当前路线表格中恰好出现一次；`work:start` 拒绝未声明、跨 Stage 或已经 Done 的 Task，补验前必须先标记 `Reopened`。
+- 当前 Stage 执行中原则上冻结。范围内澄清可更新当前路线；目标、依赖或远期规划变化必须更新 Program revision 和变更记录，并同步当前路线引用。
+- Stage 最终 Milestone 使用 `route-final`，并把 Program 文档纳入必更合同。收口时 Program revision 必须递增、当前 Stage 必须完成且 `current_stage` 必须暂置为 `none`；未完成 route-final、未更新长期专项或仍存在活动 Stage 冲突时不能 finish。
+- Stage 完成后先归档当前路线，再激活下一 Stage 并生成新的 `current-roadmap.md`。已完成 Stage 的历史结论不直接改写；缺陷进入 `Reopened` 或新的修复 Stage。
+
+可随时独立检查规划合同：
+
+```shell
+pnpm work:plan-check
+```
+
 ### 4.5 文档模式
 
 | DocMode | 用途 | 允许行为 |
@@ -305,6 +332,7 @@ finish 的严格门禁必须：
 - 同一里程碑的任务数量没有固定上限；例如 `M25-T01 到 M25-T12` 是合法范围。
 - 是否拆成多轮由任务依赖、修改风险、真实验证成本和可审计性决定，不得因习惯性“8 项上限”机械拆分。
 - 不允许用一个工作循环直接覆盖 `M25-T01 到 M26-T08` 这类跨里程碑范围。
+- 不允许跨 Stage，例如 `PROJECT-PLATFORM-S01-M4` 与 `PROJECT-PLATFORM-S02-M1` 必须分别建立工作循环和当前路线。
 
 当用户输入范围跨多个里程碑时，AI 必须只启动第一个里程碑，并根据路线图明确该里程碑的完整任务范围。例如：
 
@@ -363,13 +391,13 @@ pnpm smoke:ui-split
 
 | 文件类型 | 读取要求 |
 | --- | --- |
-| 工作循环、路线图、质量门禁、权限、安全、迁移规范 | 必须完整读取目标规范文件，不能只读 `rg` 命中片段。 |
+| 工作循环、长期专项、路线图、质量门禁、权限、安全、迁移规范 | 必须完整读取目标规范文件，不能只读 `rg` 命中片段。 |
 | 本轮要编辑的文档 | 至少完整读取 front matter、目录结构和将要修改的完整语义章节；如果章节边界不清，读取全文。 |
 | 本轮要编辑的代码文件 | 读取完整文件或完整类/函数边界；不能只看单个匹配行就修改。 |
 | 相邻调用方/被调用方 | 可先用 `rg` 定位，再读取完整函数、接口或 DTO 定义。 |
 | 长日志和构建输出 | 成功时只读摘要和报告路径；失败时读取错误段、尾部日志和相关 report。 |
 
-修改规范或脚本时，必须完整读取 `docs/03-engineering/ai-engineering-governance.md`、相关脚本和 `scripts/README.md`。修改路线图时，必须完整读取 `docs/02-roadmap/current-roadmap.md`。修改执行报告时，必须完整读取对应 `docs/90-reports/*-execution-report.md`。
+修改规范或脚本时，必须完整读取 `docs/03-engineering/ai-engineering-governance.md`、相关脚本和 `scripts/README.md`。修改路线图时，必须完整读取 `docs/02-roadmap/current-roadmap.md` 及其 `program_doc`。修改长期专项时，必须读取当前路线、目标架构和专项变更记录。修改执行报告时，必须完整读取对应 `docs/90-reports/*-execution-report.md`。
 
 局部读取后的安全补偿：
 
@@ -634,6 +662,7 @@ AI 可以长时间推进，但必须遵守以下节奏：
 | `pnpm verify` / `pnpm verify:full` | 快速或路线级完整质量门禁 |
 | `pnpm audit:snapshot` | 生成本地审计快照 |
 | `pnpm work:start` / `work:checkpoint` / `work:finish` | 工作循环三个阶段 |
+| `pnpm work:plan-check` | 校验 Program、Stage、当前路线和 Task 规划合同 |
 | `pnpm security:audit` / `security:scan` | 安全 guardrail 与敏感信息扫描 |
 | `pnpm kb:naming-guard` / `kb:consistency-check` | 知识库命名和数据一致性检查 |
 | `pnpm ops:backup` / `ops:restore-drill` / `ops:health` | 备份、恢复演练和语义健康检查 |
@@ -643,7 +672,8 @@ AI 可以长时间推进，但必须遵守以下节奏：
 旧 Windows 实现只保留在显式归档目录作为回溯证据，不属于稳定工具清单。完整质量门禁会递归拒绝任何非归档 Windows 脚本，也会拒绝活动入口重新调用平台专用命令。
 
 ```shell
-pnpm work:start -- --goal M1-auth --task-range "M1-T01 到 M1-T08"
+pnpm work:plan-check
+pnpm work:start -- --goal PROJECT-PLATFORM-S01-M1 --task-range "PROJECT-PLATFORM-S01-M1-T01 到 PROJECT-PLATFORM-S01-M1-T09"
 pnpm work:checkpoint -- --goal M1-auth
 pnpm work:finish -- --goal M1-auth --backend-test-pattern AuthControllerIntegrationTests --browser-spec e2e/auth.spec.ts --browser-evidence-kind real --browser-evidence-environment isolated
 pnpm verify:full
@@ -671,6 +701,6 @@ CI 的应用验证在 Linux 执行，同时以 Windows、macOS、Linux 矩阵验
 
 ## 13. 下一路线执行要求
 
-新路线开始前必须先阅读当前产品范围、当前架构、平台对象模型和唯一活动路线图；只有目标明确后才把任务写入 `docs/02-roadmap/current-roadmap.md`。执行时使用 `pnpm work:start` 建立审计记录，并按任务风险选择 `light`、`stage` 或 `route-final` 验证档位。
+新路线开始前必须先阅读当前产品范围、当前架构、平台对象模型、当前路线引用的长期专项、对应目标架构和唯一活动路线图；只有目标明确后才把任务写入 `docs/02-roadmap/current-roadmap.md`。执行前先运行 `pnpm work:plan-check`，再使用 `pnpm work:start` 建立审计记录，并按任务风险选择 `light`、`stage` 或 `route-final` 验证档位。
 
 普通路线开始前不要求先运行全量测试。完整 `pnpm verify:full`、完整后端测试和全量迁移验证只在当前路线最终收口、发布门禁或用户明确要求时执行；中间里程碑只验证本阶段改动及其直接影响范围。

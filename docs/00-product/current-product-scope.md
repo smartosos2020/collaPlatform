@@ -1,12 +1,14 @@
 ---
 title: 当前产品范围
 status: active
-last_code_check: 2026-07-16
+last_code_check: 2026-07-18
 ---
 
 # 当前产品范围
 
 Colla Platform 当前是一个面向研发团队的轻量协同平台。产品形态以 Web 为主，IM 是核心入口，同时已经具备项目、知识库、表格、审批、通知、搜索和管理后台等模块的 MVP 能力。
+
+当前产品开发主线已切换为 `PROJECT-PLATFORM` 项目协作平台长期专项。该专项的目标能力记录在 `docs/00-product/initiatives/project-platform-program.md`，目标架构记录在 `docs/01-architecture/project-platform-target-architecture.md`；两者是未来演进目标，不代表下述当前能力已经实现。知识库 `KB-PRODUCT` 工程候选已收口，但 3-5 名真实参与者试用尚未完成，当前按暂停状态归档并等待团队反馈。
 
 ## 当前可用入口
 

@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import test from 'node:test'
 import { fileSignatures, gitHead } from '../src/lib/git.js'
 import { runSync } from '../src/lib/process.js'
-import { assertFinishBrowserOptions } from '../src/workcycle/cycle.js'
+import { assertFinishBrowserOptions, assertStageFinalValidationProfile, parseTaskScope } from '../src/workcycle/cycle.js'
 import { assertGitDiffClean, assertWorkCycleDocuments } from '../src/workcycle/quality.js'
 
 const task = 'TEST-M1-T01'
@@ -97,6 +97,20 @@ test('finish always requires browser evidence or a specific reason', () => {
   assert.throws(() => assertFinishBrowserOptions({ stage: 'finish' }, 'code-doc-report'), /exactly one/)
   assert.throws(() => assertFinishBrowserOptions({ stage: 'finish', browserNotRequiredReason: 'too short' }, 'code-doc-report'), /at least 20/)
   assert.doesNotThrow(() => assertFinishBrowserOptions({ stage: 'finish', browserNotRequiredReason: 'Backend-only schema change has no browser-visible behavior.' }, 'code-doc-report'))
+})
+
+test('the final milestone of a Stage requires route-final', () => {
+  assert.throws(() => assertStageFinalValidationProfile('finish', true, 'stage', 'TEST-S01-M4'), /route-final/)
+  assert.doesNotThrow(() => assertStageFinalValidationProfile('finish', true, 'route-final', 'TEST-S01-M4'))
+  assert.doesNotThrow(() => assertStageFinalValidationProfile('finish', false, 'stage', 'TEST-S01-M3'))
+})
+
+test('task scope parses Program and Stage qualified IDs', () => {
+  const scope = parseTaskScope('PROJECT-PLATFORM-S01-M1-T01 到 PROJECT-PLATFORM-S01-M1-T09')
+  assert.equal(scope.scopeValid, true)
+  assert.equal(scope.milestone, 'PROJECT-PLATFORM-S01-M1')
+  assert.equal(scope.expectedTasks.length, 9)
+  assert.equal(scope.expectedTasks.at(-1), 'PROJECT-PLATFORM-S01-M1-T09')
 })
 
 test('git diff check covers committed changes since the cycle baseline', () => {

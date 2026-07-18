@@ -12,6 +12,7 @@
     "work:start": "pnpm workbench work start",
     "work:checkpoint": "pnpm workbench work checkpoint",
     "work:finish": "pnpm workbench work finish",
+    "work:plan-check": "pnpm workbench planning check",
     "work:test": "pnpm --dir tools/workbench test",
     "verify": "pnpm workbench verify --mode quick",
     "verify:full": "pnpm workbench verify --mode full",
