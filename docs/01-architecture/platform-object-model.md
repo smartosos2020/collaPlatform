@@ -1,7 +1,7 @@
 ---
 title: 平台对象模型
 status: active
-last_code_check: 2026-07-11
+last_code_check: 2026-07-18
 ---
 
 # 平台对象模型
@@ -32,6 +32,7 @@ last_code_check: 2026-07-11
 
 | objectType | 来源模块 | Web path | Deep link | 当前用途 |
 | --- | --- | --- | --- | --- |
+| `project` | project | `/projects/{id}` | `colla://project/{id}` | 项目对象选择、关系、最近和规范跳转；当前不进入用户全文搜索召回 |
 | `issue` | project | `/issues/{id}` | `colla://issue/{id}` | 事项卡片、搜索、通知、IM 链接 |
 | `knowledge_content` | knowledge | `/knowledge-bases/{spaceId}/items/{id}` | `colla://knowledge-content/{id}?spaceId={spaceId}` | 知识内容卡片、搜索、通知、IM 链接和对象嵌入 |
 | `base` | base | `/bases/{id}` | `colla://base/{id}` | 表格空间卡片、最近访问、收藏 |
@@ -143,6 +144,15 @@ IM 消息发送时会扫描文本中的内部链接，解析后写入 `message_l
 - 已归档内容节点的 `status` 返回 `archived`，普通内容节点返回 `active`。
 - `metadata` 当前包含 `contentType`、`archived`、知识库 ID、知识库名称和知识库路径，供 IM 卡片、搜索结果和知识内容嵌入块复用。
 - 无法确定 `spaceId` 时安全回退到 `/knowledge-bases`，不得构造无空间上下文的伪内容路由。
+
+## 项目对象摘要
+
+项目 resolver 读取当前用户的项目成员关系后返回摘要：
+
+- 可访问项目返回名称、项目编码、状态、`/projects/{id}` 和 `colla://project/{id}`。
+- V048 注册 `project` 对象类型，V053 回填可选择对象链接并补充查询索引。
+- project 当前可用于对象选择、关系和规范导航，但搜索索引只覆盖 issue，尚未召回 project。
+- 项目没有归档/删除 API，因此对象链接的完整生命周期同步尚未形成。
 
 ## 事项对象摘要
 

@@ -1,7 +1,7 @@
 ---
 title: 当前技术架构
 status: active
-last_code_check: 2026-07-16
+last_code_check: 2026-07-18
 ---
 
 # 当前技术架构
@@ -14,7 +14,7 @@ Colla Platform 当前是模块化单体：
 
 - 后端：单个 Spring Boot 应用，按业务模块分包。
 - 前端：单个 React SPA，用户工作台和管理后台使用独立 Shell、导航和路由边界。
-- 数据库：单个 PostgreSQL schema，通过 Flyway V001-V052 演进。
+- 数据库：单个 PostgreSQL schema，通过 Flyway V001-V055 演进。
 - 基础设施：Redis、MinIO、WebSocket、平台对象、权限、事件、审计和搜索由模块共享。
 - 交付：本地 Docker 依赖；生产基线是单后端、双协作节点的 Docker Compose + Nginx。
 
@@ -106,7 +106,7 @@ Colla Platform 当前是模块化单体：
 
 ## 数据库迁移
 
-当前 Flyway 版本为 V053。历史迁移文件不可修改。
+当前 Flyway 版本为 V055。历史迁移文件不可修改。
 
 知识库最后四个迁移：
 
@@ -122,6 +122,8 @@ Colla Platform 当前是模块化单体：
 | V051 | 为版本、模板和协同状态补齐 canonical snapshot/schema 字段 |
 | V052 | 建立 Yjs snapshot、update log 和短期协同 ticket 合同 |
 | V053 | 回填可选择的平台对象并建立对象引用查询索引 |
+| V054 | 增加知识内容评论锚点生命周期 |
+| V055 | 增加知识内容模板版本合同 |
 
 数据库规则：
 
@@ -158,7 +160,7 @@ Colla Platform 当前是模块化单体：
 
 平台对象通过 resolver 统一返回 `available`、`forbidden`、`deleted`、`not_found` 或 `invalid`。用户卡片和后台卡片使用不同展示上下文；无后台权限时不得返回治理动作。
 
-当前对象类型包括 issue、knowledge_content、base、base_table、base_record、message、approval 和 file。内部链接、IM 卡片、通知、最近、收藏、关系和搜索结果复用同一对象摘要。
+当前对象类型包括 project、issue、knowledge_content、base、base_table、base_record、message、approval 和 file。内部链接、IM 卡片、通知、最近、收藏、关系和搜索结果复用同一对象摘要。project 已有 resolver 和对象链接回填，可作为选择对象和跳转入口；用户全文搜索当前只召回事项，不召回项目。
 
 用户搜索：
 
@@ -211,13 +213,28 @@ Colla Platform 当前是模块化单体：
 - 安全扫描、Flyway 顺序、生成物、文档结构和工作循环契约。
 - 知识命名守卫。
 
-最近一次路线级全量验证为 KB-NAME-M11：后端 60/60，通过当时的空库迁移、后端 package、前端 build、安全审计、命名和文档门禁；后续已应用 V048-V052，新的 V001-V052 路线级全量验证按 KB-PRODUCT-M12 计划执行。
+最近一次已归档路线级全量验证为 KB-NAME-M11：后端 60/60，通过当时的空库迁移、后端 package、前端 build、安全审计、命名和文档门禁；后续已应用 V048-V055，PROJECT-PLATFORM-S01-M4 负责重新执行当前 V001-V055 `route-final`，其结果记录在 M4 执行报告和本地质量门禁证据中。
+
+## 项目模块当前事实
+
+PROJECT-PLATFORM-S01 于 2026-07-18 完成项目模块当前事实审计、目标领域合同、迁移技术 spike 和 S02 准入评审，详细证据见 `docs/90-reports/project-platform-s01-m1-execution-report.md` 至 `project-platform-s01-m4-execution-report.md`。S01 没有修改生产业务 API、Flyway 或页面，以下运行事实保持不变。
+
+- 当前模型是固定 project + 固定 issue type + Java 内置 workflow，不是可发布配置版本驱动的通用工作项平台。
+- 项目运行时以 `project_members` 决定 view/edit；企业 `project.*` / `issue.*` 权限码没有被运行时消费，通用 project ACL 也不改变 `ProjectService` 的访问结果。
+- `ProjectService` 已接入 IM、平台对象、事件、文件和审计，但 Workspace、Knowledge、Search 与 Admin 仍有直接依赖项目 Repository 或私有表的路径。
+- 前端提供项目列表、事项看板/表格/抽屉和固定流程动作；项目成员、iteration、项目生命周期、附件上传及保存视图没有完整用户路径。
+- 本地数据有 33 个项目、34 条项目成员关系、2 个事项和 0 个 iteration；未发现孤儿关系，但有 31 条项目成员未出现在对应项目群中的同步漂移。
+
+以上是当前实现边界；动态类型、动态字段、流程版本、统一权限解释和可配置视图仍是目标架构能力，不得写成已交付。
+
+S01 已确定未来使用 ProjectSpace + versioned WorkItemType + WorkItem、规范 JSONB + capability typed projection、显式 legacy ID map、canonical-only write cutover 和状态/节点双运行时。S02 只落空间、成员、角色、邀请及 legacy project -> space/member 映射；完整 project/issue 迁移与旧写关闭在 S07，不能因为目标合同已冻结而提前改变上述当前事实。
 
 ## 当前架构 Gap
 
 - 用户工作台和管理后台仍共享一个 SPA 与后端进程，边界依赖路由、facade、权限和 DTO 纪律维持。
 - 双协作节点已经消除单个 Hocuspocus 进程的房间内存依赖，但共享 Redis、Spring 后端和 PostgreSQL 仍是单点故障域。
 - Base 尚缺公式、自动化、字段级和记录级权限策略。
+- 项目模块存在成员权限、企业权限码、资源 ACL 与平台权限解释分裂；固定流程、并发事项编号、成员/项目群同步和跨模块私有表读取需要按 PROJECT-PLATFORM Program 收敛。
 - 通知矩阵已覆盖 Base 授权、审批细分动作和直接资源授权变化；M5-T09/T10 仍需完成集成与端到端验收。
 - 平台对象 file resolver、对象关系全局图谱仍不完整。
 - 正式桌面端、原生移动端、高可用部署和自动发布体系未交付。

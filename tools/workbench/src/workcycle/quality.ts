@@ -240,13 +240,13 @@ export function assertWorkCycleDocuments(root: string, strict: boolean, freshLog
     const value = validation.match(new RegExp(`- ${label}:\\s*([^\\r\\n]+)`))?.[1] ?? ''
     assertConcrete(value, `Validation ${label}`)
   }
-  const referenced = [...validation.matchAll(/quality-gate-\d{8}T?\d{6}[A-Za-z0-9_.-]*\.log/g)].map((match) => match[0])
+  const referenced = [...validation.matchAll(/quality-gate-\d{8}T?\d{6}[A-Za-z0-9_.-]*\.(?:log|md)/g)].map((match) => match[0])
   const started = new Date(context.startedAt).getTime()
   const validLog = referenced.some((name) => {
     const path = join(root, '.local-reports', name)
     return existsSync(path) && statSync(path).mtimeMs >= started
   })
-  if (!validLog) throw new Error(`Execution report Validation must reference a fresh quality-gate log. Available: ${freshLogs.map((path) => basename(path)).join(', ')}`)
+  if (!validLog) throw new Error(`Execution report Validation must reference a fresh quality-gate report or step log. Available step logs: ${freshLogs.map((path) => basename(path)).join(', ')}`)
   assertRemainingGaps(report, expectedTasks, roadmap, contractV2)
   assertBrowserEvidence(root, context, contracts)
   assertDocumentBoundary(root, context, changed)
