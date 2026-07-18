@@ -350,3 +350,18 @@ source_rule: 本文件是唯一执行路线入口；已完成路线只保存在 
 ## 8. 当前执行入口
 
 `KB-PRODUCT-M1` 到 `KB-PRODUCT-M11` 已完成并形成逐里程碑执行报告。当前唯一执行入口为 `KB-PRODUCT-M12-T01` 到 `KB-PRODUCT-M12-T10`；M12 负责全量工程验证、备份恢复、真实参与者试用和路线级 Go/No-Go，不得用自动化或合成人格替代真实参与证据。
+
+## 9. WORKBENCH-M1 工作循环平台加固（并行工作台里程碑）
+
+说明：本里程碑只针对 AI 工作循环平台自身（`scripts/`、治理文档、一处后端配置默认值），不改变 KB-PRODUCT 路线范围，也不改变 `KB-PRODUCT-M12` 作为路线收口入口的地位。任务清单来自 2026-07-18 对工作循环平台的审计结论，执行报告为 `docs/90-reports/workbench-m1-execution-report.md`。
+
+| 任务 | 内容 | 验收标准 | 状态 |
+| --- | --- | --- | --- |
+| WORKBENCH-M1-T01 | 敏感信息扫描拆分为独立脚本并引入精确到文件与模式的 allowlist；e2e 夹具口令走豁免；移除 `KnowledgeCollaborationProperties` 硬编码默认密钥（`application.yml` 占位符默认值保持行为不变） | 扫描脚本独立可执行，allowlist 只豁免指定文件与指定模式，当前代码库扫描零命中、门禁该步骤恢复可通过 | Done |
+| WORKBENCH-M1-T02 | 扫描规则补充 EC 私钥与 JWT 形态 | 新模式对当前代码库零误报，合成样本可被检出 | Done |
+| WORKBENCH-M1-T03 | 受影响区域识别 `collaboration/` 与 `deploy/`；collaboration 变更时工作循环自动执行 `pnpm collaboration:test` | 改动 collaboration 文件后 checkpoint/finish 验证计划包含其测试执行并真实跑通 | Done |
+| WORKBENCH-M1-T04 | 真实浏览器证据检查拆分为独立脚本并语义化：禁止响应拦截类 mock 并覆盖 spec 对 support 的引用扫描，真实凭据注入辅助不再被误判 | 引用真实 spec（经 support 注入真实凭据）的命令通过；引用含 `page.route`/`route.fulfill` 的 spec 或 support 内拦截的命令被拒绝 | Done |
+| WORKBENCH-M1-T05 | 门禁把本轮执行日志清单写回工作循环上下文；finish 校验执行报告 Validation 引用当轮新鲜日志文件 | 本轮 finish 一次通过且报告引用被核验，无引用或引用过期日志被拒绝 | Done |
+| WORKBENCH-M1-T06 | 文档变更判定改用基线签名比对；活动文档白名单纳入强制边界；finish 增加 `git diff --check` | start 前已脏文档不再计为本轮更新；白名单外 docs 变更被拒绝；冲突标记可被检出 | Done |
+| WORKBENCH-M1-T07 | 表格单元格支持转义竖线切分；无上下文时 finish 报错可读；start 增加活动循环冲突保护与显式覆盖开关；清理无效参数；rg 缺失时给出告警 | 各项直接执行验证通过，门禁输出可解释 | Done |
+| WORKBENCH-M1-T08 | 治理文档、脚本 README、执行报告与路线图状态同步到本轮实现事实 | 文档结构门禁通过，文档描述与脚本行为一致 | Done |

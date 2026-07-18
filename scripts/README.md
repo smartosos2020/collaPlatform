@@ -10,6 +10,8 @@
 | `ai-quality-gate.ps1` | 编译、测试、前端、安全、迁移顺序和文档门禁 | 不重置共享数据库；测试使用 Testcontainers |
 | `ai-audit-snapshot.ps1` | 保存工具链、Docker 和 Git 本地快照 | 只读 |
 | `security-audit-gate.ps1` | 安全配置和审计调用静态检查 | 只读 |
+| `sensitive-data-scan.ps1` | 敏感信息扫描，按 `sensitive-scan-allowlist.tsv` 做文件+模式精确豁免 | 只读，报告写入 `.local-reports/` |
+| `assert-real-browser-evidence.ps1` | 真实浏览器证据来源检查：递归扫描 spec 及其 import 闭包中的响应拦截类 mock | 只读 |
 | `knowledge-naming-guard.ps1` | 阻止活动代码重新引入旧文档产品命名 | 只读 |
 | `knowledge-consistency-check.ps1` | 检查当前知识空间、目录、块、权限、搜索和引用一致性 | 只查询 PostgreSQL |
 | `inspect-knowledge-object-references.ps1` | 展示知识目录对象引用、重复别名和缺失目标 | 只查询 PostgreSQL |
@@ -29,7 +31,7 @@
 ```powershell
 pnpm audit:snapshot
 pnpm work:start -- -Goal "M25-delivery" -TaskRange "M25-T01 到 M25-T12"
-pnpm work:checkpoint -- -Goal "M25-delivery" -GateMode quick
+pnpm work:checkpoint -- -Goal "M25-delivery"
 pnpm work:finish -- -Goal "M25-delivery" -TaskRange "M25-T01 到 M25-T12"
 pnpm verify
 pnpm verify:full
@@ -73,7 +75,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File deploy/scripts/operations-co
 powershell -NoProfile -ExecutionPolicy Bypass -File deploy/scripts/release-check.ps1
 ```
 
-直接质量门禁 `quick` 仍用于仓库级快速检查；`full` 用于当前路线最后一个里程碑、发布门禁或明确要求的全量验证。工作循环会按变更范围自动选择：`checkpoint/light` 只验证受影响的后端编译或前端 lint，`stage finish` 执行当前里程碑目标测试和受影响前端 build，只有 `route-final` 才运行完整后端测试、package 和全套静态门禁。
+直接质量门禁 `quick` 仍用于仓库级快速检查；`full` 用于当前路线最后一个里程碑、发布门禁或明确要求的全量验证。工作循环会按变更范围自动选择：`checkpoint/light` 只验证受影响的后端编译、前端 lint 或 collaboration 测试（`collaboration/` 变更时），`stage finish` 执行当前里程碑目标测试和受影响前端 build，只有 `route-final` 才运行完整后端测试、package、collaboration 测试和全套静态门禁。`-GateMode` 参数已废弃（仅为兼容保留），档位由阶段自动派生。
 
 工作循环的 `checkpoint` 和阶段 `finish` 会跳过 Docker Compose 健康检查与重复的全仓静态审计；目标集成测试仍会由 Testcontainers 自己检查 Docker daemon，路线最终收口仍会执行完整依赖检查和静态审计。成功命令只输出摘要，完整日志写入 `.local-reports/`。审计快照同样分为 `light` 和 `full`，轻量快照只记录 Git 状态，不枚举整个源码树。
 

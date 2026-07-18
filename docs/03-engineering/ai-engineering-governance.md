@@ -106,12 +106,14 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ai-work-cycle.ps1 -S
 每完成一个可运行小闭环，执行：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ai-work-cycle.ps1 -Stage checkpoint -Goal "M1-auth" -GateMode quick
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ai-work-cycle.ps1 -Stage checkpoint -Goal "M1-auth"
 ```
+
+`-GateMode` 参数已废弃（仅为兼容保留）：验证档位由阶段自动派生，checkpoint 固定为 `light`，finish 固定为 `stage`，需要全量时显式传 `-ValidationProfile route-final`。
 
 要求：
 
-- 默认运行 `light` 验证档位：根据 start 后实际变更范围，只执行受影响后端编译或前端 lint；不启动 Docker，不重复运行全仓静态审计。
+- 默认运行 `light` 验证档位：根据 start 后实际变更范围，只执行受影响后端编译、前端 lint 或 collaboration 测试（`collaboration/` 变更时自动执行 `pnpm collaboration:test`）；不启动 Docker，不重复运行全仓静态审计。
 - 修复新增失败。
 - 不把失败堆到最后。
 - checkpoint 不默认触发 Spring Boot 集成测试，因此不默认触发 Testcontainers PostgreSQL 和 Flyway 空库全量迁移。
@@ -264,7 +266,7 @@ finish 的严格门禁必须：
 
 `mock` 浏览器测试可以验证页面状态、异常分支和视觉交互，但不能证明真实接口、认证、权限或数据闭环。执行报告和质量门禁必须明确区分 `mock` 与 `real`，不得把 mock 测试称为 E2E 或作为真实闭环完成证据。
 
-下列任务默认使用 `e2e-real-isolated`：登录/认证、权限、创建或修改资源、删除/启用/停用、密码与安全策略、会话/设备、资源交接、导出和审计。该证据必须使用真实登录态、真实后端 API、隔离数据库或具名隔离数据与清理策略；不得通过 `page.route`、`route.fulfill`、`addInitScript` 或伪造 token/API 响应替代。
+下列任务默认使用 `e2e-real-isolated`：登录/认证、权限、创建或修改资源、删除/启用/停用、密码与安全策略、会话/设备、资源交接、导出和审计。该证据必须使用真实登录态、真实后端 API、隔离数据库或具名隔离数据与清理策略；不得通过响应拦截类 mock（`page.route`、`context.route`、`route.fulfill`、`route.abort`）或伪造 token/API 响应替代。通过真实 API 登录获得真实 token 后再注入浏览器上下文是合法真实证据；该模式只允许存在于 `web/e2e/support/api.ts` 的会话安装辅助中。工作循环通过 `scripts/assert-real-browser-evidence.ps1` 扫描 spec 及其本地 import 闭包，隐藏在辅助文件中的 mock 同样会被拒绝。
 
 `finish` 的 `-BrowserTestCommand` 必须同时传入：
 
@@ -272,7 +274,7 @@ finish 的严格门禁必须：
 -BrowserEvidenceKind real -BrowserEvidenceEnvironment isolated
 ```
 
-真实浏览器命令必须指向具体 Playwright spec 或浏览器脚本，不能只传 `--grep`。工作循环会拒绝将包含常见 API/认证 mock 标记的 spec 声明为 `real`。页面级 mock 测试必须显式传入：
+真实浏览器命令必须指向具体 Playwright spec 或浏览器脚本，不能只传 `--grep`。工作循环会拒绝将包含响应拦截类 mock 标记的 spec 声明为 `real`，并会递归扫描 spec 引用的本地辅助文件。页面级 mock 测试必须显式传入：
 
 ```powershell
 -BrowserEvidenceKind mock -BrowserEvidenceEnvironment mock
@@ -393,7 +395,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ai-quality-gate.ps1 
 - 后端默认执行 `mvn -DskipTests test`，只做编译和测试编译，不运行 Surefire 测试。
 - 前端 `pnpm web:lint`。
 - 前端 `pnpm web:build`。
-- 敏感信息扫描。
+- 敏感信息扫描（`scripts/sensitive-data-scan.ps1`，精确豁免清单 `scripts/sensitive-scan-allowlist.tsv`）。
 - 安全审计 guardrails：测试库隔离、生产密钥外置、安全路由、关键服务审计调用。
 - Flyway 迁移顺序检查。
 - 生成产物跟踪检查。
@@ -413,6 +415,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ai-quality-gate.ps1 
 
 - 后端 `mvn test`，运行历史单元测试和集成测试。
 - 后端 `mvn -DskipTests package`。
+- collaboration 包测试 `pnpm collaboration:test`。
 - 由 Spring Boot 集成测试触发 Testcontainers PostgreSQL 和 Flyway 空库迁移验证。
 - 只用于当前执行路线图最终收口、试运行准入、CI 或用户明确要求的完整回归。
 
@@ -425,6 +428,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ai-work-cycle.ps1 -S
 ```
 
 阶段门禁只运行本里程碑相关后端集成测试。由于 Spring Boot 集成测试仍会启动测试上下文，Flyway 可能仍会对临时测试库从 `V001` 跑到最新版本；因此不要在每个小任务中反复运行阶段门禁。
+
+阶段与完整门禁在收口时还执行以下检查：
+
+- `git diff --check` 空白与冲突标记检查。
+- proof-of-run：执行报告 Validation 必须引用本轮工作循环内产生的质量门禁日志（`quality-gate-*.log`），不接受纯文字声明。
+- 文档边界强制：必更新文档以 start 基线签名判定真实变更（start 前已脏不算本轮更新）；非必需的 docs 变更只允许落在活动真相文档、`docs/90-reports` 与 `docs/05-runbooks` 内。
 
 ### 5.4 门禁失败处理
 
@@ -622,6 +631,8 @@ AI 可以长时间推进，但必须遵守以下节奏：
 | `scripts/ai-audit-snapshot.ps1` | 生成本地审计快照 |
 | `scripts/ai-work-cycle.ps1` | 包装 start/checkpoint/finish 工作循环 |
 | `scripts/security-audit-gate.ps1` | 执行安全与审计 guardrail 检查，已接入质量门禁 |
+| `scripts/sensitive-data-scan.ps1` | 敏感信息扫描，支持 `scripts/sensitive-scan-allowlist.tsv` 精确豁免，已接入质量门禁 |
+| `scripts/assert-real-browser-evidence.ps1` | 真实浏览器证据来源检查，扫描 spec 及其 import 闭包中的响应拦截类 mock |
 | `scripts/knowledge-naming-guard.ps1` | 阻止活动代码重新引入旧文档产品命名和兼容入口 |
 | `scripts/knowledge-consistency-check.ps1` | 只读检查当前知识空间、目录、块、权限、搜索和引用一致性 |
 | `deploy/scripts/backup.ps1` | 生成 Postgres/MinIO 备份和 manifest |
