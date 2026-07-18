@@ -80,7 +80,7 @@ AI 工作循环不是单纯的代码实现流程，而是固定闭环：
 代码实现 + 文档同步 + 验证报告
 ```
 
-当用户输入“按 AI 工作循环推进 MXX-T01 到 MXX-T08”或 `PROJECT-PLATFORM-S01-M1-T01` 这类带 Program/Stage 的任务范围时，默认必须执行该闭环。
+当用户输入 `PROJECT-PLATFORM-S01-M1-T01` 这类带 Program/Stage 的活动任务范围时，默认必须执行该闭环。活动 `code-doc-report` 路线不再接受脱离当前 Program/Stage 的裸 `MXX-TYY` 示例；归档材料中的旧编号只作为历史证据。
 
 M31/M40 仿真数据和试运行准入已经归档，不再作为当前标准基线。当前禁止为了普通验证自动重置共享开发数据；若未来需要新的固定数据或试运行基线，必须先按当时活动 schema 重新设计并单独建立路线。
 
@@ -89,7 +89,7 @@ M31/M40 仿真数据和试运行准入已经归档，不再作为当前标准基
 执行：
 
 ```shell
-pnpm work:start -- --goal M25-delivery --task-range "M25-T01 到 M25-T12"
+pnpm work:start -- --goal project-platform-s01-m1 --task-range "PROJECT-PLATFORM-S01-M1-T01 到 PROJECT-PLATFORM-S01-M1-T09"
 ```
 
 要求：
@@ -99,7 +99,7 @@ pnpm work:start -- --goal M25-delivery --task-range "M25-T01 到 M25-T12"
 - 明确本轮目标和不做范围。
 - 写入 `.local-reports/work-cycle-current.json`。
 - 输出 Document Contract。
-- 校验 `Program -> Stage -> Milestone -> Task` 规划合同：当前路线只包含一个 Stage，任务真实存在且未完成，长期专项只有一个匹配的 Active Stage。
+- 校验 `Program -> Stage -> Milestone -> Task` 规划合同：当前路线只包含一个 Stage，任务真实存在且未完成，专项索引只有一个匹配的 Active Program，长期专项只有一个匹配的 Active Stage。
 - 如果能识别里程碑，自动创建或复用对应执行报告；专题前缀必须保留，例如 `M25` 对应 `m25-execution-report.md`，`KB-NAME-M1` 对应 `kb-name-m1-execution-report.md`。
 
 ### 4.2 工作中
@@ -107,7 +107,7 @@ pnpm work:start -- --goal M25-delivery --task-range "M25-T01 到 M25-T12"
 每完成一个可运行小闭环，执行：
 
 ```shell
-pnpm work:checkpoint -- --goal M1-auth
+pnpm work:checkpoint -- --goal project-platform-s01-m1
 ```
 
 验证档位由阶段自动派生，checkpoint 固定为 `light`，finish 固定为 `stage`，需要全量时显式传 `--validation-profile route-final`。
@@ -123,7 +123,7 @@ pnpm work:checkpoint -- --goal M1-auth
 如果工作中确实需要提前验证某个高风险后端竖切，可以显式执行阶段级目标测试：
 
 ```shell
-pnpm work:checkpoint -- --goal M1-auth --validation-profile stage --backend-test-pattern AuthControllerIntegrationTests
+pnpm work:checkpoint -- --goal project-platform-s01-m1 --validation-profile stage --backend-test-pattern ProjectControllerIntegrationTests
 ```
 
 ### 4.3 结束前
@@ -131,7 +131,7 @@ pnpm work:checkpoint -- --goal M1-auth --validation-profile stage --backend-test
 执行：
 
 ```shell
-pnpm work:finish -- --goal M1-auth --backend-test-pattern AuthControllerIntegrationTests --browser-not-required-reason "本里程碑不包含用户可见界面或浏览器交互"
+pnpm work:finish -- --goal project-platform-s01-m1 --backend-test-pattern ProjectControllerIntegrationTests --browser-not-required-reason "本里程碑只调整项目领域合同，不包含用户可见界面或浏览器交互"
 ```
 
 要求：
@@ -140,7 +140,7 @@ pnpm work:finish -- --goal M1-auth --backend-test-pattern AuthControllerIntegrat
 - `code-doc-report` 的 stage finish 必须传入 `--backend-test-pattern` 并运行本里程碑相关后端集成测试；不再允许用“仅编译 + 报告说明”替代里程碑目标测试。
 - finish 必须二选一传入一个或多个 `--browser-spec`，或传入 `--browser-not-required-reason`。前者由工作循环以结构化 Playwright 参数执行并写入新鲜日志；后者必须给出至少 20 个字符的具体不适用理由。
 - stage finish 只运行目标后端测试、受影响前端 lint/build 和严格工作循环契约；不启动 compose 健康检查，不运行后端 package 或重复全仓静态审计。目标集成测试仍需自行通过 Testcontainers 检查 Docker daemon。
-- 只有 route-final 运行后端 package、安全扫描、迁移顺序、生成产物和完整后端测试。
+- 只有 route-final 运行后端 package、安全扫描、迁移顺序、Mockito javaagent、生成产物、活动文档结构、TODO/FIXME inventory 和完整后端测试；完整前端构建同时检查路由页面懒加载。
 - stage finish 生成轻量审计快照，route-final 生成完整审计快照。
 - 输出最终交付说明。
 - full 门禁必须通过文档闭环检查。
@@ -148,12 +148,12 @@ pnpm work:finish -- --goal M1-auth --backend-test-pattern AuthControllerIntegrat
 当前执行路线图的最后一个里程碑完成后，必须显式执行路线级最终验证：
 
 ```shell
-pnpm work:finish -- --goal identity-permission-route --validation-profile route-final --browser-spec e2e/identity-permission.spec.ts --browser-evidence-kind real --browser-evidence-environment isolated
+pnpm work:finish -- --goal project-platform-s01 --validation-profile route-final --browser-spec e2e/cross-module-route-final.spec.ts --browser-evidence-kind real --browser-evidence-environment isolated
 ```
 
 `route-final` 才运行完整 `mvn test`、完整 Spring Boot 集成测试集合和由测试触发的 Flyway 空库迁移验证。
 
-当当前路线属于长期专项 Stage 时，`stage_final_milestone` 指定的最终里程碑必须使用 `route-final`。该里程碑 finish 前必须把当前路线状态改为 `completed`，把长期专项中的当前 Stage 改为 `Completed`、把 `current_stage` 暂置为 `none`、递增专项修订号并更新规划变更记录；工作台会把 `program_doc` 加入该轮必更文档并阻断未同步收口。归档当前路线并生成下一路线时，才把下一 Stage 改为 `Active`。
+当当前路线属于长期专项 Stage 时，`stage_final_milestone` 指定的最终里程碑必须使用 `route-final`。该里程碑 finish 前必须把路线全部 Task 标记为 `Done`，把路线状态改为 `completed`，把长期专项中的当前 Stage 改为 `Completed`、把 `current_stage` 暂置为 `none`，把专项索引中的当前 Stage 暂置为 `none`，递增专项和目标架构的同一修订号并更新规划变更记录；工作台会把专项索引、`program_doc` 和目标架构加入该轮必更文档并阻断未同步收口。归档当前路线并生成下一路线时，才把下一 Stage 改为 `Active`。
 
 ### 4.4 文档同步契约
 
@@ -298,13 +298,14 @@ finish 的严格门禁必须：
 Program -> Stage -> Milestone -> Task
 ```
 
-- Program 文档位于 `docs/00-product/initiatives/`，维护长期目标、Stage 索引、依赖、退出条件、候选池和规划变更，并通过 `target_architecture_doc` 指向目标架构；它不直接维护可执行 Task 状态。
+- `docs/00-product/initiatives/README.md` 是机器可校验的专项索引，维护唯一 Active Program 和不能遗忘的 Paused Program；它不承载可执行 Task。
+- Program 文档位于 `docs/00-product/initiatives/`，维护长期目标、Stage 索引、依赖、退出条件、候选池和规划变更，并通过 `initiative_index_doc` 指向专项索引、通过 `target_architecture_doc` 指向目标架构；它不直接维护可执行 Task 状态。
 - `docs/02-roadmap/current-roadmap.md` 仍是唯一执行入口，每次只承载一个 Stage，可包含该 Stage 内多个 Milestone。
 - 当前路线 front matter 必须声明 `program`、`program_doc`、`program_revision`、`stage` 和 `stage_final_milestone`；`route` 必须等于 `stage`。
-- Program 文档必须存在且修订号一致，Stage 总览中恰好一个 `Active`，并与当前路线和 `current_stage` 一致。
+- Program 文档必须存在且修订号一致，目标架构的 `program_revision` 必须与当前路线和 Program 一致；专项索引中恰好一个 Active Program，Stage 总览中恰好一个 `Active`，并与当前路线和 `current_stage` 一致。
 - Task 使用 `{PROGRAM}-SXX-MX-TYY`，必须在当前路线表格中恰好出现一次；`work:start` 拒绝未声明、跨 Stage 或已经 Done 的 Task，补验前必须先标记 `Reopened`。
 - 当前 Stage 执行中原则上冻结。范围内澄清可更新当前路线；目标、依赖或远期规划变化必须更新 Program revision 和变更记录，并同步当前路线引用。
-- Stage 最终 Milestone 使用 `route-final`，并把 Program 文档纳入必更合同。收口时 Program revision 必须递增、当前 Stage 必须完成且 `current_stage` 必须暂置为 `none`；未完成 route-final、未更新长期专项或仍存在活动 Stage 冲突时不能 finish。
+- Stage 最终 Milestone 使用 `route-final`，并把专项索引、Program 和目标架构纳入必更合同。收口时路线全部 Task 必须 Done，Program/目标架构 revision 必须同步递增，当前 Stage 必须完成，Program 和专项索引的当前 Stage 必须暂置为 `none`；任一条件不满足时不能 finish。
 - Stage 完成后先归档当前路线，再激活下一 Stage 并生成新的 `current-roadmap.md`。已完成 Stage 的历史结论不直接改写；缺陷进入 `Reopened` 或新的修复 Stage。
 
 可随时独立检查规划合同：
@@ -329,16 +330,16 @@ pnpm work:plan-check
 单个工作循环上限：
 
 - 最多覆盖 1 个里程碑。
-- 同一里程碑的任务数量没有固定上限；例如 `M25-T01 到 M25-T12` 是合法范围。
+- 同一里程碑的任务数量没有固定上限；例如 `PROJECT-PLATFORM-S01-M1-T01 到 PROJECT-PLATFORM-S01-M1-T09` 是合法范围。
 - 是否拆成多轮由任务依赖、修改风险、真实验证成本和可审计性决定，不得因习惯性“8 项上限”机械拆分。
-- 不允许用一个工作循环直接覆盖 `M25-T01 到 M26-T08` 这类跨里程碑范围。
+- 不允许用一个工作循环直接覆盖 `PROJECT-PLATFORM-S01-M1-T01 到 PROJECT-PLATFORM-S01-M2-T09` 这类跨里程碑范围。
 - 不允许跨 Stage，例如 `PROJECT-PLATFORM-S01-M4` 与 `PROJECT-PLATFORM-S02-M1` 必须分别建立工作循环和当前路线。
 
 当用户输入范围跨多个里程碑时，AI 必须只启动第一个里程碑，并根据路线图明确该里程碑的完整任务范围。例如：
 
-- 用户输入 `按 AI 工作循环推进 M26-T01 到 M30-T08`。
-- AI 应先启动 M26 的路线图任务范围。
-- M26 完成代码、文档、验证报告闭环后，才可进入 M27。
+- 用户输入 `按 AI 工作循环推进 PROJECT-PLATFORM-S01-M1-T01 到 PROJECT-PLATFORM-S01-M4-T09`。
+- AI 应先启动 `PROJECT-PLATFORM-S01-M1` 的完整路线图任务范围。
+- M1 完成代码、文档、验证报告闭环后，才可进入 M2。
 
 同一个会话不等于同一个工作循环。会话上下文可以连续保留，但每个里程碑都必须重新经历 `start -> checkpoint -> finish`，并生成或更新对应的执行报告和质量门禁结果。
 
@@ -419,7 +420,7 @@ pnpm verify
 覆盖：
 
 - 工具链检查。
-- Docker 依赖服务检查。
+- Docker 依赖服务启动并等待 healthcheck 通过。
 - 后端默认执行 `mvn -DskipTests test`，只做编译和测试编译，不运行 Surefire 测试。
 - 前端 `pnpm web:lint`。
 - 前端 `pnpm web:build`。
@@ -428,6 +429,7 @@ pnpm verify
 - Flyway 迁移顺序检查。
 - 生成产物跟踪检查。
 - 实现标记库存提示。
+- Mockito javaagent、活动文档 front matter 和前端路由懒加载合同检查。
 
 快速门禁不默认运行 Spring Boot 集成测试，因此通常不会触发 Testcontainers PostgreSQL 和 Flyway 空库全量迁移。需要目标集成测试时，使用 `--backend-strategy targeted --backend-test-pattern "..."`。
 
@@ -602,7 +604,7 @@ pnpm work:finish -- --goal ORG-M1-organization-foundation --backend-test-pattern
 命令：
 
 ```shell
-pnpm audit:snapshot -- --label before-M1-auth
+pnpm audit:snapshot -- --label before-project-platform-s01-m1
 ```
 
 输出目录：
@@ -620,6 +622,8 @@ pnpm audit:snapshot -- --label before-M1-auth
 - 时间戳和标签。
 
 `.local-reports/` 不提交仓库，只用于本地追踪。
+
+`work:start` 自动生成 full 快照；checkpoint 和普通 finish 自动生成 light 快照；route-final finish 自动生成 full 快照。质量门还会把最后一次报告、模式、状态、步骤日志和完成时间写入 `work-cycle-current.json.lastQualityGate`。
 
 ## 9. 长时间自动工作的约束
 
@@ -674,8 +678,8 @@ AI 可以长时间推进，但必须遵守以下节奏：
 ```shell
 pnpm work:plan-check
 pnpm work:start -- --goal PROJECT-PLATFORM-S01-M1 --task-range "PROJECT-PLATFORM-S01-M1-T01 到 PROJECT-PLATFORM-S01-M1-T09"
-pnpm work:checkpoint -- --goal M1-auth
-pnpm work:finish -- --goal M1-auth --backend-test-pattern AuthControllerIntegrationTests --browser-spec e2e/auth.spec.ts --browser-evidence-kind real --browser-evidence-environment isolated
+pnpm work:checkpoint -- --goal project-platform-s01-m1
+pnpm work:finish -- --goal project-platform-s01-m1 --backend-test-pattern ProjectControllerIntegrationTests --browser-spec e2e/cross-module-route-final.spec.ts --browser-evidence-kind real --browser-evidence-environment isolated
 pnpm verify:full
 ```
 

@@ -6,6 +6,7 @@ revision: 1
 updated_at: 2026-07-18
 planning_mode: rolling
 current_stage: PROJECT-PLATFORM-S01
+initiative_index_doc: docs/00-product/initiatives/README.md
 target_architecture_doc: docs/01-architecture/project-platform-target-architecture.md
 ---
 

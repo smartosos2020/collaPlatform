@@ -10,10 +10,21 @@ export function gitHead(root: string): string {
 export function gitStatusPaths(root: string): string[] {
   const output = runSync('git', ['status', '--porcelain=v1', '-z', '--untracked-files=all'], { cwd: root, trimOutput: false })
   if (!output) return []
-  return [...new Set(output.split('\0').filter(Boolean).flatMap((entry) => {
-    const value = entry.slice(3)
-    return value.includes(' -> ') ? [value.split(' -> ').at(-1)!] : [value]
-  }).map((path) => path.replaceAll('\\', '/')))]
+  const entries = output.split('\0').filter(Boolean)
+  const paths: string[] = []
+  for (let index = 0; index < entries.length; index += 1) {
+    const entry = entries[index]
+    if (entry.length < 4) throw new Error(`Invalid git status --porcelain -z entry: ${JSON.stringify(entry)}`)
+    const status = entry.slice(0, 2)
+    paths.push(entry.slice(3))
+    if (/[RC]/.test(status)) {
+      const source = entries[index + 1]
+      if (!source) throw new Error(`Git ${status.trim()} entry is missing its source path`)
+      paths.push(source)
+      index += 1
+    }
+  }
+  return [...new Set(paths.map((path) => path.replaceAll('\\', '/')))]
 }
 
 export function committedPaths(root: string, baselineCommit: string): string[] {

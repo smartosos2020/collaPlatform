@@ -7,8 +7,10 @@ export interface PlanningContract {
   route: string
   program: string
   programDoc: string
+  initiativeIndexDoc: string
   targetArchitectureDoc: string
   programRevision: number
+  targetArchitectureRevision: number
   stage: string
   stageFinalMilestone: string
   programStageStatus: string
@@ -61,6 +63,24 @@ function stageStatusRows(content: string): Array<{ stage: string; status: string
   return rows
 }
 
+function initiativeStatusRows(content: string): Array<{ program: string; status: string; currentStage: string }> {
+  const rows: Array<{ program: string; status: string; currentStage: string }> = []
+  let statusIndex = -1
+  let currentStageIndex = -1
+  for (const line of content.split(/\r?\n/)) {
+    const cells = markdownCells(line)
+    if (!cells.length) continue
+    if (['program', 'initiative'].includes(cells[0].toLowerCase())) {
+      statusIndex = cells.findIndex((cell) => ['status', '状态'].includes(cell.toLowerCase()))
+      currentStageIndex = cells.findIndex((cell) => ['current stage', 'current_stage', '当前 stage'].includes(cell.toLowerCase()))
+      continue
+    }
+    if (statusIndex < 0 || currentStageIndex < 0 || cells.length <= Math.max(statusIndex, currentStageIndex) || !/^[A-Z][A-Z0-9-]+$/.test(cells[0])) continue
+    rows.push({ program: cells[0], status: cells[statusIndex], currentStage: cells[currentStageIndex] })
+  }
+  return rows
+}
+
 export function loadActivePlanningContract(root: string): PlanningContract {
   const roadmapPath = 'docs/02-roadmap/current-roadmap.md'
   const roadmapAbsolutePath = join(root, roadmapPath)
@@ -89,12 +109,32 @@ export function loadActivePlanningContract(root: string): PlanningContract {
   if (required(programMeta, 'program', programDoc).toUpperCase() !== program) throw new Error(`${programDoc} program does not match ${program}`)
   const programDocumentRevision = Number(required(programMeta, 'revision', programDoc))
   if (programDocumentRevision !== programRevision) throw new Error(`Program revision mismatch: roadmap=${programRevision}, program=${programDocumentRevision}`)
+  const initiativeIndexDoc = normalizedDocumentPath(required(programMeta, 'initiative_index_doc', programDoc))
+  if (!initiativeIndexDoc.startsWith('docs/00-product/initiatives/') || !initiativeIndexDoc.endsWith('.md') || initiativeIndexDoc.includes('..')) throw new Error(`initiative_index_doc must be under docs/00-product/initiatives: ${initiativeIndexDoc}`)
+  const initiativeIndexPath = join(root, initiativeIndexDoc)
+  if (!existsSync(initiativeIndexPath)) throw new Error(`Initiative index is missing: ${initiativeIndexDoc}`)
+  const initiativeIndexContent = readFileSync(initiativeIndexPath, 'utf8').replace(/^\uFEFF/, '')
+  const initiativeIndexMeta = frontMatter(initiativeIndexContent, initiativeIndexDoc)
+  if (required(initiativeIndexMeta, 'status', initiativeIndexDoc).toLowerCase() !== 'active') throw new Error(`${initiativeIndexDoc} status must be active`)
+  const initiativeRows = initiativeStatusRows(initiativeIndexContent)
+  const currentProgramRows = initiativeRows.filter((entry) => entry.program === program)
+  if (currentProgramRows.length !== 1) throw new Error(`${initiativeIndexDoc} must contain exactly one row for ${program}; found ${currentProgramRows.length}`)
+  const activePrograms = initiativeRows.filter((entry) => entry.status.toLowerCase() === 'active')
+  const indexedCurrentStage = roadmapStatus === 'completed' ? 'NONE' : stage
+  if (activePrograms.length !== 1 || activePrograms[0].program !== program || activePrograms[0].currentStage.toUpperCase() !== indexedCurrentStage) throw new Error(`${initiativeIndexDoc} must contain exactly one Active Program matching ${program} and current Stage ${indexedCurrentStage}`)
+  const trackedPausedPrograms = required(initiativeIndexMeta, 'tracked_paused_programs', initiativeIndexDoc).split(',').map((value) => value.trim().toUpperCase()).filter((value) => value && value !== 'NONE')
+  for (const pausedProgram of trackedPausedPrograms) {
+    const matches = initiativeRows.filter((entry) => entry.program === pausedProgram)
+    if (matches.length !== 1 || matches[0].status.toLowerCase() !== 'paused' || matches[0].currentStage.toLowerCase() !== 'none') throw new Error(`${initiativeIndexDoc} must retain paused Program ${pausedProgram} with current stage none`)
+  }
   const targetArchitectureDoc = normalizedDocumentPath(required(programMeta, 'target_architecture_doc', programDoc))
   if (!targetArchitectureDoc.startsWith('docs/01-architecture/') || !targetArchitectureDoc.endsWith('.md') || targetArchitectureDoc.includes('..')) throw new Error(`target_architecture_doc must be under docs/01-architecture: ${targetArchitectureDoc}`)
   const targetArchitecturePath = join(root, targetArchitectureDoc)
   if (!existsSync(targetArchitecturePath)) throw new Error(`Target architecture document is missing: ${targetArchitectureDoc}`)
   const targetArchitectureMeta = frontMatter(readFileSync(targetArchitecturePath, 'utf8').replace(/^\uFEFF/, ''), targetArchitectureDoc)
   if (required(targetArchitectureMeta, 'program', targetArchitectureDoc).toUpperCase() !== program) throw new Error(`${targetArchitectureDoc} program does not match ${program}`)
+  const targetArchitectureRevision = Number(required(targetArchitectureMeta, 'program_revision', targetArchitectureDoc))
+  if (targetArchitectureRevision !== programRevision) throw new Error(`Target architecture revision mismatch: roadmap=${programRevision}, target=${targetArchitectureRevision}`)
 
   const stages = stageStatusRows(programContent)
   const stageMatches = stages.filter((entry) => entry.stage === stage)
@@ -126,6 +166,10 @@ export function loadActivePlanningContract(root: string): PlanningContract {
   }
   if (!taskRows.size) throw new Error(`${roadmapPath} must contain tasks for ${stage}`)
   if (!milestones.has(stageFinalMilestone)) throw new Error(`${roadmapPath} does not contain the final milestone ${stageFinalMilestone}`)
+  if (roadmapStatus === 'completed') {
+    const incomplete = [...taskRows].filter(([, status]) => !['done', 'completed'].includes(status.toLowerCase())).map(([task, status]) => `${task}=${status || '(empty)'}`)
+    if (incomplete.length) throw new Error(`${roadmapPath} cannot be completed while tasks remain incomplete: ${incomplete.join(', ')}`)
+  }
 
   return {
     roadmapPath,
@@ -133,8 +177,10 @@ export function loadActivePlanningContract(root: string): PlanningContract {
     route,
     program,
     programDoc,
+    initiativeIndexDoc,
     targetArchitectureDoc,
     programRevision,
+    targetArchitectureRevision,
     stage,
     stageFinalMilestone,
     programStageStatus,
@@ -155,5 +201,5 @@ export function assertTaskScopeInPlanning(contract: PlanningContract, milestone:
 }
 
 export function planningSummary(contract: PlanningContract): string {
-  return `Planning contract passed: program=${contract.program}; revision=${contract.programRevision}; stage=${contract.stage}; milestones=${contract.milestones.size}; tasks=${contract.taskRows.size}; final=${contract.stageFinalMilestone}`
+  return `Planning contract passed: program=${contract.program}; revision=${contract.programRevision}; targetRevision=${contract.targetArchitectureRevision}; stage=${contract.stage}; milestones=${contract.milestones.size}; tasks=${contract.taskRows.size}; final=${contract.stageFinalMilestone}; index=${contract.initiativeIndexDoc}`
 }

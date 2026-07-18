@@ -1,8 +1,8 @@
 import { createWriteStream, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { spawn, type ChildProcess } from 'node:child_process'
+import { type ChildProcess } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { run, runSync } from '../lib/process.js'
+import { run, runSync, spawnManaged } from '../lib/process.js'
 
 export interface SmokeOptions { webBaseUrl?: string; apiBaseUrl?: string; username?: string; password?: string; headed?: boolean }
 export async function browserSmoke(root: string, spec: string, options: SmokeOptions): Promise<void> {
@@ -10,9 +10,8 @@ export async function browserSmoke(root: string, spec: string, options: SmokeOpt
   await run('pnpm', ['exec', 'playwright', 'test', spec, '--config=e2e/playwright.config.ts', ...(options.headed ? ['--headed'] : [])], { cwd: join(root, 'web'), env: { COLLA_E2E_WEB_BASE_URL: options.webBaseUrl ?? 'http://127.0.0.1:5173', COLLA_E2E_API_BASE_URL: options.apiBaseUrl ?? 'http://localhost:8080/api', COLLA_E2E_USERNAME: options.username ?? 'admin', COLLA_E2E_PASSWORD: password } })
 }
 
-function executable(command: string): string { return process.platform === 'win32' ? `${command}.cmd` : command }
 function background(command: string, args: string[], cwd: string, env: NodeJS.ProcessEnv, output: string, error: string): ChildProcess {
-  return spawn(process.platform === 'win32' && command === 'pnpm' ? executable(command) : command, args, { cwd, env: { ...process.env, ...env }, detached: process.platform !== 'win32', windowsHide: true, stdio: ['ignore', createWriteStream(output), createWriteStream(error)] })
+  return spawnManaged(command, args, { cwd, env, detached: process.platform !== 'win32', stdio: ['ignore', createWriteStream(output), createWriteStream(error)] })
 }
 async function stopTree(child?: ChildProcess): Promise<void> {
   if (!child?.pid || child.exitCode != null) return

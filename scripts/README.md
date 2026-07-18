@@ -15,9 +15,9 @@ The only active automation runtime is the Node.js + TypeScript package at `tools
 
 ```text
 pnpm audit:snapshot -- --profile light --label before-change
-pnpm work:start -- --goal M25-delivery --task-range "M25-T01 to M25-T12"
-pnpm work:checkpoint -- --goal M25-delivery
-pnpm work:finish -- --goal M25-delivery --backend-test-pattern ExampleIntegrationTests --browser-spec e2e/example.spec.ts --browser-evidence-kind real --browser-evidence-environment isolated
+pnpm work:start -- --goal project-platform-s01-m1 --task-range "PROJECT-PLATFORM-S01-M1-T01 to PROJECT-PLATFORM-S01-M1-T09"
+pnpm work:checkpoint -- --goal project-platform-s01-m1
+pnpm work:finish -- --goal project-platform-s01-m1 --backend-test-pattern ProjectControllerIntegrationTests --browser-spec e2e/cross-module-route-final.spec.ts --browser-evidence-kind real --browser-evidence-environment isolated
 pnpm work:plan-check
 pnpm work:test
 pnpm verify
@@ -54,11 +54,14 @@ Options use lowercase kebab-case. Legacy PowerShell-style `-PascalCase` names ar
 The active planning hierarchy is `Program -> Stage -> Milestone -> Task`.
 
 - `docs/02-roadmap/current-roadmap.md` remains the only executable route and contains exactly one Stage.
+- `docs/00-product/initiatives/README.md` retains the single Active Program and all explicitly tracked Paused Programs.
 - Its front matter declares `program`, `program_doc`, `program_revision`, `stage`, and `stage_final_milestone`.
-- The Program document lives under `docs/00-product/initiatives/`, contains the Stage index, points to its target architecture, and has exactly one Active Stage matching the current route.
+- The Program document lives under `docs/00-product/initiatives/`, contains the Stage index, points to the initiative index and target architecture, and has exactly one Active Stage matching the current route.
 - `work:start` rejects task IDs that are absent, already complete, or outside the active Stage.
-- The final Milestone of a Stage must use `--validation-profile route-final`, mark the current route completed, and update the Program document.
+- The final Milestone of a Stage must use `--validation-profile route-final`; every route Task must be Done; the initiative index, Program and target architecture must be updated with matching revisions.
 - `pnpm work:plan-check` validates the contract without starting a work cycle. Quick and full quality gates run the same planning check.
+- `work:start`, checkpoint and finish automatically record audit snapshots; every quality run writes `lastQualityGate` evidence into the active cycle context.
+- Full gates wait for Docker health and enforce route lazy loading, Mockito javaagent, generated artifacts, implementation-marker inventory and active-document front matter.
 
 ## Evidence And Security
 

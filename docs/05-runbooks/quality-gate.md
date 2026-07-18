@@ -1,7 +1,7 @@
 ---
 title: Quality Gate Runbook
 status: active
-updated_at: 2026-07-13
+updated_at: 2026-07-18
 ---
 
 # Quality Gate Runbook
@@ -71,6 +71,8 @@ For work cycles started with evidence-contract v2, a `stage` or `full` finish ga
 - core closures such as authentication, permissions, resource mutations, security, handover, export and audit use `e2e-real-isolated` evidence;
 - an isolated environment is actually declared for those closures;
 - every expected task is Done in both the report and roadmap;
+- a completed Stage has no Pending, Reopened or otherwise incomplete task anywhere in the route;
+- the initiative index, Program and target architecture revisions remain synchronized at Stage closure;
 - structured Remaining Gaps do not hide unfinished acceptance work as non-blocking.
 
 `mock` browser tests remain useful for UI-only state coverage, but never close a real API or role-based workflow. A failure in this review means the milestone remains `In Progress` or must be reopened; do not advance to the next milestone.
@@ -117,4 +119,4 @@ When the gate fails:
 3. Do not ignore compile, migration, security, permission, or startup failures.
 4. Do not finish the final milestone of a route while the full local quality gate is failing. For an intermediate milestone, do not finish while its required targeted checks are failing.
 
-Quality reports are written under `.local-reports/` and must not be committed.
+Quality reports are written under `.local-reports/` and must not be committed. The latest gate report, mode, status, step logs and completion time are also recorded in the active work-cycle context as `lastQualityGate`; work-cycle stages automatically append their audit snapshot paths.

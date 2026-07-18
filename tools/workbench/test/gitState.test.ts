@@ -23,3 +23,11 @@ test('tracks required docs, baseline-dirty edits and committed cycle changes', (
   writeFileSync(join(root, 'dirty.txt'), 'changed again')
   assert(changedSinceBaseline(root, context).includes('dirty.txt'))
 })
+
+test('parses both exact paths from porcelain rename records without ghost paths', () => {
+  const root = mkdtempSync(join(tmpdir(), 'colla-git-rename-'))
+  writeFileSync(join(root, 'before-name.txt'), 'baseline')
+  runSync('git', ['init', '-q'], { cwd: root }); runSync('git', ['config', 'user.email', 'test@example.invalid'], { cwd: root }); runSync('git', ['config', 'user.name', 'Test'], { cwd: root }); runSync('git', ['add', '.'], { cwd: root }); runSync('git', ['commit', '-q', '-m', 'baseline'], { cwd: root })
+  runSync('git', ['mv', 'before-name.txt', 'after-name.txt'], { cwd: root })
+  assert.deepEqual(gitStatusPaths(root).sort(), ['after-name.txt', 'before-name.txt'])
+})

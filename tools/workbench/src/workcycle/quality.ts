@@ -7,6 +7,7 @@ import { runSecurityAudit } from '../security/audit.js'
 import { scanSensitiveData } from '../security/sensitiveScan.js'
 import { activePlatformViolations } from '../security/platformGuard.js'
 import { loadActivePlanningContract, planningSummary } from './planning.js'
+import { assertDocumentationStructure, assertFrontendRouteLazyLoading, assertGeneratedArtifacts, assertMockitoJavaAgent, implementationMarkers } from './staticChecks.js'
 
 export type BackendStrategy = 'compile' | 'targeted' | 'full' | 'skip'
 export type FrontendStrategy = 'lint' | 'full' | 'skip'
@@ -50,7 +51,18 @@ interface WorkCycleContext extends GitBaseline {
     stageFinalMilestone: string
     isStageFinalMilestone: boolean
   }
+  lastQualityGate?: QualityGateEvidence
 }
+
+export interface QualityGateEvidence {
+  reportPath: string
+  mode: QualityOptions['mode']
+  status: 'PASS' | 'FAIL'
+  stepLogs: string[]
+  completedAt: string
+}
+
+export const dockerDependencyArgs = ['compose', 'up', '-d', '--wait', '--wait-timeout', '120', 'postgres', 'redis', 'minio'] as const
 
 interface VerificationContract {
   level: 'static' | 'unit' | 'integration' | 'e2e-real' | 'e2e-real-isolated'
@@ -250,6 +262,14 @@ export function assertGitDiffClean(root: string): void {
   runSync('git', ['diff', '--cached', '--check'], { cwd: root })
 }
 
+export function recordQualityGateEvidence(root: string, evidence: QualityGateEvidence): void {
+  const contextPath = join(root, '.local-reports', 'work-cycle-current.json')
+  if (!existsSync(contextPath)) return
+  const context = JSON.parse(readFileSync(contextPath, 'utf8').replace(/^\uFEFF/, '')) as WorkCycleContext
+  context.lastQualityGate = evidence
+  writeFileSync(contextPath, JSON.stringify(context, null, 2))
+}
+
 function flywayCheck(root: string): void {
   const names = readdirSync(join(root, 'server/src/main/resources/db/migration')).filter((name) => /^V.*\.sql$/.test(name)).sort()
   const versions = names.map((name) => {
@@ -260,12 +280,13 @@ function flywayCheck(root: string): void {
   versions.forEach((value, index) => { if (value !== index + 1) throw new Error(`Expected V${String(index + 1).padStart(3, '0')}, found V${String(value).padStart(3, '0')}`) })
 }
 
-export async function runQualityGate(root: string, options: QualityOptions): Promise<{ report: string; logs: string[] }> {
+export async function runQualityGate(root: string, options: QualityOptions): Promise<{ report: string; logs: string[]; evidence: QualityGateEvidence }> {
   const directory = join(root, '.local-reports')
   mkdirSync(directory, { recursive: true })
   const stamp = timestamp()
   const results: string[] = []
   const failures: string[] = []
+  const warnings: string[] = []
   const logs: string[] = []
   const step = (name: string, action: () => void): void => {
     try { action(); results.push(`- PASS: ${name}`); console.log(`PASS: ${name}`) }
@@ -280,8 +301,9 @@ export async function runQualityGate(root: string, options: QualityOptions): Pro
   })
 
   step('Toolchain', () => { for (const [cmd, args] of [['java', ['-version']], ['mvn', ['-version']], ['node', ['--version']], ['pnpm', ['--version']], ['docker', ['--version']]] as const) runSync(cmd, [...args], { cwd: root }) })
-  step('Active planning contract', () => console.log(planningSummary(loadActivePlanningContract(root))))
-  if (!options.skipDocker) command('Docker dependencies', 'docker', ['compose', 'up', '-d', 'postgres', 'redis', 'minio'])
+  const planning = loadActivePlanningContract(root)
+  step('Active planning contract', () => console.log(planningSummary(planning)))
+  if (!options.skipDocker) command('Docker dependencies', 'docker', [...dockerDependencyArgs])
   if (options.backend === 'compile') command('Backend compile', 'mvn', ['-DskipTests', 'test'], join(root, 'server'))
   if (options.backend === 'targeted') {
     if (!options.backendTestPattern) throw new Error('Targeted backend verification requires --backend-test-pattern')
@@ -296,9 +318,11 @@ export async function runQualityGate(root: string, options: QualityOptions): Pro
       const oversized = readdirSync(join(root, 'web/dist/assets')).filter((name) => name.endsWith('.js') && statSync(join(root, 'web/dist/assets', name)).size > 500 * 1024)
       if (oversized.length) throw new Error(`JavaScript chunks exceed 500KB: ${oversized.join(', ')}`)
     })
+    step('Frontend route lazy-loading', () => assertFrontendRouteLazyLoading(root))
   }
   if (options.collaboration === 'test') command('Collaboration tests', 'pnpm', ['collaboration:test'])
   if (!options.skipAudit) {
+    step('Mockito javaagent configuration', () => assertMockitoJavaAgent(root))
     step('Sensitive data scan', () => { const value = scanSensitiveData(root, { writeReport: false }); if (value.hits.length) throw new Error(value.hits.map((hit) => `${hit.path}:${hit.line}`).join(', ')) })
     step('Security audit guardrails', () => { const value = runSecurityAudit(root); if (value.failures.length) throw new Error(value.failures.join('; ')) })
     step('Flyway migration order', () => flywayCheck(root))
@@ -307,12 +331,20 @@ export async function runQualityGate(root: string, options: QualityOptions): Pro
       const violations = activePlatformViolations(root)
       if (violations.length) throw new Error(violations.join('; '))
     })
+    step('Generated artifact scan', () => assertGeneratedArtifacts(root))
+    step('TODO/FIXME inventory', () => {
+      for (const marker of implementationMarkers(root)) warnings.push(`- WARN: Open implementation marker: ${marker}`)
+    })
+    step('Documentation structure', () => assertDocumentationStructure(root, planning))
   }
   step('Work-cycle documentation contract', () => assertWorkCycleDocuments(root, ['stage', 'full'].includes(options.mode), logs))
   if (['stage', 'full'].includes(options.mode)) step('Git diff whitespace and conflict check', () => assertGitDiffClean(root))
   const report = join(directory, `quality-gate-${stamp}.md`)
-  writeFileSync(report, ['# AI Quality Gate', '', `- Status: ${failures.length ? 'FAIL' : 'PASS'}`, `- Mode: ${options.mode}`, `- Time: ${new Date().toISOString()}`, '', '## Results', ...results, '', '## Failures', ...(failures.length ? failures : ['- None']), ''].join('\n'))
+  const completedAt = new Date().toISOString()
+  const evidence: QualityGateEvidence = { reportPath: report, mode: options.mode, status: failures.length ? 'FAIL' : 'PASS', stepLogs: logs, completedAt }
+  writeFileSync(report, ['# AI Quality Gate', '', `- Status: ${evidence.status}`, `- Mode: ${options.mode}`, `- Time: ${completedAt}`, '', '## Results', ...results, '', '## Warnings', ...(warnings.length ? warnings : ['- None']), '', '## Failures', ...(failures.length ? failures : ['- None']), ''].join('\n'))
+  recordQualityGateEvidence(root, evidence)
   if (failures.length) throw new Error(`Quality gate failed (${failures.length}); report: ${report}`)
   console.log(`Quality gate report: ${report}`)
-  return { report, logs }
+  return { report, logs, evidence }
 }
