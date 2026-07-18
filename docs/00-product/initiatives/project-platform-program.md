@@ -2,10 +2,10 @@
 title: 项目协作平台长期专项规划
 status: active
 program: PROJECT-PLATFORM
-revision: 1
+revision: 2
 updated_at: 2026-07-18
 planning_mode: rolling
-current_stage: PROJECT-PLATFORM-S01
+current_stage: none
 initiative_index_doc: docs/00-product/initiatives/README.md
 target_architecture_doc: docs/01-architecture/project-platform-target-architecture.md
 ---
@@ -63,7 +63,7 @@ target_architecture_doc: docs/01-architecture/project-platform-target-architectu
 
 | Stage | 目标 | 主要依赖 | 状态 | 退出证据 |
 | --- | --- | --- | --- | --- |
-| PROJECT-PLATFORM-S01 | 当前事实审计、目标领域模型和迁移决策 | 当前项目模块 | Active | 审计、ADR、迁移分层和 S02 准入包 |
+| PROJECT-PLATFORM-S01 | 当前事实审计、目标领域模型和迁移决策 | 当前项目模块 | Completed | 审计、ADR、迁移分层和 S02 准入包 |
 | PROJECT-PLATFORM-S02 | 项目空间、成员和空间治理 | S01 | Planned | 空间生命周期、成员角色、可见性和治理 API |
 | PROJECT-PLATFORM-S03 | 工作项类型定义底座 | S01-S02 | Planned | 类型 schema、系统类型、自定义类型和启停版本 |
 | PROJECT-PLATFORM-S04 | 动态字段、选项和校验规则 | S03 | Planned | 字段类型系统、默认值、有效性和索引策略 |
@@ -105,7 +105,10 @@ target_architecture_doc: docs/01-architecture/project-platform-target-architectu
 | PROJECT-PLATFORM-S02-M1 | 空间模型、生命周期与可见性 | 创建、编辑、停用、恢复、归档语义完整 |
 | PROJECT-PLATFORM-S02-M2 | 空间成员、管理员与邀请/移除 | 成员变化可审计，最后管理员受保护 |
 | PROJECT-PLATFORM-S02-M3 | 用户侧空间入口与空间设置边界 | 成员执行 UI 和空间配置 UI 分离 |
-| PROJECT-PLATFORM-S02-M4 | 旧 project membership 兼容与迁移 | 存量项目成员可解释且迁移可回退 |
+| PROJECT-PLATFORM-S02-M4 | legacy project -> space/member 映射与兼容入口 | 存量成员可解释且可回退，不提前切换 project/issue 业务写 |
+| PROJECT-PLATFORM-S02-M5 | Stage 评审、route-final 和 S03 准入 | 空间闭环与迁移证据通过，专项总纲和下一 Stage 输入同步 |
+
+S02 固定输入见目标架构 17：落 `project_spaces`、成员、角色分配、邀请、legacy space map 和空间迁移批次；API 分用户协作、空间设置和企业治理三类；enterprise 权限不自动授予内容访问。S02 只迁移空间与成员语义，完整 project/issue -> WorkItem 迁移、规范写切流和旧写关闭归 S07。S02 激活前必须先归档已完成 S01 路线并生成新的唯一当前路线。
 
 ### PROJECT-PLATFORM-S03 工作项类型定义底座
 
@@ -311,6 +314,7 @@ target_architecture_doc: docs/01-architecture/project-platform-target-architectu
 | Revision | 日期 | 变更 | 原因 | 影响 |
 | --- | --- | --- | --- | --- |
 | 1 | 2026-07-18 | 建立 PROJECT-PLATFORM 长期专项，拆分 21 个 Stage，并将流程从中心模型调整为工作项配置能力之一 | Lark/飞书项目官方能力调研及当前项目代码审计 | S01-S21 初始基线 |
+| 2 | 2026-07-18 | S01 审计、领域合同、物理/迁移 spike 和准入评审完成；冻结 S02 schema/API/权限/legacy 映射，新增 S02-M5 收口；把完整事项迁移和写切流从错误的 S03/S04 归属修正到 S07 | S03/S04 尚无类型、字段和规范工作项运行时，无法承载完整迁移；S02 只能先建立空间与成员底座 | S01 Completed；S02 可在归档 S01 路线后激活；S07 接收完整迁移和切流责任 |
 
 ## 10. 主要产品参考
 

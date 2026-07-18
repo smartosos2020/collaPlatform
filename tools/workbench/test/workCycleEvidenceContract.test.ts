@@ -9,8 +9,9 @@ import { assertFinishBrowserOptions, assertStageFinalValidationProfile, parseTas
 import { assertGitDiffClean, assertWorkCycleDocuments } from '../src/workcycle/quality.js'
 
 const task = 'TEST-M1-T01'
+const defaultContract = '| TEST-M1-T01 | static | not-required | not-required | No | No real flow required |'
 
-function fixture(contract = '| TEST-M1-T01 | static | not-required | not-required | No | No real flow required |', browserEvidence?: object): string {
+function fixture(contract = defaultContract, browserEvidence?: object, qualityArtifact = 'quality-gate-20260718T120000-test.log'): string {
   const root = mkdtempSync(join(tmpdir(), 'colla-evidence-contract-'))
   mkdirSync(join(root, 'docs/02-roadmap'), { recursive: true })
   mkdirSync(join(root, 'docs/90-reports'), { recursive: true })
@@ -27,8 +28,7 @@ function fixture(contract = '| TEST-M1-T01 | static | not-required | not-require
   const baselineCommit = gitHead(root)
   const startedAt = new Date(Date.now() - 60_000).toISOString()
   writeFileSync(join(root, roadmapPath), `| ${task} | Verify module | Static check | Done |\n`)
-  const qualityLog = 'quality-gate-20260718T120000-test.log'
-  writeFileSync(join(root, '.local-reports', qualityLog), 'passed')
+  writeFileSync(join(root, '.local-reports', qualityArtifact), 'passed')
   writeFileSync(join(root, reportPath), [
     '# TEST-M1 Execution Report', '', '## Scope', task, '', '## Verification Contract',
     '| Task | Required verification level | Browser evidence kind | Environment | Mock browser allowed | Required real flow |',
@@ -38,7 +38,7 @@ function fixture(contract = '| TEST-M1-T01 | static | not-required | not-require
     '| --- | --- | --- | --- | --- | --- |',
     `| ${task} | Render dashboard | src/module.ts | unit test passed | No browser required for static module | Done |`, '',
     '## Code Changes', '- src/module.ts', '', '## Validation', '- Backend tests: targeted tests passed',
-    '- Frontend build: build passed', `- Local quality gate: ${qualityLog}`, '- Browser smoke: explicitly not required for static module', '',
+    '- Frontend build: build passed', `- Local quality gate: ${qualityArtifact}`, '- Browser smoke: explicitly not required for static module', '',
     '## Remaining Gaps', '| Related task | Gap | Acceptance effect | Tracking |', '| --- | --- | --- | --- |',
     '| N/A | None | non-blocking | Closed |', '', '## Next Steps', '- Merge after review', '',
   ].join('\n'))
@@ -55,6 +55,10 @@ function fixture(contract = '| TEST-M1-T01 | static | not-required | not-require
 
 test('verification contract v2 accepts a complete non-browser task', () => {
   assert.doesNotThrow(() => assertWorkCycleDocuments(fixture(), true))
+})
+
+test('verification contract accepts the TypeScript quality-gate markdown summary', () => {
+  assert.doesNotThrow(() => assertWorkCycleDocuments(fixture(defaultContract, undefined, 'quality-gate-20260718T120000-test.md'), true))
 })
 
 test('verification contract requires exactly one row per expected task', () => {
