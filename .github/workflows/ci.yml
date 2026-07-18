@@ -1,0 +1,103 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - develop
+
+jobs:
+  workbench:
+    name: Workbench (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.4.0
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck workbench
+        run: pnpm --dir tools/workbench typecheck
+
+      - name: Run workbench contracts
+        run: pnpm work:test
+
+      - name: Scan sensitive data
+        run: pnpm security:scan -- --skip-report
+
+      - name: Validate pilot contract
+        run: pnpm pilot:contract-check
+
+  verify:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.4.0
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Start local dependencies
+        run: docker compose up -d postgres redis minio
+
+      - name: Verify dependency health
+        run: docker compose ps
+
+      - name: Backend tests and package
+        working-directory: server
+        run: mvn -B test package
+
+      - name: Frontend lint
+        run: pnpm web:lint
+
+      - name: Frontend build
+        run: pnpm web:build
+
+      - name: Upload build reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-reports
+          path: |
+            server/target/surefire-reports
+            web/dist
+          if-no-files-found: ignore
+
+      - name: Stop local dependencies
+        if: always()
+        run: docker compose down

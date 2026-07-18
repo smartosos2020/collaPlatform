@@ -27,8 +27,8 @@ These paths are ignored by git and checked by the quality gate.
 
 Command:
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ai-audit-snapshot.ps1 -- -Label "before-M25"
+```shell
+pnpm audit:snapshot -- --label before-M25
 ```
 
 Snapshots are written under `.local-reports/` and capture:

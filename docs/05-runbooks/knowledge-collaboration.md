@@ -37,11 +37,10 @@ expired collaboration tickets after the configured retention period.
 
 Run these checks from inside the deployment network for each node:
 
-```powershell
-Invoke-RestMethod http://collaboration-a:1234/health
-Invoke-RestMethod http://collaboration-a:1234/ready
-Invoke-RestMethod http://collaboration-a:1234/metrics `
-  -Headers @{ 'X-Colla-Collaboration-Secret' = $env:COLLA_COLLABORATION_INTERNAL_SECRET }
+```shell
+curl --fail http://collaboration-a:1234/health
+curl --fail http://collaboration-a:1234/ready
+curl --fail -H "X-Colla-Collaboration-Secret: $COLLA_COLLABORATION_INTERNAL_SECRET" http://collaboration-a:1234/metrics
 ```
 
 - `/health` proves the process can answer and reports degraded dependencies.
@@ -87,22 +86,19 @@ durable record; recover from PostgreSQL snapshot and update rows.
 The release contract requires immutable `SERVER_IMAGE`, `WEB_IMAGE` and
 `COLLABORATION_IMAGE` tags built from the same 40-character source revision.
 Compose runs the collaboration image twice with distinct node IDs. Use
-`deploy/scripts/release-check.ps1` before rollout.
+`pnpm ops:release-check` before rollout.
 
 Rollback must select all three previous images and use the exact confirmation
 string:
 
-```powershell
-$confirmation = "ROLLBACK:colla-platform-prod:$serverImage`:$webImage`:$collaborationImage"
-powershell -NoProfile -ExecutionPolicy Bypass `
-  -File deploy/scripts/rollback.ps1 `
-  -EnvFile deploy/.env.prod `
-  -ServerImage $serverImage `
-  -WebImage $webImage `
-  -CollaborationImage $collaborationImage `
-  -ExpectedProjectName colla-platform-prod `
-  -ConfirmationText $confirmation `
-  -ConfirmRollback
+```shell
+pnpm ops:rollback -- --env-file deploy/.env.prod \
+  --server-image "$SERVER_IMAGE" \
+  --web-image "$WEB_IMAGE" \
+  --collaboration-image "$COLLABORATION_IMAGE" \
+  --expected-project-name colla-platform-prod \
+  --confirmation-text "ROLLBACK:colla-platform-prod:$SERVER_IMAGE:$WEB_IMAGE:$COLLABORATION_IMAGE" \
+  --confirm-rollback
 ```
 
 Use data restore only when collaboration rows or canonical content are

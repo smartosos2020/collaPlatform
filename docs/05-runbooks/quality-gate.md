@@ -14,8 +14,8 @@ This runbook defines when and how to run local quality gates. The gate is the st
 
 Command:
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ai-quality-gate.ps1 -Mode quick
+```shell
+pnpm verify
 ```
 
 The direct quick gate checks:
@@ -48,8 +48,8 @@ Run the quick gate:
 
 Command:
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ai-quality-gate.ps1 -Mode full
+```shell
+pnpm verify:full
 ```
 
 The full gate includes the quick gate plus backend packaging. In an active AI work cycle, `stage` intentionally omits backend packaging and global static audits; it still requires the mandatory work-cycle documents and strict completion evidence. `full` requires the mandatory work-cycle documents to be changed.
@@ -83,7 +83,7 @@ Do not automatically reset shared development data after a gate. There is no cur
 
 ## Security Audit Gate
 
-The quick and full gates run `scripts/security-audit-gate.ps1`. It currently checks:
+The quick and full gates run `pnpm security:audit`. It currently checks:
 
 - backend tests are isolated to the test profile;
 - production secrets come from environment variables;
@@ -94,16 +94,16 @@ The quick and full gates run `scripts/security-audit-gate.ps1`. It currently che
 
 You can run it directly:
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/security-audit-gate.ps1
+```shell
+pnpm security:audit
 ```
 
 ## Useful Local Skips
 
 For script-only or documentation-only checks, use explicit skips:
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ai-quality-gate.ps1 -Mode quick -SkipDocker -SkipFrontend -SkipBackend
+```shell
+pnpm workbench verify --mode quick --skip-docker --backend-strategy skip --frontend-strategy skip
 ```
 
 Skips are allowed only when the skipped area is not affected by the current change. The final response must state what was skipped.

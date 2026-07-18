@@ -3,4 +3,11 @@
 # A hit is waived only when BOTH the file path and the matched pattern align with an entry.
 # Keep entries as narrow as possible; broad path globs with "*" pattern defeat the scan.
 web/e2e/*.spec.ts	password\s*=\s*['"][^'"]+['"]	Playwright real-flow specs use fixed dummy login credentials for isolated test members; real secrets (token/secret/sk-/keys) stay blocked in these files.
+server/src/test/**/*.java	credential-assignment	Backend integration tests use fixed dummy credentials; production source and configuration remain scanned.
+tools/workbench/test/sensitiveScan.test.ts	credential-assignment	Scanner regression tests contain synthetic credential samples required to prove format coverage.
+server/src/main/resources/application.yml	credential-assignment	The default profile contains documented local-only development credentials; application-prod.yml is separately guarded and has no defaults.
+docs/99-archive/old-drafts/phase1-technical-design.md	credential-assignment	Archived phase-one design contains a synthetic password example and is not an active configuration.
+scripts/archive/windows-powershell/activity-platform-20260718/sensitive-data-scan.ps1	BEGIN RSA PRIVATE KEY	Archived scanner source contains the former detection marker text, not key material.
+scripts/archive/windows-powershell/activity-platform-20260718/sensitive-data-scan.ps1	BEGIN OPENSSH PRIVATE KEY	Archived scanner source contains the former detection marker text, not key material.
+scripts/archive/windows-powershell/activity-platform-20260718/sensitive-data-scan.ps1	BEGIN EC PRIVATE KEY	Archived scanner source contains the former detection marker text, not key material.
 docs/90-reports/workbench-m1-execution-report.md	BEGIN EC PRIVATE KEY	WORKBENCH-M1 report documents the EC private key detection pattern itself; no real key material present.

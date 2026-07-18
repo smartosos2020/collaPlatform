@@ -88,8 +88,8 @@ M31/M40 仿真数据和试运行准入已经归档，不再作为当前标准基
 
 执行：
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ai-work-cycle.ps1 -Stage start -Goal "M25-delivery" -TaskRange "M25-T01 到 M25-T12"
+```shell
+pnpm work:start -- --goal M25-delivery --task-range "M25-T01 到 M25-T12"
 ```
 
 要求：
@@ -105,11 +105,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ai-work-cycle.ps1 -S
 
 每完成一个可运行小闭环，执行：
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ai-work-cycle.ps1 -Stage checkpoint -Goal "M1-auth"
+```shell
+pnpm work:checkpoint -- --goal M1-auth
 ```
 
-`-GateMode` 参数已废弃（仅为兼容保留）：验证档位由阶段自动派生，checkpoint 固定为 `light`，finish 固定为 `stage`，需要全量时显式传 `-ValidationProfile route-final`。
+验证档位由阶段自动派生，checkpoint 固定为 `light`，finish 固定为 `stage`，需要全量时显式传 `--validation-profile route-final`。
 
 要求：
 
@@ -121,23 +121,23 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ai-work-cycle.ps1 -S
 
 如果工作中确实需要提前验证某个高风险后端竖切，可以显式执行阶段级目标测试：
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ai-work-cycle.ps1 -Stage checkpoint -Goal "M1-auth" -ValidationProfile stage -BackendTestPattern "AuthControllerIntegrationTests"
+```shell
+pnpm work:checkpoint -- --goal M1-auth --validation-profile stage --backend-test-pattern AuthControllerIntegrationTests
 ```
 
 ### 4.3 结束前
 
 执行：
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ai-work-cycle.ps1 -Stage finish -Goal "M1-auth"
+```shell
+pnpm work:finish -- --goal M1-auth --backend-test-pattern AuthControllerIntegrationTests --browser-not-required-reason "本里程碑不包含用户可见界面或浏览器交互"
 ```
 
 要求：
 
 - 默认运行 `stage` 验证档位，而不是全量历史回归。
-- `code-doc-report` 的 stage finish 必须传入 `-BackendTestPattern` 并运行本里程碑相关后端集成测试；不再允许用“仅编译 + 报告说明”替代里程碑目标测试。
-- finish 必须二选一传入 `-BrowserTestCommand` 或 `-BrowserNotRequiredReason`。前者由工作循环实际执行并写入新鲜日志；后者必须给出至少 20 个字符的具体不适用理由。
+- `code-doc-report` 的 stage finish 必须传入 `--backend-test-pattern` 并运行本里程碑相关后端集成测试；不再允许用“仅编译 + 报告说明”替代里程碑目标测试。
+- finish 必须二选一传入一个或多个 `--browser-spec`，或传入 `--browser-not-required-reason`。前者由工作循环以结构化 Playwright 参数执行并写入新鲜日志；后者必须给出至少 20 个字符的具体不适用理由。
 - stage finish 只运行目标后端测试、受影响前端 lint/build 和严格工作循环契约；不启动 compose 健康检查，不运行后端 package 或重复全仓静态审计。目标集成测试仍需自行通过 Testcontainers 检查 Docker daemon。
 - 只有 route-final 运行后端 package、安全扫描、迁移顺序、生成产物和完整后端测试。
 - stage finish 生成轻量审计快照，route-final 生成完整审计快照。
@@ -146,8 +146,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ai-work-cycle.ps1 -S
 
 当前执行路线图的最后一个里程碑完成后，必须显式执行路线级最终验证：
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ai-work-cycle.ps1 -Stage finish -Goal "identity-permission-route" -ValidationProfile route-final
+```shell
+pnpm work:finish -- --goal identity-permission-route --validation-profile route-final --browser-spec e2e/identity-permission.spec.ts --browser-evidence-kind real --browser-evidence-environment isolated
 ```
 
 `route-final` 才运行完整 `mvn test`、完整 Spring Boot 集成测试集合和由测试触发的 Flyway 空库迁移验证。
@@ -266,18 +266,18 @@ finish 的严格门禁必须：
 
 `mock` 浏览器测试可以验证页面状态、异常分支和视觉交互，但不能证明真实接口、认证、权限或数据闭环。执行报告和质量门禁必须明确区分 `mock` 与 `real`，不得把 mock 测试称为 E2E 或作为真实闭环完成证据。
 
-下列任务默认使用 `e2e-real-isolated`：登录/认证、权限、创建或修改资源、删除/启用/停用、密码与安全策略、会话/设备、资源交接、导出和审计。该证据必须使用真实登录态、真实后端 API、隔离数据库或具名隔离数据与清理策略；不得通过响应拦截类 mock（`page.route`、`context.route`、`route.fulfill`、`route.abort`）或伪造 token/API 响应替代。通过真实 API 登录获得真实 token 后再注入浏览器上下文是合法真实证据；该模式只允许存在于 `web/e2e/support/api.ts` 的会话安装辅助中。工作循环通过 `scripts/assert-real-browser-evidence.ps1` 扫描 spec 及其本地 import 闭包，隐藏在辅助文件中的 mock 同样会被拒绝。
+下列任务默认使用 `e2e-real-isolated`：登录/认证、权限、创建或修改资源、删除/启用/停用、密码与安全策略、会话/设备、资源交接、导出和审计。该证据必须使用真实登录态、真实后端 API、隔离数据库或具名隔离数据与清理策略；不得通过响应拦截类 mock（`page.route`、`context.route`、`route.fulfill`、`route.abort`）或伪造 token/API 响应替代。通过真实 API 登录获得真实 token 后再注入浏览器上下文是合法真实证据；该模式只允许存在于 `web/e2e/support/api.ts` 的会话安装辅助中。工作台使用 TypeScript AST 扫描静态导入、动态导入、CommonJS 引用、重导出、路径别名及仓库内完整本地依赖闭包，隐藏在辅助文件中的 mock 同样会被拒绝。
 
-`finish` 的 `-BrowserTestCommand` 必须同时传入：
+`finish` 的 `--browser-spec` 必须同时传入：
 
-```powershell
--BrowserEvidenceKind real -BrowserEvidenceEnvironment isolated
+```shell
+--browser-evidence-kind real --browser-evidence-environment isolated
 ```
 
 真实浏览器命令必须指向具体 Playwright spec 或浏览器脚本，不能只传 `--grep`。工作循环会拒绝将包含响应拦截类 mock 标记的 spec 声明为 `real`，并会递归扫描 spec 引用的本地辅助文件。页面级 mock 测试必须显式传入：
 
-```powershell
--BrowserEvidenceKind mock -BrowserEvidenceEnvironment mock
+```shell
+--browser-evidence-kind mock --browser-evidence-environment mock
 ```
 
 `Remaining Gaps` 必须使用四列表，并标明关联任务和对验收的影响。任何关联当前任务、包含未实现/缺失/仅支持旧单项能力等阻断描述的 Gap，都不能标记 `non-blocking`；任务必须保持 `In Progress` 或改为 `Reopened`，路线图和六列表状态不得写 `Done`。
@@ -327,7 +327,7 @@ finish 的严格门禁必须：
 - 使用 `admin / admin123456` 或本轮明确指定的测试账号。
 - 打开本轮影响的页面和至少一个相关主导航入口。
 - 在执行报告中记录目标 URL、账号、检查页面、结果和跳过原因。
-- `finish` 的浏览器命令必须声明 `-BrowserEvidenceKind` 与 `-BrowserEvidenceEnvironment`；真实闭环使用 `real + isolated`，mock 只用于明确允许的页面测试。
+- `finish` 的浏览器 spec 必须声明 `--browser-evidence-kind` 与 `--browser-evidence-environment`；真实闭环使用 `real + isolated`，mock 只用于明确允许的页面测试。
 
 详细步骤见 `docs/05-runbooks/browser-smoke.md`。
 
@@ -335,17 +335,17 @@ finish 的严格门禁必须：
 
 双 UI、Shell、路由、用户菜单、后台导航、搜索/通知/平台对象边界发生变化时，优先运行：
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ui-split-v1-browser-smoke.ps1
+```shell
+pnpm smoke:ui-split
 ```
 
-该脚本覆盖用户工作台主入口、管理后台主入口、Shell 隔离、头像菜单中的后台入口和后台返回工作台入口。
+该命令覆盖用户工作台主入口、管理后台主入口、Shell 隔离、头像菜单中的后台入口和后台返回工作台入口。
 
 ### 4.8 数据与历史场景脚本
 
 - 后端集成测试使用 `application-test.yml` + Testcontainers PostgreSQL，不依赖共享本地数据库。
 - 普通验证不得重置共享开发数据。
-- `scripts/m31-*`、`reset-m12-test-data.ps1`、`trial-*` 和旧性能/知识库兼容试运行脚本是历史阶段工具，不属于当前保证可执行的工作循环入口。
+- 旧 M31、M40、试运行和性能/知识库兼容脚本是归档历史工具，不属于当前保证可执行的工作循环入口。
 - 需要复现历史报告时，必须先审计脚本中的表名、API、路由和权限前提；发现 `/docs`、`/api/docs`、`Document*` 或旧表名时不得直接运行。
 - 新的数据初始化、跨模块回归或试运行准入必须基于当前 schema 和规范路由重新设计，不能把历史脚本重新标记为 active。
 
@@ -384,8 +384,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ui-split-v1-browser-
 
 命令：
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ai-quality-gate.ps1 -Mode quick
+```shell
+pnpm verify
 ```
 
 覆盖：
@@ -395,20 +395,20 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ai-quality-gate.ps1 
 - 后端默认执行 `mvn -DskipTests test`，只做编译和测试编译，不运行 Surefire 测试。
 - 前端 `pnpm web:lint`。
 - 前端 `pnpm web:build`。
-- 敏感信息扫描（`scripts/sensitive-data-scan.ps1`，精确豁免清单 `scripts/sensitive-scan-allowlist.tsv`）。
+- 敏感信息扫描（工作台 TypeScript 实现，精确豁免清单 `scripts/sensitive-scan-allowlist.tsv`）。
 - 安全审计 guardrails：测试库隔离、生产密钥外置、安全路由、关键服务审计调用。
 - Flyway 迁移顺序检查。
 - 生成产物跟踪检查。
 - 实现标记库存提示。
 
-快速门禁不默认运行 Spring Boot 集成测试，因此通常不会触发 Testcontainers PostgreSQL 和 Flyway 空库全量迁移。需要目标集成测试时，使用 `-BackendStrategy targeted -BackendTestPattern "..."`。
+快速门禁不默认运行 Spring Boot 集成测试，因此通常不会触发 Testcontainers PostgreSQL 和 Flyway 空库全量迁移。需要目标集成测试时，使用 `--backend-strategy targeted --backend-test-pattern "..."`。
 
 ### 5.2 完整门禁
 
 命令：
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ai-quality-gate.ps1 -Mode full
+```shell
+pnpm verify:full
 ```
 
 在快速门禁基础上增加：
@@ -423,8 +423,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ai-quality-gate.ps1 
 
 阶段门禁用于单个里程碑收口，介于快速门禁和完整门禁之间：
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ai-work-cycle.ps1 -Stage finish -Goal "ORG-M1-organization-foundation" -BackendTestPattern "OrganizationControllerIntegrationTests,AdminUserControllerIntegrationTests"
+```shell
+pnpm work:finish -- --goal ORG-M1-organization-foundation --backend-test-pattern "OrganizationControllerIntegrationTests,AdminUserControllerIntegrationTests" --browser-not-required-reason "该里程碑只调整后端组织领域合同，不包含用户可见界面"
 ```
 
 阶段门禁只运行本里程碑相关后端集成测试。由于 Spring Boot 集成测试仍会启动测试上下文，Flyway 可能仍会对临时测试库从 `V001` 跑到最新版本；因此不要在每个小任务中反复运行阶段门禁。
@@ -434,6 +434,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ai-work-cycle.ps1 -S
 - `git diff --check` 空白与冲突标记检查。
 - proof-of-run：执行报告 Validation 必须引用本轮工作循环内产生的质量门禁日志（`quality-gate-*.log`），不接受纯文字声明。
 - 文档边界强制：必更新文档以 start 基线签名判定真实变更（start 前已脏不算本轮更新）；非必需的 docs 变更只允许落在活动真相文档、`docs/90-reports` 与 `docs/05-runbooks` 内。
+- 变更范围以 start 时的 `baselineCommit`、启动前脏文件签名和必更文档签名共同判定；即使本轮代码已经提交，`baselineCommit..HEAD` 仍必须进入受影响模块验证、文档边界和 `git diff --check`。
+- stage finish 与 route-final finish 使用同一套任务完成契约；两者只在测试广度和全仓静态审计范围上不同，stage 不得降级为仅警告后完成。
 
 ### 5.4 门禁失败处理
 
@@ -504,7 +506,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ai-work-cycle.ps1 -S
 | --- | --- | --- | --- |
 | 单个任务开发中 | 编译或局部纯单元测试 | 类型/lint 局部检查 | 不默认触发集成测试。 |
 | checkpoint | 受影响模块的 `mvn -DskipTests test`，无后端变更则跳过 | 受影响前端的 `pnpm web:lint`，无前端变更则跳过 | 不启动 Docker，不重复全仓静态审计；只验证当前小闭环。 |
-| 单个里程碑 finish | 相关集成测试，需显式 `-BackendTestPattern` | 受影响前端 lint/build + 本轮页面冒烟 | 验证本阶段 API、权限、迁移和 JSON 合约，不运行后端 package。 |
+| 单个里程碑 finish | 相关集成测试，需显式 `--backend-test-pattern` | 受影响前端 lint/build + 本轮页面冒烟 | 验证本阶段 API、权限、迁移和 JSON 合约，不运行后端 package。 |
 | 路线图最终 finish | 完整 `mvn test` | 完整 lint/build + 必要 E2E/冒烟 | 验证历史功能不被破坏。 |
 
 集成测试可以后置到里程碑收口，但不能无限后置到整条路线结束；每个里程碑至少要在收口时说明已跑的目标集成测试，或明确记录跳过原因和风险。
@@ -571,8 +573,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ai-work-cycle.ps1 -S
 
 命令：
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ai-audit-snapshot.ps1 -- -Label "before-M1-auth"
+```shell
+pnpm audit:snapshot -- --label before-M1-auth
 ```
 
 输出目录：
@@ -623,62 +625,52 @@ AI 可以长时间推进，但必须遵守以下节奏：
 - 路线图与执行报告状态一致，且不存在 `TODO`、`TBD`、`Pending`、“待执行”或空占位。
 - `Remaining Gaps` 不包含关联当前任务的验收阻断项，质量门的独立完成证据核对通过。
 
-## 11. 脚本清单
+## 11. 活动工作台命令
 
-| 脚本 | 用途 |
+唯一活动实现位于 `tools/workbench`，由 Node.js 22+ 和 TypeScript 驱动。根 `package.json` 提供稳定入口：
+
+| 命令 | 用途 |
 | --- | --- |
-| `scripts/ai-quality-gate.ps1` | 执行快速或完整质量门禁 |
-| `scripts/ai-audit-snapshot.ps1` | 生成本地审计快照 |
-| `scripts/ai-work-cycle.ps1` | 包装 start/checkpoint/finish 工作循环 |
-| `scripts/security-audit-gate.ps1` | 执行安全与审计 guardrail 检查，已接入质量门禁 |
-| `scripts/sensitive-data-scan.ps1` | 敏感信息扫描，支持 `scripts/sensitive-scan-allowlist.tsv` 精确豁免，已接入质量门禁 |
-| `scripts/assert-real-browser-evidence.ps1` | 真实浏览器证据来源检查，扫描 spec 及其 import 闭包中的响应拦截类 mock |
-| `scripts/knowledge-naming-guard.ps1` | 阻止活动代码重新引入旧文档产品命名和兼容入口 |
-| `scripts/knowledge-consistency-check.ps1` | 只读检查当前知识空间、目录、块、权限、搜索和引用一致性 |
-| `deploy/scripts/backup.ps1` | 生成 Postgres/MinIO 备份和 manifest |
-| `deploy/scripts/restore-drill.ps1` | 校验备份 manifest、文件哈希和 compose 配置，默认 dry-run |
-| `deploy/scripts/health-check.ps1` | 校验 API、Actuator health 和可选 Prometheus 指标 |
+| `pnpm verify` / `pnpm verify:full` | 快速或路线级完整质量门禁 |
+| `pnpm audit:snapshot` | 生成本地审计快照 |
+| `pnpm work:start` / `work:checkpoint` / `work:finish` | 工作循环三个阶段 |
+| `pnpm security:audit` / `security:scan` | 安全 guardrail 与敏感信息扫描 |
+| `pnpm kb:naming-guard` / `kb:consistency-check` | 知识库命名和数据一致性检查 |
+| `pnpm ops:backup` / `ops:restore-drill` / `ops:health` | 备份、恢复演练和语义健康检查 |
+| `pnpm pilot:contract-check` / `pilot:initialize` / `pilot:readiness` | 受控试点合同、初始化和准入 |
+| `pnpm work:test` | 工作台单元与契约测试 |
 
-`m31-*`、旧知识库兼容检查和旧性能基线脚本只保留为历史实现证据，不属于当前稳定工具清单。运行这类脚本前必须先审计其 API、表名、路由和数据破坏范围；包含旧文档模型或 M31/M40 数据假设的脚本不得直接用于当前环境。
+旧 Windows 实现只保留在显式归档目录作为回溯证据，不属于稳定工具清单。完整质量门禁会递归拒绝任何非归档 Windows 脚本，也会拒绝活动入口重新调用平台专用命令。
 
-本地工作台命令（不由根 `package.json` 暴露）：
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ai-quality-gate.ps1 -Mode quick
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ai-quality-gate.ps1 -Mode full
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ai-audit-snapshot.ps1
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ai-work-cycle.ps1 -Stage start
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ai-work-cycle.ps1 -Stage checkpoint
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ai-work-cycle.ps1 -Stage finish
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/security-audit-gate.ps1
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/knowledge-naming-guard.ps1
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/knowledge-consistency-check.ps1
-powershell -NoProfile -ExecutionPolicy Bypass -File deploy/scripts/backup.ps1
-powershell -NoProfile -ExecutionPolicy Bypass -File deploy/scripts/restore-drill.ps1
-powershell -NoProfile -ExecutionPolicy Bypass -File deploy/scripts/health-check.ps1
+```shell
+pnpm work:start -- --goal M1-auth --task-range "M1-T01 到 M1-T08"
+pnpm work:checkpoint -- --goal M1-auth
+pnpm work:finish -- --goal M1-auth --backend-test-pattern AuthControllerIntegrationTests --browser-spec e2e/auth.spec.ts --browser-evidence-kind real --browser-evidence-environment isolated
+pnpm verify:full
 ```
 
 ## 12. CI 模板边界
 
-本地工作台保存 GitHub Actions 参考模板：
+仓库维护生效中的 GitHub Actions：
 
 ```text
 .github/workflows/ci.yml
 ```
 
-该目录被 `.gitignore` 排除，不会进入远程仓库，因此当前项目没有生效中的远程 CI 合并门禁。模板若在未来经用户明确批准进入远程，应执行：
+CI 的应用验证在 Linux 执行，同时以 Windows、macOS、Linux 矩阵验证工作台本身：
 
 - 安装 Java 21。
 - 安装 Node.js 24 和 pnpm 9.4.0。
 - 启动 PostgreSQL、Redis、MinIO。
 - 在 `server/` 执行 `mvn -B test package`。
 - 执行 `pnpm web:lint` 和 `pnpm web:build`。
+- 三系统执行工作台 typecheck、契约测试、敏感扫描和试点合同检查。
 - 上传 Surefire 报告和 `web/dist` 作为 CI artifacts。
 
-本地 AI 门禁额外检查安全规则、迁移顺序、知识库命名和文档契约；治理文档、活动脚本和运维脚本纳入版本管理。`.local-reports/`、`.local-logs/`、`.local-backups/`、环境文件和密钥不提交远程。在远程 CI 正式建立前，提交和推送前必须人工执行对应 Maven 与前端门禁，不能声称已有远程合并保护。
+本地 AI 门禁额外检查安全规则、迁移顺序、知识库命名和文档契约。`.local-reports/`、`.local-logs/`、`.local-backups/`、环境文件和密钥不提交远程。CI 不能替代破坏性运维操作的人工确认，也不能替代真实浏览器和业务验收。
 
 ## 13. 下一路线执行要求
 
-新路线开始前必须先阅读当前产品范围、当前架构、平台对象模型和唯一活动路线图；只有目标明确后才把任务写入 `docs/02-roadmap/current-roadmap.md`。执行时使用 `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ai-work-cycle.ps1 -Stage start` 建立审计记录，并按任务风险选择 `light`、`stage` 或 `route-final` 验证档位。
+新路线开始前必须先阅读当前产品范围、当前架构、平台对象模型和唯一活动路线图；只有目标明确后才把任务写入 `docs/02-roadmap/current-roadmap.md`。执行时使用 `pnpm work:start` 建立审计记录，并按任务风险选择 `light`、`stage` 或 `route-final` 验证档位。
 
-普通路线开始前不要求先运行全量测试。完整 `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ai-quality-gate.ps1 -Mode full`、完整后端测试和全量迁移验证只在当前路线最终收口、发布门禁或用户明确要求时执行；中间里程碑只验证本阶段改动及其直接影响范围。
+普通路线开始前不要求先运行全量测试。完整 `pnpm verify:full`、完整后端测试和全量迁移验证只在当前路线最终收口、发布门禁或用户明确要求时执行；中间里程碑只验证本阶段改动及其直接影响范围。

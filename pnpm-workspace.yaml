@@ -1,4 +1,5 @@
 packages:
+  - tools/*
   - collaboration
   - web
   - desktop/*

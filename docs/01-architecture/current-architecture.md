@@ -193,9 +193,9 @@ Colla Platform 当前是模块化单体：
 
 - `docker-compose.prod.yml`：PostgreSQL、Redis、MinIO、后端、两个 collaboration sidecar、Web 和 Nginx。
 - `nginx/colla.conf`：Web、API、事件 WebSocket、双节点知识协同和健康检查代理。
-- `deploy/scripts/backup.ps1`、`restore.ps1`、`restore-drill.ps1`：备份、恢复和恢复演练。
-- `deploy/scripts/health-check.ps1`：健康与可选 Prometheus 检查。
-- `deploy/scripts/release-check.ps1`、`rollback.ps1`：发布检查和显式回滚。
+- `pnpm ops:backup`、`ops:restore`、`ops:restore-drill`：备份、恢复和恢复演练。
+- `pnpm ops:health`：健康与可选 Prometheus 检查。
+- `pnpm ops:release-check`、`ops:rollback`：发布检查和显式回滚。
 
 当前只在知识协同进程层提供双节点重连恢复。Spring 后端、PostgreSQL、Redis 和 MinIO 仍是单实例，因此不承诺整个平台高可用、自动扩缩容或 Kubernetes。
 
@@ -203,7 +203,7 @@ Colla Platform 当前是模块化单体：
 
 后端使用 JUnit 5、Spring Boot Test 和 Testcontainers。Surefire 注入 `spring.profiles.active=test`。前端使用 TypeScript build、ESLint 和 Vite build。
 
-质量门禁由本地 `scripts/ai-quality-gate.ps1` 执行，包含：
+质量门禁由 `tools/workbench` 提供并通过 `pnpm verify` 执行，包含：
 
 - 后端编译、目标测试或完整测试。
 - 后端 package。

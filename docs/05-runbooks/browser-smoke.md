@@ -23,20 +23,20 @@ Browser smoke verification is required when a work cycle changes:
 
 Start dependencies:
 
-```powershell
+```shell
 docker compose up -d postgres redis minio
 ```
 
 Start backend:
 
-```powershell
+```shell
 cd server
 mvn spring-boot:run
 ```
 
 Start frontend:
 
-```powershell
+```shell
 pnpm web:dev
 ```
 
@@ -86,8 +86,8 @@ M31/M40 cross-module scripts are retained only as historical evidence. They are 
 
 When only the IM module changes and a narrower check is enough, run the scripted IM smoke after backend and frontend services are already running:
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/im-browser-smoke.ps1
+```shell
+pnpm smoke:im
 ```
 
 The script logs in, creates an isolated smoke member and group conversation through local APIs, opens the IM page, sends a message, and verifies the message context menu.
@@ -96,8 +96,8 @@ Playwright output directories such as `web/test-results` and `web/playwright-rep
 
 Use the direct script form when custom URLs or headed mode are required:
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/im-browser-smoke.ps1 -Headed
+```shell
+pnpm smoke:im -- --headed
 ```
 
 ## Reporting
