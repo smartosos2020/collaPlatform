@@ -1,367 +1,117 @@
 ---
-title: 当前执行路线
+title: PROJECT-PLATFORM-S01 当前执行路线
 status: active
-route: KB-PRODUCT
-last_code_check: 2026-07-16
-source_rule: 本文件是唯一执行路线入口；已完成路线只保存在 99-archive。
+route: PROJECT-PLATFORM-S01
+program: PROJECT-PLATFORM
+program_doc: docs/00-product/initiatives/project-platform-program.md
+program_revision: 1
+stage: PROJECT-PLATFORM-S01
+stage_final_milestone: PROJECT-PLATFORM-S01-M4
+last_code_check: 2026-07-18
+source_rule: 本文件是唯一执行路线入口；长期专项只提供 Stage 索引，不直接执行。
 ---
 
-# KB-PRODUCT 知识库产品化与编辑协同收口路线
+# PROJECT-PLATFORM-S01 当前事实审计、目标领域模型和迁移决策
 
-`KB-PRODUCT` 表示 Knowledge Base Productization。本路线承接已完成的知识库唯一模型、KB-UX、KB-NAME、双 UI 和 PILOT-V2 工程收口，不再重建独立文档模块，而是把现有知识库从“功能和底座较完整”推进到“编辑主路径唯一、多人协同可信、对象入口可用、内容导航自然、可由真实用户持续使用”的类 Lark 知识库。
+## 1. Stage 目标
 
-## 1. 路线目标
+在新增项目平台能力前，完整审计当前 `projects/issues` 产品合同、代码、数据库、权限、对象集成和用户路径，冻结统一工作项目标模型、配置与运行边界、迁移退出顺序，并为 S02 项目空间建设提供可直接实施的输入。
 
-本路线必须解决五类已确认的关键问题：
+本 Stage 不批量改造业务模型、不新增复杂流程设计器、不提前迁移生产数据。任何物理表名和 API 只有在审计、ADR、迁移 spike 和退出评审完成后才能进入实现 Stage。
 
-1. 统一知识内容编辑主路径，移除“块编辑器/兼容编辑器”并行造成的产品和代码歧义。
-2. 让结构化 blocks 成为编辑器、保存、版本、评论、搜索和协同共同使用的事实来源，不再依赖 Markdown 往返转换维持编辑态。
-3. 把现有单节点快照协同升级为可处理并发、重连、去重、冲突和多节点广播的可靠协同能力。
-4. 闭环 Base、项目、文件、知识内容和外部链接等目录对象入口，消除普通用户手填 UUID 和新对象“不可用”的主流程。
-5. 收口内容优先导航和编辑器高频交互，并通过真实参与者验证可理解性、连续编辑和自然协作体验。
+## 2. 上游与下游
 
-路线结束时必须回答：
+- 长期专项：`docs/00-product/initiatives/project-platform-program.md`
+- 目标架构：`docs/01-architecture/project-platform-target-architecture.md`
+- 当前事实：`docs/00-product/current-product-scope.md`、`docs/01-architecture/current-architecture.md` 和代码/schema
+- 上一条路线：KB-PRODUCT 已按暂停状态归档，真人试用任务没有被标记完成。
+- 下一 Stage：`PROJECT-PLATFORM-S02`，只有 S01-M4 给出 Go 且专项总纲同步后才能激活。
 
-- 普通用户进入空间、点击任意目录节点时，能否直接抵达应展示的内容或对象，而不是先处理元数据和治理页面。
-- 编辑器是否只有一条正式保存路径，块 ID、结构、格式、评论锚点和版本能否稳定保持。
-- 两名及以上成员同时编辑、断线重连、跨节点部署时，是否不会静默覆盖、重复提交或丢失内容。
-- 新建或挂载协作对象时，是否可以通过选择器完成，并能正确解释可用、无权、停用、删除和不存在状态。
-- 高频编辑、搜索、评论、分享、导入导出和治理是否形成可重复验证的完整闭环。
+## 3. 执行规则
 
-## 2. 当前基线与已确认缺口
+1. 每轮 AI 工作循环只推进一个 Milestone，不跨 M1-M4 合并收口。
+2. 每个任务必须提供代码/schema 定位、结论、自动化或可复核静态证据；只写概念说明不算完成。
+3. 涉及当前页面行为核对时使用真实浏览器和真实 API；纯审计/ADR 任务可明确 browser not required。
+4. M1-M3 使用 `stage` finish 和目标测试；M4 是 Stage 最终里程碑，必须使用 `route-final`。
+5. M4 收口必须更新长期专项修订号、S01 状态、变更记录和 S02 准入；未同步专项总纲不能完成。
+6. 发现当前假设错误时先登记规划变更，不为了保持原任务数量压缩问题。
 
-### 2.1 已具备能力
+## 4. Milestone 总览
 
-- Flyway 当前基线为 V001-V049。
-- 知识库唯一主模型为 `KnowledgeBaseSpace`、`KnowledgeBaseItem`、`KnowledgeContent` 和平台对象类型 `knowledge_content`。
-- `KnowledgeBaseItem` 已支持内容页、目录、对象引用和外部链接；Base、项目、文件等对象保持独立主模型。
-- 正文块、版本、评论、分享链接、权限申请、关系、导入导出、搜索定位和协同状态已有后端 API 与数据结构。
-- 用户工作台与管理后台已经分离；知识库治理位于管理后台，用户页面以阅读和协作为主。
-- PILOT-V2-M11 已完成工程 Go，完整后端测试、V001-V049 空库迁移、前端 lint/build、真实隔离 route-final、备份恢复和回退均通过。
+| Milestone | 目标 | 依赖 | 收口证据 | 状态 |
+| --- | --- | --- | --- | --- |
+| PROJECT-PLATFORM-S01-M1 | 当前代码、API、表、权限、事件、页面和测试审计 | 当前代码 | `docs/90-reports/project-platform-s01-m1-execution-report.md` | Pending |
+| PROJECT-PLATFORM-S01-M2 | 产品术语、聚合边界和目标领域合同冻结 | M1 | `docs/90-reports/project-platform-s01-m2-execution-report.md` | Pending |
+| PROJECT-PLATFORM-S01-M3 | 迁移、兼容退出、风险和技术 spike | M1-M2 | `docs/90-reports/project-platform-s01-m3-execution-report.md` | Pending |
+| PROJECT-PLATFORM-S01-M4 | Stage 评审、route-final 和 S02 准入 | M1-M3 | `docs/90-reports/project-platform-s01-m4-execution-report.md` | Pending |
 
-### 2.2 代码事实与缺口
+## 5. 详细任务
 
-- `KnowledgeContentPage` 已不再提供“块编辑器/兼容编辑器”切换；兼容内容只通过迁移预览、只读降级和导入导出入口出现。
-- 正式编辑器已通过 Tiptap JSON 直接生成和回写规范 blocks；Markdown 不再参与编辑态往返。后端仍保留 root content 兼容写路径，作为 M4 前的回滚边界。
-- M3 已移除旧 Markdown snapshot collaboration Hook；实时协同状态 API 仍保留，M5/M6 再接入块级并发协同主路径。
-- 当前协同为单节点 snapshot/presence，尚无 CRDT 或等价并发合并协议，也没有多节点 Redis 广播和离线更新队列。
-- 通用对象入口仍存在手工输入目标对象 ID 的界面；Base 虽有专用流程，但已经出现新建后对象卡片“不可用”的真实反馈。
-- M3 已用真实浏览器回归覆盖连续输入、保存响应、刷新和节点切换；块按钮、工具栏、粘贴、媒体和更完整键盘交互仍由 M9 继续收口。
-- PILOT-V2 的合成人格不能产生满意度、学习成本和采用意愿证据；知识库完成态仍需真实参与者验证。
-
-## 3. 目标形态与核心约束
-
-### 3.1 目标形态
-
-1. 知识内容只使用一套正式块编辑器；兼容内容只能作为迁移输入、只读降级或导入导出格式存在。
-2. 结构化块文档拥有稳定 block ID、类型、属性、子结构和纯文本投影；编辑过程不通过 Markdown 往返保持状态。
-3. 自动保存、手动版本、版本恢复、评论锚点、搜索定位和实时协同基于同一块文档版本语义。
-4. 协同层可以在至少两个应用节点之间同步更新，支持重连、幂等、顺序、权限变化和快照恢复。
-5. 目录节点可通过权限过滤后的对象选择器引用 Base、项目、文件、知识内容和后续平台对象。
-6. 普通用户进入知识库空间默认打开首页内容；目录、对象入口和外链按各自语义直接展示或跳转。
-7. 元数据、权限、治理、统计和健康信息不占据普通用户默认正文，只通过明确辅助入口出现。
-8. 编辑器满足连续输入、选择格式、Slash 命令、块操作、表格、媒体、粘贴、撤销重做和键盘导航等高频使用要求。
-
-### 3.2 不做范围
-
-- 不恢复独立“文档”产品模块、`/docs`、`/api/docs`、`Document*`、`documents/document_*` 或 `document` 产品 objectType。
-- 不把 Markdown、HTML 或纯文本快照重新定义为正文主模型；它们只能是派生、兼容、搜索或导入导出格式。
-- 不把 Base、项目和文件复制进知识库表；知识库只保存规范对象引用和展示策略。
-- 不在本路线实现 Base 公式、自动化、字段级权限或记录级权限。
-- 不建设原生移动端、Electron 正式发行版、Kubernetes 或跨地域高可用。
-- 不以合成测试代替真实参与者体验证据，不以“页面能打开”代替编辑和协同验收。
-
-## 4. 执行与验证规则
-
-1. 按里程碑顺序推进；每次 AI 工作循环只执行一个里程碑内明确连续的任务，不跳项、不跨里程碑提前宣告完成。
-2. 每个任务在动手前必须记录实现范围、验收标准、验证级别、真实浏览器要求和依赖；不能只根据文件存在或接口返回 200 判定完成。
-3. 编辑器、目录导航、对象入口和权限行为变更必须执行真实浏览器冒烟；涉及多人协同时必须使用两个独立浏览器上下文和真实 WebSocket，不允许 route mock。
-4. 普通里程碑只执行本轮影响范围的 lint、build、目标单元/集成测试和模块 smoke；完整后端测试、完整浏览器 route-final、Flyway 空库全量迁移在 M12 收口执行。
-5. 新增数据库结构必须使用新的 Flyway 迁移，同时验证存量升级、空库安装、备份、失败回退和数据一致性；不得修改历史迁移。
-6. 兼容路径只能按“观测、迁移、切流、删除”顺序退出；禁止一边保留双写，一边把任务标为完成。
-7. 协同测试必须保留首次失败证据，重跑不得覆盖并发丢失、顺序错误、重复更新或权限泄漏。
-8. 每个里程碑更新本文件状态并生成 `docs/90-reports/kb-product-mX-execution-report.md`；报告必须区分实现证据、自动化证据、浏览器证据和剩余风险。
-9. 里程碑完成前执行 `git diff --check`，核对未提交变更来源，不覆盖用户已有修改。
-10. M12 之前不得把本路线描述为“真实用户完成态”；如果无法组织真实参与者，只能形成工程候选结论，不能完成真实试用任务。
-
-## 5. 里程碑总览
-
-| 里程碑 | 目标 | 依赖 | 收口证据 |
-| --- | --- | --- | --- |
-| KB-PRODUCT-M1 | 当前实现审计与目标架构冻结（2026-07-15 完成） | PILOT-V2 完成态 | `docs/90-reports/kb-product-m1-execution-report.md` |
-| KB-PRODUCT-M2 | 规范块模型与迁移闭环（2026-07-15 完成） | M1 | 单一结构事实来源、迁移和回滚验证通过；`docs/90-reports/kb-product-m2-execution-report.md` |
-| KB-PRODUCT-M3 | 单一块编辑器主路径（2026-07-15 完成） | M2 | 正式页面不再提供兼容编辑器切换或双编辑面板；`docs/90-reports/kb-product-m3-execution-report.md` |
-| KB-PRODUCT-M4 | 自动保存、版本与冲突闭环 | M3 | 连续输入、切换节点、失败重试和版本恢复不丢内容 |
-| KB-PRODUCT-M5 | 块级实时协同主路径 | M2-M4 | 两名成员并发编辑、光标、权限和块身份一致 |
-| KB-PRODUCT-M6 | 多节点、重连与恢复可靠性 | M5 | 双应用节点、Redis 广播、断线重连和快照恢复通过 |
-| KB-PRODUCT-M7 | 协作对象入口闭环 | M1-M3 | 对象选择、创建、跳转、权限和生命周期状态完整 |
-| KB-PRODUCT-M8 | 内容优先导航与知识库信息架构 | M3、M7 | 首页、目录、对象入口、URL 和管理入口符合用户心智 |
-| KB-PRODUCT-M9 | 编辑器高频交互与内容块完善（2026-07-16 完成） | M3-M5 | 键盘、粘贴、表格、媒体、块菜单和响应式体验通过；`docs/90-reports/kb-product-m9-execution-report.md` |
-| KB-PRODUCT-M10 | 评论、搜索、关系与导入导出闭环（2026-07-16 完成） | M2-M9 | 块锚点、搜索定位、反向引用和格式往返通过；`docs/90-reports/kb-product-m10-execution-report.md` |
-| KB-PRODUCT-M11 | 权限、治理、性能与可访问性收口（2026-07-16 完成） | M7-M10 | 权限继承、治理、性能预算和无障碍基线通过；`docs/90-reports/kb-product-m11-execution-report.md` |
-| KB-PRODUCT-M12 | 真实试用与路线级发布判定 | M1-M11 | 全量验证、真实参与者证据和 Go/No-Go 决策 |
-
-## 6. 详细任务
-
-### KB-PRODUCT-M1 当前实现审计与目标架构冻结
-
-目标：先固定事实、边界和退出顺序，避免在两套编辑器、三种内容表示和两类协同语义上继续堆功能。
-
-完成结论：选择 Tiptap JSON + Yjs/Hocuspocus 作为目标协同架构，Spring Boot 保持业务与数据库 owner；M2 仅推进规范块 schema、确定性迁移和回滚，不提前删除兼容路径。完整证据见 `docs/90-reports/kb-product-m1-execution-report.md`。
+### PROJECT-PLATFORM-S01-M1 当前实现与数据事实审计
 
 | 任务 | 内容 | 验收标准 | 状态 |
 | --- | --- | --- | --- |
-| KB-PRODUCT-M1-T01 | 盘点编辑器组件、页面状态、保存 API、块适配器、协同 Hook 和兼容面板 | 输出调用图，明确每条路径的读、写、版本和协同行为 | Done |
-| KB-PRODUCT-M1-T02 | 盘点块字段 `content`、`attrs`、`richContent`、`plainText`、`anchorId` 的真实生产和消费位置 | 每个字段有主数据/派生/兼容结论和退出动作 | Done |
-| KB-PRODUCT-M1-T03 | 复核并登记连续输入失焦、按钮越界、表格工具栏、菜单关闭和对象不可用问题的当前完成态 | 每个问题有稳定步骤、已修复/未修复结论、预期、实际和浏览器证据 | Done |
-| KB-PRODUCT-M1-T04 | 建立知识库真实用户任务矩阵 | 覆盖创建、导航、编辑、协同、评论、搜索、分享、对象入口和恢复 | Done |
-| KB-PRODUCT-M1-T05 | 对 Tiptap 原生 JSON + CRDT 方案与现有快照协议做技术 spike | 用并发合并、Java/Node 边界、部署、持久化、测试和迁移成本形成结论 | Done |
-| KB-PRODUCT-M1-T06 | 冻结规范块文档、版本号、协同更新和错误语义 | API/事件合同可直接指导 M2-M6，不存在“后续再定”的核心字段 | Done |
-| KB-PRODUCT-M1-T07 | 定义兼容编辑器和 Markdown 投影退出计划 | 明确观测、迁移、默认切流、回滚窗口和删除条件 | Done |
-| KB-PRODUCT-M1-T08 | 建立知识库模块 smoke、双用户协同和 route-final 测试分层 | 日常测试不跑全量，关键行为有真实浏览器覆盖入口 | Done |
-| KB-PRODUCT-M1-T09 | 输出架构冻结与风险报告 | 记录不做范围、迁移风险、依赖、性能预算和 M2 准入决定 | Done |
+| PROJECT-PLATFORM-S01-M1-T01 | 盘点项目后端包、Controller、Service、Domain、Repository 和跨模块调用 | 形成完整调用与依赖图，每个公开入口可定位到实现和测试 | Pending |
+| PROJECT-PLATFORM-S01-M1-T02 | 盘点项目 API、DTO、状态动作和 `availableActions` | 区分真实权限计算、硬编码投影、未使用写 API 和兼容合同 | Pending |
+| PROJECT-PLATFORM-S01-M1-T03 | 盘点 V001 至当前 Flyway 中 projects、members、iterations、issues、comments、attachments、relations、verification 数据 | 每张表、字段、索引、外键和真实读写方有登记 | Pending |
+| PROJECT-PLATFORM-S01-M1-T04 | 盘点前端路由、页面、抽屉、列表、看板、筛选、统计和 API 调用 | 用户主路径、不可达能力、重复状态和缺失交互有证据 | Pending |
+| PROJECT-PLATFORM-S01-M1-T05 | 盘点项目成员、组织 RBAC、资源权限和后台治理边界 | 明确当前 owner/member/viewer、管理员和 ACL 的实际语义与冲突 | Pending |
+| PROJECT-PLATFORM-S01-M1-T06 | 盘点平台对象、搜索、通知、审计、IM 群、文件和知识库引用 | 每条跨模块链路有对象类型、ID、权限和生命周期结论 | Pending |
+| PROJECT-PLATFORM-S01-M1-T07 | 盘点项目单元、集成和浏览器测试及真实覆盖缺口 | 测试矩阵区分存在、有效、陈旧、缺失和无法重复运行 | Pending |
+| PROJECT-PLATFORM-S01-M1-T08 | 建立存量数据画像和迁移风险查询 | 输出类型、状态、空值、孤立关系、成员角色和 iteration 使用统计方案 | Pending |
+| PROJECT-PLATFORM-S01-M1-T09 | 输出当前能力矩阵、缺口和 S01 风险登记 | 结论与代码/schema 一致，不把目标能力写成已实现 | Pending |
 
-### KB-PRODUCT-M2 规范块模型与迁移闭环
-
-目标：让结构化块拥有唯一、可演进、可迁移的持久化语义，消除编辑器依赖 Markdown 往返维持结构的根因。
-
-完成结论：M2 阶段冻结了 schemaVersion 3 的 canonical Tiptap/ProseMirror JSON、稳定 blockId、派生投影、未知节点降级和 dry-run 迁移合同；V050/V051 通过空库 Flyway 验证。M2 当时保留编辑器和 Markdown 兼容写路径，M3 已按兼容退出窗口切换单一编辑器主路径；M4 再接入 canonical snapshot 正式保存。
+### PROJECT-PLATFORM-S01-M2 产品术语与目标领域合同冻结
 
 | 任务 | 内容 | 验收标准 | 状态 |
 | --- | --- | --- | --- |
-| KB-PRODUCT-M2-T01 | 定义块 schema 新版本和支持的节点/mark 集合 | paragraph、heading、list、task、quote、code、table、media、embed、callout、divider 可表达 | Done |
-| KB-PRODUCT-M2-T02 | 固定 block ID、父子关系、顺序、属性和内联富文本结构 | 同一块经过编辑、保存和刷新后身份与结构稳定 | Done |
-| KB-PRODUCT-M2-T03 | 选定唯一结构事实字段并定义派生字段生成规则 | 结构只有一个主来源；纯文本、Markdown 和搜索文本均可重建 | Done |
-| KB-PRODUCT-M2-T04 | 实现规范块文档校验、schema 升级和未知节点安全降级 | 非法 payload 被拒绝，旧版本可升级，未知节点不导致正文丢失 | Done |
-| KB-PRODUCT-M2-T05 | 实现旧 blocks/Markdown 到规范块文档的确定性转换 | 同一输入重复转换结果一致，并保留可追溯原始内容 | Done |
-| KB-PRODUCT-M2-T06 | 增加迁移预览、批次、校验和、失败清单和幂等标识 | 默认 dry-run；失败不覆盖原内容；重复运行不重复迁移 | Done |
-| KB-PRODUCT-M2-T07 | 增加数据库迁移与索引调整 | 空库和存量升级通过，历史数据可回滚，无双写永久残留 | Done |
-| KB-PRODUCT-M2-T08 | 让版本快照、模板和协同快照使用同一块 schema | 三类快照可相互读取，不再维护平行内容格式 | Done |
-| KB-PRODUCT-M2-T09 | 更新搜索纯文本投影和对象嵌入元数据投影 | 索引可定位 block，嵌入对象不泄露无权限标题或正文 | Done |
-| KB-PRODUCT-M2-T10 | 增加模型、迁移、往返和回滚集成测试 | 覆盖嵌套块、表格、媒体、对象卡片、未知节点和损坏数据 | Done |
+| PROJECT-PLATFORM-S01-M2-T01 | 冻结项目空间、工作项类型、工作项实例、配置版本和模板术语 | 中英文术语、ID、生命周期和归属关系无歧义 | Pending |
+| PROJECT-PLATFORM-S01-M2-T02 | 冻结“项目是工作项类型之一”的产品边界 | 研发、市场、HR、交付示例可由同一模型表达 | Pending |
+| PROJECT-PLATFORM-S01-M2-T03 | 冻结配置定义与运行实例分离合同 | 草稿、发布、版本、升级、回滚和历史实例行为明确 | Pending |
+| PROJECT-PLATFORM-S01-M2-T04 | 冻结动态字段、表单和详情页布局合同 | 字段类型、校验、默认值、条件、布局引用和权限边界明确 | Pending |
+| PROJECT-PLATFORM-S01-M2-T05 | 冻结状态流与节点流的共同原语和差异 | 轻量事项与复杂项目均可表达，不以单一流程形态强行统一 | Pending |
+| PROJECT-PLATFORM-S01-M2-T06 | 冻结普通、父子、依赖和跨空间关系合同 | 方向、基数、循环、删除、权限和同步边界明确 | Pending |
+| PROJECT-PLATFORM-S01-M2-T07 | 冻结企业 RBAC、空间角色、实例角色、节点和字段授权层级 | 权限计算、解释、缓存和审计责任清楚 | Pending |
+| PROJECT-PLATFORM-S01-M2-T08 | 冻结用户执行 UI、空间配置 UI 和企业管理后台边界 | 菜单、API 语义和 DTO 不再混用治理与协作视角 | Pending |
+| PROJECT-PLATFORM-S01-M2-T09 | 冻结统一工作项事件和平台对象合同 | 搜索、通知、审计、文件、IM 和知识库引用有稳定接入点 | Pending |
+| PROJECT-PLATFORM-S01-M2-T10 | 形成目标领域 ADR 和反例清单 | 记录选择、替代方案、拒绝原因和禁止重新引入的固定模型 | Pending |
 
-### KB-PRODUCT-M3 单一块编辑器主路径
-
-目标：正式知识内容页面只保留一套块编辑器；兼容能力退回迁移和只读降级层。
-
-完成结论：已完成 canonical blocks 与 Tiptap JSON 直接双向适配、稳定 block ID、单一编辑器状态机、规范 blocks 保存入口、迁移预览/失败只读降级，并移除正式页面的兼容编辑器、兼容面板、legacy 偏好、旧 codec 和旧协同 Hook。真实 Playwright 编辑器回归、12 项后端定向测试、frontend lint/build 和 AI 工作循环 finish 均通过。后端 root content 兼容接口及历史字段保留 M4 回滚窗口，不代表正式编辑入口。
+### PROJECT-PLATFORM-S01-M3 迁移、兼容退出与技术 spike
 
 | 任务 | 内容 | 验收标准 | 状态 |
 | --- | --- | --- | --- |
-| KB-PRODUCT-M3-T01 | 建立规范 blocks 与 Tiptap 文档的直接双向适配 | 编辑态不再通过 Markdown 生成和回收 blocks | Done |
-| KB-PRODUCT-M3-T02 | 把稳定 block ID 写入编辑器节点并贯穿选择、拖拽和保存 | 插入、移动、格式化和刷新不会按数组下标误配 ID | Done |
-| KB-PRODUCT-M3-T03 | 将标题和正文加载切到单一编辑器状态机 | 切换节点或请求刷新时不重建编辑器、不丢焦点、不覆盖本地草稿 | Done |
-| KB-PRODUCT-M3-T04 | 将正文保存切到规范块 API | 正式编辑不再调用兼容正文保存接口或 Markdown 投影保存 | Done |
-| KB-PRODUCT-M3-T05 | 统一阅读态与编辑态渲染器 | 只读、评论和编辑权限看到相同块结构与对象状态 | Done |
-| KB-PRODUCT-M3-T06 | 移除页面上的编辑器模式开关和本地 legacy 偏好 | 普通用户不存在“兼容编辑器/块编辑器”选择 | Done |
-| KB-PRODUCT-M3-T07 | 移除“Markdown 兼容内容”和“兼容结构化块”用户面板 | 兼容数据只在诊断或迁移工具中可见 | Done |
-| KB-PRODUCT-M3-T08 | 完成旧内容按需迁移和失败只读降级 | 可迁移内容直接进入块编辑；失败内容可读、可导出、不可静默覆盖 | Done |
-| KB-PRODUCT-M3-T09 | 清理不再使用的组件、状态、API 类型和样式 | 无双编辑路径死代码，lint 和依赖扫描无遗留引用 | Done |
-| KB-PRODUCT-M3-T10 | 增加单编辑器浏览器回归 | 连续输入、刷新、前进后退、切节点、只读和无权限场景通过 | Done |
-| KB-PRODUCT-M3-T11 | 输出兼容退出结果和回滚窗口结论 | 明确可删除项、暂留项、监控指标和 M4 准入条件 | Done |
+| PROJECT-PLATFORM-S01-M3-T01 | 比较动态字段 JSONB、类型化行和混合投影存储方案 | 以查询、索引、迁移、校验、扩展和运维证据形成决策 | Pending |
+| PROJECT-PLATFORM-S01-M3-T02 | 设计规范 ID、编号和旧 project/issue ID 映射 | 旧深链、平台对象、搜索和审计可稳定重定向 | Pending |
+| PROJECT-PLATFORM-S01-M3-T03 | 设计 projects/issues 到 space/type/work-item 的分批迁移 | 每批有 dry-run、校验和、失败清单、重试和回退 | Pending |
+| PROJECT-PLATFORM-S01-M3-T04 | 设计读取适配、新写切流和旧写关闭顺序 | 每个兼容面有 owner、监控、退出条件和最晚删除 Stage | Pending |
+| PROJECT-PLATFORM-S01-M3-T05 | 验证动态字段查询和索引最小 spike | 常用筛选、排序、分组方案有可运行证据和性能预算 | Pending |
+| PROJECT-PLATFORM-S01-M3-T06 | 验证配置版本绑定与实例升级最小 spike | 旧实例保持旧版本，显式升级可预览差异和拒绝不兼容变更 | Pending |
+| PROJECT-PLATFORM-S01-M3-T07 | 验证状态流/节点流共同运行时边界 spike | 共享事件、权限和历史，不把两者强行实现为同一图结构 | Pending |
+| PROJECT-PLATFORM-S01-M3-T08 | 建立迁移安全、性能、数据和发布风险清单 | P0/P1 风险有预防、探测、回退和责任 Stage | Pending |
+| PROJECT-PLATFORM-S01-M3-T09 | 输出迁移 ADR、实施分层和 S02/S03 输入 | 下一阶段不需要重新讨论核心物理与兼容策略 | Pending |
 
-### KB-PRODUCT-M4 自动保存、版本与冲突闭环
-
-目标：在单一编辑主路径上建立可理解、可恢复、不会静默覆盖的保存语义。
+### PROJECT-PLATFORM-S01-M4 Stage 评审与 S02 准入
 
 | 任务 | 内容 | 验收标准 | 状态 |
 | --- | --- | --- | --- |
-| KB-PRODUCT-M4-T01 | 定义编辑状态机 | clean、dirty、saving、saved、offline、conflict、error 状态和转换条件明确 | Done |
-| KB-PRODUCT-M4-T02 | 实现块级自动保存去抖、合并和幂等请求 | 连续输入不会每键重建编辑器或产生重复版本 | Done |
-| KB-PRODUCT-M4-T03 | 统一标题和正文保存事务语义 | 标题与正文不会出现一方成功、一方丢失的不可解释状态 | Done |
-| KB-PRODUCT-M4-T04 | 实现基于版本号/更新时钟的冲突检测 | 旧基线写入返回明确冲突，不执行最后写入者静默覆盖 | Done |
-| KB-PRODUCT-M4-T05 | 提供冲突刷新、保留副本和人工合并入口 | 用户可恢复本地内容并理解远端变化 | Done |
-| KB-PRODUCT-M4-T06 | 处理切换节点、关闭页面、会话失效和网络失败 | 未保存内容有提示或本地恢复，不因导航直接丢失 | Done |
-| KB-PRODUCT-M4-T07 | 统一手动版本、自动检查点和命名版本 | 版本产生规则清晰，自动保存不制造不可读版本噪音 | Done |
-| KB-PRODUCT-M4-T08 | 重做块级版本 diff 和恢复 | diff 可定位块；恢复生成新版本并保持旧历史不可变 | Done |
-| KB-PRODUCT-M4-T09 | 增加保存状态和失败恢复真实浏览器测试 | 覆盖快速输入、慢请求、失败重试、冲突、刷新和恢复 | Done |
-| KB-PRODUCT-M4-T10 | 固化保存可靠性指标 | 记录保存延迟、失败率、冲突率、恢复率和不可恢复丢失数 | Done |
+| PROJECT-PLATFORM-S01-M4-T01 | 复核 M1-M3 证据和未决问题 | 所有结论可追溯，阻断项未被降级为建议 | Pending |
+| PROJECT-PLATFORM-S01-M4-T02 | 更新当前产品范围与当前架构事实 | 只登记已确认事实和决策，不提前宣称目标能力完成 | Pending |
+| PROJECT-PLATFORM-S01-M4-T03 | 更新目标架构与专项 Stage 编排 | 新认识进入规划变更记录，后续依赖与顺序同步调整 | Pending |
+| PROJECT-PLATFORM-S01-M4-T04 | 固定 S02 项目空间的 API、schema、权限和迁移输入 | S02 可直接拆 Task，不遗留核心“后续再定”字段 | Pending |
+| PROJECT-PLATFORM-S01-M4-T05 | 建立项目平台目标测试、浏览器 smoke 和迁移验证分层 | 中间 Stage 不跑全量，关键闭环和最终 route-final 有入口 | Pending |
+| PROJECT-PLATFORM-S01-M4-T06 | 执行路线级完整测试、迁移、安全和构建门禁 | `route-final` 全部通过，失败和跳过均有明确决定 | Pending |
+| PROJECT-PLATFORM-S01-M4-T07 | 输出 S01 Go/No-Go 和剩余风险 | 明确进入 S02、补充 S01 或暂停三选一及依据 | Pending |
+| PROJECT-PLATFORM-S01-M4-T08 | 更新长期专项状态、修订号和下一 Stage | S01 标记 Completed，变更记录完整；若 Go，S02 可激活 | Pending |
 
-结论：KB-PRODUCT-M4 已完成。自动保存、版本类型、块级 diff/restore、冲突恢复、导航保护和离线重试均已通过定向后端测试、前端质量门禁和 isolated real browser smoke；完整项目级测试按路线后置到最终收口里程碑。
+## 6. Stage 全局验收标准
 
-### KB-PRODUCT-M5 块级实时协同主路径
+- 当前事实审计覆盖代码、schema、API、UI、权限、事件、跨模块和测试，不以文件存在代替行为验证。
+- 目标模型能够表达研发、市场、HR 和交付，不新增团队专属顶层运行模型。
+- 状态流、节点流、字段、页面、角色、关系、视图和自动化是工作项定义的组合能力。
+- 迁移策略明确旧合同的观测、迁移、切流、关闭和删除，不保留永久双写。
+- 目标架构与当前架构严格区分，规划文档不会把未来能力写成当前事实。
+- S01-M4 使用 `route-final`，并在 finish 前同步长期专项；否则 Stage 不能完成。
 
-目标：让块编辑器成为唯一实时协同客户端，支持真实并发编辑、成员状态和权限变化。
+## 7. 当前执行入口
 
-| 任务 | 内容 | 验收标准 | 状态 |
-| --- | --- | --- | --- |
-| KB-PRODUCT-M5-T01 | 按 M1 决策接入 CRDT 或等价可合并更新模型 | 两端并发更新可交换合并，不依赖整篇最后写覆盖 | Completed |
-| KB-PRODUCT-M5-T02 | 定义 join、sync、update、awareness、ack、error 和 leave 协议 | 消息有 schema、版本、时钟、幂等 ID 和权限语义 | Completed |
-| KB-PRODUCT-M5-T03 | 将标题、正文块和块属性纳入同一协同文档 | 标题与正文并发变更不会相互覆盖 | Completed |
-| KB-PRODUCT-M5-T04 | 将成员 presence、选择区和远端光标绑定到稳定块位置 | 光标跟随当前块，移动或插入后仍可解释 | Completed |
-| KB-PRODUCT-M5-T05 | 实现服务端更新校验、持久化和快照压缩 | 非法、越权和超限更新被拒绝；重启后可恢复 | Completed |
-| KB-PRODUCT-M5-T06 | 处理同块、不同块、结构变更和删除冲突 | 并发输入、格式化、移动、删除和表格编辑无静默丢失 | Completed |
-| KB-PRODUCT-M5-T07 | 处理编辑期间权限降级、停用成员和会话过期 | 客户端立即只读或退出房间，未确认更新有明确处理 | Completed |
-| KB-PRODUCT-M5-T08 | 统一协同保存、版本和审计事件 | 协同更新可追溯到成员、文档和版本，不重复生成审计噪音 | Completed |
-| KB-PRODUCT-M5-T09 | 增加双用户真实浏览器协同用例 | 两个独立登录上下文覆盖输入、光标、格式、移动和删除 | Completed |
-| KB-PRODUCT-M5-T10 | 增加并发属性和数据一致性测试 | 更新乱序、重复、延迟和短暂断开后最终状态一致 | Completed |
-| KB-PRODUCT-M5-T11 | 输出单节点协同准入报告 | 并发丢失为 0，未解释冲突为 0，M6 多节点准入明确 | Completed |
-
-结论：KB-PRODUCT-M5 已完成。单节点 Yjs/Hocuspocus 协同主路径、权限即时降级、快照恢复、冲突收敛与双用户真实浏览器验证均通过；并发丢失为 0、未解释冲突为 0。完整证据见 `docs/90-reports/kb-product-m5-execution-report.md`，多节点与 Redis 故障恢复进入 KB-PRODUCT-M6。
-
-### KB-PRODUCT-M6 多节点、重连与恢复可靠性
-
-目标：让协同不依赖单个应用进程内存，在断线、重启和双节点条件下仍可恢复和继续编辑。
-
-| 任务 | 内容 | 验收标准 | 状态 |
-| --- | --- | --- | --- |
-| KB-PRODUCT-M6-T01 | 建立 Redis 协同房间广播与节点标识 | 两个应用节点上的成员可实时看到同一文档更新 | Done |
-| KB-PRODUCT-M6-T02 | 实现更新去重、顺序水位和重放保护 | Redis 重投、客户端重试和跨节点回环不会重复应用 | Done |
-| KB-PRODUCT-M6-T03 | 实现断线重连握手和缺失更新补偿 | 短暂断线后只补缺失更新，不整篇覆盖新状态 | Done |
-| KB-PRODUCT-M6-T04 | 实现有限本地离线队列和恢复提示 | 离线编辑有明确状态；恢复后可提交或导出，不静默丢弃 | Done |
-| KB-PRODUCT-M6-T05 | 建立快照、更新日志压缩和房间回收策略 | 存储增长有上限，活跃房间不被误回收 | Done |
-| KB-PRODUCT-M6-T06 | 处理应用重启、Redis 短断和数据库延迟 | 故障期间返回可理解状态，恢复后文档继续可编辑 | Done |
-| KB-PRODUCT-M6-T07 | 增加双节点故障注入和恢复测试 | 覆盖节点切换、消息乱序、重复、Redis 重连和快照恢复 | Done |
-| KB-PRODUCT-M6-T08 | 增加协同健康、积压和失败指标 | 可按 space/item/node 定位连接数、延迟、积压和错误 | Done |
-| KB-PRODUCT-M6-T09 | 输出多节点协同运行手册和验收报告 | 部署、排障、回退、数据恢复和限制可执行 | Done |
-
-结论：KB-PRODUCT-M6 已完成。双 Hocuspocus/Yjs 节点通过 Redis 广播并以 PostgreSQL update/snapshot 为持久恢复来源；离线预算、重连、节点重启、Redis 故障、去重、压缩、健康指标和三镜像回退均有自动化证据。完整证据见 `docs/90-reports/kb-product-m6-execution-report.md`，运行步骤见 `docs/05-runbooks/knowledge-collaboration.md`。下一执行入口为 KB-PRODUCT-M7。
-
-### KB-PRODUCT-M7 协作对象入口闭环
-
-目标：知识库目录挂载对象时使用可发现、可校验的真实对象流程，并正确处理权限和生命周期。
-
-| 任务 | 内容 | 验收标准 | 状态 |
-| --- | --- | --- | --- |
-| KB-PRODUCT-M7-T01 | 复现并定位新建 Base 后“对象不可用”的根因 | 明确是对象注册、ID、路由、事务、权限还是缓存问题 | Done |
-| KB-PRODUCT-M7-T02 | 建立权限过滤的平台对象选择 API | 只返回当前用户可引用对象，不泄露不可见对象标题 | Done |
-| KB-PRODUCT-M7-T03 | 实现 Base、项目、文件和知识内容对象选择器 | 普通流程不要求输入 UUID；支持搜索、最近和分页 | Done |
-| KB-PRODUCT-M7-T04 | 完成“新建 Base 并挂载”和“挂载已有 Base”两条路径 | 创建成功后立即可打开，失败有原子回滚或明确补偿 | Done |
-| KB-PRODUCT-M7-T05 | 服务端校验目标类型、目标 ID、规范路由和引用权限 | 客户端伪造 route 或 ID 不能绕过 resolver 和权限 | Done |
-| KB-PRODUCT-M7-T06 | 统一别名、跟随目标标题和展示模式 | alias/follow-target、link/card/inline 语义清晰可编辑 | Done |
-| KB-PRODUCT-M7-T07 | 完善 available、forbidden、disabled、deleted、not_found、invalid 状态 | 每种状态有不泄露信息的文案、图标和可用操作 | Done |
-| KB-PRODUCT-M7-T08 | 处理目标移动、改名、归档、恢复和删除 | 引用路由不依赖过期手工路径，生命周期变化可追踪 | Done |
-| KB-PRODUCT-M7-T09 | 增加对象入口审计、关系和反向定位 | 能从知识节点定位目标，也能从目标看到合法来源引用 | Done |
-| KB-PRODUCT-M7-T10 | 完成对象入口集成和浏览器矩阵 | Base、项目、文件、知识内容、外链及全部权限状态通过 | Done |
-
-结论：KB-PRODUCT-M7 已完成。对象入口现在通过权限过滤选择器发现 Base、项目、文件和知识内容；服务端统一校验目标并生成规范路由；Base 新建挂载具备事务回滚；别名、展示模式、生命周期、审计和合法反向引用均有独立集成与真实浏览器证据。完整证据见 `docs/90-reports/kb-product-m7-execution-report.md`。下一执行入口为 KB-PRODUCT-M8。
-
-### KB-PRODUCT-M8 内容优先导航与知识库信息架构
-
-目标：普通用户进入知识库就开始阅读和工作，治理信息不阻断内容主路径。
-
-| 任务 | 内容 | 验收标准 | 状态 |
-| --- | --- | --- | --- |
-| KB-PRODUCT-M8-T01 | 固化空间入口和首页解析规则 | 打开空间稳定进入 home item，缺失首页有可恢复 fallback | Done |
-| KB-PRODUCT-M8-T02 | 固化内容页、目录、对象入口和外链点击行为 | 每类节点只有一种主要行为，不先展示无关元数据仪表盘 | Done |
-| KB-PRODUCT-M8-T03 | 为目录节点提供默认首页或子内容列表 | 非叶子节点可直接承载内容；无首页时展示可行动子项 | Done |
-| KB-PRODUCT-M8-T04 | 将元数据、设置、权限和治理迁到辅助入口 | 普通正文无管理噪音；管理员默认阅读路径与普通用户一致 | Done |
-| KB-PRODUCT-M8-T05 | 统一面包屑、树选中态、URL、刷新和前进后退 | 深链恢复同一 space/item，上下文不漂移 | Done |
-| KB-PRODUCT-M8-T06 | 完善树搜索、最近、收藏、订阅和归档筛选 | 切换筛选不会丢当前合法内容，结果可直接打开 | Done |
-| KB-PRODUCT-M8-T07 | 完善加载、空、无权、停用、删除和网络错误状态 | 状态有明确下一步，不泄露不可见目录和标题 | Done |
-| KB-PRODUCT-M8-T08 | 优化侧栏宽度、内部滚动、窄屏和键盘导航 | 页面无浏览器级异常滚动，目录文字不竖排，焦点顺序合理 | Done |
-| KB-PRODUCT-M8-T09 | 完成普通成员、管理员和只读成员导航验收 | 三类身份看到同一内容逻辑，仅管理入口和动作权限不同 | Done |
-
-结论：KB-PRODUCT-M8 已完成。知识库空间入口会解析有效首页并进入规范 item URL；正文、目录、对象入口和外链按节点语义直接工作；治理与元数据退出默认阅读路径；搜索筛选、异常状态、内部滚动、窄屏和管理员/编辑者/只读/无权身份矩阵均通过自动化与真实隔离浏览器验证。完整证据见 `docs/90-reports/kb-product-m8-execution-report.md`。下一执行入口为 KB-PRODUCT-M9。
-
-### KB-PRODUCT-M9 编辑器高频交互与内容块完善
-
-目标：把当前逐点修复的编辑器交互收敛为稳定、连贯、可预测的生产级体验。
-
-完成结论：连续输入、IME、选区工具栏、行级控制、Slash、块操作、撤销重做、粘贴、表格和媒体链路已在单一 Tiptap/Yjs 编辑器中收口；真实 MinIO 上传、失败重试、替换、说明、权限下载、短/长内容、桌面/窄屏及 owner/viewer 矩阵均通过。完整证据见 `docs/90-reports/kb-product-m9-execution-report.md`，下一执行入口为 KB-PRODUCT-M10。
-
-| 任务 | 内容 | 验收标准 | 状态 |
-| --- | --- | --- | --- |
-| KB-PRODUCT-M9-T01 | 固化连续输入、IME、组合输入和焦点规则 | 中英文连续输入不失焦，父状态更新不重建编辑器 | Done |
-| KB-PRODUCT-M9-T02 | 完善选择气泡工具栏 | 仅选择内容时显示，贴近选择区且始终位于编辑框可视范围 | Done |
-| KB-PRODUCT-M9-T03 | 完善行级插入/操作合并按钮 | 跟随当前块，按钮和菜单不越过编辑框，点击外部关闭 | Done |
-| KB-PRODUCT-M9-T04 | 完善 Slash 命令和键盘选择 | 光标处触发、可搜索、方向键/回车/ESC 可用、外部点击关闭 | Done |
-| KB-PRODUCT-M9-T05 | 完善块拖拽、复制、移动、转换和删除 | 操作保持 block ID/评论锚点，撤销后完整恢复 | Done |
-| KB-PRODUCT-M9-T06 | 完善撤销重做、快捷键和跨块选择 | 本地与协同操作边界明确，不撤销他人无关修改 | Done |
-| KB-PRODUCT-M9-T07 | 完善粘贴和格式清洗 | 纯文本、网页、Markdown、列表和表格粘贴结果确定且安全 | Done |
-| KB-PRODUCT-M9-T08 | 完善表格块编辑工具栏 | 工具栏跟随表格块，行列操作可撤销且不越界 | Done |
-| KB-PRODUCT-M9-T09 | 完善图片、文件和媒体块 | 复用 MinIO 上传，支持进度、失败重试、说明和权限下载 | Done |
-| KB-PRODUCT-M9-T10 | 完善链接、代码、引用、任务、callout 和分割线 | 插入、转换、编辑、只读和导出行为一致 | Done |
-| KB-PRODUCT-M9-T11 | 增加响应式和无障碍交互基线 | 1366px 与移动窄屏可用，按钮有名称，键盘焦点可见 | Done |
-| KB-PRODUCT-M9-T12 | 建立编辑器交互视觉回归和浏览器矩阵 | Chromium 关键场景、不同文档长度和权限状态可重复通过 | Done |
-
-### KB-PRODUCT-M10 评论、搜索、关系与导入导出闭环
-
-目标：让围绕内容发生的评论、发现、关联和迁移都基于稳定块语义。
-
-完成结论：评论锚点具备可映射与失效/恢复生命周期，评论线程、@mention、搜索深链和权限撤销不披露均闭环；知识内容关系支持双向建立与撤销，Markdown/HTML 导入导出保留表格、代码、图片和对象说明并提供转换/降级报告。完整证据见 `docs/90-reports/kb-product-m10-execution-report.md`，下一执行入口为 KB-PRODUCT-M11。
-
-| 任务 | 内容 | 验收标准 | 状态 |
-| --- | --- | --- | --- |
-| KB-PRODUCT-M10-T01 | 将选区评论锚点升级为可随编辑映射的位置 | 前后插入、格式变化和协同更新后评论仍定位正确文本 | Done |
-| KB-PRODUCT-M10-T02 | 完善块评论、回复、解决、重开和 @mention | 权限、通知、审计和深链闭环，无重复提醒 | Done |
-| KB-PRODUCT-M10-T03 | 处理被删除块、失效选区和版本恢复后的评论 | 评论保留上下文并标明失效原因，不错误挂到其他内容 | Done |
-| KB-PRODUCT-M10-T04 | 以规范纯文本投影重建知识搜索索引 | 标题、正文块、标签和允许的评论内容可检索 | Done |
-| KB-PRODUCT-M10-T05 | 增强中文查询、短语、高亮和筛选 | 常用中文词组召回稳定，支持空间、类型、标签、维护人和状态筛选 | Done |
-| KB-PRODUCT-M10-T06 | 完成搜索结果到 block/comment 的定位 | 打开结果后目标块可见并高亮，权限变化后不泄露摘要 | Done |
-| KB-PRODUCT-M10-T07 | 完善正向关系、反向引用和循环引用处理 | 关系可导航、可解释、可撤销，循环不会导致无限展开 | Done |
-| KB-PRODUCT-M10-T08 | 完善 Markdown/HTML 导入 | 表格、列表、代码、图片和不支持节点有明确转换/降级报告 | Done |
-| KB-PRODUCT-M10-T09 | 完善 Markdown/HTML/空间导出 | 导出包含结构、附件清单和对象引用说明，重新导入可核对 | Done |
-| KB-PRODUCT-M10-T10 | 增加评论、搜索、关系和导入导出端到端测试 | 覆盖权限拒绝、并发编辑、损坏输入和大内容 | Done |
-
-### KB-PRODUCT-M11 权限、治理、性能与可访问性收口
-
-目标：让知识库在真实团队持续使用时可治理、可扩展、可诊断，并保持权限最小化。
-
-完成结论：空间、目录与内容授权统一到资源权限模型，移动/复制继承、分享撤销、权限申请、治理与模板升级均闭环；100/500/1000 块预算、160 块增量渲染、脱敏诊断和 WCAG 工程基线通过定向集成与真实隔离浏览器验证。完整证据见 `docs/90-reports/kb-product-m11-execution-report.md`，下一执行入口为 KB-PRODUCT-M12。
-
-| 任务 | 内容 | 验收标准 | 状态 |
-| --- | --- | --- | --- |
-| KB-PRODUCT-M11-T01 | 复核空间默认权限、目录继承和内容显式授权 | user、department、user_group、role 的最高权限和来源解释一致 | Done |
-| KB-PRODUCT-M11-T02 | 处理移动、复制、恢复和对象挂载后的权限语义 | 资源换父节点后继承结果可预览，不产生孤立或越权授权 | Done |
-| KB-PRODUCT-M11-T03 | 完善分享链接有效期、停用、撤销和必要审计 | 链接状态立即生效，过期或撤销后不能通过缓存继续访问 | Done |
-| KB-PRODUCT-M11-T04 | 完善权限申请、审批结果和通知闭环 | 申请人和管理者可追踪状态，拒绝不泄露敏感信息 | Done |
-| KB-PRODUCT-M11-T05 | 完善维护人、知识状态、复核日期和过期治理 | 过期、无人维护和待复核内容可发现、分配和关闭 | Done |
-| KB-PRODUCT-M11-T06 | 完善模板创建、使用、升级和权限边界 | 模板不携带非法对象 ID 或越权内容，升级不改写既有页面 | Done |
-| KB-PRODUCT-M11-T07 | 建立大文档性能预算 | 明确 100/500/1000 块加载、输入、保存、搜索和协同延迟阈值 | Done |
-| KB-PRODUCT-M11-T08 | 优化分页、增量加载、渲染和快照体积 | 达到预算且不通过隐藏数据一致性问题换性能 | Done |
-| KB-PRODUCT-M11-T09 | 完成 WCAG 基础检查和键盘操作验收 | 标题层级、焦点、对比度、读屏名称和错误提示满足基线 | Done |
-| KB-PRODUCT-M11-T10 | 增加知识库审计、指标和排障上下文 | 可定位保存、协同、搜索、权限和对象解析问题，不记录正文敏感数据 | Done |
-| KB-PRODUCT-M11-T11 | 执行权限、治理、性能和可访问性收口测试 | 无高风险授权、无 P0/P1 性能阻塞，管理与用户 UI 边界正确 | Done |
-
-### KB-PRODUCT-M12 真实试用与路线级发布判定
-
-目标：用完整工程验证和真实参与者任务证明知识库可以进入受控使用，而不是只证明自动化脚本可以运行。
-
-| 任务 | 内容 | 验收标准 | 状态 |
-| --- | --- | --- | --- |
-| KB-PRODUCT-M12-T01 | 汇总 M1-M11 缺陷并完成 P0/P1/P2 处理决定 | P0/P1 清零；必须修复 P2 关闭；延期项有风险接受人 | Done |
-| KB-PRODUCT-M12-T02 | 执行知识数据、块、版本、评论、权限、搜索和对象引用一致性检查 | 无未解释悬空、泄漏、旧兼容写入和不可恢复内容 | Done |
-| KB-PRODUCT-M12-T03 | 执行完整后端测试、package 和 Flyway 空库/存量升级 | 全部通过，迁移版本、备份和回滚证据完整 | Done |
-| KB-PRODUCT-M12-T04 | 执行前端 lint/build、知识库完整浏览器和双用户协同回归 | 用户/管理员、读/评/编/管权限及双节点协同全部通过 | Done |
-| KB-PRODUCT-M12-T05 | 执行备份、恢复、发布和回退演练 | 恢复后块、版本、评论、对象引用和协同快照一致 | Done |
-| KB-PRODUCT-M12-T06 | 招募 3-5 名真实参与者并固定任务、数据和隐私边界 | 参与者不是合成人格，角色、反馈渠道和停止条件明确 | Pending |
-| KB-PRODUCT-M12-T07 | 执行真实知识库任务试用 | 覆盖查找、阅读、创建、编辑、协同、评论、对象挂载和恢复 | Pending |
-| KB-PRODUCT-M12-T08 | 收集任务成功率、阻塞、学习成本和主观反馈 | 原始记录可追溯，不用合成指标替代人工证据 | Pending |
-| KB-PRODUCT-M12-T09 | 修复试用阻塞问题并重复关键任务 | 无开放 P0/P1，关键失败场景由原参与者或等价真人复验 | Pending |
-| KB-PRODUCT-M12-T10 | 输出知识库产品化 Go/No-Go 和下一阶段建议 | 明确可受控使用、继续整改或暂停，并区分工程与人工依据 | Pending |
-
-## 7. 全局验收标准
-
-- 模型唯一：`knowledge_base_spaces`、`knowledge_base_items` 和 `knowledge_content_*` 是唯一活动模型，不恢复旧文档表、类型、路由或双写。
-- 块模型：结构只有一个事实来源；Markdown、HTML、纯文本和搜索文本都是可重建派生或交换格式。
-- 编辑主路径：正式页面只有一个块编辑器，不出现兼容编辑器切换、兼容结构化块面板或用户可写旧路径。
-- 保存可靠性：连续输入不失焦，自动保存不重复，冲突不静默覆盖，失败和离线内容可恢复或导出。
-- 协同可靠性：至少两名用户、两个应用节点可并发编辑并最终一致；重复、乱序、断线、重启和权限变化均有验证。
-- 对象入口：普通用户通过对象选择器完成挂载；Base、项目、文件、知识内容和外链的可用性、权限和生命周期可解释。
-- 内容优先：进入空间、目录和内容节点直接看到真实内容或对象；治理和元数据不阻断普通用户主路径。
-- 编辑体验：选择工具栏、Slash、块手柄、表格工具栏和菜单跟随当前上下文并保持在编辑框内；键盘、粘贴、撤销重做和媒体可用。
-- 评论搜索：评论锚点随编辑保持，搜索可定位 block/comment，无权限用户不获得标题、摘要、路径或正文。
-- 权限治理：继承、显式授权、分享、申请、移动和对象挂载结果与权限解释一致，关键动作写审计。
-- 性能可用：达到 M11 固定的大文档和协同延迟预算，无浏览器级异常滚动和明显输入卡顿。
-- 真实证据：至少 3 名真实参与者完成规定任务；没有真人证据时只能判定工程候选，不得宣称类 Lark 知识库产品化完成。
-- 路线收口：M12 执行完整后端、Flyway、前端、真实浏览器、双用户/双节点协同、备份恢复和文档合同检查。
-
-## 8. 当前执行入口
-
-`KB-PRODUCT-M1` 到 `KB-PRODUCT-M11` 已完成并形成逐里程碑执行报告。当前唯一执行入口为 `KB-PRODUCT-M12-T01` 到 `KB-PRODUCT-M12-T10`；M12 负责全量工程验证、备份恢复、真实参与者试用和路线级 Go/No-Go，不得用自动化或合成人格替代真实参与证据。T01-T05 工程验证已完成，T06-T10 真实参与者试用待启动。
-
-## 9. WORKBENCH-M1 工作循环平台加固（并行工作台里程碑）
-
-说明：本里程碑只针对 AI 工作循环平台自身（`scripts/`、治理文档、一处后端配置默认值），不改变 KB-PRODUCT 路线范围，也不改变 `KB-PRODUCT-M12` 作为路线收口入口的地位。任务清单来自 2026-07-18 对工作循环平台的审计结论，执行报告为 `docs/90-reports/workbench-m1-execution-report.md`。
-
-| 任务 | 内容 | 验收标准 | 状态 |
-| --- | --- | --- | --- |
-| WORKBENCH-M1-T01 | 敏感信息扫描拆分为独立脚本并引入精确到文件与模式的 allowlist；e2e 夹具口令走豁免；移除 `KnowledgeCollaborationProperties` 硬编码默认密钥（`application.yml` 占位符默认值保持行为不变） | 扫描脚本独立可执行，allowlist 只豁免指定文件与指定模式，当前代码库扫描零命中、门禁该步骤恢复可通过 | Done |
-| WORKBENCH-M1-T02 | 扫描规则补充 EC 私钥与 JWT 形态 | 新模式对当前代码库零误报，合成样本可被检出 | Done |
-| WORKBENCH-M1-T03 | 受影响区域识别 `collaboration/` 与 `deploy/`；collaboration 变更时工作循环自动执行 `pnpm collaboration:test` | 改动 collaboration 文件后 checkpoint/finish 验证计划包含其测试执行并真实跑通 | Done |
-| WORKBENCH-M1-T04 | 真实浏览器证据检查拆分为独立脚本并语义化：禁止响应拦截类 mock 并覆盖 spec 对 support 的引用扫描，真实凭据注入辅助不再被误判 | 引用真实 spec（经 support 注入真实凭据）的命令通过；引用含 `page.route`/`route.fulfill` 的 spec 或 support 内拦截的命令被拒绝 | Done |
-| WORKBENCH-M1-T05 | 门禁把本轮执行日志清单写回工作循环上下文；finish 校验执行报告 Validation 引用当轮新鲜日志文件 | 本轮 finish 一次通过且报告引用被核验，无引用或引用过期日志被拒绝 | Done |
-| WORKBENCH-M1-T06 | 文档变更判定改用基线签名比对；活动文档白名单纳入强制边界；finish 增加 `git diff --check` | start 前已脏文档不再计为本轮更新；白名单外 docs 变更被拒绝；冲突标记可被检出 | Done |
-| WORKBENCH-M1-T07 | 表格单元格支持转义竖线切分；无上下文时 finish 报错可读；start 增加活动循环冲突保护与显式覆盖开关；清理无效参数；rg 缺失时给出告警 | 各项直接执行验证通过，门禁输出可解释 | Done |
-| WORKBENCH-M1-T08 | 治理文档、脚本 README、执行报告与路线图状态同步到本轮实现事实 | 文档结构门禁通过，文档描述与脚本行为一致 | Done |
+当前唯一执行入口为 `PROJECT-PLATFORM-S01-M1-T01` 到 `PROJECT-PLATFORM-S01-M1-T09`。M1 完成独立 `start -> checkpoint -> finish` 后，才能进入 M2。

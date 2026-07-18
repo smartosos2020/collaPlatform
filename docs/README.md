@@ -1,7 +1,7 @@
 ---
 title: 文档入口
 status: active
-last_code_check: 2026-07-16
+last_code_check: 2026-07-18
 ---
 
 # 文档入口
@@ -14,11 +14,13 @@ AI 工作循环默认只读取这些 active 文档：
 
 1. `docs/README.md`
 2. `docs/00-product/current-product-scope.md`
-3. `docs/01-architecture/current-architecture.md`
-4. `docs/01-architecture/technology-selection.md`
-5. `docs/01-architecture/platform-object-model.md`
-6. `docs/02-roadmap/current-roadmap.md`
-7. `docs/03-engineering/ai-engineering-governance.md`
+3. 当前路线 front matter 中 `program_doc` 指向的长期专项规划
+4. `docs/01-architecture/current-architecture.md`
+5. 当前专项对应的目标架构文档
+6. `docs/01-architecture/technology-selection.md`
+7. `docs/01-architecture/platform-object-model.md`
+8. `docs/02-roadmap/current-roadmap.md`
+9. `docs/03-engineering/ai-engineering-governance.md`
 
 M31/M40 仿真和试运行材料已经归档，不再作为默认数据或发布基线。日常 AI 工作循环只做本轮影响范围内的目标验证；路线最后一个里程碑才运行 `route-final`。
 
@@ -26,7 +28,7 @@ M31/M40 仿真和试运行材料已经归档，不再作为默认数据或发布
 
 | 目录 | 用途 | 默认读取 |
 | --- | --- | --- |
-| `00-product/` | 当前产品范围；`references/` 保存外部产品和历史需求参考 | 只默认读取 `current-product-scope.md` |
+| `00-product/` | 当前产品范围；`initiatives/` 保存活动长期专项；`references/` 保存外部产品和历史需求参考 | 默认读取当前范围和当前路线引用的专项 |
 | `01-architecture/` | 当前技术架构、技术选型、平台对象模型 | 是 |
 | `02-roadmap/` | 当前唯一执行路线图；目录内只保留 `current-roadmap.md` | 是 |
 | `03-engineering/` | AI 工程治理、Git、运维安全规范 | 只默认读取 `ai-engineering-governance.md` |
@@ -40,7 +42,9 @@ M31/M40 仿真和试运行材料已经归档，不再作为默认数据或发布
 | 文档 | 说明 |
 | --- | --- |
 | `00-product/current-product-scope.md` | 当前已经实现、部分实现、未完成的产品范围 |
+| `00-product/initiatives/project-platform-program.md` | PROJECT-PLATFORM 长期目标、Stage 索引、滚动规划和变更记录；不是第二执行路线 |
 | `01-architecture/current-architecture.md` | 当前后端、前端、数据库、事件、测试现实 |
+| `01-architecture/project-platform-target-architecture.md` | PROJECT-PLATFORM 目标架构；不代表当前已经实现 |
 | `01-architecture/technology-selection.md` | 当前代码实际采用的技术栈 |
 | `01-architecture/platform-object-model.md` | 当前平台对象、链接、卡片、权限态和搜索关系 |
 | `02-roadmap/current-roadmap.md` | 当前唯一执行路线入口；没有 active 路线时明确写“等待目标” |
@@ -57,7 +61,7 @@ M31/M40 仿真和试运行材料已经归档，不再作为默认数据或发布
 | `00-product/references/lark-product-shape-analysis.md` | Lark 产品形态阶段性分析 |
 | `00-product/references/org-usergroup-permission-requirements.md` | 已完成 ORG 路线的原始需求参考 |
 
-任何参考资料衍生的里程碑计划必须写入 `02-roadmap/current-roadmap.md`，不得在 `02-roadmap/` 下新增第二份路线图，避免新会话误读执行入口。
+任何参考资料衍生的可执行 Milestone 和 Task 必须写入 `02-roadmap/current-roadmap.md`，不得在 `02-roadmap/` 下新增第二份路线图。长期专项可以在 `00-product/initiatives/` 维护 Program 和 Stage 索引，但不能包含可直接执行的 Task 状态；当前路线必须通过 front matter 的 `program_doc`、`program_revision`、`stage` 和 `stage_final_milestone` 显式引用它。
 
 ## 当前 Runbook
 

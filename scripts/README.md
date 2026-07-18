@@ -18,6 +18,7 @@ pnpm audit:snapshot -- --profile light --label before-change
 pnpm work:start -- --goal M25-delivery --task-range "M25-T01 to M25-T12"
 pnpm work:checkpoint -- --goal M25-delivery
 pnpm work:finish -- --goal M25-delivery --backend-test-pattern ExampleIntegrationTests --browser-spec e2e/example.spec.ts --browser-evidence-kind real --browser-evidence-environment isolated
+pnpm work:plan-check
 pnpm work:test
 pnpm verify
 pnpm verify:full
@@ -47,6 +48,17 @@ pnpm pilot:readiness -- --manifest-path .local-pilot/pilot.json --initialization
 ```
 
 Options use lowercase kebab-case. Legacy PowerShell-style `-PascalCase` names are normalized by the CLI parser during the migration window, but new documentation and automation must use `--kebab-case`.
+
+## Program And Stage Contract
+
+The active planning hierarchy is `Program -> Stage -> Milestone -> Task`.
+
+- `docs/02-roadmap/current-roadmap.md` remains the only executable route and contains exactly one Stage.
+- Its front matter declares `program`, `program_doc`, `program_revision`, `stage`, and `stage_final_milestone`.
+- The Program document lives under `docs/00-product/initiatives/`, contains the Stage index, points to its target architecture, and has exactly one Active Stage matching the current route.
+- `work:start` rejects task IDs that are absent, already complete, or outside the active Stage.
+- The final Milestone of a Stage must use `--validation-profile route-final`, mark the current route completed, and update the Program document.
+- `pnpm work:plan-check` validates the contract without starting a work cycle. Quick and full quality gates run the same planning check.
 
 ## Evidence And Security
 

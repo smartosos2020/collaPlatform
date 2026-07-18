@@ -23,6 +23,7 @@ import { assertRealBrowserEvidence } from './security/browserEvidence.js'
 import { scanSensitiveData } from './security/sensitiveScan.js'
 import { runWorkCycle } from './workcycle/cycle.js'
 import { runQualityGate, type BackendStrategy, type CollaborationStrategy, type FrontendStrategy } from './workcycle/quality.js'
+import { loadActivePlanningContract, planningSummary } from './workcycle/planning.js'
 
 function optionStrings(options: ReturnType<typeof parseCliArgs>['options'], name: string): string[] {
   const value = options[name]
@@ -49,6 +50,10 @@ async function main(): Promise<void> {
       browserEvidenceKind: (optionString(options, 'browser-evidence-kind') || undefined) as 'real' | 'mock' | undefined, browserEvidenceEnvironment: (optionString(options, 'browser-evidence-environment') || undefined) as 'isolated' | 'shared-readonly' | 'mock' | undefined,
       browserNotRequiredReason: optionString(options, 'browser-not-required-reason') || undefined, force: optionBoolean(options, 'force'),
     })
+    return
+  }
+  if (command === 'planning check') {
+    console.log(planningSummary(loadActivePlanningContract(repositoryRoot)))
     return
   }
   if (command === 'verify') {
