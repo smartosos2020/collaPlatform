@@ -19,6 +19,11 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Base64;
@@ -31,12 +36,17 @@ import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Service
 public class KnowledgeCollaborationGatewayService {
     public static final String PROTOCOL_VERSION = "colla-yjs-v1";
     public static final int SCHEMA_VERSION = KnowledgeContentCanonicalModels.CURRENT_SCHEMA_VERSION;
     private static final Set<String> EDIT_LEVELS = Set.of("owner", "manage", "edit");
+    private static final HttpClient COLLABORATION_NODE_HTTP_CLIENT = HttpClient.newBuilder()
+        .connectTimeout(Duration.ofSeconds(2))
+        .build();
 
     private final KnowledgeCollaborationProperties properties;
     private final KnowledgeContentService contentService;
@@ -178,7 +188,7 @@ public class KnowledgeCollaborationGatewayService {
         String clientId,
         String nodeId
     ) {
-        DocumentKey key = parseDocumentName(documentName);
+        CollaborationRoomKey key = parseDocumentName(documentName);
         UUID actorId = repository.findLatestCollaborationActor(key.workspaceId(), key.itemId())
             .orElseThrow(() -> failure(HttpStatus.CONFLICT, "COLLAB_SNAPSHOT_NO_ACTOR", "No persisted collaboration update can own this snapshot"));
         var account = identityRepository.findUserById(actorId)
@@ -252,6 +262,56 @@ public class KnowledgeCollaborationGatewayService {
         return MessageDigest.isEqual(expected, actual);
     }
 
+    /**
+     * Drops the persisted Yjs state (snapshot + updates) after a REST content mutation so the next
+     * collaboration load falls back to the canonical document from the database, and asks the
+     * collaboration nodes to drop their in-memory document. The node notification is fire-and-forget
+     * and deferred until after commit so a reconnecting client never reloads pre-commit state.
+     */
+    public void invalidateCollaborationState(UUID workspaceId, UUID itemId) {
+        repository.deleteCollaborationState(workspaceId, itemId);
+        String documentName = documentName(workspaceId, itemId);
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    postCollaborationNodeInvalidation(documentName);
+                }
+            });
+        } else {
+            postCollaborationNodeInvalidation(documentName);
+        }
+    }
+
+    private void postCollaborationNodeInvalidation(String documentName) {
+        String internalUrl = properties.getInternalUrl();
+        String internalSecret = properties.getInternalSecret();
+        if (internalUrl == null || internalUrl.isBlank() || internalSecret == null || internalSecret.isBlank()) {
+            return;
+        }
+        // A room can be held in memory by more than one collaboration node, so every configured
+        // node endpoint (comma-separated) is asked to drop it.
+        for (String nodeBaseUrl : internalUrl.split(",")) {
+            String baseUrl = nodeBaseUrl.trim().replaceAll("/+$", "");
+            if (baseUrl.isEmpty()) continue;
+            try {
+                HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(baseUrl + "/internal/invalidate"))
+                    .timeout(Duration.ofSeconds(2))
+                    .header("content-type", "application/json")
+                    .header("x-colla-collaboration-secret", internalSecret)
+                    .POST(HttpRequest.BodyPublishers.ofString("{\"documentName\":\"" + documentName + "\"}"))
+                    .build();
+                COLLABORATION_NODE_HTTP_CLIENT.sendAsync(request, HttpResponse.BodyHandlers.discarding())
+                    .whenComplete((response, error) -> {
+                        // Fire-and-forget: a REST mutation must not fail when a collaboration node is down.
+                    });
+            } catch (RuntimeException exception) {
+                // Fire-and-forget: invalidation of the in-memory document is best-effort.
+            }
+        }
+    }
+
     private KnowledgeCollaborationAuthorization requireEditable(String ticket, String documentName) {
         KnowledgeCollaborationAuthorization authorization = authenticate(ticket, documentName);
         if (!authorization.canEdit()) {
@@ -318,13 +378,13 @@ public class KnowledgeCollaborationGatewayService {
         return value.length() > 128 ? value.substring(0, 128) : value;
     }
 
-    private DocumentKey parseDocumentName(String value) {
+    private CollaborationRoomKey parseDocumentName(String value) {
         String[] parts = value == null ? new String[0] : value.split(":", -1);
         if (parts.length != 3 || !"knowledge".equals(parts[0])) {
             throw failure(HttpStatus.BAD_REQUEST, "COLLAB_INVALID_DOCUMENT", "Invalid collaboration document name");
         }
         try {
-            return new DocumentKey(UUID.fromString(parts[1]), UUID.fromString(parts[2]));
+            return new CollaborationRoomKey(UUID.fromString(parts[1]), UUID.fromString(parts[2]));
         } catch (IllegalArgumentException exception) {
             throw failure(HttpStatus.BAD_REQUEST, "COLLAB_INVALID_DOCUMENT", "Invalid collaboration document name");
         }
@@ -359,7 +419,7 @@ public class KnowledgeCollaborationGatewayService {
     ) {}
     public record CollaborationUpdate(long sequence, String updateId, String update, UUID actorId, String clientId, Instant createdAt) {}
     public record CollaborationUpdateAck(long sequence, String updateId, boolean accepted) {}
-    private record DocumentKey(UUID workspaceId, UUID itemId) {}
+    private record CollaborationRoomKey(UUID workspaceId, UUID itemId) {}
     public record CollaborationSnapshotAck(
         String snapshotHash, int stateVectorBytes, String canonicalChecksum, int compactedUpdates, String nodeId, Instant savedAt
     ) {}

@@ -186,6 +186,16 @@ class KnowledgeCollaborationGatewayServiceTests {
     }
 
     @Test
+    void invalidateCollaborationStateDeletesPersistedStateWithoutRequiringCollaborationNode() {
+        UUID workspaceId = UUID.randomUUID();
+        UUID targetItemId = UUID.randomUUID();
+
+        service.invalidateCollaborationState(workspaceId, targetItemId);
+
+        verify(repository).deleteCollaborationState(workspaceId, targetItemId);
+    }
+
+    @Test
     void rejectsExpiredOrDisabledUserSessionsDuringPermissionRefresh() {
         editableItem("edit");
         when(identityRepository.findCurrentUser(user.id(), user.deviceId())).thenReturn(Optional.empty());

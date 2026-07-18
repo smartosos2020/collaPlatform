@@ -113,10 +113,12 @@ Runtime health signals:
 - `/actuator/health` for Spring Boot health status.
 - `/actuator/prometheus` for Prometheus metrics when checking the backend
   directly.
-- Each collaboration sidecar exposes `/health`, `/ready`, and an
-  internal-secret-protected `/metrics` endpoint on port `1234`. Inspect these
-  endpoints directly inside the deployment network; Nginx does not publish
-  them.
+- Each collaboration sidecar exposes `/health`, `/ready`, an
+  internal-secret-protected `/metrics` endpoint, and an
+  internal-secret-protected `POST /internal/invalidate` endpoint (used by the
+  backend to drop stale in-memory rooms after REST content mutations) on port
+  `1234`. Inspect these endpoints directly inside the deployment network;
+  Nginx does not publish them.
 
 Local health check:
 

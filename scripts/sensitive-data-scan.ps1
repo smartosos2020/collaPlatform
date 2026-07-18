@@ -67,10 +67,12 @@ if (Test-Path -LiteralPath $AllowlistPath) {
 
 $excludeDirs = @("\node_modules\", "\target\", "\dist\", "\.local-logs\", "\.local-reports\", "\.local-backups\", "\test-results\", "\playwright-report\", "\.git\", "\.idea\")
 $selfPath = Join-Path $Root "scripts\sensitive-data-scan.ps1"
+$allowlistFullPath = Join-Path $Root "scripts\sensitive-scan-allowlist.tsv"
 $files = Get-ChildItem -Path $Root -Recurse -File | Where-Object {
     $fullName = $_.FullName
     -not ($excludeDirs | Where-Object { $fullName.Contains($_) }) -and
     $fullName -ne $selfPath -and
+    $fullName -ne $allowlistFullPath -and
     $_.Length -lt 2MB -and
     $_.Extension -notin @(".png", ".jpg", ".jpeg", ".gif", ".ico", ".jar", ".class", ".zip", ".gz")
 }

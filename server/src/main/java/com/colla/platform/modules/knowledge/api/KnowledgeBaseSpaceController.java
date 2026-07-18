@@ -136,8 +136,8 @@ public class KnowledgeBaseSpaceController {
     }
 
     @DeleteMapping("/{spaceId}")
-    public KnowledgeBaseSpaceDetailView deleteSpace(@PathVariable UUID spaceId, Authentication authentication) {
-        return KnowledgeApiDtos.spaceDetail(knowledgeBaseSpaceService.archiveSpace(currentUser(authentication), spaceId));
+    public void deleteSpace(@PathVariable UUID spaceId, Authentication authentication) {
+        knowledgeBaseSpaceService.deleteSpace(currentUser(authentication), spaceId);
     }
 
     @PostMapping("/{spaceId}/subscriptions")

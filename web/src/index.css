@@ -3826,9 +3826,10 @@ body {
 }
 
 .doc-block-action-buttons .ant-btn {
-  width: 26px;
-  height: 26px;
-  padding-inline: 4px;
+  width: 22px;
+  height: 22px;
+  padding-inline: 2px;
+  font-size: 12px;
 }
 
 .doc-block-action-buttons .ant-btn:focus-visible,
@@ -5022,6 +5023,18 @@ body {
     font-size: 15px;
   }
 
+  .doc-block-action-buttons .ant-btn {
+    width: 20px;
+    height: 20px;
+    padding-inline: 1px;
+    font-size: 11px;
+  }
+
+  .doc-block-drag-handle {
+    padding: 1px;
+    border-radius: 6px;
+  }
+
   .base-table-tabs {
     overflow-x: auto;
     padding-bottom: 4px;
@@ -5037,7 +5050,8 @@ body {
 }
 
 .kb-page {
-  min-height: 100%;
+  height: 100%;
+  overflow-y: auto;
   padding: 24px;
   background: #f6f7f9;
 }

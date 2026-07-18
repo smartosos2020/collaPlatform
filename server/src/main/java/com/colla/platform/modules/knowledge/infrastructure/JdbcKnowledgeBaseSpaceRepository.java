@@ -185,6 +185,50 @@ public class JdbcKnowledgeBaseSpaceRepository implements KnowledgeBaseSpaceRepos
     }
 
     @Override
+    public void deleteSpace(UUID workspaceId, UUID spaceId, UUID actorId) {
+        jdbcTemplate.update(
+            """
+                update knowledge_base_spaces
+                set deleted_at = now(),
+                    updated_by = ?,
+                    updated_at = now()
+                where workspace_id = ? and id = ? and deleted_at is null
+                """,
+            actorId,
+            workspaceId,
+            spaceId
+        );
+        jdbcTemplate.update(
+            """
+                with recursive subtree as (
+                    select d.id
+                    from knowledge_base_items d
+                    join knowledge_base_spaces k on k.workspace_id = d.workspace_id and k.root_item_id = d.id
+                    where d.workspace_id = ?
+                      and k.id = ?
+                      and d.deleted_at is null
+                    union all
+                    select child.id
+                    from knowledge_base_items child
+                    join subtree parent on child.parent_id = parent.id
+                    where child.workspace_id = ?
+                      and child.deleted_at is null
+                )
+                update knowledge_base_items d
+                set deleted_at = now(),
+                    updated_by = ?,
+                    updated_at = now()
+                from subtree
+                where d.id = subtree.id
+                """,
+            workspaceId,
+            spaceId,
+            workspaceId,
+            actorId
+        );
+    }
+
+    @Override
     public List<KnowledgeBaseSpaceSummary> listSpaces(UUID workspaceId, boolean includeArchived) {
         return jdbcTemplate.query(
             """

@@ -310,7 +310,7 @@ export function archiveKnowledgeBase(spaceId: string) {
 }
 
 export function deleteKnowledgeBase(spaceId: string) {
-  return apiDelete<UserKnowledgeSpaceDetailView>(`/knowledge-bases/${spaceId}`)
+  return apiDelete<void>(`/knowledge-bases/${spaceId}`)
 }
 
 export function subscribeKnowledgeTarget(spaceId: string, request: { targetType: 'knowledge_base' | 'knowledge_content'; targetId?: string }) {

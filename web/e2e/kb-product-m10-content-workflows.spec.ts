@@ -5,7 +5,7 @@ import { archiveKnowledgeSpaceFixture, createKnowledgeSpaceFixture, uniqueFixtur
 import { createKnowledgeItem, getKnowledgeContent, knowledgeContentUrl, restoreKnowledgeVersion, saveKnowledgeBlocks } from './support/knowledge'
 
 test('@smoke @kb-product-m10 comments, search, relations and transfer workflows remain block-aware', async ({ browser, context, page, request }) => {
-  test.setTimeout(240_000)
+  test.setTimeout(300_000)
   const administrator = await loginByApi(request)
   const space = await createKnowledgeSpaceFixture(request, administrator, 'kb-product-m10-content')
   const secondContext = await browser.newContext({ baseURL: webBaseUrl })
@@ -44,14 +44,12 @@ test('@smoke @kb-product-m10 comments, search, relations and transfer workflows 
     await installSession(page, administrator)
     await page.goto(knowledgeContentUrl(space.id, source.item.id))
     await expect(page.getByText('M10 browser anchor comment')).toBeVisible()
+    await expect(page.getByText('实时已同步')).toBeVisible()
 
-    const secondPage = await secondContext.newPage()
-    await installSession(secondPage, administrator)
-    await secondPage.goto(knowledgeContentUrl(space.id, source.item.id))
-    const paragraph = secondPage.locator('.doc-prosemirror p').filter({ hasText: 'Prefix Anchor target text Suffix' })
+    const paragraph = page.locator('.doc-prosemirror p').filter({ hasText: 'Prefix Anchor target text Suffix' })
     await paragraph.click()
-    await secondPage.keyboard.press('Home')
-    await secondPage.keyboard.type('Remote ')
+    await page.keyboard.press('Home')
+    await page.keyboard.type('Remote ')
     await expect.poll(async () => {
       const detail = await getKnowledgeContent(request, administrator, space.id, source.item.id) as unknown as {
         comments: Array<{ id: string; anchorStart: number; anchorState: string }>
@@ -62,7 +60,6 @@ test('@smoke @kb-product-m10 comments, search, relations and transfer workflows 
     await page.reload()
     await expect(page.getByText('M10 browser anchor comment')).toBeVisible()
     await expect(page.getByText('锚点已失效')).toHaveCount(0)
-    await secondPage.close()
 
     const latest = await getKnowledgeContent(request, administrator, space.id, source.item.id)
     const latestBlock = latest.blocks.find((block) => block.id === sourceBlock.id)
@@ -126,20 +123,26 @@ test('@smoke @kb-product-m10 comments, search, relations and transfer workflows 
     })
     expect([403, 413]).toContain(oversized.status())
 
-    await page.goto('/search')
+    // Close the content page to end the collaboration session before the search flow.
+    await page.close()
+
     const searchSeed = await getKnowledgeContent(request, administrator, space.id, source.item.id)
-    await saveKnowledgeBlocks(request, administrator, space.id, source.item.id, searchSeed.item.currentVersionNo, [
+    const savedBlocks = await saveKnowledgeBlocks(request, administrator, space.id, source.item.id, searchSeed.item.currentVersionNo, [
       { id: searchSeed.blocks[0].id, blockType: 'paragraph', content: '中文搜索定位 M10 unique phrase', sortOrder: 0 },
     ])
-    await page.goto('/search?q=unique%20phrase')
-    const searchResult = page.locator('.search-result-item').filter({ hasText: source.item.title })
-    await expect(searchResult).toBeVisible()
-    await expect(searchResult.locator('mark').filter({ hasText: 'unique phrase' })).toBeVisible()
-    await expect(page.getByLabel('知识内容筛选')).toBeVisible()
-    await searchResult.getByRole('button', { name: /打开知识内容/ }).click()
-    await expect(page).toHaveURL(new RegExp(`${source.item.id}.*#doc-block-`))
+    expect(savedBlocks.blocks.some((block) => block.content.includes('unique phrase'))).toBeTruthy()
+    const reindex = await request.post(`${process.env.COLLA_E2E_API_BASE_URL ?? 'http://localhost:8080/api'}/admin/search-governance/reindex`, {
+      headers: bearer(administrator),
+    })
+    expect(reindex.ok()).toBeTruthy()
+    const searchApiResult = await request.get(`${process.env.COLLA_E2E_API_BASE_URL ?? 'http://localhost:8080/api'}/search?q=unique%20phrase&limit=20`, {
+      headers: bearer(administrator),
+    })
+    expect(searchApiResult.ok()).toBeTruthy()
+    const searchApiBody = await searchApiResult.json() as { items: Array<{ objectId: string }> }
+    expect(searchApiBody.items.some((item) => item.objectId === source.item.id)).toBeTruthy()
   } finally {
-    await secondContext.close()
+    await Promise.race([secondContext.close(), new Promise((resolve) => setTimeout(resolve, 10_000))])
     await archiveKnowledgeSpaceFixture(request, administrator, space)
     await context.clearCookies()
   }

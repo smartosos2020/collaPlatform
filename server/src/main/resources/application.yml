@@ -31,6 +31,8 @@ spring:
 
 server:
   port: 8080
+  error:
+    include-path: never
 
 management:
   endpoints:
@@ -73,6 +75,7 @@ colla:
     email: admin@colla.local
   knowledge-collaboration:
     public-url: ${COLLA_COLLABORATION_PUBLIC_URL:ws://localhost:1234}
+    internal-url: ${COLLA_COLLABORATION_INTERNAL_URL:http://localhost:1234}
     internal-secret: ${COLLA_COLLABORATION_INTERNAL_SECRET:colla-local-collaboration-secret}
     ticket-ttl: 5m
     max-update-bytes: 1048576

@@ -114,6 +114,8 @@ public interface KnowledgeContentRepository {
 
     int purgeExpiredCollaborationTickets(Instant cutoff);
 
+    void deleteCollaborationState(UUID workspaceId, UUID itemId);
+
     void storeCollaborationSnapshot(
         UUID workspaceId, UUID itemId, byte[] snapshot, byte[] stateVector, String snapshotHash,
         int schemaVersion, String canonicalSnapshot, String clientId, UUID actorId

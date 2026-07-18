@@ -148,7 +148,7 @@ and not exists (select 1 from knowledge_base_items i where i.workspace_id=s.work
 
     Add-ZeroCheck "Active item is missing its knowledge search row" @"
 select count(*) from knowledge_base_items i
-where i.deleted_at is null
+where i.deleted_at is null and i.archived_at is null
 and not exists (select 1 from search_index_entries s where s.workspace_id=i.workspace_id and s.object_type='knowledge_content' and s.object_id=i.id);
 "@ "medium" "Rebuild the affected workspace search index."
 

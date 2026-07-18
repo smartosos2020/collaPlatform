@@ -677,6 +677,15 @@ public class KnowledgeBaseSpaceService {
         return getSpace(currentUser, spaceId);
     }
 
+    @Transactional
+    public void deleteSpace(CurrentUser currentUser, UUID spaceId) {
+        KnowledgeBaseSpaceSummary space = requireManage(currentUser, spaceId);
+        knowledgeBaseSpaceRepository.deleteSpace(currentUser.workspaceId(), space.id(), currentUser.id());
+        auditService.log(currentUser, "knowledge_base.deleted", "knowledge_base", space.id(), Map.of(
+            "rootItemId", space.rootItemId().toString()
+        ));
+    }
+
     private KnowledgeBaseHealthMetrics healthMetrics(List<KnowledgeBaseItem> knowledge_base_items, List<KnowledgeBaseGovernanceRisk> risks) {
         BlockGovernanceStats blockStats = blockGovernanceStats(knowledge_base_items);
         long itemCount = knowledge_base_items.stream().filter(document -> "markdown".equals(document.contentType())).count();

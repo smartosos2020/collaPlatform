@@ -235,10 +235,8 @@ test('@smoke @kb-product-m9 editor interactions remain contextual, durable and a
     await page.keyboard.down('Shift')
     for (let index = 0; index < 5; index += 1) await page.keyboard.press('ArrowRight')
     await page.keyboard.up('Shift')
-    await Promise.all([
-      page.waitForEvent('dialog').then((dialog) => dialog.accept('https://example.com/m9-link')),
-      selectionToolbar.getByRole('button', { name: '链接' }).click(),
-    ])
+    page.once('dialog', (dialog) => void dialog.accept('https://example.com/m9-link'))
+    await selectionToolbar.getByRole('button', { name: '链接' }).click()
     await expect(alpha.locator('a')).toHaveAttribute('href', 'https://example.com/m9-link')
 
     await appendParagraph(editor)

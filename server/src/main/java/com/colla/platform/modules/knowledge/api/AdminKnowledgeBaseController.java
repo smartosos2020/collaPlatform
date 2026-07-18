@@ -85,8 +85,8 @@ public class AdminKnowledgeBaseController {
     }
 
     @DeleteMapping("/{spaceId}")
-    public AdminKnowledgeBaseDetailView delete(@PathVariable UUID spaceId, Authentication authentication) {
-        return AdminKnowledgeBaseDtos.detail(knowledgeBaseSpaceService.archiveSpace(currentUser(authentication), spaceId));
+    public void delete(@PathVariable UUID spaceId, Authentication authentication) {
+        knowledgeBaseSpaceService.deleteSpace(currentUser(authentication), spaceId);
     }
 
     @GetMapping("/{spaceId}/governance")

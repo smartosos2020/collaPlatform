@@ -124,7 +124,12 @@ export function createCollaborationServer(options = {}) {
       metrics.loaded(documentName, loaded.updates?.length ?? 0)
       return collaborationLoadUpdate(loaded)
     },
-    async onStoreDocument({ document, documentName, lastContext }) {
+    async onStoreDocument({ instance, document, documentName, lastContext }) {
+      if (instance.documents.get(documentName) !== document) {
+        // The in-memory document was invalidated (or superseded) after this store was debounced;
+        // persisting it would resurrect stale content over the canonical REST state.
+        return
+      }
       const context = lastContext ?? lastContexts.get(documentName)
       if (!context?.ticket) return
       try {
@@ -171,6 +176,35 @@ export function createCollaborationServer(options = {}) {
         }
         throw undefined
       }
+      if (url.pathname === '/internal/invalidate') {
+        const supplied = request.headers['x-colla-collaboration-secret']
+        if (supplied !== config.internalSecret) {
+          response.writeHead(401, { 'content-type': 'application/json' })
+          response.end(JSON.stringify({ code: 'COLLAB_INTERNAL_UNAUTHORIZED' }))
+          throw undefined
+        }
+        if (request.method !== 'POST') {
+          response.writeHead(405, { 'content-type': 'application/json' })
+          response.end(JSON.stringify({ code: 'COLLAB_METHOD_NOT_ALLOWED' }))
+          throw undefined
+        }
+        let documentName
+        try {
+          documentName = JSON.parse(await readRequestBody(request))?.documentName
+          parseDocumentName(documentName)
+        } catch {
+          documentName = null
+        }
+        if (!documentName) {
+          response.writeHead(400, { 'content-type': 'application/json' })
+          response.end(JSON.stringify({ code: 'COLLAB_INVALID_DOCUMENT' }))
+          throw undefined
+        }
+        const invalidated = await invalidateDocument(instance, documentName)
+        response.writeHead(200, { 'content-type': 'application/json' })
+        response.end(JSON.stringify({ invalidated, documentName }))
+        throw undefined
+      }
     },
     async afterUnloadDocument({ documentName }) {
       lastContexts.delete(documentName)
@@ -196,6 +230,43 @@ export function collaborationLoadUpdate(loaded) {
   const title = ydoc.getText('title')
   if (title.length === 0 && loaded.title) title.insert(0, loaded.title)
   return mergeDocumentUpdates(Y.encodeStateAsUpdate(ydoc), pending)
+}
+
+async function invalidateDocument(instance, documentName) {
+  const document = instance.documents.get(documentName)
+  if (!document) return false
+  for (const connection of document.getConnections()) {
+    try {
+      // Close the underlying socket as well: the provider only re-subscribes (and therefore
+      // reloads the document fresh from the backend) after a websocket-level reconnect.
+      connection.close({ reason: 'Document invalidated' })
+      connection.webSocket?.close(1012, 'Document invalidated')
+    } catch {
+      // The connection may already be closing; invalidation continues regardless.
+    }
+  }
+  instance.documents.delete(documentName)
+  document.destroy()
+  await instance.hooks('afterUnloadDocument', { instance, documentName })
+  return true
+}
+
+function readRequestBody(request, limit = 16 * 1024) {
+  return new Promise((resolve, reject) => {
+    const chunks = []
+    let received = 0
+    request.on('data', (chunk) => {
+      received += chunk.length
+      if (received > limit) {
+        reject(new Error('request body too large'))
+        request.destroy()
+        return
+      }
+      chunks.push(chunk)
+    })
+    request.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')))
+    request.on('error', reject)
+  })
 }
 
 function createRedisExtension(config, metrics) {

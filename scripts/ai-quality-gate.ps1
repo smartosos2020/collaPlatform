@@ -288,14 +288,22 @@ function Test-CoreClosureCriterion {
 }
 
 function Get-ComposeServices {
-    $output = docker compose ps --format json
+    # Use plain text format to avoid Windows console encoding issues with --format json.
+    $output = docker compose ps --format "table {{.Service}}\t{{.State}}\t{{.Health}}" 2>$null
     if ($LASTEXITCODE -ne 0) {
         throw "docker compose ps failed with code $LASTEXITCODE"
     }
     if (-not $output) {
         return @()
     }
-    return @($output | ConvertFrom-Json)
+    return @($output | Select-Object -Skip 1 | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | ForEach-Object {
+        $parts = $_ -split '\s+', 3
+        [pscustomobject]@{
+            Service = $parts[0]
+            State = $parts[1]
+            Health = if ($parts.Count -gt 2) { $parts[2] } else { "" }
+        }
+    })
 }
 
 function Wait-DockerServicesHealthy {
