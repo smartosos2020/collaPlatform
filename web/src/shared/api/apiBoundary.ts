@@ -32,6 +32,15 @@ export const apiBoundaryRules: ApiBoundaryRule[] = [
     migrationAction: 'keep',
   },
   {
+    prefix: '/project-spaces',
+    boundary: 'user-collaboration',
+    owner: 'projectSpaces',
+    dtoRule: 'UserProjectSpace*, ProjectSpaceMember* and ProjectSpaceInvitation* collaboration views',
+    permissionRule: 'space visibility plus explicit owner/admin/member/guest membership capabilities',
+    errorRule: 'hide inaccessible spaces and explain disabled, archived, last-owner and invitation conflicts',
+    migrationAction: 'keep',
+  },
+  {
     prefix: '/projects',
     boundary: 'user-collaboration',
     owner: 'projects',
@@ -102,6 +111,15 @@ export const apiBoundaryRules: ApiBoundaryRule[] = [
     permissionRule: 'result must be filtered by current user visibility',
     errorRule: 'focus on no results or object unavailable',
     migrationAction: 'wrap-facade',
+  },
+  {
+    prefix: '/admin/project-spaces',
+    boundary: 'admin-governance',
+    owner: 'admin',
+    dtoRule: 'AdminProjectSpace* governance views without collaboration content payloads',
+    permissionRule: 'project.manage permits governance only; content access still requires project-space membership',
+    errorRule: 'explain governance/content separation and lifecycle conflicts',
+    migrationAction: 'keep',
   },
   {
     prefix: '/admin/application-governance',

@@ -1,0 +1,299 @@
+package com.colla.platform.modules.project.application;
+
+import com.colla.platform.modules.audit.application.AuditService;
+import com.colla.platform.modules.permission.application.PermissionService;
+import com.colla.platform.modules.platform.infrastructure.PlatformObjectRepository;
+import com.colla.platform.modules.project.domain.ProjectSpaceModels.ProjectSpaceStatus;
+import com.colla.platform.modules.project.domain.ProjectSpaceModels.ProjectSpaceSummary;
+import com.colla.platform.modules.project.domain.ProjectSpaceModels.ProjectSpaceVisibility;
+import com.colla.platform.modules.project.infrastructure.ProjectSpaceRepository;
+import com.colla.platform.shared.auth.CurrentUser;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.UUID;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
+
+@Service
+public class ProjectSpaceService {
+    private static final int MAX_GOVERNANCE_PAGE_SIZE = 200;
+
+    private final ProjectSpaceRepository projectSpaceRepository;
+    private final PlatformObjectRepository platformObjectRepository;
+    private final PermissionService permissionService;
+    private final AuditService auditService;
+
+    public ProjectSpaceService(
+        ProjectSpaceRepository projectSpaceRepository,
+        PlatformObjectRepository platformObjectRepository,
+        PermissionService permissionService,
+        AuditService auditService
+    ) {
+        this.projectSpaceRepository = projectSpaceRepository;
+        this.platformObjectRepository = platformObjectRepository;
+        this.permissionService = permissionService;
+        this.auditService = auditService;
+    }
+
+    public List<ProjectSpaceSummary> listVisible(CurrentUser currentUser) {
+        return projectSpaceRepository.listVisible(currentUser.workspaceId(), currentUser.id());
+    }
+
+    public ProjectSpaceSummary getVisible(CurrentUser currentUser, UUID spaceId) {
+        ProjectSpaceSummary space = requireSpace(currentUser, spaceId);
+        if (!space.isMember() && ("private".equals(space.visibility()) || "archived".equals(space.status()))) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Project space not found");
+        }
+        return space;
+    }
+
+    @Transactional
+    public ProjectSpaceSummary create(
+        CurrentUser currentUser,
+        String spaceKey,
+        String name,
+        String description,
+        String visibility
+    ) {
+        permissionService.requireCreateProjects(currentUser);
+        String normalizedName = normalizeName(name);
+        String normalizedKey = normalizeKey(spaceKey, normalizedName);
+        String normalizedDescription = normalizeDescription(description);
+        String normalizedVisibility = visibility(visibility);
+        UUID spaceId;
+        try {
+            spaceId = projectSpaceRepository.createSpaceWithOwner(
+                currentUser.workspaceId(),
+                normalizedKey,
+                normalizedName,
+                normalizedDescription,
+                normalizedVisibility,
+                currentUser.id()
+            );
+        } catch (DataIntegrityViolationException exception) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Project space key already exists", exception);
+        }
+        ProjectSpaceSummary created = requireSpace(currentUser, spaceId);
+        registerObject(created);
+        auditService.log(currentUser, "project_space.created", "project_space", spaceId, Map.of(
+            "spaceKey", created.spaceKey(),
+            "status", created.status(),
+            "visibility", created.visibility(),
+            "ownerId", currentUser.id().toString()
+        ));
+        return created;
+    }
+
+    public ProjectSpaceSummary getSettings(CurrentUser currentUser, UUID spaceId) {
+        ProjectSpaceSummary space = requireSpace(currentUser, spaceId);
+        requireSpaceManager(space);
+        return space;
+    }
+
+    @Transactional
+    public ProjectSpaceSummary updateSettings(
+        CurrentUser currentUser,
+        UUID spaceId,
+        String name,
+        String description,
+        String visibility
+    ) {
+        ProjectSpaceSummary before = getSettings(currentUser, spaceId);
+        if (ProjectSpaceStatus.archived.name().equals(before.status())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Archived project spaces must be restored before editing");
+        }
+        String nextName = normalizeName(name);
+        String nextDescription = normalizeDescription(description);
+        String nextVisibility = visibility(visibility);
+        try {
+            projectSpaceRepository.updateSpace(
+                currentUser.workspaceId(), spaceId, nextName, nextDescription, nextVisibility, currentUser.id()
+            );
+        } catch (DataIntegrityViolationException exception) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Project space update conflicts with current state", exception);
+        }
+        ProjectSpaceSummary after = requireSpace(currentUser, spaceId);
+        registerObject(after);
+        auditService.log(currentUser, "project_space.updated", "project_space", spaceId, changedMetadata(before, after, "space_settings"));
+        return after;
+    }
+
+    @Transactional
+    public ProjectSpaceSummary transitionSettings(CurrentUser currentUser, UUID spaceId, String targetStatus) {
+        ProjectSpaceSummary before = getSettings(currentUser, spaceId);
+        return transition(currentUser, before, targetStatus, "space_settings");
+    }
+
+    public List<ProjectSpaceSummary> listGovernance(
+        CurrentUser currentUser,
+        String status,
+        String visibility,
+        boolean includeArchived,
+        int limit,
+        int offset
+    ) {
+        permissionService.requireManageProjects(currentUser);
+        String normalizedStatus = optionalStatus(status);
+        String normalizedVisibility = optionalVisibility(visibility);
+        int safeLimit = Math.max(1, Math.min(limit, MAX_GOVERNANCE_PAGE_SIZE));
+        int safeOffset = Math.max(0, offset);
+        return projectSpaceRepository.listGovernance(
+            currentUser.workspaceId(), currentUser.id(), normalizedStatus, normalizedVisibility,
+            includeArchived, safeLimit, safeOffset
+        );
+    }
+
+    public ProjectSpaceSummary getGovernance(CurrentUser currentUser, UUID spaceId) {
+        permissionService.requireManageProjects(currentUser);
+        return requireSpace(currentUser, spaceId);
+    }
+
+    @Transactional
+    public ProjectSpaceSummary transitionGovernance(CurrentUser currentUser, UUID spaceId, String targetStatus) {
+        ProjectSpaceSummary before = getGovernance(currentUser, spaceId);
+        return transition(currentUser, before, targetStatus, "enterprise_governance");
+    }
+
+    public boolean hasContentAccess(ProjectSpaceSummary space) {
+        return space.isMember();
+    }
+
+    private ProjectSpaceSummary transition(CurrentUser currentUser, ProjectSpaceSummary before, String targetStatus, String source) {
+        ProjectSpaceStatus current = ProjectSpaceStatus.parse(before.status());
+        ProjectSpaceStatus target;
+        try {
+            target = ProjectSpaceStatus.parse(targetStatus);
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage(), exception);
+        }
+        if (!current.canTransitionTo(target)) {
+            throw new ResponseStatusException(
+                HttpStatus.CONFLICT,
+                "Project space cannot transition from " + current + " to " + target
+            );
+        }
+        if (current == target) {
+            return before;
+        }
+        projectSpaceRepository.transitionSpace(currentUser.workspaceId(), before.id(), target.name(), currentUser.id());
+        ProjectSpaceSummary after = requireSpace(currentUser, before.id());
+        registerObject(after);
+        auditService.log(
+            currentUser,
+            "project_space." + transitionAction(target),
+            "project_space",
+            before.id(),
+            changedMetadata(before, after, source)
+        );
+        return after;
+    }
+
+    private String transitionAction(ProjectSpaceStatus target) {
+        return switch (target) {
+            case active -> "restored";
+            case disabled -> "disabled";
+            case archived -> "archived";
+        };
+    }
+
+    private ProjectSpaceSummary requireSpace(CurrentUser currentUser, UUID spaceId) {
+        return projectSpaceRepository.findById(currentUser.workspaceId(), spaceId, currentUser.id())
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Project space not found"));
+    }
+
+    private void requireSpaceManager(ProjectSpaceSummary space) {
+        if (!space.canManage()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Project space owner or admin role required");
+        }
+    }
+
+    private void registerObject(ProjectSpaceSummary space) {
+        platformObjectRepository.upsertObjectLink(
+            space.workspaceId(),
+            "project_space",
+            space.id(),
+            "/project-spaces/" + space.id(),
+            "colla://project-space/" + space.id(),
+            space.name()
+        );
+    }
+
+    private Map<String, Object> changedMetadata(ProjectSpaceSummary before, ProjectSpaceSummary after, String source) {
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("source", source);
+        metadata.put("previousStatus", before.status());
+        metadata.put("currentStatus", after.status());
+        metadata.put("previousVisibility", before.visibility());
+        metadata.put("currentVisibility", after.visibility());
+        metadata.put("previousName", before.name());
+        metadata.put("currentName", after.name());
+        metadata.put("previousVersion", before.version());
+        metadata.put("currentVersion", after.version());
+        return metadata;
+    }
+
+    private String normalizeName(String value) {
+        String normalized = value == null ? "" : value.trim();
+        if (normalized.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Project space name is required");
+        }
+        if (normalized.length() > 128) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Project space name is too long");
+        }
+        return normalized;
+    }
+
+    private String normalizeKey(String value, String name) {
+        String normalized = value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
+        if (normalized.isEmpty()) {
+            normalized = name.toLowerCase(Locale.ROOT)
+                .replaceAll("[^a-z0-9]+", "-")
+                .replaceAll("^-+|-+$", "");
+            if (normalized.isEmpty()) {
+                normalized = "space";
+            }
+            normalized = normalized.substring(0, Math.min(normalized.length(), 48))
+                + "-" + UUID.randomUUID().toString().substring(0, 8);
+        }
+        if (normalized.length() > 64 || !normalized.matches("[a-z0-9][a-z0-9-]*")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Project space key must use lowercase letters, numbers, and hyphens");
+        }
+        return normalized;
+    }
+
+    private String normalizeDescription(String value) {
+        String normalized = value == null ? "" : value.trim();
+        if (normalized.length() > 2000) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Project space description is too long");
+        }
+        return normalized;
+    }
+
+    private String visibility(String value) {
+        try {
+            return ProjectSpaceVisibility.parse(value == null || value.isBlank() ? "private" : value).value();
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage(), exception);
+        }
+    }
+
+    private String optionalVisibility(String value) {
+        return value == null || value.isBlank() ? "" : visibility(value);
+    }
+
+    private String optionalStatus(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        try {
+            return ProjectSpaceStatus.parse(value).name();
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage(), exception);
+        }
+    }
+}

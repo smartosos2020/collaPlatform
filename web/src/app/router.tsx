@@ -35,6 +35,10 @@ const AdminApplicationGovernancePage = lazyRoute(
   () => import('../modules/admin/pages/AdminApplicationGovernancePage'),
   'AdminApplicationGovernancePage',
 )
+const AdminProjectSpacesPage = lazyRoute(
+  () => import('../modules/admin/pages/AdminProjectSpacesPage'),
+  'AdminProjectSpacesPage',
+)
 const AdminSystemSettingsPage = lazyRoute(
   () => import('../modules/admin/pages/AdminSystemSettingsPage'),
   'AdminSystemSettingsPage',
@@ -67,6 +71,7 @@ const NotificationsPage = lazyRoute(
   'NotificationsPage',
 )
 const ProjectsPage = lazyRoute(() => import('../modules/projects/pages/ProjectsPage'), 'ProjectsPage')
+const ProjectSpacesPage = lazyRoute(() => import('../modules/projectSpaces/pages/ProjectSpacesPage'), 'ProjectSpacesPage')
 const SearchPage = lazyRoute(() => import('../modules/search/pages/SearchPage'), 'SearchPage')
 const UserSettingsPage = lazyRoute(() => import('../modules/auth/pages/UserSettingsPage'), 'UserSettingsPage')
 const AppErrorPage = lazyRoute(() => import('../shared/components/AppErrorPage'), 'AppErrorPage')
@@ -116,6 +121,8 @@ export const router = createBrowserRouter([
           { path: 'permission-governance', element: routeElement(<AdminPermissionGovernancePage />) },
           { path: 'knowledge-bases', element: routeElement(<AdminKnowledgeBasesPage />) },
           { path: 'app-governance', element: routeElement(<AdminApplicationGovernancePage />) },
+          { path: 'project-spaces', element: routeElement(<AdminProjectSpacesPage />) },
+          { path: 'project-spaces/:spaceId', element: routeElement(<AdminProjectSpacesPage />) },
           { path: 'system-settings', element: routeElement(<AdminSystemSettingsPage />) },
           { path: 'security', element: routeElement(<AdminSecurityPage />) },
           { path: 'batch-governance', element: routeElement(<AdminBatchGovernancePage />) },
@@ -132,6 +139,10 @@ export const router = createBrowserRouter([
           { path: 'projects', element: routeElement(<ProjectsPage />) },
           { path: 'projects/:projectId', element: routeElement(<ProjectsPage />) },
           { path: 'issues/:issueId', element: routeElement(<ProjectsPage />) },
+          { path: 'project-spaces', element: routeElement(<ProjectSpacesPage />) },
+          { path: 'project-spaces/:spaceId', element: routeElement(<ProjectSpacesPage />) },
+          { path: 'project-spaces/:spaceId/members', element: routeElement(<ProjectSpacesPage />) },
+          { path: 'project-spaces/:spaceId/settings', element: routeElement(<ProjectSpacesPage />) },
           { path: 'knowledge-bases', element: routeElement(<KnowledgeBasesPage />) },
           { path: 'knowledge-bases/:spaceId', element: routeElement(<KnowledgeBaseSpaceRoute />) },
           { path: 'knowledge-bases/:spaceId/items/:itemId', element: routeElement(<KnowledgeContentPage />) },

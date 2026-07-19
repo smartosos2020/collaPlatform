@@ -9,6 +9,8 @@ const deepLinkWebPrefixes: Record<string, (objectId: string) => string> = {
   base: (objectId) => `/bases/${objectId}`,
   knowledge_content: () => '/knowledge-bases',
   issue: (objectId) => `/issues/${objectId}`,
+  project_space: (objectId) => `/project-spaces/${objectId}`,
+  'project-space': (objectId) => `/project-spaces/${objectId}`,
 }
 
 export function resolveNavigationPath(target: NavigationTarget) {
