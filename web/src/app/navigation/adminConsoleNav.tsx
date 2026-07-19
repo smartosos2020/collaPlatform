@@ -5,6 +5,7 @@ import {
   DashboardOutlined,
   FileSearchOutlined,
   PartitionOutlined,
+  ProjectOutlined,
   SafetyCertificateOutlined,
   SecurityScanOutlined,
   SettingOutlined,
@@ -108,6 +109,13 @@ export const adminPages: AdminPageNavEntry[] = [
     section: '系统设置',
     description: '系统级基础配置和运行参数查看',
   },
+  {
+    key: '/admin/project-spaces',
+    icon: <ProjectOutlined />,
+    label: '项目空间治理',
+    section: '应用配置',
+    description: '项目空间状态、风险边界和审计入口，不承载成员协作内容',
+  },
 ]
 
 export const groupedAdminNavItems: MenuProps['items'] = [
@@ -129,7 +137,7 @@ export const groupedAdminNavItems: MenuProps['items'] = [
   {
     type: 'group',
     label: '应用配置',
-    children: [adminPages[10], { key: '/admin/app-config', icon: <AppstoreOutlined />, label: '配置中心', disabled: true }],
+    children: [adminPages[10], adminPages[12], { key: '/admin/app-config', icon: <AppstoreOutlined />, label: '配置中心', disabled: true }],
   },
   {
     type: 'group',

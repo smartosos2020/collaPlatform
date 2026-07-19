@@ -8,8 +8,8 @@ public final class RequestBoundaryContext {
     private RequestBoundaryContext() {
     }
 
-    public static void bind(HttpServletRequest request) {
-        CURRENT.set(RequestBoundary.from(request));
+    public static void bind(HttpServletRequest request, String requestId) {
+        CURRENT.set(RequestBoundary.from(request, requestId));
     }
 
     public static RequestBoundary current() {
@@ -21,17 +21,17 @@ public final class RequestBoundaryContext {
         CURRENT.remove();
     }
 
-    public record RequestBoundary(String sourceUi, String apiSurface, String client, String requestPath) {
-        static RequestBoundary from(HttpServletRequest request) {
+    public record RequestBoundary(String sourceUi, String apiSurface, String client, String requestPath, String requestId) {
+        static RequestBoundary from(HttpServletRequest request, String requestId) {
             String path = request.getRequestURI();
             String client = clean(request.getHeader("X-Colla-Client"));
             String explicitUi = normalizeSourceUi(request.getHeader("X-Colla-Ui"));
             String sourceUi = explicitUi == null ? inferSourceUi(path, client) : explicitUi;
-            return new RequestBoundary(sourceUi, inferApiSurface(path), client == null ? "api" : client, path);
+            return new RequestBoundary(sourceUi, inferApiSurface(path), client == null ? "api" : client, path, requestId);
         }
 
         static RequestBoundary systemTask() {
-            return new RequestBoundary("system_task", "system", "system", "");
+            return new RequestBoundary("system_task", "system", "system", "", "system");
         }
 
         private static String inferSourceUi(String path, String client) {

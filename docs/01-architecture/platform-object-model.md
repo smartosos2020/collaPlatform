@@ -154,6 +154,16 @@ IM 消息发送时会扫描文本中的内部链接，解析后写入 `message_l
 - project 当前可用于对象选择、关系和规范导航，但搜索索引只覆盖 issue，尚未召回 project。
 - 项目没有归档/删除 API，因此对象链接的完整生命周期同步尚未形成。
 
+## 项目空间对象摘要
+
+`ProjectSpacePlatformObjectResolver` 以 `project_space` 作为独立 objectType，并严格区分空间治理权和空间内容访问权：
+
+- 有效空间成员可解析私有空间；非成员只能解析 `active` 的 `discoverable/workspace` 空间。
+- 企业 `project.manage` 不会绕过 resolver 的成员与可见性判断，私有空间对非成员返回 `forbidden` 且不泄露名称。
+- 可访问空间返回名称、空间编号副标题、生命周期状态、`/project-spaces/{id}` 和 `colla://project-space/{id}`。
+- 已归档空间返回 `deleted`；停用空间保留可解释状态，由业务入口决定只读/治理动作。
+- V056 注册 `project_space` 并建立对象链接；S02-M3 才提供对应用户页面和管理后台页面，当前深链尚无生产 UI 落点。
+
 ## 事项对象摘要
 
 事项 resolver 读取当前用户的项目成员关系后返回摘要：

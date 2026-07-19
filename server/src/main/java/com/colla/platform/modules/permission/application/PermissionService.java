@@ -45,6 +45,14 @@ public class PermissionService {
         return user.hasRole("admin") || user.hasPermission("permission.inspect") || canViewRoles(user);
     }
 
+    public boolean canCreateProjects(CurrentUser user) {
+        return user.hasRole("admin") || user.hasPermission("project.create");
+    }
+
+    public boolean canManageProjects(CurrentUser user) {
+        return user.hasRole("admin") || user.hasPermission("project.manage");
+    }
+
     public void requireManageUsers(CurrentUser user) {
         if (!canManageUsers(user)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "User management permission required");
@@ -90,6 +98,18 @@ public class PermissionService {
     public void requireInspectPermissions(CurrentUser user) {
         if (!canInspectPermissions(user)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Permission inspect permission required");
+        }
+    }
+
+    public void requireCreateProjects(CurrentUser user) {
+        if (!canCreateProjects(user)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Project creation permission required");
+        }
+    }
+
+    public void requireManageProjects(CurrentUser user) {
+        if (!canManageProjects(user)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Project governance permission required");
         }
     }
 

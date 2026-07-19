@@ -4,6 +4,7 @@ import com.colla.platform.modules.audit.application.AuditService;
 import com.colla.platform.modules.identity.domain.AuthModels.MemberSummary;
 import com.colla.platform.modules.identity.infrastructure.IdentityRepository;
 import com.colla.platform.modules.permission.application.PermissionService;
+import com.colla.platform.modules.project.application.ProjectSpaceMembershipService;
 import com.colla.platform.shared.auth.CurrentUser;
 import com.colla.platform.shared.auth.PasswordPolicy;
 import com.colla.platform.shared.auth.PasswordHasher;
@@ -25,6 +26,7 @@ public class MemberService {
     private final AuditService auditService;
     private final OrganizationService organizationService;
     private final JdbcTemplate jdbcTemplate;
+    private final ProjectSpaceMembershipService projectSpaceMembershipService;
 
     public MemberService(
         IdentityRepository identityRepository,
@@ -33,7 +35,8 @@ public class MemberService {
         PasswordPolicy passwordPolicy,
         AuditService auditService,
         OrganizationService organizationService,
-        JdbcTemplate jdbcTemplate
+        JdbcTemplate jdbcTemplate,
+        ProjectSpaceMembershipService projectSpaceMembershipService
     ) {
         this.identityRepository = identityRepository;
         this.permissionService = permissionService;
@@ -42,6 +45,7 @@ public class MemberService {
         this.auditService = auditService;
         this.organizationService = organizationService;
         this.jdbcTemplate = jdbcTemplate;
+        this.projectSpaceMembershipService = projectSpaceMembershipService;
     }
 
     public List<MemberSummary> listMembers(CurrentUser operator, UUID departmentId) {
@@ -95,6 +99,7 @@ public class MemberService {
         if (operator.id().equals(userId)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Cannot disable current user");
         }
+        projectSpaceMembershipService.requireCanDeactivateUser(operator.workspaceId(), userId);
         identityRepository.updateUserStatus(operator.workspaceId(), userId, "disabled", operator.id());
         auditService.log(operator, "user.disabled", "user", userId, Map.of());
     }
@@ -131,11 +136,15 @@ public class MemberService {
                 """,
             handoverToUserId, operator.workspaceId(), userId
         );
+        int projectSpaceCount = projectSpaceMembershipService.handoverSoleOwnerSpaces(
+            operator, userId, handoverToUserId
+        );
         identityRepository.updateUserStatus(operator.workspaceId(), userId, "disabled", operator.id());
         auditService.log(operator, "user.offboarded", "user", userId, Map.of(
             "handoverToUserId", handoverToUserId.toString(),
             "knowledgeBaseCount", knowledgeBaseCount,
-            "conversationCount", conversationCount
+            "conversationCount", conversationCount,
+            "projectSpaceCount", projectSpaceCount
         ));
         return new OffboardingResult(knowledgeBaseCount, conversationCount);
     }

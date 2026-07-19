@@ -10,7 +10,7 @@ export type FrontendModuleBoundary = {
 export const frontendModuleBoundaries: FrontendModuleBoundary[] = [
   {
     boundary: 'user-workspace',
-    modules: ['dashboard', 'messenger', 'projects', 'knowledgeBases', 'docs', 'bases', 'approvals', 'notifications', 'search', 'devices'],
+    modules: ['dashboard', 'messenger', 'projectSpaces', 'projects', 'knowledgeBases', 'docs', 'bases', 'approvals', 'notifications', 'search', 'devices'],
     owns: ['content consumption', 'collaboration actions', 'personal work state', 'object links'],
     mustNotOwn: ['organization governance', 'permission inspection', 'audit log review', 'global admin configuration'],
   },

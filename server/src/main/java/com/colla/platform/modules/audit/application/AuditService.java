@@ -87,6 +87,9 @@ public class AuditService {
         if (boundary.requestPath() != null && !boundary.requestPath().isBlank()) {
             enriched.putIfAbsent("requestPath", boundary.requestPath());
         }
+        if (boundary.requestId() != null && !boundary.requestId().isBlank()) {
+            enriched.putIfAbsent("requestId", boundary.requestId());
+        }
         return enriched;
     }
 }

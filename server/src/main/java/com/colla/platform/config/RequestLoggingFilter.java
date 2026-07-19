@@ -28,7 +28,7 @@ public class RequestLoggingFilter extends OncePerRequestFilter {
         response.setHeader(REQUEST_ID_HEADER, requestId);
 
         try {
-            RequestBoundaryContext.bind(request);
+            RequestBoundaryContext.bind(request, requestId);
             filterChain.doFilter(request, response);
         } finally {
             long durationMs = (System.nanoTime() - startedAt) / 1_000_000;

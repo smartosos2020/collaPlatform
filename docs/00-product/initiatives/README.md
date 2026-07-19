@@ -11,7 +11,7 @@ tracked_paused_programs: KB-PRODUCT
 
 | Program | Status | Current Stage | Remaining Commitment | Source |
 | --- | --- | --- | --- | --- |
-| PROJECT-PLATFORM | Active | none | S01 已完成；归档当前路线后激活 S02 项目空间、成员和空间治理 | `project-platform-program.md` |
+| PROJECT-PLATFORM | Active | PROJECT-PLATFORM-S02 | S02 正在建设项目空间、成员、空间治理和 legacy 映射；完成后评审 S03 准入 | `project-platform-program.md` |
 | KB-PRODUCT | Paused | none | KB-PRODUCT-M12-T06 至 T10：真实参与者试用、反馈、复验和 Go/No-Go | `../../99-archive/superseded-roadmaps/kb-product-roadmap-paused-2026-07-18.md` |
 
 规则：
