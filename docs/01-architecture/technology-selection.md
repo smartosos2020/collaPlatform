@@ -1,7 +1,7 @@
 ---
 title: 当前技术选型
 status: active
-last_code_check: 2026-07-19
+last_code_check: 2026-07-22
 ---
 
 # 当前技术选型
@@ -18,11 +18,13 @@ last_code_check: 2026-07-19
 | WebSocket | Spring WebSocket | `spring-boot-starter-websocket`, `/ws/events` |
 | 安全 | Spring Security + JWT | `SecurityConfig`, `JwtTokenService` |
 | 数据库 | PostgreSQL 16 | `docker-compose.yml`, Flyway migrations |
-| 数据库迁移 | Flyway | `server/src/main/resources/db/migration/V001...V060` |
+| 数据库迁移 | Flyway | `server/src/main/resources/db/migration/V001...V063` |
 | Redis | Redis 7 | `docker-compose.yml`, Spring Data Redis, collaboration Redis extension |
 | 对象存储 | MinIO | `docker-compose.yml`, `minio` dependency |
 | OpenAPI | springdoc-openapi | `springdoc-openapi-starter-webmvc-ui` |
 | 测试 | JUnit 5、Spring Boot Test、Spring Security Test、Testcontainers PostgreSQL | `server/pom.xml`, `server/src/test/java`, `application-test.yml` |
+
+S03 类型配置使用 PostgreSQL 关系约束承载 workspace/space 归属、唯一键和生命周期，配置骨架使用规范 JSONB + SHA-256 hash。published/superseded 不可变与系统预置保护由数据库触发器作为最终防线；Java 领域服务负责可操作错误、幂等、审计/outbox 和乐观并发。S04 动态字段继续沿用“规范 JSONB + capability typed projection”决策，不采用按字段动态建列，也不在 S07 前创建工作项实例存储。
 
 ## 前端 Web
 
