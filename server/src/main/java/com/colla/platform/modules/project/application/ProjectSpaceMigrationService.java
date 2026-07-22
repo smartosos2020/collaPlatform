@@ -100,6 +100,7 @@ public class ProjectSpaceMigrationService {
     private final PlatformObjectRepository platformObjectRepository;
     private final PermissionService permissionService;
     private final AuditService auditService;
+    private final WorkItemTypePresetReconciliationService presetReconciliationService;
     private final TransactionTemplate lockTemplate;
     private final TransactionTemplate readSnapshotTemplate;
     private final TransactionTemplate unitTemplate;
@@ -115,6 +116,7 @@ public class ProjectSpaceMigrationService {
         PlatformObjectRepository platformObjectRepository,
         PermissionService permissionService,
         AuditService auditService,
+        WorkItemTypePresetReconciliationService presetReconciliationService,
         PlatformTransactionManager transactionManager
     ) {
         this.batchRepository = batchRepository;
@@ -127,6 +129,7 @@ public class ProjectSpaceMigrationService {
         this.platformObjectRepository = platformObjectRepository;
         this.permissionService = permissionService;
         this.auditService = auditService;
+        this.presetReconciliationService = presetReconciliationService;
         this.lockTemplate = new TransactionTemplate(transactionManager);
         // REPEATABLE_READ so the mapping plan (multiple SELECTs) and the source fingerprint are
         // read from one consistent database snapshot instead of several READ_COMMITTED snapshots.
@@ -525,6 +528,7 @@ public class ProjectSpaceMigrationService {
             workspaceId, spaceId, projectPlan.resolvedSpaceKey(), projectPlan.projectName(),
             null, "private", actorId
         );
+        presetReconciliationService.reconcile(workspaceId, spaceId, actorId);
         platformObjectRepository.upsertObjectLink(
             workspaceId, "project_space", spaceId,
             "/project-spaces/" + spaceId, "colla://project-space/" + spaceId, projectPlan.projectName()

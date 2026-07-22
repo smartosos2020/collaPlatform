@@ -7,6 +7,7 @@ import {
   ProjectOutlined,
   ReloadOutlined,
   SettingOutlined,
+  TagsOutlined,
   TeamOutlined,
 } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -41,6 +42,8 @@ import {
   type UserProjectSpace,
 } from '../api/projectSpacesApi'
 import { ProjectSpaceMembersPanel } from '../components/ProjectSpaceMembersPanel'
+import { ProjectWorkItemTypesPanel } from '../components/ProjectWorkItemTypesPanel'
+import { listActiveWorkItemTypes, workItemTypeKeys } from '../api/workItemTypesApi'
 import { errorMessage, formatTime, roleLabel, statusLabel, visibilityLabel } from '../projectSpaceView'
 
 type CreateSpaceForm = {
@@ -51,7 +54,7 @@ type CreateSpaceForm = {
 }
 
 type SettingsForm = Pick<CreateSpaceForm, 'name' | 'description' | 'visibility'>
-type SpaceView = 'overview' | 'members' | 'settings'
+type SpaceView = 'overview' | 'members' | 'settings' | 'types'
 
 const recentStorageKey = 'colla.project-spaces.recent'
 
@@ -60,7 +63,7 @@ export function ProjectSpacesPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const queryClient = useQueryClient()
-  const { spaceId } = useParams()
+  const { spaceId, typeId } = useParams()
   const [createOpen, setCreateOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [createForm] = Form.useForm<CreateSpaceForm>()
@@ -165,7 +168,9 @@ export function ProjectSpacesPage() {
             key={spaceQuery.data.id}
             space={spaceQuery.data}
             view={view}
+            selectedTypeId={typeId}
             onNavigate={(target) => navigate(`/project-spaces/${spaceQuery.data.id}${target === 'overview' ? '' : `/${target}`}`)}
+            onSelectType={(selectedId) => navigate(`/project-spaces/${spaceQuery.data.id}/types/${selectedId}`)}
           />
         ) : null}
       </main>
@@ -215,11 +220,15 @@ export function ProjectSpacesPage() {
 function ProjectSpaceShell({
   space,
   view,
+  selectedTypeId,
   onNavigate,
+  onSelectType,
 }: {
   space: UserProjectSpace
   view: SpaceView
+  selectedTypeId?: string
   onNavigate: (view: SpaceView) => void
+  onSelectType: (typeId: string) => void
 }) {
   const canManage = space.currentUserRole === 'owner' || space.currentUserRole === 'admin'
   const readOnly = space.status !== 'active'
@@ -258,11 +267,13 @@ function ProjectSpaceShell({
 
       <nav className="project-space-tabs" aria-label="空间导航">
         <Button aria-label="协作概览" type={view === 'overview' ? 'primary' : 'text'} icon={<AppstoreOutlined />} onClick={() => onNavigate('overview')}>协作概览</Button>
+        {canManage ? <Button aria-label="工作项类型" type={view === 'types' ? 'primary' : 'text'} icon={<TagsOutlined />} onClick={() => onNavigate('types')}>工作项类型</Button> : null}
         {canManage ? <Button aria-label="成员" type={view === 'members' ? 'primary' : 'text'} icon={<TeamOutlined />} onClick={() => onNavigate('members')}>成员</Button> : null}
         {canManage ? <Button aria-label="空间设置" type={view === 'settings' ? 'primary' : 'text'} icon={<SettingOutlined />} onClick={() => onNavigate('settings')}>空间设置</Button> : null}
       </nav>
 
       {view === 'overview' ? <ProjectSpaceOverview space={space} /> : null}
+      {view === 'types' && canManage ? <ProjectWorkItemTypesPanel space={space} selectedTypeId={selectedTypeId} onSelectType={onSelectType} /> : null}
       {view === 'members' && canManage ? <ProjectSpaceMembersPanel space={space} /> : null}
       {view === 'settings' && canManage ? <ProjectSpaceSettingsPanel space={space} /> : null}
       {view !== 'overview' && !canManage ? <Alert type="error" showIcon message="无权访问空间设置" description="成员执行视角不展示成员治理和空间配置。" /> : null}
@@ -271,8 +282,29 @@ function ProjectSpaceShell({
 }
 
 function ProjectSpaceOverview({ space }: { space: UserProjectSpace }) {
+  const typesQuery = useQuery({
+    queryKey: workItemTypeKeys.active(space.id),
+    queryFn: () => listActiveWorkItemTypes(space.id),
+    retry: false,
+  })
+
   return (
     <section className="project-space-overview-grid">
+      <Card className="content-card project-space-active-types" title={<Space><TagsOutlined />可用工作项类型</Space>}>
+        {typesQuery.isLoading ? <Skeleton active paragraph={{ rows: 2 }} /> : null}
+        {typesQuery.isError ? <Alert type="error" showIcon message="工作项类型加载失败" action={<Button size="small" onClick={() => typesQuery.refetch()}>重试</Button>} /> : null}
+        {!typesQuery.isLoading && !typesQuery.isError && typesQuery.data?.length === 0 ? (
+          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前没有可用的工作项类型" />
+        ) : null}
+        <div className="project-space-active-type-list" aria-label="可用工作项类型">
+          {typesQuery.data?.map((type) => (
+            <div className="project-space-active-type" key={type.typeKey}>
+              <span className="work-item-type-glyph" aria-hidden="true">{(type.icon?.trim() || type.name.slice(0, 1)).slice(0, 2)}</span>
+              <span><strong>{type.name}</strong><small>{type.typeKey}</small></span>
+            </div>
+          ))}
+        </div>
+      </Card>
       <Card className="content-card" title="空间动态">
         <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="空间已就绪，事项与流程能力将在后续阶段接入。" />
       </Card>
@@ -375,6 +407,7 @@ function ProjectSpaceLoadError({ error, onBack }: { error: Error; onBack: () => 
 function resolveSpaceView(pathname: string): SpaceView {
   if (pathname.endsWith('/members')) return 'members'
   if (pathname.endsWith('/settings')) return 'settings'
+  if (/\/types(?:\/[^/]+)?$/.test(pathname)) return 'types'
   return 'overview'
 }
 

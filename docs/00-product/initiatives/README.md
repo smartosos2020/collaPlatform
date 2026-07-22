@@ -1,7 +1,7 @@
 ---
 title: 长期专项索引
 status: active
-updated_at: 2026-07-19
+updated_at: 2026-07-22
 tracked_paused_programs: KB-PRODUCT
 ---
 
@@ -11,7 +11,7 @@ tracked_paused_programs: KB-PRODUCT
 
 | Program | Status | Current Stage | Remaining Commitment | Source |
 | --- | --- | --- | --- | --- |
-| PROJECT-PLATFORM | Active | none | S02 项目空间、成员、空间治理和 legacy 映射已完成（含三轮审计补验）并等待归档；归档后激活 S03 工作项类型定义底座，准入包固定在目标架构第 19 节 | `project-platform-program.md` |
+| PROJECT-PLATFORM | Active | none | S03 工作项类型定义底座已完成并通过 S04 准入；当前路线等待归档，归档后再激活 S04 | `project-platform-program.md` |
 | KB-PRODUCT | Paused | none | KB-PRODUCT-M12-T06 至 T10：真实参与者试用、反馈、复验和 Go/No-Go | `../../99-archive/superseded-roadmaps/kb-product-roadmap-paused-2026-07-18.md` |
 
 规则：

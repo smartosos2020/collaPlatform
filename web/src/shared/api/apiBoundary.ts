@@ -35,7 +35,7 @@ export const apiBoundaryRules: ApiBoundaryRule[] = [
     prefix: '/project-spaces',
     boundary: 'user-collaboration',
     owner: 'projectSpaces',
-    dtoRule: 'UserProjectSpace*, ProjectSpaceMember* and ProjectSpaceInvitation* collaboration views',
+    dtoRule: 'UserProjectSpace*, ProjectSpaceMember*, ProjectSpaceInvitation*, WorkItemTypeConfiguration and ActiveWorkItemTypeSummary collaboration views',
     permissionRule: 'space visibility plus explicit owner/admin/member/guest membership capabilities',
     errorRule: 'hide inaccessible spaces and explain disabled, archived, last-owner and invitation conflicts',
     migrationAction: 'keep',

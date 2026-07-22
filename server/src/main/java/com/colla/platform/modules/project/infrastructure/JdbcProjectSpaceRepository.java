@@ -123,6 +123,17 @@ public class JdbcProjectSpaceRepository implements ProjectSpaceRepository {
 
     @Override
     public void deleteSpace(UUID workspaceId, UUID spaceId) {
+        jdbcTemplate.execute("set local colla.project_space_cleanup = 'on'");
+        jdbcTemplate.update(
+            "delete from project_work_item_type_versions where workspace_id = ? and space_id = ?",
+            workspaceId,
+            spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_work_item_types where workspace_id = ? and space_id = ?",
+            workspaceId,
+            spaceId
+        );
         jdbcTemplate.update(
             "delete from project_spaces where workspace_id = ? and id = ?",
             workspaceId,

@@ -46,7 +46,9 @@ class ProjectLegacyWriteBoundaryIntegrationTests {
         "project_space_members",
         "project_space_role_assignments",
         "project_legacy_space_maps",
-        "project_space_migration_batches"
+        "project_space_migration_batches",
+        "project_work_item_types",
+        "project_work_item_type_versions"
     );
 
     @Autowired
@@ -101,6 +103,8 @@ class ProjectLegacyWriteBoundaryIntegrationTests {
         assertThat(countRows("project_space_role_assignments", admin.workspaceId())).isEqualTo(2);
         assertThat(countRows("project_legacy_space_maps", admin.workspaceId())).isEqualTo(1);
         assertThat(countRows("project_space_migration_batches", admin.workspaceId())).isEqualTo(1);
+        assertThat(countRows("project_work_item_types", admin.workspaceId())).isEqualTo(6);
+        assertThat(countRows("project_work_item_type_versions", admin.workspaceId())).isEqualTo(6);
         Map<String, String> migrated = newModelHashes(admin.workspaceId());
 
         createProject(token, "WB2B-" + suffix(), "Boundary Post Migration Project", memberB);
@@ -114,6 +118,8 @@ class ProjectLegacyWriteBoundaryIntegrationTests {
         assertThat(countRows("project_space_role_assignments", admin.workspaceId())).isEqualTo(2);
         assertThat(countRows("project_legacy_space_maps", admin.workspaceId())).isEqualTo(1);
         assertThat(countRows("project_space_migration_batches", admin.workspaceId())).isEqualTo(1);
+        assertThat(countRows("project_work_item_types", admin.workspaceId())).isEqualTo(6);
+        assertThat(countRows("project_work_item_type_versions", admin.workspaceId())).isEqualTo(6);
 
         assertThat(countRows("projects", admin.workspaceId())).isEqualTo(2);
         assertThat(countRows("project_members", admin.workspaceId())).isEqualTo(5);

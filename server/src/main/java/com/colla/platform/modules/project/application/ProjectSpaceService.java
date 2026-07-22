@@ -34,6 +34,7 @@ public class ProjectSpaceService {
     private final PlatformObjectRepository platformObjectRepository;
     private final PermissionService permissionService;
     private final AuditService auditService;
+    private final WorkItemTypePresetReconciliationService presetReconciliationService;
 
     public ProjectSpaceService(
         ProjectSpaceRepository projectSpaceRepository,
@@ -41,7 +42,8 @@ public class ProjectSpaceService {
         ProjectLegacySpaceMapRepository legacySpaceMapRepository,
         PlatformObjectRepository platformObjectRepository,
         PermissionService permissionService,
-        AuditService auditService
+        AuditService auditService,
+        WorkItemTypePresetReconciliationService presetReconciliationService
     ) {
         this.projectSpaceRepository = projectSpaceRepository;
         this.projectRepository = projectRepository;
@@ -49,6 +51,7 @@ public class ProjectSpaceService {
         this.platformObjectRepository = platformObjectRepository;
         this.permissionService = permissionService;
         this.auditService = auditService;
+        this.presetReconciliationService = presetReconciliationService;
     }
 
     public List<ProjectSpaceSummary> listVisible(CurrentUser currentUser) {
@@ -89,6 +92,7 @@ public class ProjectSpaceService {
         } catch (DataIntegrityViolationException exception) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Project space key already exists", exception);
         }
+        presetReconciliationService.reconcile(currentUser.workspaceId(), spaceId, currentUser.id());
         ProjectSpaceSummary created = requireSpace(currentUser, spaceId);
         registerObject(created);
         auditService.log(currentUser, "project_space.created", "project_space", spaceId, Map.of(

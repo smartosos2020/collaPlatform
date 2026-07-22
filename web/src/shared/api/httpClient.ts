@@ -1,9 +1,10 @@
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? (import.meta.env.PROD ? '/api' : 'http://localhost:8080/api')
 const API_REQUEST_TIMEOUT_MS = 5_000
 
-type RequestOptions = {
+export type RequestOptions = {
   auth?: boolean
   retry?: boolean
+  requestId?: string
 }
 
 export async function apiGet<T>(path: string): Promise<T> {
@@ -59,10 +60,11 @@ async function apiRequest<T>(
   options: RequestOptions = {},
 ): Promise<T> {
   const attempts = shouldRetry(method, options) ? 3 : 1
+  const requestId = options.requestId ?? (isWriteMethod(method) ? createRequestId() : undefined)
   let lastError: unknown
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     try {
-      return await sendRequest<T>(method, path, body, options, attempt)
+      return await sendRequest<T>(method, path, body, options, attempt, requestId)
     } catch (error) {
       lastError = error
       if (attempt >= attempts - 1 || !isRetryableError(error)) {
@@ -80,6 +82,7 @@ async function sendRequest<T>(
   body: unknown,
   options: RequestOptions,
   attempt: number,
+  requestId?: string,
 ): Promise<T> {
   const accessToken = localStorage.getItem('colla.accessToken')
   const headers = new Headers({
@@ -90,6 +93,10 @@ async function sendRequest<T>(
 
   if (body !== undefined) {
     headers.set('Content-Type', 'application/json')
+  }
+
+  if (requestId) {
+    headers.set('X-Colla-Request-Id', requestId)
   }
 
   if (options.auth !== false && accessToken) {
@@ -118,7 +125,8 @@ async function sendRequest<T>(
   }
 
   if (!response.ok) {
-    throw new ApiRequestError(response.status, await readErrorMessage(response))
+    const error = await readApiError(response)
+    throw new ApiRequestError(response.status, error.message, error.code)
   }
 
   if (response.status === 204) {
@@ -131,34 +139,47 @@ async function sendRequest<T>(
 
 export class ApiRequestError extends Error {
   readonly status: number
+  readonly code?: string
 
-  constructor(status: number, message?: string) {
+  constructor(status: number, message?: string, code?: string) {
     super(message ? `${message} (${status})` : `API request failed: ${status}`)
     this.status = status
+    this.code = code
   }
 }
 
-async function readErrorMessage(response: Response) {
+async function readApiError(response: Response): Promise<{ message: string; code?: string }> {
   const fallback = `API request failed: ${response.status}`
   const text = await response.text().catch(() => '')
   if (!text) {
-    return fallback
+    return { message: fallback }
   }
   try {
     const payload = JSON.parse(text) as {
-      error?: { message?: string }
+      error?: { code?: string; message?: string }
       message?: string
       detail?: string
       title?: string
     }
-    return payload.error?.message ?? payload.message ?? payload.detail ?? payload.title ?? fallback
+    return {
+      code: payload.error?.code,
+      message: payload.error?.message ?? payload.message ?? payload.detail ?? payload.title ?? fallback,
+    }
   } catch {
-    return text
+    return { message: text }
   }
 }
 
 function shouldRetry(method: string, options: RequestOptions) {
   return options.retry !== false && ['GET', 'HEAD'].includes(method.toUpperCase())
+}
+
+function isWriteMethod(method: string) {
+  return ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method.toUpperCase())
+}
+
+function createRequestId() {
+  return globalThis.crypto?.randomUUID?.() ?? `web-${Date.now()}-${Math.random().toString(36).slice(2)}`
 }
 
 function isRetryableError(error: unknown) {

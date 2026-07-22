@@ -1,7 +1,7 @@
 ---
 title: 平台对象模型
 status: active
-last_code_check: 2026-07-19
+last_code_check: 2026-07-22
 ---
 
 # 平台对象模型
@@ -163,6 +163,12 @@ IM 消息发送时会扫描文本中的内部链接，解析后写入 `message_l
 - 可访问空间返回名称、空间编号副标题、生命周期状态、`/project-spaces/{id}` 和 `colla://project-space/{id}`。
 - 已归档空间返回 `deleted`；停用空间保留可解释状态，由业务入口决定只读/治理动作。
 - V056 注册 `project_space` 并建立对象链接；S02-M3 已交付对应用户页面 `/project-spaces/{id}` 和管理后台页面 `/admin/project-spaces/{id}`，深链已有生产 UI 落点。
+
+### 工作项类型的当前对象边界
+
+S03 的 `WorkItemTypeDefinition` 是 `ProjectSpace` 内的配置定义，不是可独立收藏、搜索、关系化或跨模块嵌入的平台对象，因此当前不注册 `work_item_type` resolver，也不生成独立 deep link。类型配置页始终由 `spaceId + typeId` 定位，并先执行空间成员与角色授权。
+
+统一 `work_item` 平台对象只能在 S07 规范实例落地后注册；届时实例必须显式绑定不可变 `type_version_id`，resolver 才能基于实例、空间成员和版本事实返回摘要。S04 字段定义和 S06 配置版本不得提前伪造实例对象或复用 legacy `issue` resolver。
 
 ## 事项对象摘要
 

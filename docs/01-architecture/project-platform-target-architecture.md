@@ -2,11 +2,11 @@
 title: 项目协作平台目标架构
 status: target
 program: PROJECT-PLATFORM
-program_revision: 9
+program_revision: 11
 domain_contract_version: 1
 domain_contract_status: frozen-s01-m3
 migration_contract_version: 1
-stage_review_status: s02-completed
+stage_review_status: s03-completed
 updated_at: 2026-07-22
 ---
 
@@ -610,3 +610,61 @@ S03 的交付边界是“工作项类型定义底座”：类型 schema、标识
 - 研发预置类型映射只表示“类型定义成为配置”：在空间内启用受保护模板，不产生任何工作项实例，不影响 `/projects`、`/issues` 运行时、平台对象 `project`/`issue` resolver 或 IM 项目群。
 - 兼容约束以负例测试固化：停用/retire 类型不得破坏既有引用（S03 引用集合为空，约束防止后续 Stage 回归）；不得出现第二套 Project 实例表、Controller 或权限引擎（ADR-PP-002）。
 - S03 准入评审时需复核：S04 字段定义挂在类型版本 config 图内的挂载点、S06 草稿/发布流水线的版本边界、S07 实例绑定 `type_version_id` 的合同不被 S03 实现堵死。
+
+### 19.5 S03-M4 已实现的预置安装合同
+
+- 研发预置目录版本为 `development-v1`，顺序为 `project/requirement/task/bug/iteration/release`；目录只携带展示语义，不携带动态字段、布局、流程或角色图。
+- 常规新空间和 legacy 迁移空间在空间创建事务内安装完整目录；既有 active 空间在应用启动后逐空间事务补齐。空间行锁保证并发收敛，已存在系统类型不覆盖，自定义同 key 返回结构化冲突清单。
+- 系统类型来源通过配置 DTO 的 `source=development_preset` 与 `presetCatalogVersion` 解释；企业治理面仍只有状态计数，不获得配置写权限。
+- 数据库保护允许系统类型启停和排序，拒绝改键、覆盖展示定义、retire 与物理删除。legacy 迁移回滚仅通过 transaction-local 仓储清理通道移除整个迁移空间所属定义，不开放为 API 或普通 SQL 能力。
+- 首次安装写一条空间级审计和 outbox 事件；无变更重放不重复。legacy 回滚后重迁使用新的类型生命周期事件标识，避免把合法重迁误判为重复。
+- 兼容测试把类型表纳入 legacy 写路径 hash，且确认不存在 `project_work_items` 或第二套实例 API；S03 对现有 `/projects`、`/issues` 和 resolver 保持零切流。
+
+## 20. S03-M5 冻结的 S04 准入包
+
+S03 评审结论为 **Go S04**。S04 的唯一交付边界是动态字段定义、类型注册、选项、默认值、校验规则及其可查询投影合同；S04 不创建工作项实例，不迁移 legacy issue，不实现表单布局、流程、完整配置草稿/发布或版本升级。S03 已发布的 v1 骨架保持不可变，S04 的配置编辑结果必须等到 S06 由新版本发布事务物化，不能原地修改 v1。
+
+### 20.1 Schema 输入
+
+| Concern | S04 required contract | Boundary |
+| --- | --- | --- |
+| 字段定义 | 字段有永久 UUID、workspace_id、space_id、type_definition_id、field_key、名称、类型、状态、排序和 aggregate_version；`field_key` 在类型内永久唯一 | 不使用动态 DDL 为每个字段建列，不把字段值写入 legacy `issues` |
+| 类型注册 | 首批至少覆盖 text、number、boolean、single_select、multi_select、user、date、datetime、url、attachment、work_item_reference；每类声明 storage kind、operators、sort/filter/index capability | 类型能力由服务端注册表解释，客户端不得自行推断序列化或操作符 |
+| 选项与默认值 | 选项使用稳定 option key、显示名、颜色、排序和启停状态；默认值按字段类型规范化并校验 | 删除或停用选项不得静默改写历史值；S04 无实例时只冻结合同与定义行为 |
+| 校验规则 | required、长度/范围、格式、允许值和引用约束使用结构化规则，规则 schema 可版本化 | 条件显示、布局和字段级授权属于 S05；跨字段复杂公式不进入 S04 |
+| 查询投影 | 为字段定义列表、type/version 挂载、key/status/sort 查询建立稳定索引；JSONB 配置使用可控 GIN/表达式索引或 capability typed projection | 只有真实查询计划和基准证明需要时才增加投影；禁止无边界地为每个字段生成索引 |
+
+字段定义的 workspace/space/type 关系必须使用复合约束，任何跨 workspace 或跨空间挂载均由数据库和 Repository 双重拒绝。字段配置需要稳定规范序列化与哈希输入，但 S04 不直接产生新的 published type version。
+
+### 20.2 API 与 DTO 输入
+
+| Surface | Required behavior | Authorization |
+| --- | --- | --- |
+| 字段类型目录 | 返回可用字段类型、capability、操作符和配置 schema，不返回内部实现类名 | 有效空间成员可读取执行所需摘要；配置细节只对 owner/admin |
+| 字段定义配置 | 列表、创建、编辑、停用/恢复、排序；请求携带 aggregate version 与 request id | 仅空间 owner/admin 可写；member/guest 只读已生效摘要；非成员和企业管理员最小披露 |
+| 选项与规则 | 以字段定义为聚合边界原子修改，服务端执行类型兼容、重复 key、默认值和规则校验 | 与字段定义相同，不新增第二套权限引擎 |
+| 查询能力描述 | 返回字段支持的 filter/sort/operator，不返回工作项值 | 只描述能力；真实实例查询属于 S07/S13 |
+
+错误合同至少区分 field_key_conflict、field_type_unsupported、invalid_field_configuration、invalid_default_value、invalid_validation_rule、version_conflict 和 not_found_or_hidden。动作能力继续由服务端 `availableActions`/policy 计算，全部写操作接入审计、outbox 和幂等回执。
+
+### 20.3 S06/S07 扩展合同
+
+- S04 字段定义是配置编排输入；不得修改 S03 published v1。S06 建立 draft 后，把字段定义、选项和规则物化为完整 config graph，校验后发布新的不可变 type version，并切换 `current_version_id`。
+- S07 的 `project_work_items` 必须显式保存 `type_definition_id` 与 `type_version_id`；创建实例时锁定当时 published version，后续发布不能静默改变既有实例解释。
+- `WorkItemTypeReferenceGuard` 是后续字段/实例引用阻止 retire 的扩展点；S04 可接入字段定义引用，但不得伪造实例引用。
+- 平台对象只在 S07 有规范 WorkItem 后注册；字段、选项和类型配置都不是独立平台对象。
+
+### 20.4 S04 Milestone 拆分输入
+
+1. M1：字段定义 schema、类型注册表、规范序列化、复合隔离约束与索引决策。
+2. M2：选项、默认值、required 与结构化校验规则，覆盖生命周期、并发、审计和幂等。
+3. M3：user/date/datetime/attachment/url/work_item_reference 的权限、序列化和失效引用合同；引用只校验目标可访问性，不创建实例值。
+4. M4：空间字段配置 UI、capability 查询投影和隔离性能基准；基准使用独立合成数据，不把 legacy issue 当成规范 WorkItem。
+
+### 20.5 禁止提前实现与剩余风险
+
+- S04 不创建 `project_work_items`、字段值表、实例 API 或 `work_item` resolver；这些属于 S07。
+- S04 不交付布局、条件显示或字段级授权；这些属于 S05。
+- S04 不交付完整 draft/publish/diff/rollback/template 流水线，也不修改 published v1；这些属于 S06。
+- S04 不交付状态流、节点流或自动化；这些属于 S08、S09 和 S17。
+- 既有空间出现自定义类型占用预置 key 时，当前采用显式冲突报告和人工治理，不自动改名或覆盖。该策略不阻断 S04，但 S04 路线必须保留冲突可观测性，不能把它描述为自动恢复。

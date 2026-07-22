@@ -3,9 +3,12 @@ package com.colla.platform.modules.project.api;
 import com.colla.platform.modules.project.api.ProjectSpaceDtos.AdminProjectSpaceView;
 import com.colla.platform.modules.project.api.ProjectSpaceDtos.ProjectSpacePermissionExplanation;
 import com.colla.platform.modules.project.application.ProjectSpaceService;
+import com.colla.platform.modules.project.application.WorkItemTypeConfigurationModels.GovernanceTypeCounts;
+import com.colla.platform.modules.project.application.WorkItemTypeConfigurationService;
 import com.colla.platform.modules.project.domain.ProjectSpaceModels.ProjectSpaceSummary;
 import com.colla.platform.shared.auth.CurrentUser;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -19,9 +22,14 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/admin/project-spaces")
 public class AdminProjectSpaceController {
     private final ProjectSpaceService projectSpaceService;
+    private final WorkItemTypeConfigurationService workItemTypeService;
 
-    public AdminProjectSpaceController(ProjectSpaceService projectSpaceService) {
+    public AdminProjectSpaceController(
+        ProjectSpaceService projectSpaceService,
+        WorkItemTypeConfigurationService workItemTypeService
+    ) {
         this.projectSpaceService = projectSpaceService;
+        this.workItemTypeService = workItemTypeService;
     }
 
     @GetMapping
@@ -34,15 +42,28 @@ public class AdminProjectSpaceController {
         Authentication authentication
     ) {
         CurrentUser currentUser = currentUser(authentication);
-        return projectSpaceService.listGovernance(currentUser, status, visibility, includeArchived, limit, offset).stream()
-            .map(space -> ProjectSpaceDtos.admin(space, projectSpaceService.hasContentAccess(space)))
+        List<ProjectSpaceSummary> spaces = projectSpaceService.listGovernance(
+            currentUser, status, visibility, includeArchived, limit, offset
+        );
+        Map<UUID, GovernanceTypeCounts> counts =
+            workItemTypeService.governanceCounts(currentUser, spaces.stream().map(ProjectSpaceSummary::id).toList());
+        return spaces.stream()
+            .map(space -> ProjectSpaceDtos.admin(
+                space,
+                projectSpaceService.hasContentAccess(space),
+                WorkItemTypeApiDtos.governanceCounts(counts.getOrDefault(
+                    space.id(),
+                    new GovernanceTypeCounts(0, 0, 0, 0)
+                ))
+            ))
             .toList();
     }
 
     @GetMapping("/{spaceId}")
     public AdminProjectSpaceView detail(@PathVariable UUID spaceId, Authentication authentication) {
-        ProjectSpaceSummary space = projectSpaceService.getGovernance(currentUser(authentication), spaceId);
-        return ProjectSpaceDtos.admin(space, projectSpaceService.hasContentAccess(space));
+        CurrentUser currentUser = currentUser(authentication);
+        ProjectSpaceSummary space = projectSpaceService.getGovernance(currentUser, spaceId);
+        return adminView(currentUser, space);
     }
 
     @GetMapping("/{spaceId}/permission-explanation")
@@ -80,8 +101,17 @@ public class AdminProjectSpaceController {
     }
 
     private AdminProjectSpaceView transition(UUID spaceId, String status, Authentication authentication) {
-        ProjectSpaceSummary space = projectSpaceService.transitionGovernance(currentUser(authentication), spaceId, status);
-        return ProjectSpaceDtos.admin(space, projectSpaceService.hasContentAccess(space));
+        CurrentUser currentUser = currentUser(authentication);
+        ProjectSpaceSummary space = projectSpaceService.transitionGovernance(currentUser, spaceId, status);
+        return adminView(currentUser, space);
+    }
+
+    private AdminProjectSpaceView adminView(CurrentUser currentUser, ProjectSpaceSummary space) {
+        return ProjectSpaceDtos.admin(
+            space,
+            projectSpaceService.hasContentAccess(space),
+            WorkItemTypeApiDtos.governanceCounts(workItemTypeService.governanceCounts(currentUser, space.id()))
+        );
     }
 
     private CurrentUser currentUser(Authentication authentication) {

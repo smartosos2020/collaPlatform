@@ -32,7 +32,11 @@ final class ProjectSpaceDtos {
         );
     }
 
-    static AdminProjectSpaceView admin(ProjectSpaceSummary space, boolean contentAccessGranted) {
+    static AdminProjectSpaceView admin(
+        ProjectSpaceSummary space,
+        boolean contentAccessGranted,
+        WorkItemTypeApiDtos.AdminWorkItemTypeCounts workItemTypes
+    ) {
         List<String> actions = switch (space.status()) {
             case "active" -> List.of("disable", "archive");
             case "disabled" -> List.of("restore", "archive");
@@ -43,7 +47,7 @@ final class ProjectSpaceDtos {
             space.id(), space.workspaceId(), space.spaceKey(), space.name(), space.description(),
             space.status(), space.visibility(), space.version(), space.memberCount(), space.createdBy(),
             space.createdAt(), space.updatedBy(), space.updatedAt(), space.disabledAt(), space.archivedAt(),
-            contentAccessGranted, "project.manage", actions
+            contentAccessGranted, "project.manage", workItemTypes, actions
         );
     }
 
@@ -84,6 +88,7 @@ final class ProjectSpaceDtos {
         Instant archivedAt,
         boolean contentAccessGranted,
         String governancePermission,
+        WorkItemTypeApiDtos.AdminWorkItemTypeCounts workItemTypes,
         List<String> availableGovernanceActions
     ) {
     }
