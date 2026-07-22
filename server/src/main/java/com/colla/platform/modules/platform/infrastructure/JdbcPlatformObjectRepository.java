@@ -84,6 +84,20 @@ public class JdbcPlatformObjectRepository implements PlatformObjectRepository {
     }
 
     @Override
+    public void markObjectLinkDeleted(UUID workspaceId, String objectType, UUID objectId) {
+        jdbcTemplate.update(
+            """
+                update object_links
+                   set deleted_at = now(), updated_at = now()
+                 where workspace_id = ? and object_type = ? and object_id = ? and deleted_at is null
+                """,
+            workspaceId,
+            objectType,
+            objectId
+        );
+    }
+
+    @Override
     public List<String> listObjectTypes() {
         return jdbcTemplate.queryForList("select object_type from object_type_rules order by object_type", String.class);
     }

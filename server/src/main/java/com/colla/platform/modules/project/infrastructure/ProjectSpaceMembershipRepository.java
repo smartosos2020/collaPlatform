@@ -18,6 +18,8 @@ public interface ProjectSpaceMembershipRepository {
 
     long countActiveOwners(UUID workspaceId, UUID spaceId);
 
+    void deleteAllForSpace(UUID workspaceId, UUID spaceId);
+
     UUID createMember(UUID workspaceId, UUID spaceId, UUID userId, String roleKey, UUID actorId);
 
     void reactivateMember(UUID workspaceId, UUID spaceId, UUID memberId, String roleKey, UUID actorId);

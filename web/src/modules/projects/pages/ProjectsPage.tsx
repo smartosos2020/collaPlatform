@@ -10,6 +10,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   App as AntdApp,
+  Alert,
   Avatar,
   Button,
   Card,
@@ -48,6 +49,7 @@ import {
   type ProjectSummary,
   type TransitionIssueRequest,
 } from '../api/projectsApi'
+import { resolveLegacyProjectSpace } from '../../projectSpaces/api/projectSpacesApi'
 import { ObjectSummaryCard } from '../../platform/components/InternalLinkCard'
 import { resolveInternalLink } from '../../platform/api/platformObjectsApi'
 import { ResourcePermissionsModal } from '../../permissions/components/ResourcePermissionsModal'
@@ -198,6 +200,12 @@ export function ProjectsPage() {
     queryKey: ['issues', routedIssueId],
     queryFn: () => getIssue(routedIssueId || ''),
     enabled: Boolean(routedIssueId),
+  })
+  const legacySpaceQuery = useQuery({
+    queryKey: ['projects', activeProjectId, 'legacy-space-resolution'],
+    queryFn: () => resolveLegacyProjectSpace(activeProjectId || ''),
+    enabled: Boolean(activeProjectId),
+    retry: false,
   })
 
   useEffect(() => {
@@ -434,6 +442,24 @@ export function ProjectsPage() {
                 </Button>
               </Space>
             </Space>
+
+            {legacySpaceQuery.data?.status === 'mapped' && legacySpaceQuery.data.spaceId ? (
+              <Alert
+                className="project-migration-banner"
+                type="info"
+                showIcon
+                message="该项目已迁移到项目空间"
+                action={
+                  <Button
+                    size="small"
+                    type="link"
+                    onClick={() => navigate(`/project-spaces/${legacySpaceQuery.data?.spaceId}`)}
+                  >
+                    前往项目空间
+                  </Button>
+                }
+              />
+            ) : null}
 
             <section className="project-stats">
               <Card title="成员">{activeProject.members.length}</Card>

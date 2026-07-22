@@ -1,7 +1,7 @@
 ---
 title: 当前技术选型
 status: active
-last_code_check: 2026-07-18
+last_code_check: 2026-07-19
 ---
 
 # 当前技术选型
@@ -18,7 +18,7 @@ last_code_check: 2026-07-18
 | WebSocket | Spring WebSocket | `spring-boot-starter-websocket`, `/ws/events` |
 | 安全 | Spring Security + JWT | `SecurityConfig`, `JwtTokenService` |
 | 数据库 | PostgreSQL 16 | `docker-compose.yml`, Flyway migrations |
-| 数据库迁移 | Flyway | `server/src/main/resources/db/migration/V001...V055` |
+| 数据库迁移 | Flyway | `server/src/main/resources/db/migration/V001...V060` |
 | Redis | Redis 7 | `docker-compose.yml`, Spring Data Redis, collaboration Redis extension |
 | 对象存储 | MinIO | `docker-compose.yml`, `minio` dependency |
 | OpenAPI | springdoc-openapi | `springdoc-openapi-starter-webmvc-ui` |

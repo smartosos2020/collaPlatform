@@ -91,6 +91,46 @@ public class JdbcProjectSpaceRepository implements ProjectSpaceRepository {
     }
 
     @Override
+    public void createMigratedSpace(
+        UUID workspaceId,
+        UUID spaceId,
+        String spaceKey,
+        String name,
+        String description,
+        String visibility,
+        UUID actorId
+    ) {
+        // Migration-only counterpart of createSpaceWithOwner: the caller supplies the deterministic
+        // space id and writes members separately, so this inserts only the space row with the same
+        // column shape as the regular creation path.
+        jdbcTemplate.update(
+            """
+                insert into project_spaces
+                    (id, workspace_id, space_key, name, description, status, visibility,
+                     created_by, created_at, updated_by, updated_at)
+                values (?, ?, ?, ?, ?, 'active', ?, ?, now(), ?, now())
+                """,
+            spaceId,
+            workspaceId,
+            spaceKey,
+            name,
+            description,
+            visibility,
+            actorId,
+            actorId
+        );
+    }
+
+    @Override
+    public void deleteSpace(UUID workspaceId, UUID spaceId) {
+        jdbcTemplate.update(
+            "delete from project_spaces where workspace_id = ? and id = ?",
+            workspaceId,
+            spaceId
+        );
+    }
+
+    @Override
     public List<ProjectSpaceSummary> listVisible(UUID workspaceId, UUID userId) {
         return jdbcTemplate.query(
             SUMMARY_SELECT + """

@@ -101,6 +101,22 @@ public class JdbcProjectSpaceMembershipRepository implements ProjectSpaceMembers
     }
 
     @Override
+    public void deleteAllForSpace(UUID workspaceId, UUID spaceId) {
+        // Migration rollback only: hard-deletes role assignments and member rows so the space row
+        // can be removed afterwards. The regular governance paths always soft-remove members.
+        jdbcTemplate.update(
+            "delete from project_space_role_assignments where workspace_id = ? and space_id = ?",
+            workspaceId,
+            spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_space_members where workspace_id = ? and space_id = ?",
+            workspaceId,
+            spaceId
+        );
+    }
+
+    @Override
     public UUID createMember(UUID workspaceId, UUID spaceId, UUID userId, String roleKey, UUID actorId) {
         UUID memberId = UUID.randomUUID();
         jdbcTemplate.update(

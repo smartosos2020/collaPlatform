@@ -130,6 +130,44 @@ public class ProjectSpaceMembershipService {
         return added;
     }
 
+    /**
+     * Migration-only member writer used by the project space migration batch pipeline. The caller
+     * must already hold migration governance permission (requireManageProjects); this method
+     * intentionally skips the actor's space-role checks, member-level audit and member
+     * notifications because the batch-level migration audit covers the whole operation. It keeps
+     * the regular member write invariants and row shapes: the space must be active, the user must
+     * be an active member of the same workspace, an existing active membership with the same role
+     * is an idempotent no-op, and otherwise member plus role assignment rows are written exactly
+     * like the standard membership paths.
+     */
+    @Transactional
+    public ProjectSpaceMember addMigratedMember(UUID workspaceId, UUID spaceId, UUID userId, String roleKey, UUID actorId) {
+        String status = membershipRepository.lockSpaceStatus(workspaceId, spaceId);
+        if (!"active".equals(status)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Project space must be active for migration member writes");
+        }
+        ProjectSpaceRole role = parseRole(roleKey);
+        UserAccount target = identityRepository.findUserById(userId)
+            .filter(user -> user.workspaceId().equals(workspaceId) && "active".equals(user.status()))
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Migration member is not an active workspace user"));
+        ProjectSpaceMember existing = membershipRepository.findMemberByUser(workspaceId, spaceId, userId).orElse(null);
+        if (existing != null && "active".equals(existing.memberStatus())) {
+            if (role.name().equals(existing.roleKey())) {
+                return existing;
+            }
+            membershipRepository.changeRole(workspaceId, spaceId, existing.id(), role.name(), actorId);
+            return requireMember(workspaceId, spaceId, existing.id());
+        }
+        UUID memberId;
+        if (existing == null) {
+            memberId = membershipRepository.createMember(workspaceId, spaceId, target.id(), role.name(), actorId);
+        } else {
+            memberId = existing.id();
+            membershipRepository.reactivateMember(workspaceId, spaceId, memberId, role.name(), actorId);
+        }
+        return requireMember(workspaceId, spaceId, memberId);
+    }
+
     @Transactional
     public ProjectSpaceMember changeRole(CurrentUser currentUser, UUID spaceId, UUID memberId, String roleKey) {
         lockActiveSpace(currentUser, spaceId);
