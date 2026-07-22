@@ -8,7 +8,7 @@ last_code_check: 2026-07-22
 
 Colla Platform 当前是一个面向研发团队的轻量协同平台。产品形态以 Web 为主，IM 是核心入口，同时已经具备项目、知识库、表格、审批、通知、搜索和管理后台等模块的 MVP 能力。
 
-当前产品开发主线是 `PROJECT-PLATFORM` 项目协作平台长期专项。S01-S02 已完成项目空间、成员治理、双 UI 和 legacy project 到空间/成员的映射与兼容入口；S03 已完成工作项类型定义/首发骨架版本、配置与用户摘要 API、空间配置 UI、六类研发预置、既有空间补齐及 Stage 级验收。S04 动态字段已通过准入评审，但须在 S03 路线归档后另行激活。目标能力记录在 `docs/00-product/initiatives/project-platform-program.md`，目标架构记录在 `docs/01-architecture/project-platform-target-architecture.md`；动态字段、布局、完整配置发布和统一 WorkItem 实例仍是后续 Stage，不能写成当前能力。知识库 `KB-PRODUCT` 工程候选已收口，但 3-5 名真实参与者试用尚未完成，当前按暂停状态归档并等待团队反馈。
+当前产品开发主线是 `PROJECT-PLATFORM` 项目协作平台长期专项。S01-S02 已完成项目空间、成员治理、双 UI 和 legacy project 到空间/成员的映射与兼容入口；S03 已完成工作项类型定义/首发骨架版本、配置与用户摘要 API、空间配置 UI、六类研发预置、既有空间补齐及 Stage 级验收。S03 路线现已归档，S04 动态字段、选项和校验规则已激活，当前从字段定义与服务端类型注册底座开始。目标能力记录在 `docs/00-product/initiatives/project-platform-program.md`，目标架构记录在 `docs/01-architecture/project-platform-target-architecture.md`；动态字段仍是执行目标而非当前能力，布局、完整配置发布和统一 WorkItem 实例继续属于 S05-S07。知识库 `KB-PRODUCT` 工程候选已收口，但 3-5 名真实参与者试用尚未完成，当前按暂停状态归档并等待团队反馈。
 
 ## 当前可用入口
 
