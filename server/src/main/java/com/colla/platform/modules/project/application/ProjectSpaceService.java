@@ -3,15 +3,20 @@ package com.colla.platform.modules.project.application;
 import com.colla.platform.modules.audit.application.AuditService;
 import com.colla.platform.modules.permission.application.PermissionService;
 import com.colla.platform.modules.platform.infrastructure.PlatformObjectRepository;
+import com.colla.platform.modules.project.domain.ProjectSpaceMigrationModels.LegacySpaceMapRecord;
+import com.colla.platform.modules.project.domain.ProjectSpaceMigrationModels.LegacySpaceResolution;
 import com.colla.platform.modules.project.domain.ProjectSpaceModels.ProjectSpaceStatus;
 import com.colla.platform.modules.project.domain.ProjectSpaceModels.ProjectSpaceSummary;
 import com.colla.platform.modules.project.domain.ProjectSpaceModels.ProjectSpaceVisibility;
+import com.colla.platform.modules.project.infrastructure.ProjectLegacySpaceMapRepository;
+import com.colla.platform.modules.project.infrastructure.ProjectRepository;
 import com.colla.platform.modules.project.infrastructure.ProjectSpaceRepository;
 import com.colla.platform.shared.auth.CurrentUser;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -24,17 +29,23 @@ public class ProjectSpaceService {
     private static final int MAX_GOVERNANCE_PAGE_SIZE = 200;
 
     private final ProjectSpaceRepository projectSpaceRepository;
+    private final ProjectRepository projectRepository;
+    private final ProjectLegacySpaceMapRepository legacySpaceMapRepository;
     private final PlatformObjectRepository platformObjectRepository;
     private final PermissionService permissionService;
     private final AuditService auditService;
 
     public ProjectSpaceService(
         ProjectSpaceRepository projectSpaceRepository,
+        ProjectRepository projectRepository,
+        ProjectLegacySpaceMapRepository legacySpaceMapRepository,
         PlatformObjectRepository platformObjectRepository,
         PermissionService permissionService,
         AuditService auditService
     ) {
         this.projectSpaceRepository = projectSpaceRepository;
+        this.projectRepository = projectRepository;
+        this.legacySpaceMapRepository = legacySpaceMapRepository;
         this.platformObjectRepository = platformObjectRepository;
         this.permissionService = permissionService;
         this.auditService = auditService;
@@ -161,6 +172,38 @@ public class ProjectSpaceService {
 
     public boolean hasContentAccess(ProjectSpaceSummary space) {
         return space.isMember();
+    }
+
+    /**
+     * Resolves a legacy project deep link to its migrated project space without leaking space
+     * metadata. Callers only learn the space id when the space is visible to them under the same
+     * visibility rules used by {@link #getVisible}; anything else reports an opaque status.
+     */
+    public LegacySpaceResolution resolveLegacySpace(CurrentUser currentUser, UUID legacyProjectId) {
+        UUID workspaceId = currentUser.workspaceId();
+        if (projectRepository.findProjectById(workspaceId, legacyProjectId).isEmpty()) {
+            return new LegacySpaceResolution("unmigrated", null);
+        }
+        Optional<LegacySpaceMapRecord> map = legacySpaceMapRepository.findByProject(workspaceId, legacyProjectId);
+        if (map.isEmpty()) {
+            return new LegacySpaceResolution("unmigrated", null);
+        }
+        if (!"active".equals(map.get().mappingStatus())) {
+            return new LegacySpaceResolution("failed", null);
+        }
+        Optional<ProjectSpaceSummary> space = projectSpaceRepository.findById(
+            workspaceId, map.get().spaceId(), currentUser.id()
+        );
+        if (space.isEmpty()) {
+            return new LegacySpaceResolution("unavailable", null);
+        }
+        ProjectSpaceSummary summary = space.get();
+        boolean visible = summary.isMember()
+            || (!"private".equals(summary.visibility()) && !"archived".equals(summary.status()));
+        if (!visible) {
+            return new LegacySpaceResolution("unavailable", null);
+        }
+        return new LegacySpaceResolution("mapped", summary.id());
     }
 
     private ProjectSpaceSummary transition(CurrentUser currentUser, ProjectSpaceSummary before, String targetStatus, String source) {

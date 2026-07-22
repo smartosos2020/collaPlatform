@@ -1,5 +1,6 @@
 package com.colla.platform.modules.project.api;
 
+import com.colla.platform.modules.project.api.ProjectSpaceDtos.LegacySpaceResolutionView;
 import com.colla.platform.modules.project.api.ProjectSpaceDtos.UserProjectSpaceView;
 import com.colla.platform.modules.project.application.ProjectSpaceService;
 import com.colla.platform.shared.auth.CurrentUser;
@@ -49,6 +50,13 @@ public class ProjectSpaceController {
     @GetMapping("/{spaceId}")
     public UserProjectSpaceView detail(@PathVariable UUID spaceId, Authentication authentication) {
         return ProjectSpaceDtos.user(projectSpaceService.getVisible(currentUser(authentication), spaceId));
+    }
+
+    @GetMapping("/legacy-resolve/{legacyProjectId}")
+    public LegacySpaceResolutionView legacyResolve(@PathVariable UUID legacyProjectId, Authentication authentication) {
+        return ProjectSpaceDtos.legacyResolution(
+            projectSpaceService.resolveLegacySpace(currentUser(authentication), legacyProjectId)
+        );
     }
 
     private CurrentUser currentUser(Authentication authentication) {

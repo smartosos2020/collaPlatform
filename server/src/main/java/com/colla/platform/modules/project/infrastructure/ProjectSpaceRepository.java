@@ -15,6 +15,18 @@ public interface ProjectSpaceRepository {
         UUID ownerId
     );
 
+    void createMigratedSpace(
+        UUID workspaceId,
+        UUID spaceId,
+        String spaceKey,
+        String name,
+        String description,
+        String visibility,
+        UUID actorId
+    );
+
+    void deleteSpace(UUID workspaceId, UUID spaceId);
+
     List<ProjectSpaceSummary> listVisible(UUID workspaceId, UUID userId);
 
     List<ProjectSpaceSummary> listGovernance(

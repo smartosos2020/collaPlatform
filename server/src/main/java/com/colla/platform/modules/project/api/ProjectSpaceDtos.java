@@ -1,5 +1,6 @@
 package com.colla.platform.modules.project.api;
 
+import com.colla.platform.modules.project.domain.ProjectSpaceMigrationModels.LegacySpaceResolution;
 import com.colla.platform.modules.project.domain.ProjectSpaceModels.ProjectSpaceSummary;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -10,8 +11,7 @@ final class ProjectSpaceDtos {
     private ProjectSpaceDtos() {
     }
 
-    static UserProjectSpaceView user(ProjectSpaceSummary space) {
-        List<String> actions = new ArrayList<>();
+    static UserProjectSpaceView user(ProjectSpaceSummary space) {        List<String> actions = new ArrayList<>();
         actions.add("open");
         if (space.canManage()) {
             actions.add("settings");
@@ -95,6 +95,16 @@ final class ProjectSpaceDtos {
         boolean contentAccessGranted,
         String contentAccessSource,
         String explanation
+    ) {
+    }
+
+    static LegacySpaceResolutionView legacyResolution(LegacySpaceResolution resolution) {
+        return new LegacySpaceResolutionView(resolution.status(), resolution.spaceId());
+    }
+
+    record LegacySpaceResolutionView(
+        String status,
+        UUID spaceId
     ) {
     }
 }

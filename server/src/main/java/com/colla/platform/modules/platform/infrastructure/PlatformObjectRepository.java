@@ -14,6 +14,8 @@ public interface PlatformObjectRepository {
 
     void upsertObjectLink(UUID workspaceId, String objectType, UUID objectId, String webPath, String deepLink, String titleSnapshot);
 
+    void markObjectLinkDeleted(UUID workspaceId, String objectType, UUID objectId);
+
     List<String> listObjectTypes();
 
     List<PlatformObjectTypeRule> listObjectTypeRules();

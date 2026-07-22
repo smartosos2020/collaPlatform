@@ -102,7 +102,7 @@ class KnowledgeSchemaMigrationIntegrationTests {
     }
 
     @Test
-    void v049SchemaCanUpgradeToCanonicalContractInAnIsolatedDatabase() {
+    void v049SchemaCanUpgradeToCanonicalContractInAnIsolatedDatabase() throws Exception {
         PostgreSQLContainer<?> container = new PostgreSQLContainer<>("postgres:16");
         container.start();
         try {
@@ -121,7 +121,16 @@ class KnowledgeSchemaMigrationIntegrationTests {
             dataSource.setUser(container.getUsername());
             dataSource.setPassword(container.getPassword());
             JdbcTemplate upgradeJdbcTemplate = new JdbcTemplate(dataSource);
-            assertEquals("055", upgradeJdbcTemplate.queryForObject(
+            String latestMigrationVersion;
+            try (java.util.stream.Stream<java.nio.file.Path> migrationFiles = java.nio.file.Files.list(java.nio.file.Path.of("src/main/resources/db/migration"))) {
+                latestMigrationVersion = migrationFiles
+                    .map(path -> path.getFileName().toString())
+                    .filter(name -> name.matches("V\\d{3}__.+\\.sql"))
+                    .map(name -> name.substring(1, 4))
+                    .max(java.util.Comparator.naturalOrder())
+                    .orElseThrow();
+            }
+            assertEquals(latestMigrationVersion, upgradeJdbcTemplate.queryForObject(
                 "select max(version) from flyway_schema_history",
                 String.class
             ));

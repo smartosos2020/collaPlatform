@@ -121,6 +121,17 @@ export function getProjectSpace(spaceId: string) {
   return apiGet<UserProjectSpace>(`/project-spaces/${spaceId}`)
 }
 
+export type LegacySpaceResolveStatus = 'mapped' | 'unmigrated' | 'failed' | 'unavailable'
+
+export type LegacySpaceResolution = {
+  status: LegacySpaceResolveStatus
+  spaceId?: string | null
+}
+
+export function resolveLegacyProjectSpace(legacyProjectId: string) {
+  return apiGet<LegacySpaceResolution>(`/project-spaces/legacy-resolve/${legacyProjectId}`)
+}
+
 export function getProjectSpaceSettings(spaceId: string) {
   return apiGet<UserProjectSpace>(`/project-spaces/${spaceId}/settings`)
 }
