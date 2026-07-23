@@ -1,7 +1,7 @@
 ---
 title: 平台对象模型
 status: active
-last_code_check: 2026-07-22
+last_code_check: 2026-07-24
 ---
 
 # 平台对象模型
@@ -168,7 +168,17 @@ IM 消息发送时会扫描文本中的内部链接，解析后写入 `message_l
 
 S03 的 `WorkItemTypeDefinition` 是 `ProjectSpace` 内的配置定义，不是可独立收藏、搜索、关系化或跨模块嵌入的平台对象，因此当前不注册 `work_item_type` resolver，也不生成独立 deep link。类型配置页始终由 `spaceId + typeId` 定位，并先执行空间成员与角色授权。
 
+S04-M1 的 `FieldDefinition` 同样是类型内部的配置定义，通过 `spaceId + typeId + fieldId` 定位，不注册独立 `work_item_field` resolver。字段定义只能由空间 owner/admin 读取和编排；企业治理权限不等于空间配置访问权。字段类型目录是能力元数据，不是平台对象目录。
+
+S04-M2 的 `FieldOption` 是 `FieldDefinition` 聚合内的稳定值域成员，不是独立平台对象。option key 创建后不可改、不可删除或复用，只能修改显示属性、排序和 active/disabled；默认值与结构化规则随字段配置 hash 和 aggregate version 原子变更。审计仅记录配置 hash 和选项数量差异，不复制默认值或规则载荷。
+
+S04-M3 的 user、attachment 和 work_item_reference 配置保存的 UUID 只是对身份、文件和同空间工作项类型事实的引用，不是新的平台对象，也不生成对象关系。写入时必须重新解析当前对象状态和 actor 访问权；读取配置只返回 UUID 与能力合同，不复制名称、路径、文件 key、标题或其他快照。解析失败统一降级为 `unavailable_without_snapshot`，避免通过错误差异枚举隐藏对象。work_item_reference 的实例和值继续由 S07 承接。
+
+S04-M4 为字段定义增加生产配置入口，但没有改变对象边界。字段深链始终是空间和类型内部路由 `/project-spaces/{spaceId}/types/{typeId}/fields/{fieldId}`；不能脱离 `spaceId + typeId` 解析，也不能收藏、搜索或作为跨模块对象嵌入。前端目录只投影服务端字段 capability、配置摘要和 `availableActions`，不会注册 `work_item_field` 平台对象或把 option、rule 当作关系节点。
+
 统一 `work_item` 平台对象只能在 S07 规范实例落地后注册；届时实例必须显式绑定不可变 `type_version_id`，resolver 才能基于实例、空间成员和版本事实返回摘要。S04 字段定义和 S06 配置版本不得提前伪造实例对象或复用 legacy `issue` resolver。
+
+S04 Stage 收口后，`FieldDefinition`、`FieldOption`、规则和复杂类型配置的对象归属保持不变：它们都是工作项类型内部的配置图，不具备独立分享、收藏、搜索、关系或平台对象解析能力。S05 的布局只能通过稳定 `fieldId + fieldKey` 引用该图，S06 只能把经校验的图物化进新的不可变类型版本；两者都不能把字段配置提升为独立平台对象。S07 创建规范 WorkItem 后才允许注册 `work_item` resolver。
 
 ## 事项对象摘要
 

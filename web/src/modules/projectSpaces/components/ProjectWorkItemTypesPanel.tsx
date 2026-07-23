@@ -7,6 +7,7 @@ import {
   InboxOutlined,
   PlusOutlined,
   ReloadOutlined,
+  SettingOutlined,
   StopOutlined,
 } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -56,10 +57,12 @@ export function ProjectWorkItemTypesPanel({
   space,
   selectedTypeId,
   onSelectType,
+  onConfigureFields,
 }: {
   space: UserProjectSpace
   selectedTypeId?: string
   onSelectType: (typeId: string) => void
+  onConfigureFields: (typeId: string) => void
 }) {
   const { message, modal } = AntdApp.useApp()
   const queryClient = useQueryClient()
@@ -316,6 +319,7 @@ export function ProjectWorkItemTypesPanel({
                   </div>
                 </div>
                 <Space wrap>
+                  <Button type="primary" icon={<SettingOutlined />} onClick={() => onConfigureFields(selected.id)}>配置字段</Button>
                   {selected.availableActions.includes('edit') ? <Button icon={<EditOutlined />} onClick={() => openEditor('edit')}>编辑</Button> : null}
                   {selected.availableActions.includes('copy') ? <Button icon={<CopyOutlined />} onClick={() => openEditor('copy')}>复制</Button> : null}
                   {selected.availableActions.includes('restore') ? <Button className="work-item-type-restore" icon={<ReloadOutlined />} onClick={() => confirmTransition('restore')}>恢复</Button> : null}
