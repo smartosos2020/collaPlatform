@@ -11,8 +11,9 @@ import com.colla.platform.modules.platform.application.InternalLinkService;
 import com.colla.platform.modules.platform.domain.PlatformModels.ParsedInternalLink;
 import com.colla.platform.modules.platform.infrastructure.PlatformObjectRepository;
 import com.colla.platform.shared.auth.CurrentUser;
-import com.colla.platform.shared.websocket.WebSocketMessageSender;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -24,8 +25,6 @@ import java.util.regex.Pattern;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
@@ -36,20 +35,17 @@ public class ImService {
     private final ImRepository imRepository;
     private final InternalLinkService internalLinkService;
     private final TransactionalOutbox eventRepository;
-    private final WebSocketMessageSender webSocketMessageSender;
     private final PlatformObjectRepository objectRepository;
 
     public ImService(
         ImRepository imRepository,
         InternalLinkService internalLinkService,
         TransactionalOutbox eventRepository,
-        WebSocketMessageSender webSocketMessageSender,
         PlatformObjectRepository objectRepository
     ) {
         this.imRepository = imRepository;
         this.internalLinkService = internalLinkService;
         this.eventRepository = eventRepository;
-        this.webSocketMessageSender = webSocketMessageSender;
         this.objectRepository = objectRepository;
     }
 
@@ -86,7 +82,9 @@ public class ImService {
                 currentUser.id().equals(memberId) ? "owner" : "member"
             );
         }
-        return getConversation(currentUser, conversationId);
+        ConversationDetail conversation = getConversation(currentUser, conversationId);
+        appendConversationEvents(currentUser, conversationId, conversation);
+        return conversation;
     }
 
     public ConversationDetail getConversation(CurrentUser currentUser, UUID conversationId) {
@@ -108,7 +106,7 @@ public class ImService {
             imRepository.addMember(currentUser.workspaceId(), conversationId, memberId, "member");
         }
         ConversationDetail updated = getConversation(currentUser, conversationId);
-        pushConversationEvents(currentUser, conversationId, updated);
+        appendConversationEvents(currentUser, conversationId, updated);
         return updated;
     }
 
@@ -121,7 +119,7 @@ public class ImService {
         ConversationDetail before = getConversation(currentUser, conversationId);
         imRepository.removeMember(currentUser.workspaceId(), conversationId, memberId);
         ConversationDetail updated = getConversation(currentUser, conversationId);
-        pushConversationEvents(currentUser, conversationId, updated, before.members().stream().map(member -> member.userId()).toList());
+        appendConversationEvents(currentUser, conversationId, updated, before.members().stream().map(member -> member.userId()).toList());
         return updated;
     }
 
@@ -132,7 +130,7 @@ public class ImService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Conversation cannot be left");
         }
         imRepository.removeMember(currentUser.workspaceId(), conversationId, currentUser.id());
-        pushConversationEvents(currentUser, conversationId, conversation, List.of(currentUser.id()));
+        appendConversationEvents(currentUser, conversationId, conversation, List.of(currentUser.id()));
     }
 
     @Transactional
@@ -142,7 +140,7 @@ public class ImService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Only direct conversation can be closed");
         }
         imRepository.removeMember(currentUser.workspaceId(), conversationId, currentUser.id());
-        pushConversationEvents(currentUser, conversationId, conversation, List.of(currentUser.id()));
+        appendConversationEvents(currentUser, conversationId, conversation, List.of(currentUser.id()));
     }
 
     @Transactional
@@ -150,7 +148,7 @@ public class ImService {
         requireMember(currentUser, conversationId);
         imRepository.setConversationMuted(currentUser.workspaceId(), conversationId, currentUser.id(), muted);
         ConversationDetail conversation = getConversation(currentUser, conversationId);
-        pushConversationPreferenceEvent(currentUser, conversationId, conversation);
+        appendConversationPreferenceEvent(currentUser, conversationId);
         return conversation;
     }
 
@@ -159,7 +157,7 @@ public class ImService {
         requireMember(currentUser, conversationId);
         imRepository.setConversationPinned(currentUser.workspaceId(), conversationId, currentUser.id(), pinned);
         ConversationDetail conversation = getConversation(currentUser, conversationId);
-        pushConversationPreferenceEvent(currentUser, conversationId, conversation);
+        appendConversationPreferenceEvent(currentUser, conversationId);
         return conversation;
     }
 
@@ -269,7 +267,7 @@ public class ImService {
         MessageSummary message = imRepository.findMessageForUser(currentUser.workspaceId(), conversationId, inserted.id(), currentUser.id()).orElse(inserted);
         registerMessageObject(currentUser.workspaceId(), conversationId, message);
         appendMessageCreatedEvent(currentUser, conversationId, message);
-        pushMessageEvents(currentUser, conversationId, message, "message.created");
+        appendMessageRealtimeEvents(currentUser, conversationId, message, "message.created");
         return message;
     }
 
@@ -290,7 +288,7 @@ public class ImService {
         imRepository.editMessage(currentUser.workspaceId(), conversationId, messageId, currentUser.id(), trimmedContent);
         MessageSummary updated = requireExistingMessage(currentUser, conversationId, messageId);
         appendMessageMutationEvent(currentUser, "message.edited", conversationId, updated);
-        pushMessageEvents(currentUser, conversationId, updated, "message.edited");
+        appendMessageRealtimeEvents(currentUser, conversationId, updated, "message.edited");
         return updated;
     }
 
@@ -304,7 +302,7 @@ public class ImService {
         imRepository.revokeMessage(currentUser.workspaceId(), conversationId, messageId, currentUser.id());
         MessageSummary updated = requireExistingMessage(currentUser, conversationId, messageId);
         appendMessageMutationEvent(currentUser, "message.revoked", conversationId, updated);
-        pushMessageEvents(currentUser, conversationId, updated, "message.revoked");
+        appendMessageRealtimeEvents(currentUser, conversationId, updated, "message.revoked");
         return updated;
     }
 
@@ -315,7 +313,7 @@ public class ImService {
         imRepository.setPinned(currentUser.workspaceId(), conversationId, messageId, currentUser.id(), pinned);
         MessageSummary updated = requireExistingMessage(currentUser, conversationId, messageId);
         appendMessageMutationEvent(currentUser, pinned ? "message.pinned" : "message.unpinned", conversationId, updated);
-        pushMessageEvents(currentUser, conversationId, updated, pinned ? "message.pinned" : "message.unpinned");
+        appendMessageRealtimeEvents(currentUser, conversationId, updated, pinned ? "message.pinned" : "message.unpinned");
         return updated;
     }
 
@@ -330,7 +328,7 @@ public class ImService {
         imRepository.toggleReaction(currentUser.workspaceId(), conversationId, messageId, currentUser.id(), normalizedEmoji);
         MessageSummary updated = requireExistingMessage(currentUser, conversationId, messageId);
         appendMessageMutationEvent(currentUser, "message.reaction.toggled", conversationId, updated);
-        pushMessageEvents(currentUser, conversationId, updated, "message.reaction.toggled");
+        appendMessageRealtimeEvents(currentUser, conversationId, updated, "message.reaction.toggled");
         return updated;
     }
 
@@ -342,24 +340,29 @@ public class ImService {
         }
         imRepository.markRead(currentUser.workspaceId(), conversationId, currentUser.id(), messageId);
         UnreadState state = unreadState(currentUser, conversationId);
-        runAfterCommit(() -> {
-            webSocketMessageSender.sendToUser(
-                currentUser.id(),
-                "conversation.read",
-                currentUser.workspaceId(),
-                "conversation",
-                conversationId,
-                Map.of("conversationId", conversationId, "unread", state)
-            );
-            webSocketMessageSender.sendToUser(
-                currentUser.id(),
-                "unread.changed",
-                currentUser.workspaceId(),
-                "conversation",
-                conversationId,
-                Map.of("conversationId", conversationId, "unread", state)
-            );
-        });
+        UUID operationId = UUID.randomUUID();
+        appendRealtimeFact(
+            currentUser.workspaceId(),
+            currentUser.id(),
+            currentUser.id(),
+            "conversation.read",
+            "conversation",
+            conversationId,
+            "/api/conversations",
+            Map.of("conversationId", conversationId.toString()),
+            operationId + ":read"
+        );
+        appendRealtimeFact(
+            currentUser.workspaceId(),
+            currentUser.id(),
+            currentUser.id(),
+            "unread.changed",
+            "conversation",
+            conversationId,
+            "/api/conversations",
+            Map.of("conversationId", conversationId.toString()),
+            operationId + ":unread"
+        );
         return state;
     }
 
@@ -409,82 +412,59 @@ public class ImService {
         }
     }
 
-    /**
-     * Defers a WebSocket push until after the surrounding transaction commits.
-     * Without this, the frontend's event-driven refetch can race ahead of the
-     * commit and cache a stale (pre-commit) result, leaving the UI one message
-     * behind until the next event arrives.
-     */
-    private static void runAfterCommit(Runnable action) {
-        if (TransactionSynchronizationManager.isSynchronizationActive()) {
-            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                @Override
-                public void afterCommit() {
-                    action.run();
-                }
-            });
-        } else {
-            action.run();
+    private void appendMessageRealtimeEvents(
+        CurrentUser currentUser,
+        UUID conversationId,
+        MessageSummary message,
+        String eventType
+    ) {
+        UUID operationId = UUID.randomUUID();
+        Map<String, Object> messageLocator = Map.of(
+            "conversationId", conversationId.toString(),
+            "messageId", message.id().toString(),
+            "messageSeq", message.messageSeq()
+        );
+        for (UUID memberId : imRepository.listMemberIds(currentUser.workspaceId(), conversationId)) {
+            appendRealtimeFact(
+                currentUser.workspaceId(),
+                currentUser.id(),
+                memberId,
+                eventType,
+                "message",
+                message.id(),
+                "/api/conversations/" + conversationId + "/messages?afterSeq=" + Math.max(0, message.messageSeq() - 1),
+                messageLocator,
+                operationId + ":" + memberId + ":message"
+            );
+            appendConversationAndUnreadFacts(
+                currentUser.workspaceId(),
+                currentUser.id(),
+                memberId,
+                conversationId,
+                operationId
+            );
         }
     }
 
-    private void pushMessageEvents(CurrentUser currentUser, UUID conversationId, MessageSummary message, String eventType) {
-        ConversationDetail conversation = getConversation(currentUser, conversationId);
-        runAfterCommit(() -> {
-            for (UUID memberId : imRepository.listMemberIds(currentUser.workspaceId(), conversationId)) {
-                webSocketMessageSender.sendToUser(
-                    memberId,
-                    eventType,
-                    currentUser.workspaceId(),
-                    "message",
-                    message.id(),
-                    Map.of("conversationId", conversationId, "message", message)
-                );
-                webSocketMessageSender.sendToUser(
-                    memberId,
-                    "conversation.updated",
-                    currentUser.workspaceId(),
-                    "conversation",
-                    conversationId,
-                    Map.of("conversationId", conversationId, "conversation", conversation)
-                );
-                webSocketMessageSender.sendToUser(
-                    memberId,
-                    "unread.changed",
-                    currentUser.workspaceId(),
-                    "conversation",
-                    conversationId,
-                    Map.of(
-                        "conversationId",
-                        conversationId,
-                        "unreadCount",
-                        imRepository.unreadCount(currentUser.workspaceId(), conversationId, memberId),
-                        "totalUnreadCount",
-                        imRepository.totalUnreadCount(currentUser.workspaceId(), memberId)
-                    )
-                );
-            }
-        });
+    private void appendConversationEvents(CurrentUser currentUser, UUID conversationId, ConversationDetail conversation) {
+        appendConversationEvents(currentUser, conversationId, conversation, List.of());
     }
 
-    private void pushConversationEvents(CurrentUser currentUser, UUID conversationId, ConversationDetail conversation) {
-        pushConversationEvents(currentUser, conversationId, conversation, List.of());
-    }
-
-    private void pushConversationPreferenceEvent(CurrentUser currentUser, UUID conversationId, ConversationDetail conversation) {
-        runAfterCommit(() ->
-            webSocketMessageSender.sendToUser(
-                currentUser.id(),
-                "conversation.updated",
-                currentUser.workspaceId(),
-                "conversation",
-                conversationId,
-                Map.of("conversationId", conversationId, "conversation", conversation)
-            )
+    private void appendConversationPreferenceEvent(CurrentUser currentUser, UUID conversationId) {
+        appendRealtimeFact(
+            currentUser.workspaceId(),
+            currentUser.id(),
+            currentUser.id(),
+            "conversation.updated",
+            "conversation",
+            conversationId,
+            "/api/conversations/" + conversationId,
+            Map.of("conversationId", conversationId.toString()),
+            UUID.randomUUID() + ":preference"
         );
     }
 
-    private void pushConversationEvents(
+    private void appendConversationEvents(
         CurrentUser currentUser,
         UUID conversationId,
         ConversationDetail conversation,
@@ -493,33 +473,92 @@ public class ImService {
         Set<UUID> recipientIds = new LinkedHashSet<>(imRepository.listMemberIds(currentUser.workspaceId(), conversationId));
         recipientIds.addAll(extraRecipientIds);
         conversation.members().stream().map(member -> member.userId()).forEach(recipientIds::add);
-        runAfterCommit(() -> {
-            for (UUID memberId : recipientIds) {
-                webSocketMessageSender.sendToUser(
-                    memberId,
-                    "conversation.updated",
-                    currentUser.workspaceId(),
-                    "conversation",
-                    conversationId,
-                    Map.of("conversationId", conversationId, "conversation", conversation)
-                );
-                webSocketMessageSender.sendToUser(
-                    memberId,
-                    "unread.changed",
-                    currentUser.workspaceId(),
-                    "conversation",
-                    conversationId,
-                    Map.of(
-                        "conversationId",
-                        conversationId,
-                        "unreadCount",
-                        imRepository.unreadCount(currentUser.workspaceId(), conversationId, memberId),
-                        "totalUnreadCount",
-                        imRepository.totalUnreadCount(currentUser.workspaceId(), memberId)
-                    )
-                );
-            }
-        });
+        UUID operationId = UUID.randomUUID();
+        for (UUID memberId : recipientIds) {
+            appendConversationAndUnreadFacts(
+                currentUser.workspaceId(),
+                currentUser.id(),
+                memberId,
+                conversationId,
+                operationId
+            );
+        }
+    }
+
+    @Transactional
+    public void publishConversationChanged(
+        UUID workspaceId,
+        UUID actorId,
+        UUID conversationId,
+        Collection<UUID> extraRecipientIds
+    ) {
+        Set<UUID> recipientIds = new LinkedHashSet<>(imRepository.listMemberIds(workspaceId, conversationId));
+        recipientIds.addAll(extraRecipientIds == null ? List.of() : extraRecipientIds);
+        UUID operationId = UUID.randomUUID();
+        for (UUID recipientId : recipientIds) {
+            appendConversationAndUnreadFacts(workspaceId, actorId, recipientId, conversationId, operationId);
+        }
+    }
+
+    private void appendConversationAndUnreadFacts(
+        UUID workspaceId,
+        UUID actorId,
+        UUID recipientId,
+        UUID conversationId,
+        UUID operationId
+    ) {
+        Map<String, Object> locator = Map.of("conversationId", conversationId.toString());
+        appendRealtimeFact(
+            workspaceId,
+            actorId,
+            recipientId,
+            "conversation.updated",
+            "conversation",
+            conversationId,
+            "/api/conversations/" + conversationId,
+            locator,
+            operationId + ":" + recipientId + ":conversation"
+        );
+        appendRealtimeFact(
+            workspaceId,
+            actorId,
+            recipientId,
+            "unread.changed",
+            "conversation",
+            conversationId,
+            "/api/conversations",
+            locator,
+            operationId + ":" + recipientId + ":unread"
+        );
+    }
+
+    private void appendRealtimeFact(
+        UUID workspaceId,
+        UUID actorId,
+        UUID recipientId,
+        String signalType,
+        String objectType,
+        UUID objectId,
+        String calibrationPath,
+        Map<String, Object> safePayload,
+        String operationKey
+    ) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("recipientId", recipientId.toString());
+        payload.put("signalType", signalType);
+        payload.put("objectType", objectType);
+        payload.put("objectId", objectId.toString());
+        payload.put("calibrationPath", calibrationPath);
+        payload.put("safePayload", safePayload);
+        eventRepository.append(
+            workspaceId,
+            "im.realtime.changed",
+            "im_recipient",
+            recipientId,
+            actorId,
+            payload,
+            "im.realtime:" + operationKey
+        );
     }
 
     private void appendMessageCreatedEvent(CurrentUser currentUser, UUID conversationId, MessageSummary message) {

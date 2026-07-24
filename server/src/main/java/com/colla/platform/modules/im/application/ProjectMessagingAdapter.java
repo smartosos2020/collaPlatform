@@ -4,6 +4,7 @@ import com.colla.platform.modules.im.contract.ProjectMessaging;
 import com.colla.platform.modules.im.infrastructure.ImRepository;
 import com.colla.platform.shared.auth.CurrentUser;
 import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -25,12 +26,14 @@ public class ProjectMessagingAdapter implements ProjectMessaging {
         for (Member member : members) {
             repository.addMember(workspaceId, conversationId, member.userId(), member.role());
         }
+        imService.publishConversationChanged(workspaceId, actorId, conversationId, List.of());
         return conversationId;
     }
 
     @Override
     public void addMember(UUID workspaceId, UUID actorId, UUID conversationId, Member member) {
         repository.addMember(workspaceId, conversationId, member.userId(), member.role());
+        imService.publishConversationChanged(workspaceId, actorId, conversationId, List.of(member.userId()));
     }
 
     @Override

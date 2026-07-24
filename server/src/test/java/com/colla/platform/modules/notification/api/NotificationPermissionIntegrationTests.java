@@ -121,6 +121,52 @@ class NotificationPermissionIntegrationTests {
         org.junit.jupiter.api.Assertions.assertEquals(1, notificationCount);
     }
 
+    @Test
+    void repeatedReadChangesFactAndAppendsDurableRealtimeEventOnlyOnce() throws Exception {
+        String adminToken = login("admin", "admin123456");
+        UUID workspaceId = workspaceId(adminToken);
+        UUID adminId = currentUserId(adminToken);
+        UUID notificationId = UUID.randomUUID();
+        jdbcTemplate.update(
+            """
+                insert into notifications
+                    (id, workspace_id, recipient_id, notification_type, title, dedupe_key, created_at)
+                values (?, ?, ?, 'system_notice', 'Read once', ?, now())
+                """,
+            notificationId,
+            workspaceId,
+            adminId,
+            "read-once-" + notificationId
+        );
+
+        mockMvc.perform(post("/api/notifications/" + notificationId + "/read")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk());
+        mockMvc.perform(post("/api/notifications/" + notificationId + "/read")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk());
+
+        Integer factCount = jdbcTemplate.queryForObject(
+            "select count(*) from notifications where id = ? and read_at is not null",
+            Integer.class,
+            notificationId
+        );
+        Integer realtimeEventCount = jdbcTemplate.queryForObject(
+            """
+                select count(*) from domain_events
+                where workspace_id = ? and event_type = 'notification.realtime.changed'
+                  and aggregate_type = 'notification_recipient' and aggregate_id = ?
+                  and payload->>'notificationId' = ? and payload->>'changeType' = 'read'
+                """,
+            Integer.class,
+            workspaceId,
+            adminId,
+            notificationId.toString()
+        );
+        org.junit.jupiter.api.Assertions.assertEquals(1, factCount);
+        org.junit.jupiter.api.Assertions.assertEquals(1, realtimeEventCount);
+    }
+
     private UUID createDepartment(String token, String code, String name) throws Exception {
         String response = mockMvc.perform(post("/api/admin/departments")
                 .header("Authorization", "Bearer " + token)
