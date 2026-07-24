@@ -4,9 +4,6 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { InternalLinkCard } from '../../platform/components/InternalLinkCard'
-import { useAuthStore } from '../../auth/authStore'
-import { useWebSocketConnection } from '../../../shared/websocket/useWebSocketConnection'
-import type { PlatformWebSocketEvent } from '../../../shared/websocket/websocketEvents'
 import {
   getUnreadCount,
   listNotifications,
@@ -14,6 +11,7 @@ import {
   markNotificationRead,
   markNotificationsRead,
 } from '../api/notificationsApi'
+import { reconcileActiveNotificationFilters } from '../realtime/notificationReconciliation'
 
 type StatusFilter = 'all' | 'unread' | 'read'
 
@@ -24,7 +22,6 @@ export function NotificationsPage() {
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const accessToken = useAuthStore((state) => state.accessToken)
   const notificationFilters = {
     status: status === 'all' ? undefined : status,
     source: source === 'all' ? undefined : source,
@@ -42,17 +39,12 @@ export function NotificationsPage() {
   })
 
   const refreshNotifications = async () => {
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ['notifications'] }),
-      queryClient.invalidateQueries({ queryKey: ['notifications', 'unread-count'] }),
-    ])
+    await reconcileActiveNotificationFilters(
+      queryClient,
+      [notificationFilters],
+      { list: listNotifications, unreadCount: getUnreadCount },
+    )
   }
-
-  useWebSocketConnection(accessToken, (event: PlatformWebSocketEvent) => {
-    if (['notification.created', 'notification.read', 'notification.unread.changed'].includes(event.type)) {
-      void refreshNotifications()
-    }
-  })
 
   const markReadMutation = useMutation({
     mutationFn: markNotificationRead,

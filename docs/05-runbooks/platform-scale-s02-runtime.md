@@ -1,12 +1,17 @@
 ---
 title: PLATFORM-SCALE-S02 运行隔离部署与故障处置手册
-status: active
+status: superseded
 program: PLATFORM-SCALE
 program_revision: 4
 updated_at: 2026-07-24
+superseded_by: docs/05-runbooks/platform-scale-s04-realtime.md
 ---
 
 # PLATFORM-SCALE-S02 运行隔离部署与故障处置手册
+
+> 本文仅保留 S02 运行角色隔离的历史基线。当前 Worker 操作以
+> `docs/05-runbooks/event-worker-fleet.md` 为准；双 Event Gateway 与双
+> Collaboration 操作以 `docs/05-runbooks/platform-scale-s04-realtime.md` 为准。
 
 ## 1. 适用范围
 

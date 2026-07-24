@@ -1,4 +1,6 @@
-import { parseDocumentName } from './protocol.js'
+import { randomUUID } from 'node:crypto'
+
+import { parseDocumentName, protocolError } from './protocol.js'
 
 export class CollaborationMetrics {
   constructor(nodeId, redisEnabled = true) {
@@ -7,7 +9,15 @@ export class CollaborationMetrics {
     this.redisEnabled = redisEnabled
     this.redisClients = new Map()
     this.rooms = new Map()
+    this.acceptedConnections = 0
+    this.capacityRejections = { connections: 0, rooms: 0 }
+    this.reservations = new Map()
+    this.staleWrites = { snapshot: 0, generation: 0 }
+    this.authorizationGraceUses = 0
     this.failures = { backend: 0, redis: 0, recovery: 0, store: 0 }
+    this.durableQueue = {
+      updates: 0, bytes: 0, retryAttempts: 0, recoveredUpdates: 0, backpressureRejections: 0,
+    }
     this.lastFailure = null
   }
 
@@ -23,8 +33,47 @@ export class CollaborationMetrics {
 
   connect(documentName, socketId, userId) {
     const room = this.room(documentName)
+    this.acceptedConnections += 1
     room.connections.set(socketId, userId)
     room.lastActivityAt = new Date().toISOString()
+  }
+
+  reserve(documentName, maxConnections, maxRooms, ttlMs) {
+    this.purgeReservations(ttlMs)
+    const activeConnections = this.connectionCount()
+    if (activeConnections + this.reservations.size >= maxConnections) {
+      this.capacityRejections.connections += 1
+      throw protocolError('COLLAB_CONNECTION_CAPACITY', 'Collaboration connection capacity reached')
+    }
+    const reservedRooms = new Set([...this.reservations.values()].map((entry) => entry.documentName))
+    if (!this.rooms.has(documentName) && !reservedRooms.has(documentName)
+        && this.rooms.size + reservedRooms.size >= maxRooms) {
+      this.capacityRejections.rooms += 1
+      throw protocolError('COLLAB_ROOM_CAPACITY', 'Collaboration room capacity reached')
+    }
+    const id = randomUUID()
+    this.reservations.set(id, { documentName, createdAt: Date.now() })
+    return id
+  }
+
+  activateReservation(reservationId, documentName, socketId, userId) {
+    this.releaseReservation(reservationId)
+    this.connect(documentName, socketId, userId)
+  }
+
+  releaseReservation(reservationId) {
+    if (reservationId) this.reservations.delete(reservationId)
+  }
+
+  purgeReservations(ttlMs) {
+    const cutoff = Date.now() - ttlMs
+    for (const [id, reservation] of this.reservations) {
+      if (reservation.createdAt < cutoff) this.reservations.delete(id)
+    }
+  }
+
+  connectionCount() {
+    return [...this.rooms.values()].reduce((sum, room) => sum + room.connections.size, 0)
   }
 
   disconnect(documentName, socketId) {
@@ -34,9 +83,15 @@ export class CollaborationMetrics {
     room.lastActivityAt = new Date().toISOString()
   }
 
-  loaded(documentName, pendingUpdates) {
+  loaded(documentName, loaded) {
     const room = this.room(documentName)
-    room.pendingUpdates = pendingUpdates
+    const updates = loaded.updates ?? []
+    room.generation = Number(loaded.generation) || 0
+    room.latestSequence = Math.max(
+      Number(loaded.snapshotSequence) || 0,
+      ...updates.map((update) => Number(update.sequence) || 0),
+    )
+    room.pendingUpdates = updates.length
     room.lastLoadAt = new Date().toISOString()
   }
 
@@ -55,6 +110,49 @@ export class CollaborationMetrics {
     room.storeCount += 1
     room.pendingUpdates = 0
     room.lastStoreAt = new Date().toISOString()
+  }
+
+  staleWrite(code) {
+    const key = code === 'COLLAB_GENERATION_STALE' ? 'generation' : 'snapshot'
+    this.staleWrites[key] += 1
+  }
+
+  authorizationGrace(documentName, error) {
+    this.authorizationGraceUses += 1
+    this.lastFailure = {
+      kind: 'backend',
+      documentName,
+      message: error instanceof Error ? error.message : String(error ?? 'Authorization backend unavailable'),
+      at: new Date().toISOString(),
+    }
+  }
+
+  durableQueued(documentName, bytes) {
+    this.durableQueue.updates += 1
+    this.durableQueue.bytes += bytes
+    this.room(documentName).lastActivityAt = new Date().toISOString()
+  }
+
+  durableDequeued(documentName, bytes) {
+    this.durableQueue.updates = Math.max(0, this.durableQueue.updates - 1)
+    this.durableQueue.bytes = Math.max(0, this.durableQueue.bytes - bytes)
+    const room = this.room(documentName)
+    room.pendingUpdates = Math.max(0, room.pendingUpdates - 1)
+  }
+
+  durableRetry(documentName) {
+    this.durableQueue.retryAttempts += 1
+    this.room(documentName).lastRecoveryAt = new Date().toISOString()
+  }
+
+  durableRecovered(documentName) {
+    this.durableQueue.recoveredUpdates += 1
+    this.room(documentName).recoveryCount += 1
+  }
+
+  durableBackpressure(documentName) {
+    this.durableQueue.backpressureRejections += 1
+    this.room(documentName).lastActivityAt = new Date().toISOString()
   }
 
   recovered(documentName, pendingUpdates) {
@@ -88,6 +186,7 @@ export class CollaborationMetrics {
         lastPersistenceLatencyMs: room.lastPersistenceLatencyMs,
         maxPersistenceLatencyMs: room.maxPersistenceLatencyMs,
         pendingUpdates: room.pendingUpdates,
+        generation: room.generation,
         storeCount: room.storeCount,
         recoveryCount: room.recoveryCount,
         lastActivityAt: room.lastActivityAt,
@@ -104,7 +203,13 @@ export class CollaborationMetrics {
       startedAt: this.startedAt,
       redisStatus,
       connections: instance?.getConnectionsCount?.() ?? rooms.reduce((sum, room) => sum + room.connections, 0),
+      acceptedConnections: this.acceptedConnections,
+      reservedConnections: this.reservations.size,
+      capacityRejections: { ...this.capacityRejections },
       documents: instance?.getDocumentsCount?.() ?? rooms.length,
+      staleWrites: { ...this.staleWrites },
+      authorizationGraceUses: this.authorizationGraceUses,
+      durableQueue: { ...this.durableQueue },
       failures: { ...this.failures },
       lastFailure: this.lastFailure,
     }
@@ -120,6 +225,7 @@ export class CollaborationMetrics {
     if (!room) {
       room = {
         connections: new Map(), updateCount: 0, latestSequence: 0, pendingUpdates: 0,
+        generation: 0,
         lastPersistenceLatencyMs: 0, maxPersistenceLatencyMs: 0,
         storeCount: 0, recoveryCount: 0, lastActivityAt: null, lastLoadAt: null,
         lastStoreAt: null, lastRecoveryAt: null,

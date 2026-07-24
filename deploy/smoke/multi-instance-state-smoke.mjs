@@ -153,7 +153,17 @@ function startService(service) {
   waitForHealth(service);
 }
 
-for (const service of ["postgres", "redis", "minio", "api-a", "api-b", "worker", "event-gateway"]) {
+for (const service of [
+  "postgres",
+  "redis",
+  "minio",
+  "api-a",
+  "api-b",
+  "worker-a",
+  "worker-b",
+  "event-gateway-a",
+  "event-gateway-b",
+]) {
   waitForHealth(service);
 }
 

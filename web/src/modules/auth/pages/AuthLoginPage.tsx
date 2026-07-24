@@ -1,4 +1,4 @@
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Alert, Button, Card, Form, Input, Typography } from 'antd'
 import { useLocation, useNavigate } from 'react-router-dom'
 
@@ -8,12 +8,14 @@ import { useAuthStore } from '../authStore'
 export function AuthLoginPage() {
   const navigate = useNavigate()
   const location = useLocation()
+  const queryClient = useQueryClient()
   const setTokens = useAuthStore((state) => state.setTokens)
   const from = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname ?? '/'
 
   const loginMutation = useMutation({
     mutationFn: login,
     onSuccess: (tokens) => {
+      queryClient.clear()
       setTokens(tokens.accessToken, tokens.refreshToken)
       navigate(from, { replace: true })
     },

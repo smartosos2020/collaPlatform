@@ -123,12 +123,6 @@ public final class KnowledgeContentModels {
     ) {
     }
 
-    public record KnowledgeContentCollaborationState(
-        UUID itemId, String stateVector, String snapshotContent, String snapshotPayload, long serverClock,
-        String lastClientId, UUID updatedBy, Instant lastSavedAt, Instant updatedAt
-    ) {
-    }
-
     public record KnowledgeCollaborationTicket(
         String url, String documentName, String ticket, String clientId, String protocolVersion,
         int schemaVersion, String permissionLevel, boolean canView, boolean canEdit, Instant expiresAt
@@ -143,13 +137,13 @@ public final class KnowledgeContentModels {
 
     public record KnowledgeCollaborationTicketRecord(
         UUID id, String tokenHash, UUID workspaceId, UUID itemId, UUID userId, UUID deviceId,
-        String clientId, Instant expiresAt, Instant revokedAt
+        String clientId, Instant expiresAt, Instant revokedAt, Instant consumedAt
     ) {
     }
 
     public record KnowledgeCollaborationBinaryState(
-        byte[] snapshot, byte[] stateVector, int schemaVersion, long snapshotSequence, String snapshotHash,
-        String canonicalSnapshot, Instant updatedAt
+        byte[] snapshot, byte[] stateVector, int schemaVersion, long generation, long snapshotSequence,
+        String snapshotHash, String canonicalSnapshot, Instant updatedAt
     ) {
     }
 

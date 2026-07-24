@@ -44,10 +44,14 @@ test('two collaboration nodes converge through Redis without duplicate persisten
   right.getText('title').insert(right.getText('title').length, '-right')
   await eventually(() => assert.equal(left.getText('title').toString(), 'left-right'))
   await eventually(() => assert.equal(gateway.updateIds.size, 2))
+  await eventually(() => assert.equal(gateway.lastSnapshot?.snapshotSequence > 0, true))
 
   assert.equal(gateway.appendCalls, 2)
+  assert.equal(gateway.lastSnapshot.generation, gateway.generation)
   assert.equal(nodeA.collaRuntime.metrics.snapshot(nodeA.hocuspocus, true).rooms[0].latestSequence > 0, true)
   assert.equal(nodeB.collaRuntime.metrics.snapshot(nodeB.hocuspocus, true).rooms[0].connections, 1)
+  assert.equal(nodeA.collaRuntime.metrics.snapshot(nodeA.hocuspocus).acceptedConnections, 1)
+  assert.equal(nodeB.collaRuntime.metrics.snapshot(nodeB.hocuspocus).acceptedConnections, 1)
 })
 
 test('a disconnected client receives missing Yjs updates without replacing newer state', { timeout: 20_000 }, async (t) => {
@@ -124,14 +128,19 @@ test('Redis degradation is observable and database recovery repairs a missed bro
   })).status, 200)
 
   left.getText('title').insert(left.getText('title').length, '-missed')
-  await eventually(() => assert.equal(gateway.updateIds.size >= 2, true))
+  right.getText('title').insert(right.getText('title').length, '-local-outage')
+  await eventually(() => assert.equal(gateway.updateIds.size >= 3, true))
   await Promise.all([
     nodeB.collaRuntime.redisExtension.pub.connect(),
     nodeB.collaRuntime.redisExtension.sub.connect(),
   ])
   await eventually(() => assert.equal(nodeB.collaRuntime.metrics.redisStatus, 'ready'))
-  await nodeB.collaRuntime.recoverAll()
-  await eventually(() => assert.equal(right.getText('title').toString(), 'before-missed'))
+  await Promise.all([nodeA.collaRuntime.recoverAll(), nodeB.collaRuntime.recoverAll()])
+  await eventually(() => {
+    assert.equal(left.getText('title').toString(), right.getText('title').toString())
+    assert.match(left.getText('title').toString(), /missed/)
+    assert.match(left.getText('title').toString(), /local-outage/)
+  })
   assert.equal(nodeB.collaRuntime.metrics.snapshot(nodeB.hocuspocus, true).rooms[0].recoveryCount > 0, true)
 })
 
@@ -224,6 +233,9 @@ class MemoryGateway {
     this.updateIds = new Map()
     this.updates = []
     this.snapshot = ''
+    this.snapshotSequence = 0
+    this.generation = 1
+    this.lastSnapshot = null
     this.appendCalls = 0
     this.loadCalls = 0
   }
@@ -235,15 +247,21 @@ class MemoryGateway {
     }
   }
 
+  async authorize(ticket) {
+    return this.authenticate(ticket)
+  }
+
   async load() {
     this.loadCalls += 1
     return {
-      title: '', snapshot: this.snapshot, updates: this.updates,
+      title: '', snapshot: this.snapshot, snapshotSequence: this.snapshotSequence,
+      generation: this.generation, updates: this.updates,
       canonicalDocument: { type: 'doc', schemaVersion: 3, content: [] },
     }
   }
 
-  async appendUpdate(ticket, documentName, update, clientId, updateId) {
+  async appendUpdate(ticket, documentName, update, clientId, updateId, schemaVersion, generation) {
+    assert.equal(generation, this.generation)
     this.appendCalls += 1
     if (!this.updateIds.has(updateId)) {
       this.sequence += 1
@@ -253,8 +271,23 @@ class MemoryGateway {
     return { sequence: this.updateIds.get(updateId), updateId, accepted: true }
   }
 
-  async storeSnapshot(ticket, documentName, snapshot) {
+  async storeSnapshot(
+    ticket,
+    documentName,
+    snapshot,
+    stateVector,
+    canonicalDocument,
+    schemaVersion,
+    clientId,
+    title,
+    nodeId,
+    generation,
+    snapshotSequence,
+  ) {
+    assert.equal(generation, this.generation)
     this.snapshot = snapshot
+    this.snapshotSequence = snapshotSequence
+    this.lastSnapshot = { generation, snapshotSequence, nodeId }
     this.updates = []
     return { snapshotHash: 'test', savedAt: new Date().toISOString() }
   }
@@ -305,6 +338,7 @@ function testConfig(port, nodeId, prefix) {
   return {
     host: '127.0.0.1', port, nodeId, maxUpdateBytes: 1024 * 1024,
     debounceMs: 50, maxDebounceMs: 200, authorizationCacheMs: 10,
+    authorizationGraceMs: 120_000, authorizationRetryMs: 10,
     backendTimeoutMs: 1000, backendRetries: 0, recoveryIntervalMs: 100,
     roomUnloadImmediately: false, internalSecret: 'test-secret',
     redis: {

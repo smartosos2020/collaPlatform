@@ -1073,7 +1073,6 @@ export function KnowledgeBaseDetailPage() {
               {selectedItem?.contentType === 'markdown' ? (
                 <CollaborationHealthCard
                   dirty={Boolean(collaborationHealthQuery.data?.dirty)}
-                  onlineCount={collaborationHealthQuery.data?.activeUsers ?? 0}
                   serverClock={collaborationHealthQuery.data?.serverClock ?? 0}
                   lastSavedAt={collaborationHealthQuery.data?.lastSavedAt}
                   onOpen={() => openItemOrDirectory(selectedItem.id)}
@@ -1376,14 +1375,12 @@ export function KnowledgeBaseDetailPage() {
 
 function CollaborationHealthCard({
   dirty,
-  onlineCount,
   serverClock,
   lastSavedAt,
   onOpen,
   onRefresh,
 }: {
   dirty: boolean
-  onlineCount: number
   serverClock: number
   lastSavedAt?: string | null
   onOpen: () => void
@@ -1398,7 +1395,7 @@ function CollaborationHealthCard({
       description={
         <Space direction="vertical" size={4}>
           <Typography.Text type="secondary">
-            在线 {onlineCount} 人 · serverClock {serverClock}
+            持久化序列 {serverClock}
             {lastSavedAt ? ` · 保存 ${new Date(lastSavedAt).toLocaleTimeString()}` : ''}
           </Typography.Text>
           <Typography.Text type="secondary">异常时可刷新状态、进入内容页重连，或按只读方式查看最近已保存版本。</Typography.Text>

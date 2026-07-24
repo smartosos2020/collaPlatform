@@ -64,12 +64,10 @@ import {
   sendMessage,
   toggleReaction,
   type ConversationSummary,
-  type MessagePage,
   type MessageSummary,
 } from '../api/messengerApi'
-import { useWebSocketConnection } from '../../../shared/websocket/useWebSocketConnection'
-import type { PlatformWebSocketEvent } from '../../../shared/websocket/websocketEvents'
 import { listProjects } from '../../projects/api/projectsApi'
+import { useRealtimeStatus, type RealtimeConnectionStatus } from '../../../shared/realtime'
 
 type CreateConversationForm = {
   conversationType: 'direct' | 'group'
@@ -116,7 +114,6 @@ export function MessengerPage() {
   const [memberToAddId, setMemberToAddId] = useState<string>()
   const [composerEmojiOpen, setComposerEmojiOpen] = useState(false)
   const [localMessages, setLocalMessages] = useState<ChatMessage[]>([])
-  const [syncingAfterReconnect, setSyncingAfterReconnect] = useState(false)
   const [form] = Form.useForm<CreateConversationForm>()
   const [convertForm] = Form.useForm<ConvertMessageForm>()
   const [convertDocumentForm] = Form.useForm<ConvertMessageToKnowledgeContentForm>()
@@ -124,10 +121,9 @@ export function MessengerPage() {
   const messageRefs = useRef<Record<string, HTMLElement | null>>({})
   const autoReadMessageIdRef = useRef<string | null>(null)
   const focusedMessageIdRef = useRef<string | null>(null)
-  const previousWsStatusRef = useRef<string>('idle')
   const queryClient = useQueryClient()
   const currentUser = useAuthStore((state) => state.currentUser)
-  const accessToken = useAuthStore((state) => state.accessToken)
+  const { status: realtimeStatus } = useRealtimeStatus()
   const { message } = AntdApp.useApp()
 
   const selectedConversationId = searchParams.get('conversationId')
@@ -189,24 +185,6 @@ export function MessengerPage() {
         : Promise.resolve(),
     ])
   }, [queryClient, selectedConversationId])
-
-  const wsStatus = useWebSocketConnection(accessToken, (event: PlatformWebSocketEvent) => {
-    if (
-      [
-        'message.created',
-        'message.edited',
-        'message.revoked',
-        'message.pinned',
-        'message.unpinned',
-        'message.reaction.toggled',
-        'conversation.updated',
-        'conversation.read',
-        'unread.changed',
-      ].includes(event.type)
-    ) {
-      void refreshIm()
-    }
-  })
 
   const createMutation = useMutation({
     mutationFn: createConversation,
@@ -399,14 +377,6 @@ export function MessengerPage() {
     )
   }, [localMessages, messagesQuery.data?.items, selectedConversationId])
   const selectedConversation = conversationQuery.data
-  const latestServerMessageSeq = useMemo(
-    () =>
-      messages.reduce(
-        (latest, item) => (item.deliveryStatus ? latest : Math.max(latest, item.messageSeq)),
-        0,
-      ),
-    [messages],
-  )
   const selectedMemberIds = useMemo(
     () => new Set((selectedConversation?.members ?? []).map((member) => member.userId)),
     [selectedConversation?.members],
@@ -468,38 +438,10 @@ export function MessengerPage() {
     window.setTimeout(() => setHighlightedMessageId(null), 1600)
   }, [])
 
-  const syncAfterReconnect = useCallback(async () => {
-    if (!selectedConversationId || latestServerMessageSeq <= 0) {
-      await refreshIm()
-      return
-    }
-    setSyncingAfterReconnect(true)
-    try {
-      const page = await listMessages(selectedConversationId, null, latestServerMessageSeq)
-      if (page.items.length > 0) {
-        queryClient.setQueryData<MessagePage>(messagesQueryKey, (current) => mergeMessagePage(current, page))
-      }
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['im', 'conversations'] }),
-        queryClient.invalidateQueries({ queryKey: ['im', 'conversation', selectedConversationId] }),
-      ])
-    } finally {
-      setSyncingAfterReconnect(false)
-    }
-  }, [latestServerMessageSeq, messagesQueryKey, queryClient, refreshIm, selectedConversationId])
-
   useEffect(() => {
     autoReadMessageIdRef.current = null
     focusedMessageIdRef.current = null
   }, [selectedConversationId, selectedMessageId])
-
-  useEffect(() => {
-    const previousStatus = previousWsStatusRef.current
-    previousWsStatusRef.current = wsStatus
-    if (wsStatus === 'connected' && previousStatus !== 'connected') {
-      void syncAfterReconnect()
-    }
-  }, [syncAfterReconnect, wsStatus])
 
   useEffect(() => {
     if (!selectedMessageId || focusedMessageIdRef.current === selectedMessageId) {
@@ -607,7 +549,7 @@ export function MessengerPage() {
           {conversationListCollapsed ? null : (
             <Space>
               <Typography.Title level={3}>消息</Typography.Title>
-              <ConnectionTag status={wsStatus} />
+              <ConnectionTag status={realtimeStatus} />
             </Space>
           )}
           <Space>
@@ -667,7 +609,9 @@ export function MessengerPage() {
               <Space>
                 <ConversationAvatar conversation={selectedConversation} />
                 <Typography.Title level={4}>{selectedConversation.title}</Typography.Title>
-                {syncingAfterReconnect ? <Tag color="blue">同步中</Tag> : null}
+                {realtimeStatus === 'reconnecting' || realtimeStatus === 'degraded'
+                  ? <Tag color="blue">校准中</Tag>
+                  : null}
               </Space>
               <Space>
                 <Button
@@ -1053,22 +997,6 @@ function createLocalMessage({
   }
 }
 
-function mergeMessagePage(current: MessagePage | undefined, incoming: MessagePage): MessagePage {
-  const byId = new Map<string, MessageSummary>()
-  for (const item of current?.items ?? []) {
-    byId.set(item.id, item)
-  }
-  for (const item of incoming.items) {
-    byId.set(item.id, item)
-  }
-  return {
-    items: [...byId.values()]
-      .sort((left, right) => right.messageSeq - left.messageSeq)
-      .slice(0, 100),
-    nextCursor: current?.nextCursor ?? incoming.nextCursor ?? null,
-  }
-}
-
 function ConversationListItem({
   conversation,
   active,
@@ -1332,8 +1260,8 @@ function formatMessageTime(value: string) {
   return new Date(value).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
 }
 
-function ConnectionTag({ status }: { status: string }) {
-  if (status === 'connected') {
+function ConnectionTag({ status }: { status: RealtimeConnectionStatus }) {
+  if (status === 'ready') {
     return <Tag icon={<WifiOutlined />} color="green">在线</Tag>
   }
   if (status === 'connecting') {

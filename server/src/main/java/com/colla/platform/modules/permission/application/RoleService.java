@@ -7,6 +7,7 @@ import com.colla.platform.modules.permission.domain.PermissionModels.RoleDetail;
 import com.colla.platform.modules.permission.domain.PermissionModels.RoleSummary;
 import com.colla.platform.modules.permission.infrastructure.RoleRepository;
 import com.colla.platform.shared.auth.CurrentUser;
+import com.colla.platform.shared.request.RequestBoundaryContext;
 import java.time.Instant;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -25,11 +26,18 @@ public class RoleService {
     private final RoleRepository roleRepository;
     private final PermissionService permissionService;
     private final AuditService auditService;
+    private final PermissionSecurityChangePublisher securityChanges;
 
-    public RoleService(RoleRepository roleRepository, PermissionService permissionService, AuditService auditService) {
+    public RoleService(
+        RoleRepository roleRepository,
+        PermissionService permissionService,
+        AuditService auditService,
+        PermissionSecurityChangePublisher securityChanges
+    ) {
         this.roleRepository = roleRepository;
         this.permissionService = permissionService;
         this.auditService = auditService;
+        this.securityChanges = securityChanges;
     }
 
     public List<PermissionCatalogItem> listPermissions(CurrentUser currentUser) {
@@ -67,6 +75,7 @@ public class RoleService {
             role.id(),
             Map.of("code", role.code(), "name", role.name(), "scope", role.scope())
         );
+        publishRoleChange(currentUser, role.id(), "created");
         return role;
     }
 
@@ -101,6 +110,7 @@ public class RoleService {
                 "status", role.status()
             )
         );
+        publishRoleChange(currentUser, role.id(), "updated");
         return role;
     }
 
@@ -128,6 +138,7 @@ public class RoleService {
             roleId,
             Map.of("permissionCodes", codes, "highRisk", highRisk)
         );
+        publishRoleChange(currentUser, roleId, "permissions");
         return getRole(currentUser, roleId);
     }
 
@@ -184,6 +195,15 @@ public class RoleService {
                 "highRisk", highRisk
             )
         );
+        securityChanges.publish(
+            currentUser.workspaceId(),
+            currentUser.id(),
+            "role_assignment",
+            assignment.id(),
+            "role_assignment",
+            "/api/admin/role-assignments",
+            mutationKey("assignment-created", assignment.id())
+        );
         return assignment;
     }
 
@@ -200,6 +220,31 @@ public class RoleService {
             assignmentId,
             Map.of()
         );
+        securityChanges.publish(
+            currentUser.workspaceId(),
+            currentUser.id(),
+            "role_assignment",
+            assignmentId,
+            "role_assignment",
+            "/api/admin/role-assignments",
+            mutationKey("assignment-revoked", assignmentId)
+        );
+    }
+
+    private void publishRoleChange(CurrentUser currentUser, UUID roleId, String mutation) {
+        securityChanges.publish(
+            currentUser.workspaceId(),
+            currentUser.id(),
+            "role",
+            roleId,
+            "role",
+            "/api/admin/roles/" + roleId,
+            mutationKey(mutation, roleId)
+        );
+    }
+
+    private String mutationKey(String mutation, UUID aggregateId) {
+        return mutation + ":" + aggregateId + ":" + RequestBoundaryContext.current().requestId();
     }
 
     private RoleSummary requireRole(UUID workspaceId, UUID roleId) {

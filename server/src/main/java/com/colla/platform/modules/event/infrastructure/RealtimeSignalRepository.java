@@ -1,17 +1,24 @@
 package com.colla.platform.modules.event.infrastructure;
 
+import com.colla.platform.shared.realtime.RealtimeSignalEnvelope;
+import java.time.Instant;
+import java.util.Optional;
 import java.util.UUID;
 
 public interface RealtimeSignalRepository {
-    boolean create(
-        UUID signalId,
-        UUID workspaceId,
+    boolean create(UUID sourceEventId, RealtimeSignalEnvelope envelope);
+
+    Optional<StoredRealtimeSignal> find(UUID signalId);
+
+    boolean markTransported(UUID signalId, Instant transportedAt);
+
+    record StoredRealtimeSignal(
         UUID sourceEventId,
-        UUID recipientId,
-        String signalType,
-        String objectType,
-        UUID objectId,
-        long sourceVersion,
-        String calibrationPath
-    );
+        RealtimeSignalEnvelope envelope,
+        Instant transportedAt
+    ) {
+        public boolean transported() {
+            return transportedAt != null;
+        }
+    }
 }

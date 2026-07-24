@@ -588,6 +588,87 @@ class ImControllerIntegrationTests {
     }
 
     @Test
+    void realtimeFactsAreSafeOrderedAndClientMessageRetryDoesNotDuplicateThem() throws Exception {
+        String adminToken = login("admin", "admin123456", "im-realtime-admin-" + UUID.randomUUID());
+        UUID memberId = createMember(
+            adminToken,
+            "realtime" + UUID.randomUUID().toString().substring(0, 8),
+            "Realtime Member"
+        );
+        UUID conversationId = createConversation(adminToken, "Realtime Contract", memberId);
+        String clientMessageId = "realtime-client-" + UUID.randomUUID();
+        String request = """
+            {
+              "clientMessageId": "%s",
+              "messageType": "text",
+              "content": "private message body"
+            }
+            """.formatted(clientMessageId);
+
+        String firstResponse = mockMvc.perform(post("/api/conversations/" + conversationId + "/messages")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(request))
+            .andExpect(status().isOk())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+        UUID messageId = UUID.fromString(objectMapper.readTree(firstResponse).get("id").asText());
+        long messageSeq = objectMapper.readTree(firstResponse).get("messageSeq").asLong();
+        Integer beforeRetry = jdbcTemplate.queryForObject(
+            """
+                select count(*) from domain_events
+                where event_type = 'im.realtime.changed'
+                  and payload->>'signalType' = 'message.created'
+                  and payload->>'objectId' = ?
+                """,
+            Integer.class,
+            messageId.toString()
+        );
+
+        mockMvc.perform(post("/api/conversations/" + conversationId + "/messages")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(request))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.id").value(messageId.toString()));
+
+        Integer afterRetry = jdbcTemplate.queryForObject(
+            """
+                select count(*) from domain_events
+                where event_type = 'im.realtime.changed'
+                  and payload->>'signalType' = 'message.created'
+                  and payload->>'objectId' = ?
+                """,
+            Integer.class,
+            messageId.toString()
+        );
+        Integer unsafePayloadCount = jdbcTemplate.queryForObject(
+            """
+                select count(*) from domain_events
+                where event_type = 'im.realtime.changed'
+                  and payload::text like '%private message body%'
+                """,
+            Integer.class
+        );
+        Long minimumSequence = jdbcTemplate.queryForObject(
+            """
+                select min(aggregate_sequence) from domain_events
+                where event_type = 'im.realtime.changed'
+                  and payload->>'signalType' = 'message.created'
+                  and payload->'safePayload'->>'messageSeq' = ?
+                """,
+            Long.class,
+            Long.toString(messageSeq)
+        );
+
+        org.assertj.core.api.Assertions.assertThat(beforeRetry).isEqualTo(2);
+        org.assertj.core.api.Assertions.assertThat(afterRetry).isEqualTo(beforeRetry);
+        org.assertj.core.api.Assertions.assertThat(unsafePayloadCount).isZero();
+        org.assertj.core.api.Assertions.assertThat(minimumSequence).isPositive();
+    }
+
+    @Test
     void convertsMessageToIssueAndSearchesMessageWorkItems() throws Exception {
         String adminToken = login("admin", "admin123456", "im-work-entry-admin-" + UUID.randomUUID());
         UUID aliceId = createMember(adminToken, "workalice" + UUID.randomUUID().toString().substring(0, 8), "Work Alice");

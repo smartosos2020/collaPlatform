@@ -9,3 +9,9 @@ spring:
 colla:
   runtime:
     role: ${COLLA_RUNTIME_ROLE:combined}
+  realtime:
+    channel: ${COLLA_REALTIME_CHANNEL:colla:test:realtime:v1}
+    redis-listener-enabled: false
+    send-threads: 2
+    executor-queue-capacity: 32
+    session-queue-capacity: 8

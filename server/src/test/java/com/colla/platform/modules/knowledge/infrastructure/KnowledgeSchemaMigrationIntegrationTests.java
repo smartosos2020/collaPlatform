@@ -99,6 +99,57 @@ class KnowledgeSchemaMigrationIntegrationTests {
             "select count(*) from information_schema.columns where table_schema='public' and column_name='canonical_snapshot' and table_name in ('knowledge_content_versions', 'knowledge_content_templates', 'knowledge_content_collaboration_states')",
             Integer.class
         ));
+        assertEquals(0, jdbcTemplate.queryForObject(
+            """
+                select count(*)
+                from information_schema.columns
+                where table_schema = 'public'
+                  and table_name = 'knowledge_content_collaboration_states'
+                  and column_name in (
+                    'state_vector', 'snapshot_payload', 'server_clock',
+                    'last_client_id', 'updated_by', 'last_saved_at'
+                  )
+                """,
+            Integer.class
+        ));
+        assertEquals(3, jdbcTemplate.queryForObject(
+            """
+                select count(*)
+                from information_schema.columns
+                where table_schema = 'public'
+                  and (
+                    (table_name = 'knowledge_base_items' and column_name = 'collaboration_generation')
+                    or (table_name = 'knowledge_content_collaboration_states' and column_name = 'generation')
+                    or (table_name = 'knowledge_content_collaboration_updates' and column_name = 'generation')
+                  )
+            """,
+            Integer.class
+        ));
+        assertEquals(
+            "UNIQUE (workspace_id, item_id, generation, update_id)",
+            jdbcTemplate.queryForObject(
+                """
+                    select pg_get_constraintdef(constraint_row.oid)
+                    from pg_constraint constraint_row
+                    join pg_class table_row on table_row.oid = constraint_row.conrelid
+                    where table_row.relname = 'knowledge_content_collaboration_updates'
+                      and constraint_row.conname = 'uq_knowledge_collaboration_update_generation'
+                    """,
+                String.class
+            )
+        );
+        assertEquals(0, jdbcTemplate.queryForObject(
+            """
+                select count(*)
+                from pg_constraint constraint_row
+                join pg_class table_row on table_row.oid = constraint_row.conrelid
+                where table_row.relname = 'knowledge_content_collaboration_updates'
+                  and constraint_row.contype = 'u'
+                  and pg_get_constraintdef(constraint_row.oid) =
+                      'UNIQUE (workspace_id, item_id, update_id)'
+                """,
+            Integer.class
+        ));
     }
 
     @Test

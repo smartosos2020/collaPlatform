@@ -124,6 +124,9 @@ public class ProjectSpaceMembershipService {
         }
         ProjectSpaceMember added = requireMember(currentUser.workspaceId(), spaceId, memberId);
         auditMember(currentUser, "project_space.member.added", spaceId, added, Map.of("role", role.name()));
+        appendSpaceMembershipChange(
+            currentUser.workspaceId(), currentUser.id(), spaceId, added.userId(), "member-added", false
+        );
         notifyUser(currentUser, added.userId(), spaceId, "project_space.member.added", "已加入项目空间", role.name(), memberId.toString());
         return added;
     }
@@ -187,6 +190,9 @@ public class ProjectSpaceMembershipService {
         auditMember(currentUser, "project_space.member.role_changed", spaceId, changed, Map.of(
             "previousRole", previousRole.name(), "currentRole", nextRole.name()
         ));
+        appendSpaceMembershipChange(
+            currentUser.workspaceId(), currentUser.id(), spaceId, changed.userId(), "role-changed", true
+        );
         notifyUser(currentUser, changed.userId(), spaceId, "project_space.member.role_changed", "空间角色已变更", nextRole.name(), memberId.toString());
         return changed;
     }
@@ -211,6 +217,9 @@ public class ProjectSpaceMembershipService {
         membershipRepository.removeMember(currentUser.workspaceId(), spaceId, memberId, currentUser.id());
         ProjectSpaceMember removed = requireMember(currentUser.workspaceId(), spaceId, memberId);
         auditMember(currentUser, "project_space.member.removed", spaceId, removed, Map.of("previousRole", targetRole.name()));
+        appendSpaceMembershipChange(
+            currentUser.workspaceId(), currentUser.id(), spaceId, removed.userId(), "member-removed", true
+        );
         notifyUser(currentUser, removed.userId(), spaceId, "project_space.member.removed", "已移出项目空间", targetRole.name(), memberId.toString());
         return removed;
     }
@@ -224,6 +233,9 @@ public class ProjectSpaceMembershipService {
         membershipRepository.removeMember(currentUser.workspaceId(), spaceId, actor.id(), currentUser.id());
         ProjectSpaceMember removed = requireMember(currentUser.workspaceId(), spaceId, actor.id());
         auditMember(currentUser, "project_space.member.left", spaceId, removed, Map.of("previousRole", role.name()));
+        appendSpaceMembershipChange(
+            currentUser.workspaceId(), currentUser.id(), spaceId, removed.userId(), "member-left", true
+        );
         return removed;
     }
 
@@ -251,6 +263,9 @@ public class ProjectSpaceMembershipService {
             "currentOwnerUserId", target.userId().toString(),
             "previousTargetRole", previousTargetRole
         ));
+        appendSpaceMembershipChange(
+            currentUser.workspaceId(), currentUser.id(), spaceId, target.userId(), "owner-transferred", true
+        );
         notifyUser(currentUser, target.userId(), spaceId, "project_space.owner.transferred", "已成为项目空间所有者", "owner", target.id().toString());
         return membershipRepository.listMembers(currentUser.workspaceId(), spaceId);
     }
@@ -388,6 +403,10 @@ public class ProjectSpaceMembershipService {
             "memberId", memberId.toString(), "role", invitation.roleKey(),
             "previousStatus", "pending", "currentStatus", "accepted"
         ));
+        appendSpaceMembershipChange(
+            currentUser.workspaceId(), currentUser.id(), invitation.spaceId(), currentUser.id(),
+            "invitation-accepted", false
+        );
         notifyUser(currentUser, invitation.invitedBy(), invitation.spaceId(), "project_space.invitation.accepted", "项目空间邀请已接受", invitation.roleKey(), invitationId.toString());
         return accepted;
     }
@@ -458,6 +477,9 @@ public class ProjectSpaceMembershipService {
                 "currentOwnerUserId", handoverToUserId.toString(),
                 "source", "member_offboarding"
             ));
+            appendSpaceMembershipChange(
+                operator.workspaceId(), operator.id(), spaceId, userId, "owner-handover", true
+            );
             notifyUser(
                 operator, handoverToUserId, spaceId, "project_space.owner.handover",
                 "项目空间所有权已交接", "owner", userId + ":" + handoverToUserId
@@ -639,6 +661,31 @@ public class ProjectSpaceMembershipService {
                 "dedupeKey", dedupe
             ),
             dedupe
+        );
+    }
+
+    private void appendSpaceMembershipChange(
+        UUID workspaceId,
+        UUID actorId,
+        UUID spaceId,
+        UUID affectedUserId,
+        String mutation,
+        boolean accessInvalidated
+    ) {
+        eventRepository.append(
+            workspaceId,
+            ProjectRealtimeDomainEventHandler.PROJECT_SPACE_CHANGED,
+            "project_space",
+            spaceId,
+            actorId,
+            Map.of(
+                "affectedUserId", affectedUserId.toString(),
+                "accessInvalidated", accessInvalidated
+            ),
+            "project.change:" + UUID.nameUUIDFromBytes((
+                "project_space:" + spaceId + ":" + mutation + ":"
+                    + affectedUserId + ":" + RequestBoundaryContext.current().requestId()
+            ).getBytes(StandardCharsets.UTF_8))
         );
     }
 }

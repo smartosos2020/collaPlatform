@@ -494,7 +494,9 @@ public class KnowledgeContentService {
             .filter(block -> EMBED_BLOCK_TYPES.contains(block.blockType()))
             .filter(block -> block.embedSummary() == null || block.embedSummary().accessState() != ObjectAccessState.available)
             .count();
-        var collaboration = contentRepository.findCollaborationState(currentUser.workspaceId(), itemId).orElse(null);
+        var collaboration = contentRepository.findCollaborationBinaryState(currentUser.workspaceId(), itemId).orElse(null);
+        long snapshotSequence = collaboration == null ? 0 : collaboration.snapshotSequence();
+        long latestSequence = contentRepository.findLatestCollaborationSequence(currentUser.workspaceId(), itemId);
         return new KnowledgeContentDiagnostics(
             itemId,
             detail.item().currentVersionNo(),
@@ -505,9 +507,9 @@ public class KnowledgeContentService {
             unavailableObjectCount,
             detail.content() != null,
             detail.shareLinks().stream().anyMatch(link -> link.enabled() && (link.expiresAt() == null || link.expiresAt().isAfter(Instant.now()))),
-            collaboration == null ? 0 : collaboration.serverClock(),
-            collaboration != null && !Objects.equals(collaboration.snapshotContent(), detail.content()),
-            collaboration == null ? null : collaboration.lastSavedAt(),
+            Math.max(snapshotSequence, latestSequence),
+            latestSequence > snapshotSequence,
+            collaboration == null ? null : collaboration.updatedAt(),
             Instant.now(),
             true
         );
@@ -3281,7 +3283,6 @@ public class KnowledgeContentService {
     private record AnchorRange(int start, int end) {
     }
 }
-
 
 
 

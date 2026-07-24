@@ -1,3 +1,11 @@
+---
+title: Event Worker Fleet Runbook
+status: active
+program: PLATFORM-SCALE
+stage: PLATFORM-SCALE-S03
+updated_at: 2026-07-24
+---
+
 # Event Worker Fleet Runbook
 
 ## Scope
@@ -158,6 +166,6 @@ When a user reports a missing notification:
 2. Confirm the user's notification preference and business dedupe key.
 3. If the delivery completed, query `/api/notifications` as the recipient before inspecting transport.
 4. Locate the derived `realtime.signal.requested` event and `realtime.signal` delivery.
-5. A row in `realtime_signals` with no `transported_at` is expected in S03. The REST calibration path remains authoritative until S04 supplies cross-node transport.
+5. A row in `realtime_signals` remains the durable transport fact. S04 Event Gateways publish and fan out the signal; if transient delivery is absent, the REST calibration path remains authoritative.
 
 Never replay the already completed Notification Handler just to regenerate realtime transport. Replay only the failed Handler delivery through the protected maintenance API.

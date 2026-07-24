@@ -1,6 +1,6 @@
 # Deploy
 
-This directory contains the Docker Compose delivery baseline for Colla Platform. PostgreSQL, Redis, MinIO and Spring remain single instances; two collaboration sidecars sit behind Nginx for Yjs room recovery. This is suitable for test and small-team deployments, not full high availability.
+This directory contains the Docker Compose delivery baseline for Colla Platform. The application layer runs dual API, Worker, Event Gateway and Collaboration nodes behind Nginx; PostgreSQL, Redis and MinIO remain single instances. This is suitable for test and small-team deployments, not full high availability.
 
 ## Requirements
 
@@ -82,6 +82,8 @@ pnpm ops:health -- --env-file deploy/.env.prod --base-url http://localhost --exp
 - `/actuator/prometheus`: internal Prometheus metrics.
 - Collaboration sidecars expose `/health`, `/ready`, protected `/metrics`, and protected `POST /internal/invalidate` inside the deployment network.
 - Spring JSON logs rotate under `LOG_PATH`; Docker JSON logs are capped in `docker-compose.prod.yml`.
+
+The dual Event Gateway and dual Collaboration operating contract, resource guardrails, REST calibration paths and fault matrix are maintained in `docs/05-runbooks/platform-scale-s04-realtime.md`. PostgreSQL, Redis and MinIO remain single failure domains; the S04 multi-node evidence is not a production capacity or infrastructure-HA commitment.
 
 ## Controlled Pilot
 

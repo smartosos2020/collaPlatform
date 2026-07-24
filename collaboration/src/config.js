@@ -13,17 +13,29 @@ const nonNegativeInteger = (value, fallback) => {
 const enabled = (value, fallback = true) => value == null ? fallback : !['0', 'false', 'off', 'no'].includes(value.toLowerCase())
 
 const port = integer(process.env.COLLA_COLLABORATION_PORT, 1234)
+const backendUrls = (process.env.COLLA_BACKEND_INTERNAL_URL ?? 'http://127.0.0.1:8080/api/internal/knowledge-collaboration')
+  .split(',')
+  .map((value) => value.trim().replace(/\/$/, ''))
+  .filter(Boolean)
 
 export const collaborationConfig = Object.freeze({
   host: process.env.COLLA_COLLABORATION_HOST ?? '0.0.0.0',
   port,
   nodeId: process.env.COLLA_COLLABORATION_NODE_ID ?? `${hostname()}-${port}`,
-  backendUrl: (process.env.COLLA_BACKEND_INTERNAL_URL ?? 'http://127.0.0.1:8080/api/internal/knowledge-collaboration').replace(/\/$/, ''),
+  maxConnections: integer(process.env.COLLA_COLLABORATION_MAX_CONNECTIONS, 5000),
+  maxRooms: integer(process.env.COLLA_COLLABORATION_MAX_ROOMS, 1000),
+  reservationTtlMs: integer(process.env.COLLA_COLLABORATION_RESERVATION_TTL_MS, 30_000),
+  backendUrls: Object.freeze(backendUrls),
   internalSecret: process.env.COLLA_COLLABORATION_INTERNAL_SECRET ?? 'colla-local-collaboration-secret',
   maxUpdateBytes: integer(process.env.COLLA_COLLABORATION_MAX_UPDATE_BYTES, 1024 * 1024),
+  maxPendingUpdates: integer(process.env.COLLA_COLLABORATION_MAX_PENDING_UPDATES, 1024),
+  maxPendingBytes: integer(process.env.COLLA_COLLABORATION_MAX_PENDING_BYTES, 32 * 1024 * 1024),
+  retryBatchSize: integer(process.env.COLLA_COLLABORATION_RETRY_BATCH_SIZE, 64),
   debounceMs: integer(process.env.COLLA_COLLABORATION_STORE_DEBOUNCE_MS, 800),
   maxDebounceMs: integer(process.env.COLLA_COLLABORATION_STORE_MAX_DEBOUNCE_MS, 5000),
   authorizationCacheMs: integer(process.env.COLLA_COLLABORATION_AUTH_CACHE_MS, 1500),
+  authorizationGraceMs: integer(process.env.COLLA_COLLABORATION_AUTH_GRACE_MS, 120_000),
+  authorizationRetryMs: integer(process.env.COLLA_COLLABORATION_AUTH_RETRY_MS, 5000),
   backendTimeoutMs: integer(process.env.COLLA_COLLABORATION_BACKEND_TIMEOUT_MS, 5000),
   backendRetries: nonNegativeInteger(process.env.COLLA_COLLABORATION_BACKEND_RETRIES, 2),
   recoveryIntervalMs: integer(process.env.COLLA_COLLABORATION_RECOVERY_INTERVAL_MS, 5000),

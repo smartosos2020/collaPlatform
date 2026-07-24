@@ -3,6 +3,8 @@ import { pathToFileURL } from 'node:url'
 import { Redis as RedisExtension } from '@hocuspocus/extension-redis'
 import { Server } from '@hocuspocus/server'
 import { TiptapTransformer } from '@hocuspocus/transformer'
+import { getSchema } from '@tiptap/core'
+import { prosemirrorJSONToYXmlFragment } from 'y-prosemirror'
 import * as Y from 'yjs'
 
 import { CollaborationBackendGateway } from './backendGateway.js'
@@ -30,16 +32,42 @@ export function createCollaborationServer(options = {}) {
   let recoveryTimer
 
   const redisExtension = config.redis.enabled ? createRedisExtension(config, metrics) : null
-  const extensions = [new DurableUpdateExtension(gateway, metrics, config.maxUpdateBytes)]
+  const durableUpdates = new DurableUpdateExtension(gateway, metrics, config.maxUpdateBytes, config)
+  const extensions = [durableUpdates]
   if (redisExtension) extensions.push(redisExtension)
+
+  const cacheAuthorization = (ticket, documentName, value) => {
+    const now = Date.now()
+    const sessionExpiry = Date.parse(value?.expiresAt)
+    const configuredGraceEnd = now + (config.authorizationGraceMs ?? 120_000)
+    authCache.set(`${ticket}:${documentName}`, {
+      value,
+      expiresAt: now + config.authorizationCacheMs,
+      staleUntil: Number.isFinite(sessionExpiry)
+        ? Math.min(configuredGraceEnd, sessionExpiry)
+        : configuredGraceEnd,
+      retryAfter: 0,
+    })
+  }
 
   const authorize = async (ticket, documentName, force = false) => {
     const key = `${ticket}:${documentName}`
     const cached = authCache.get(key)
-    if (!force && cached && cached.expiresAt > Date.now()) return cached.value
-    const value = await gateway.authenticate(ticket, documentName)
-    authCache.set(key, { value, expiresAt: Date.now() + config.authorizationCacheMs })
-    return value
+    const now = Date.now()
+    if (!force && cached && cached.expiresAt > now) return cached.value
+    if (cached?.retryAfter > now && cached.staleUntil > now) return cached.value
+    try {
+      const value = await gateway.authorize(ticket, documentName)
+      cacheAuthorization(ticket, documentName, value)
+      return value
+    } catch (error) {
+      if (error?.retryable === true && cached?.staleUntil > Date.now()) {
+        cached.retryAfter = Date.now() + (config.authorizationRetryMs ?? 5000)
+        metrics.authorizationGrace(documentName, error)
+        return cached.value
+      }
+      throw error
+    }
   }
 
   const recoverDocument = async (instance, documentName) => {
@@ -48,7 +76,8 @@ export function createCollaborationServer(options = {}) {
     if (!document || !context?.ticket) return false
     try {
       const loaded = await gateway.load(context.ticket, documentName)
-      const update = collaborationLoadUpdate(loaded)
+      metrics.loaded(documentName, loaded)
+      const update = collaborationLoadUpdate(loaded, documentName)
       if (update.byteLength > 0) {
         Y.applyUpdate(document, update, redisExtension?.redisTransactionOrigin ?? { source: 'local', skipStoreHooks: true })
       }
@@ -78,22 +107,41 @@ export function createCollaborationServer(options = {}) {
       if (redisExtension) {
         observeRedisClient(redisExtension.pub, 'publisher', metrics, () => void recoverAll(instance))
         observeRedisClient(redisExtension.sub, 'subscriber', metrics, () => void recoverAll(instance))
-        recoveryTimer = setInterval(() => {
-          if (metrics.redisStatus === 'degraded') void recoverAll(instance)
-        }, config.recoveryIntervalMs)
-        recoveryTimer.unref?.()
       }
+      recoveryTimer = setInterval(() => {
+        void durableUpdates.retryPending()
+        if (redisExtension && metrics.redisStatus === 'degraded') void recoverAll(instance)
+      }, config.recoveryIntervalMs)
+      recoveryTimer.unref?.()
     },
     async onAuthenticate(data) {
       parseDocumentName(data.documentName)
-      const authorization = await authorize(data.token, data.documentName, true)
-      data.connectionConfig.readOnly = !authorization.canEdit
-      const context = { ...authorization, ticket: data.token, protocolVersion: COLLABORATION_PROTOCOL_VERSION }
-      lastContexts.set(data.documentName, context)
-      return context
+      const capacityReservation = metrics.reserve(
+        data.documentName, config.maxConnections, config.maxRooms, config.reservationTtlMs,
+      )
+      try {
+        const authorization = await gateway.authenticate(data.token, data.documentName)
+        cacheAuthorization(data.token, data.documentName, authorization)
+        data.connectionConfig.readOnly = !authorization.canEdit
+        const context = {
+          ...authorization,
+          ticket: data.token,
+          capacityReservation,
+          protocolVersion: COLLABORATION_PROTOCOL_VERSION,
+        }
+        lastContexts.set(data.documentName, context)
+        return context
+      } catch (error) {
+        metrics.releaseReservation(capacityReservation)
+        throw error
+      }
     },
     async onTokenSync(data) {
-      const authorization = await authorize(data.token, data.documentName, true)
+      const establishedSession = data.token === data.context?.ticket
+      const authorization = establishedSession
+        ? await authorize(data.token, data.documentName, true)
+        : await gateway.authenticate(data.token, data.documentName)
+      if (!establishedSession) cacheAuthorization(data.token, data.documentName, authorization)
       data.connection.readOnly = !authorization.canEdit
       data.connection.sendStateless(permissionStateMessage(authorization))
       const context = { ...data.context, ...authorization, ticket: data.token }
@@ -102,7 +150,7 @@ export function createCollaborationServer(options = {}) {
     },
     async connected({ context, documentName, socketId }) {
       lastContexts.set(documentName, context)
-      metrics.connect(documentName, socketId, context.userId)
+      metrics.activateReservation(context.capacityReservation, documentName, socketId, context.userId)
     },
     async beforeHandleMessage({ context, documentName, update, connection }) {
       assertUpdateSize(update, config.maxUpdateBytes)
@@ -121,8 +169,8 @@ export function createCollaborationServer(options = {}) {
     async onLoadDocument({ context, documentName }) {
       lastContexts.set(documentName, context)
       const loaded = await gateway.load(context.ticket, documentName)
-      metrics.loaded(documentName, loaded.updates?.length ?? 0)
-      return collaborationLoadUpdate(loaded)
+      metrics.loaded(documentName, loaded)
+      return collaborationLoadUpdate(loaded, documentName)
     },
     async onStoreDocument({ instance, document, documentName, lastContext }) {
       if (instance.documents.get(documentName) !== document) {
@@ -133,6 +181,7 @@ export function createCollaborationServer(options = {}) {
       const context = lastContext ?? lastContexts.get(documentName)
       if (!context?.ticket) return
       try {
+        const room = metrics.room(documentName)
         const snapshot = Y.encodeStateAsUpdate(document)
         const stateVector = Y.encodeStateVector(document)
         const canonicalDocument = TiptapTransformer.fromYdoc(document, 'default')
@@ -146,9 +195,17 @@ export function createCollaborationServer(options = {}) {
           context.clientId,
           document.getText('title').toString(),
           config.nodeId,
+          room.generation,
+          room.latestSequence,
         )
+        durableUpdates.clearDocument(documentName)
         metrics.stored(documentName)
       } catch (error) {
+        if (error?.code === 'COLLAB_SNAPSHOT_STALE' || error?.code === 'COLLAB_GENERATION_STALE') {
+          metrics.staleWrite(error.code)
+          await recoverDocument(instance, documentName)
+          return
+        }
         metrics.failure('store', error, documentName)
         throw error
       }
@@ -160,9 +217,21 @@ export function createCollaborationServer(options = {}) {
       const url = new URL(request.url ?? '/', 'http://collaboration.local')
       if (url.pathname === '/health' || url.pathname === '/ready') {
         const snapshot = metrics.snapshot(instance)
-        const ready = url.pathname === '/health' || snapshot.ready
+        let backendReady = true
+        if (url.pathname === '/ready') {
+          try {
+            const backend = await gateway.health()
+            backendReady = backend?.protocolVersion === COLLABORATION_PROTOCOL_VERSION
+              && backend?.schemaVersion === COLLABORATION_SCHEMA_VERSION
+              && backend?.persistenceReady === true
+          } catch (error) {
+            backendReady = false
+            metrics.failure('backend', error, 'readiness')
+          }
+        }
+        const ready = url.pathname === '/health' || (snapshot.ready && backendReady)
         response.writeHead(ready ? 200 : 503, { 'content-type': 'application/json' })
-        response.end(JSON.stringify(snapshot))
+        response.end(JSON.stringify({ ...snapshot, backendReady }))
         throw undefined
       }
       if (url.pathname === '/metrics') {
@@ -218,18 +287,44 @@ export function createCollaborationServer(options = {}) {
     },
   })
 
-  server.collaRuntime = { config, gateway, metrics, redisExtension, recoverAll: () => recoverAll(server.hocuspocus) }
+  server.collaRuntime = {
+    config, gateway, metrics, redisExtension, durableUpdates, recoverAll: () => recoverAll(server.hocuspocus),
+  }
   return server
 }
 
-export function collaborationLoadUpdate(loaded) {
+export function collaborationLoadUpdate(loaded, documentName) {
   const pending = (loaded.updates ?? []).map((entry) => decodeBinary(entry.update)).filter((update) => update.byteLength > 0)
   const persisted = decodeBinary(loaded.snapshot)
   if (persisted.byteLength > 0) return mergeDocumentUpdates(persisted, pending)
-  const ydoc = TiptapTransformer.toYdoc(loaded.canonicalDocument, 'default', collaborationExtensions)
+  const ydoc = canonicalSeedDocument(loaded.canonicalDocument, documentName, loaded.generation)
   const title = ydoc.getText('title')
   if (title.length === 0 && loaded.title) title.insert(0, loaded.title)
   return mergeDocumentUpdates(Y.encodeStateAsUpdate(ydoc), pending)
+}
+
+function canonicalSeedDocument(canonicalDocument, documentName, generation) {
+  const ydoc = new Y.Doc()
+  // The same empty-snapshot document can be loaded concurrently on multiple nodes.
+  // A stable client id makes those independently generated canonical updates identical
+  // instead of duplicating every initial block when Redis merges them.
+  ydoc.clientID = stableCanonicalClientId(documentName, generation)
+  prosemirrorJSONToYXmlFragment(
+    getSchema(collaborationExtensions),
+    canonicalDocument,
+    ydoc.getXmlFragment('default'),
+  )
+  return ydoc
+}
+
+function stableCanonicalClientId(documentName, generation) {
+  const value = `${documentName ?? 'unknown'}:${Number(generation ?? 0)}:canonical`
+  let hash = 2166136261
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index)
+    hash = Math.imul(hash, 16777619)
+  }
+  return (hash >>> 0) || 1
 }
 
 async function invalidateDocument(instance, documentName) {
@@ -278,7 +373,7 @@ function createRedisExtension(config, metrics) {
   }
   if (config.redis.password) options.password = config.redis.password
   try {
-    return new RedisExtension({
+    const extension = new RedisExtension({
       host: config.redis.host,
       port: config.redis.port,
       options,
@@ -287,6 +382,21 @@ function createRedisExtension(config, metrics) {
       lockTimeout: config.redis.lockTimeoutMs,
       awaitInitialSyncTimeout: config.redis.initialSyncTimeoutMs,
     })
+    for (const hookName of ['onAwarenessUpdate', 'onChange', 'beforeBroadcastStateless']) {
+      const publish = extension[hookName]?.bind(extension)
+      if (!publish) continue
+      extension[hookName] = async (data) => {
+        try {
+          return await publish(data)
+        } catch (error) {
+          // Redis carries only transient fanout and awareness. A local edit must
+          // still reach the durable update queue while Redis is unavailable.
+          metrics.redisState('publisher', 'error', error)
+          return undefined
+        }
+      }
+    }
+    return extension
   } catch (error) {
     metrics.failure('redis', error)
     throw error

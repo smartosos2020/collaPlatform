@@ -91,6 +91,7 @@ export function useKnowledgeContentRealtimeCollaboration({ spaceId, itemId, enab
       }
     }
     const handleOffline = () => {
+      ticketRef.current = null
       statusRef.current = WebSocketStatus.Disconnected
       setStatus(WebSocketStatus.Disconnected)
       setRecoveryState('offline')
@@ -145,6 +146,7 @@ export function useKnowledgeContentRealtimeCollaboration({ spaceId, itemId, enab
         },
         onClose: ({ event }) => {
           if (disposed) return
+          ticketRef.current = null
           statusRef.current = WebSocketStatus.Disconnected
           setStatus(WebSocketStatus.Disconnected)
           if (event.code === 4401 || event.code === 4403) {
@@ -168,6 +170,7 @@ export function useKnowledgeContentRealtimeCollaboration({ spaceId, itemId, enab
         onUnsyncedChanges: ({ number }) => { if (!disposed) setUnsyncedChanges(number) },
         onAuthenticationFailed: ({ reason }) => {
           if (!disposed) {
+            ticketRef.current = null
             setCanEdit(false)
             setStatus('error')
             setError(reason || '实时协作身份已失效')

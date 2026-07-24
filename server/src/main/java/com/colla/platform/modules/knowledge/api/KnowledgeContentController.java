@@ -1,5 +1,7 @@
 package com.colla.platform.modules.knowledge.api;
 
+import com.colla.platform.config.runtime.ConditionalOnRuntimeRole;
+import com.colla.platform.config.runtime.RuntimeRole;
 import com.colla.platform.modules.knowledge.api.KnowledgeApiDtos.KnowledgeContentBlockDraft;
 import com.colla.platform.modules.knowledge.api.KnowledgeApiDtos.KnowledgeContentBlockView;
 import com.colla.platform.modules.knowledge.api.KnowledgeApiDtos.KnowledgeContentCanonicalMigrationPreviewView;
@@ -46,6 +48,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/knowledge-bases/{spaceId}/items/{itemId}")
+@ConditionalOnRuntimeRole({RuntimeRole.API, RuntimeRole.COMBINED})
 public class KnowledgeContentController {
     private final KnowledgeCollaborationHealthQuery collaborationService;
     private final KnowledgeCollaborationGatewayService collaborationGatewayService;

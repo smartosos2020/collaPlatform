@@ -7,10 +7,16 @@ spring:
     redis:
       host: ${REDIS_HOST}
       port: ${REDIS_PORT:6379}
+      connect-timeout: ${REDIS_CONNECT_TIMEOUT:2s}
+      timeout: ${REDIS_COMMAND_TIMEOUT:2s}
 
 colla:
   runtime:
     role: ${COLLA_RUNTIME_ROLE}
+  realtime:
+    channel: ${COLLA_REALTIME_CHANNEL:colla:prod:realtime:v1}
+    max-connections: ${COLLA_REALTIME_MAX_CONNECTIONS:5000}
+    legacy-frames-enabled: ${COLLA_REALTIME_LEGACY_FRAMES_ENABLED:false}
   storage:
     endpoint: ${MINIO_ENDPOINT}
     access-key: ${MINIO_ACCESS_KEY}

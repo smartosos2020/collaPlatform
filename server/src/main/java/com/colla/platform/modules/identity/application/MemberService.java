@@ -10,6 +10,7 @@ import com.colla.platform.modules.project.application.ProjectSpaceMembershipServ
 import com.colla.platform.shared.auth.CurrentUser;
 import com.colla.platform.shared.auth.PasswordPolicy;
 import com.colla.platform.shared.auth.PasswordHasher;
+import com.colla.platform.shared.request.RequestBoundaryContext;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -29,6 +30,7 @@ public class MemberService {
     private final KnowledgeOwnershipTransfer knowledgeOwnershipTransfer;
     private final ConversationOwnershipTransfer conversationOwnershipTransfer;
     private final ProjectSpaceMembershipService projectSpaceMembershipService;
+    private final IdentitySecurityChangePublisher securityChanges;
 
     public MemberService(
         IdentityRepository identityRepository,
@@ -39,7 +41,8 @@ public class MemberService {
         OrganizationService organizationService,
         KnowledgeOwnershipTransfer knowledgeOwnershipTransfer,
         ConversationOwnershipTransfer conversationOwnershipTransfer,
-        ProjectSpaceMembershipService projectSpaceMembershipService
+        ProjectSpaceMembershipService projectSpaceMembershipService,
+        IdentitySecurityChangePublisher securityChanges
     ) {
         this.identityRepository = identityRepository;
         this.permissionService = permissionService;
@@ -50,6 +53,7 @@ public class MemberService {
         this.knowledgeOwnershipTransfer = knowledgeOwnershipTransfer;
         this.conversationOwnershipTransfer = conversationOwnershipTransfer;
         this.projectSpaceMembershipService = projectSpaceMembershipService;
+        this.securityChanges = securityChanges;
     }
 
     public List<MemberSummary> listMembers(CurrentUser operator, UUID departmentId) {
@@ -91,6 +95,7 @@ public class MemberService {
         if (primaryDepartmentId != null) {
             organizationService.addMember(operator, primaryDepartmentId, userId, "primary");
         }
+        publishMemberChange(operator, userId, "created");
         return identityRepository.listMembers(operator.workspaceId()).stream()
             .filter(member -> member.id().equals(userId))
             .findFirst()
@@ -106,6 +111,7 @@ public class MemberService {
         projectSpaceMembershipService.requireCanDeactivateUser(operator.workspaceId(), userId);
         identityRepository.updateUserStatus(operator.workspaceId(), userId, "disabled", operator.id());
         auditService.log(operator, "user.disabled", "user", userId, Map.of());
+        publishMemberChange(operator, userId, "disabled");
     }
 
     @Transactional
@@ -140,6 +146,7 @@ public class MemberService {
             "conversationCount", conversationCount,
             "projectSpaceCount", projectSpaceCount
         ));
+        publishMemberChange(operator, userId, "offboarded");
         return new OffboardingResult(knowledgeBaseCount, conversationCount);
     }
 
@@ -148,6 +155,7 @@ public class MemberService {
         permissionService.requireManageUsers(operator);
         identityRepository.updateUserStatus(operator.workspaceId(), userId, "active", operator.id());
         auditService.log(operator, "user.enabled", "user", userId, Map.of());
+        publishMemberChange(operator, userId, "enabled");
     }
 
     @Transactional
@@ -156,6 +164,7 @@ public class MemberService {
         passwordPolicy.validate(newPassword);
         identityRepository.updatePassword(operator.workspaceId(), userId, passwordHasher.hash(newPassword), operator.id());
         auditService.log(operator, "user.password.reset", "user", userId, Map.of());
+        publishMemberChange(operator, userId, "password-reset");
     }
 
     @Transactional
@@ -166,5 +175,16 @@ public class MemberService {
     }
 
     public record OffboardingResult(int knowledgeBaseCount, int conversationCount) {
+    }
+
+    private void publishMemberChange(CurrentUser operator, UUID userId, String mutation) {
+        securityChanges.publish(
+            operator.workspaceId(),
+            operator.id(),
+            "user",
+            userId,
+            "/api/admin/users",
+            mutation + ":" + userId + ":" + RequestBoundaryContext.current().requestId()
+        );
     }
 }

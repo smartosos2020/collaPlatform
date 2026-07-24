@@ -14,7 +14,7 @@ Colla Platform 当前是模块化单体：
 
 - 后端：单个 Spring Boot 应用，按业务模块分包。
 - 前端：单个 React SPA，用户工作台和管理后台使用独立 Shell、导航和路由边界。
-- 数据库：单个 PostgreSQL schema，通过 Flyway V001-V065 演进。
+- 数据库：单个 PostgreSQL schema，通过 Flyway V001-V072 演进。
 - 基础设施：Redis、MinIO、WebSocket、平台对象、权限、事件、审计和搜索由模块共享。
 - 交付：本地 Docker 依赖；生产基线是 maintenance、双 API、Worker、Event Gateway、双协作节点的 Docker Compose + Nginx。
 
@@ -119,7 +119,7 @@ S01-M2 已接受 `platform-module-contracts.md`，并以 `platform-modules.json`
 
 ## 数据库迁移
 
-当前 Flyway 版本为 V065。历史迁移文件不可修改。
+当前 Flyway 版本为 V072。历史迁移文件不可修改。
 
 知识库最后四个迁移：
 
@@ -147,6 +147,13 @@ S01-M2 已接受 `platform-module-contracts.md`，并以 `platform-modules.json`
 | V063 | 强化系统预置不可覆盖/retire/删除，并为 legacy 整空间迁移回滚提供 transaction-local 清理通道 |
 | V064 | 建立 workspace/space/type 隔离的工作项字段定义与命令回执，包含永久 key、生命周期、配置 hash、排序、乐观版本、复合外键和身份保护触发器 |
 | V065 | 建立字段选项子聚合，包含 workspace/space/type/field 复合归属、永久 option key、显示属性、启停状态、排序索引和不可删除/不可改身份触发器 |
+| V066 | 对有效直接用户角色分配增加唯一约束，保证多实例管理员初始化幂等 |
+| V067 | 建立版本化 domain event envelope、逐 Handler delivery/receipt 和 aggregate sequence |
+| V068 | 增加 delivery lease、fencing、失败分类、dead letter、replay 和不可变操作历史 |
+| V069 | 建立对象级搜索投影版本和 durable realtime signal |
+| V070 | 增加 signal transport delivery、稳定 realtime envelope、发布状态和索引 |
+| V071 | 删除活动旧 Spring 协同 room/presence/update/snapshot 状态，保留 Hocuspocus durable 模型 |
+| V072 | 使 collaboration ticket 单次原子消费，阻止重连复用已使用 ticket |
 
 数据库规则：
 
@@ -200,10 +207,15 @@ S01-M2 已接受 `platform-module-contracts.md`，并以 `platform-modules.json`
 
 - WebSocket 统一入口为 `/ws/events`。
 - 事件由独立 `worker` 角色中的 `ReliableDomainEventWorker` 从持久化事件与逐 Handler delivery 表消费；通知、搜索和 realtime signal 经版本化 registry 分派。
-- IM、通知、项目和知识内容使用该通道更新客户端状态。
+- S04-M1 已建立版本化通用 realtime envelope、PostgreSQL signal/transport 两段 delivery、Redis pub/sub 和双 Event Gateway 本地 fanout。
+- S04-M2 已将通知、IM、项目、权限、角色和身份变化迁移到 durable signal pipeline；业务模块不再直接依赖本地 sender/session。Gateway 只发送最小失效提示，PostgreSQL 与 REST 校准仍是事实来源。
+- S04-M3 已建立单一前端 realtime provider、严格 v1 parser、连接状态机、指数退避、按 sequence scope/key 的 watermark/去重/gap 检测，以及通知、IM、项目、权限和身份的 REST 校准。账号、workspace、设备或标签页上下文变化会重建连接并清理旧缓存水位。
 - 知识内容使用 Hocuspocus/Yjs 协议统一标题、正文块、presence 和远端选择区。
 - 两个协作节点通过 Redis 广播房间更新；每个节点使用唯一 node ID，Nginx 以 least-connections 分配连接。
 - PostgreSQL 的 Yjs snapshot 和去重 update log 是恢复事实来源；Redis 只负责瞬时广播、awareness 和协调。
+- Spring 只在 API/combined 角色提供短期权限 ticket 与 secret 保护的 load/store/invalidate/health gateway；`/ws/events` 不承载知识编辑，收到旧知识命令时只返回 `protocol.upgrade_required` 或按显式 observe 策略记指标。
+- 每个知识条目拥有持久化 `collaboration_generation`。invalidate 会原子递增 generation 并清除旧状态；update、snapshot 与 update id 唯一键均绑定 generation，旧节点或在途请求不能覆盖新代状态。
+- snapshot 必须携带它实际包含的 `snapshotSequence`，数据库拒绝错误 generation、落后于当前 durable update 水位或倒退的 snapshot。两个 collaboration 节点可按顺序尝试多个 API 地址，readiness 同时验证内部 gateway 协议与 schema。
 - 浏览器短暂离线可在有限更新数和字节预算内继续编辑，恢复时交换缺失状态；超限前可导出 `.yjs` 恢复副本。
 
 ## 文件与对象存储
@@ -216,13 +228,13 @@ S01-M2 已接受 `platform-module-contracts.md`，并以 `platform-modules.json`
 
 生产基线位于 `deploy/`：
 
-- `docker-compose.prod.yml`：PostgreSQL、Redis、MinIO、maintenance、双 API、Worker、Event Gateway、两个 collaboration sidecar、Web 和 Nginx。
+- `docker-compose.prod.yml`：PostgreSQL、Redis、MinIO、maintenance、双 API、双 Worker、双 Event Gateway、两个 collaboration sidecar、Web 和 Nginx。
 - `nginx/colla.conf`：Web、API、事件 WebSocket、双节点知识协同和健康检查代理。
 - `pnpm ops:backup`、`ops:restore`、`ops:restore-drill`：备份、恢复和恢复演练。
 - `pnpm ops:health`：健康与可选 Prometheus 检查。
 - `pnpm ops:release-check`、`ops:rollback`：发布检查和显式回滚。
 
-当前 API 与知识协同进程均提供双节点重连/退出恢复，Worker 和 Event Gateway 已从 API 角色分离；生产模板提供 `worker-a`/`worker-b`，可独立扩缩和接管。Event Gateway 仍为单实例，PostgreSQL、Redis 和 MinIO 也仍是单实例，因此不承诺整个平台高可用、自动扩缩容或 Kubernetes。
+当前 API、Worker、Event Gateway 与知识协同进程均有双节点生产模板。S04-M1 已验证两个 Gateway 无粘性分流、优雅/强制退出、恢复和单节点回退；PostgreSQL、Redis 和 MinIO 仍为单实例，因此不承诺整个平台高可用、自动扩缩容或 Kubernetes。
 
 ## 测试与质量门禁
 
@@ -237,7 +249,7 @@ S01-M2 已接受 `platform-module-contracts.md`，并以 `platform-modules.json`
 - 知识命名守卫。
 - `architecture:inventory` 可重复架构清单及冻结基线漂移检查。
 
-PLATFORM-SCALE-S01 和 PLATFORM-SCALE-S02 已在 2026-07-24 完成并归档；S03 已完成等待归档。S03 交付版本化 envelope、聚合 sequence、Handler registry、逐 Handler delivery/receipt、payload 防线、lease/fencing、dead letter/replay、有界背压、双 Worker 部署与故障接管。Notification、Search 和 realtime signal 已迁移到独立 Handler；旧 `DomainEventWorker` 只保留 combined/test 兼容调度。
+PLATFORM-SCALE-S01、S02 和 S03 已在 2026-07-24 完成并归档；S04 已完成实现、多节点故障矩阵和 route-final，等待路线归档。S03 交付版本化 envelope、聚合 sequence、Handler registry、逐 Handler delivery/receipt、payload 防线、lease/fencing、dead letter/replay、有界背压、双 Worker 部署与故障接管。S04 交付双 Event Gateway Redis fanout、统一客户端 sequence/重连/REST 校准、唯一 Hocuspocus/Yjs 知识协议及双 collaboration durable recovery。
 
 ## 平台模块边界当前事实
 
@@ -251,7 +263,7 @@ PLATFORM-SCALE-S01 把模块边界从文档约定升级为机器门禁，当前�
 - V001-V068 形成 88 张当前有效表，每张表有唯一 owner；93 条跨 owner 候选全部是逐文件逐表批准的 read，foreign write 为 0。
 - S02 收口复核确认 93 条只读例外不属于运行隔离交付范围，退出 Stage 已重新批准为 PLATFORM-SCALE-S05，其中 project 9 条；它们不是永久豁免，修改相关文件时只能保持或减少。
 
-以上边界数字描述 S03 收口时事实；S02 已实现双 API、独立 Worker、Event Gateway 和 maintenance 角色，S03 已交付 Worker 多实例 lease、逐 Handler 可靠消费和恢复门槛。Event Gateway 多实例 fanout、基础设施集群高可用与正式容量承诺仍未交付。S03 Go/No-Go 建议归档后进入 PLATFORM-SCALE-S04，PROJECT-PLATFORM-S05 本轮不恢复。
+以上边界数字描述 S03 收口时事实；S02 已实现双 API 和独立运行角色，S03 已交付 Worker 多实例 lease、逐 Handler 可靠消费和恢复门槛，S04 已交付双 Event Gateway fanout、业务信号迁移、前端重连校准、旧 Spring 协同退出和双 Hocuspocus 节点恢复。基础设施集群高可用与正式容量承诺仍未交付，建议 S04 归档后进入 PLATFORM-SCALE-S05，PROJECT-PLATFORM-S05 继续暂停。
 
 ## 项目模块当前事实
 
@@ -302,15 +314,15 @@ S01 已确定未来使用 ProjectSpace + versioned WorkItemType + WorkItem、规
 
 - 同一 Server 构建产物通过 `colla.runtime.role` 选择 `api`、`worker`、`event-gateway` 或 `maintenance`；`combined` 只允许 local/test，生产缺失、未知、组合值或 combined 均启动失败。
 - API 承载 HTTP 业务、事务命令、查询和 outbox append，不创建 `DomainEventWorker`、通用 WebSocket、旧知识协同 scheduler、建桶或管理员初始化 runner。
-- Worker 承载 domain event polling 和 S04 前临时保留的旧知识协同 autosave/cleanup；非 API 角色的业务 Controller 在 Bean 实例化前移除。
-- Event Gateway 承载 `/ws/events`、JWT 认证解析和 session registry，不创建事件 consumer 或业务 Controller。跨实例 fanout 仍属于 S04。
+- Worker 只承载可靠 domain event polling、Handler 执行和 transport-neutral realtime signal 生产；不创建知识协同 room、presence、autosave、cleanup 或内部协作 gateway。
+- Event Gateway 承载 `/ws/events`、JWT 认证解析、Redis subscriber 和本地 session registry，不创建可靠事件 Worker、业务 Controller 或知识协同协议。S04-M1 已通过共享 Redis 完成跨实例 fanout。
 - Maintenance 执行 Flyway、MinIO bucket 和初始管理员等一次性初始化，全部 runner 完成后关闭应用上下文，不加入业务 upstream。
 - scheduling 不再由应用根类全局开启，只在 worker/combined 的角色配置中启用。Actuator info、日志上下文和 Micrometer common tags 使用 role、instance id、version、commit 区分实例。
 - `server.shutdown=graceful` 且 shutdown phase 最长 30 秒。M3 已验证 `api-a`/`api-b` 双 upstream、优雅/强制退出、恢复接流和单 API 回退；M4 又验证跨节点撤销、幂等、上传、初始化与 PostgreSQL/Redis/MinIO 故障恢复。
 - API/Worker/Gateway 的数据库连接获取和校验超时分别显式收敛，PostgreSQL 故障时 readiness 在入口预算内返回不可用。Nginx 使用 Docker DNS 动态刷新 API、协作和 Event Gateway 地址，容器滚动重建后不会继续访问旧 IP。
 - 上传完成以 PostgreSQL pending 记录和 MinIO object stat 为共同前置条件；对象不存在、大小不符、越权和重复完成有稳定语义。管理员初始化由 PostgreSQL advisory lock 串行化，直接管理员授权写入 `role_assignments` 主模型并由 V066 有效直接用户角色唯一索引兜底。
-- API 的知识协同健康查询现在只读取 PostgreSQL collaboration state，不创建 room/presence/dirty snapshot 内存结构；旧 Spring 协同状态仅在 worker/event-gateway/combined 临时存在。
-- `WebSocketSessionRegistry` 只在 event-gateway/combined 创建；API 的通知 sender 在没有 registry 时退化为无本地 push，客户端继续依赖 REST 校准，S04 再接入跨节点 fanout。
+- API 的知识协同健康查询只读取 PostgreSQL collaboration state，不创建 room/presence/dirty snapshot 内存结构；旧 Spring `CollaborationMessageHandler`、维护 Worker 和内存协作服务已退出活动代码。
+- `WebSocketSessionRegistry` 只在 event-gateway/combined 创建，并按 connection/user/workspace/device 建立本地索引。API 不持有本地连接；Worker 通过 transport-neutral publisher 发布，Gateway subscriber 只向本节点匹配连接 fanout。
 - readiness 组由 `readinessState` 和 `runtimeRoleReadiness` 组成：流量角色要求 PostgreSQL 可查询，maintenance 固定 `OUT_OF_SERVICE`；liveness 只反映进程状态，避免依赖抖动触发重启风暴。
 - 上下文关闭先发布 `REFUSING_TRAFFIC`；Worker 停止新 claim 后完成当前处理，Gateway 关闭现有 session 并由客户端重连校准。请求日志、Actuator info 和指标都携带 role/instance。
 
@@ -335,11 +347,15 @@ S01 已确定未来使用 ProjectSpace + versioned WorkItemType + WorkItem、规
 - 通知 Handler 尊重通知偏好，以业务 dedupe key 保证重复投递不重复落库；只有通知事实首次创建时才追加最小化 `realtime.signal.requested` 事件，因此 Search 失败不会阻塞通知，实时信号失败也不会回滚通知事实。
 - Search Handler 只按 workspace、对象类型、对象 id、aggregate sequence 和 upsert/delete 操作更新单对象投影；`search_projection_versions` 拒绝旧版本覆盖新版本。普通查询和 Worker 不再触发全 workspace refresh。
 - 搜索全量重建只允许管理员通过显式 Maintenance API 发起；批处理按 workspace、对象类型、cursor 和最大 250 条执行，使用事务 advisory lock、理由、限流和审计。旧 `/reindex` 仅保留为受保护的显式兼容维护入口。
-- realtime signal 以 `realtime_signals` 保存 source event 唯一、recipient、对象、版本和 `/api/...` 校准路径。S03 只形成 durable pending transport fact，不依赖本机 WebSocket session，也不提前实现 S04 Redis fanout。
+- realtime signal 以 `realtime_signals` 保存 source event 唯一、版本化 envelope、audience、对象 sequence、correlation、最小 payload 和 `/api/...` 校准路径。V070 兼容升级旧行；S04-M1 增加独立 transport delivery，Redis 失败可重试且不回滚业务事实。
+- 生产 realtime channel 默认 `colla:prod:realtime:v1`；Gateway 对未知版本、非法或超限 envelope 安全丢弃，并以有界近期缓存去重。每连接串行有界发送，慢连接或发送异常只关闭该连接。
+- M1 的真实隔离验收在双 API、双 Worker、双 Gateway 环境中完成：同一 durable notification signal 经 `event-gateway-a` 与 `event-gateway-b` 各到达目标连接一次；两个 Gateway 分别经优雅停止和强制停止后，存活节点继续接入并在恢复后重新分流。
+- M2 的真实隔离验收让同一成员分别连接两个 Gateway，并连续验证 `identity.invalidated`、`message.created`、`project.changed`、`permission.invalidated` 与 `notification.created`；两个连接得到相同 eventId/sequence，payload 不含标题、正文、ACL 或成员清单。
+- M3 的真实隔离验收在生产构建中验证两个浏览器标签页断网、WebSocket 关闭、重新收到 `connection.ready`、通知和 IM 事实恢复；离线期间创建的项目工作项与资源授权也先经 REST 证明 durable。双 Gateway smoke 同时验证节点分布、优雅/强制退出、存活节点回退和恢复。
 - API 角色不会创建可靠消费 Worker；生产消费要求 `worker` 角色且显式 `COLLA_EVENT_WORKER_ENABLED=true`。`combined` 仅用于 local/test 兼容，真实验收使用独立 API、Worker 和浏览器前端。
 
 - 用户工作台和管理后台仍共享一个 SPA 与后端进程，边界依赖路由、facade、权限和 DTO 纪律维持。
-- 双 API、双 Worker 和双协作节点已消除单个 HTTP、异步消费或 Hocuspocus 进程故障；单 Event Gateway、共享 Redis、PostgreSQL 和 MinIO 仍是单点故障域。
+- 双 API、双 Worker、双 Event Gateway 和双协作节点已消除单个 HTTP、异步消费、通用 WebSocket 或 Hocuspocus 进程故障；共享 Redis、PostgreSQL 和 MinIO 仍是单点故障域。
 - S03 收口用 24 项、40 ms 固定 Handler 夹具验证横向恢复：单 Worker 1541 ms、双 Worker 755 ms，提升 52%；该结果只冻结当前部署形态的运行门槛，不是生产容量承诺。
 - Base 尚缺公式、自动化、字段级和记录级权限策略。
 - 项目模块存在成员权限、企业权限码、资源 ACL 与平台权限解释分裂；固定流程、并发事项编号、成员/项目群同步和跨模块私有表读取需要按 PROJECT-PLATFORM Program 收敛。

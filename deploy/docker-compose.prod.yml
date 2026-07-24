@@ -88,6 +88,7 @@ services:
       COLLA_COLLABORATION_INTERNAL_SECRET: ${COLLA_COLLABORATION_INTERNAL_SECRET}
       COLLA_COLLABORATION_PUBLIC_URL: /collaboration
       COLLA_COLLABORATION_INTERNAL_URL: http://collaboration-a:1234,http://collaboration-b:1234
+      COLLA_REALTIME_LEGACY_KNOWLEDGE_INBOUND_POLICY: ${COLLA_REALTIME_LEGACY_KNOWLEDGE_INBOUND_POLICY:-reject}
       LOG_PATH: /app/logs
     volumes:
       - server_logs:/app/logs
@@ -146,7 +147,6 @@ services:
       timeout: 5s
       retries: 12
       start_period: 20s
-
   api-b:
     extends:
       service: api-a
@@ -269,13 +269,54 @@ services:
       COLLA_COLLABORATION_INTERNAL_URL: http://collaboration-a:1234,http://collaboration-b:1234
       LOG_PATH: /app/logs
 
-  event-gateway:
+  event-gateway-a:
     extends:
       service: api-a
     environment:
       SPRING_PROFILES_ACTIVE: prod
       COLLA_RUNTIME_ROLE: event-gateway
-      COLLA_INSTANCE_ID: event-gateway-1
+      COLLA_INSTANCE_ID: event-gateway-a
+      SPRING_FLYWAY_ENABLED: "false"
+      SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: ${GATEWAY_DB_POOL_SIZE:-4}
+      SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE: 1
+      SPRING_DATASOURCE_HIKARI_CONNECTION_TIMEOUT: ${GATEWAY_DB_CONNECTION_TIMEOUT_MS:-5000}
+      SPRING_DATASOURCE_HIKARI_VALIDATION_TIMEOUT: ${GATEWAY_DB_VALIDATION_TIMEOUT_MS:-3000}
+      COLLA_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
+      COLLA_DATASOURCE_USERNAME: ${POSTGRES_USER}
+      COLLA_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      MINIO_BUCKET: ${MINIO_BUCKET}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS}
+      COLLA_COLLABORATION_INTERNAL_SECRET: ${COLLA_COLLABORATION_INTERNAL_SECRET}
+      COLLA_COLLABORATION_PUBLIC_URL: /collaboration
+      COLLA_COLLABORATION_INTERNAL_URL: http://collaboration-a:1234,http://collaboration-b:1234
+      COLLA_REALTIME_MAX_CONNECTIONS: ${GATEWAY_MAX_CONNECTIONS:-5000}
+      LOG_PATH: /app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/actuator/health/readiness"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: "${GATEWAY_CPU_LIMIT:-1.0}"
+          memory: ${GATEWAY_MEMORY_LIMIT:-768M}
+
+  event-gateway-b:
+    extends:
+      service: event-gateway-a
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      COLLA_RUNTIME_ROLE: event-gateway
+      COLLA_INSTANCE_ID: event-gateway-b
       SPRING_FLYWAY_ENABLED: "false"
       SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: ${GATEWAY_DB_POOL_SIZE:-4}
       SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE: 1
@@ -297,12 +338,6 @@ services:
       COLLA_COLLABORATION_PUBLIC_URL: /collaboration
       COLLA_COLLABORATION_INTERNAL_URL: http://collaboration-a:1234,http://collaboration-b:1234
       LOG_PATH: /app/logs
-    healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:8080/actuator/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 12
-      start_period: 20s
 
   collaboration-a:
     image: ${COLLABORATION_IMAGE:-colla-platform-collaboration:latest}
@@ -321,12 +356,16 @@ services:
       COLLA_COLLABORATION_REDIS_HOST: redis
       COLLA_COLLABORATION_REDIS_PORT: 6379
       COLLA_COLLABORATION_MAX_UPDATE_BYTES: 1048576
+      COLLA_COLLABORATION_MAX_CONNECTIONS: ${COLLABORATION_MAX_CONNECTIONS:-5000}
+      COLLA_COLLABORATION_MAX_ROOMS: ${COLLABORATION_MAX_ROOMS:-1000}
+      COLLA_COLLABORATION_AUTH_GRACE_MS: ${COLLABORATION_AUTH_GRACE_MS:-120000}
+      COLLA_COLLABORATION_AUTH_RETRY_MS: ${COLLABORATION_AUTH_RETRY_MS:-5000}
+      COLLA_COLLABORATION_MAX_PENDING_UPDATES: ${COLLABORATION_MAX_PENDING_UPDATES:-1024}
+      COLLA_COLLABORATION_MAX_PENDING_BYTES: ${COLLABORATION_MAX_PENDING_BYTES:-33554432}
     depends_on:
       api-a:
         condition: service_healthy
       api-b:
-        condition: service_healthy
-      event-gateway:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -334,7 +373,12 @@ services:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:1234/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
       interval: 10s
       timeout: 5s
-      retries: 6
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: "${COLLABORATION_CPU_LIMIT:-1.0}"
+          memory: ${COLLABORATION_MEMORY_LIMIT:-768M}
 
   collaboration-b:
     image: ${COLLABORATION_IMAGE:-colla-platform-collaboration:latest}
@@ -353,6 +397,12 @@ services:
       COLLA_COLLABORATION_REDIS_HOST: redis
       COLLA_COLLABORATION_REDIS_PORT: 6379
       COLLA_COLLABORATION_MAX_UPDATE_BYTES: 1048576
+      COLLA_COLLABORATION_MAX_CONNECTIONS: ${COLLABORATION_MAX_CONNECTIONS:-5000}
+      COLLA_COLLABORATION_MAX_ROOMS: ${COLLABORATION_MAX_ROOMS:-1000}
+      COLLA_COLLABORATION_AUTH_GRACE_MS: ${COLLABORATION_AUTH_GRACE_MS:-120000}
+      COLLA_COLLABORATION_AUTH_RETRY_MS: ${COLLABORATION_AUTH_RETRY_MS:-5000}
+      COLLA_COLLABORATION_MAX_PENDING_UPDATES: ${COLLABORATION_MAX_PENDING_UPDATES:-1024}
+      COLLA_COLLABORATION_MAX_PENDING_BYTES: ${COLLABORATION_MAX_PENDING_BYTES:-33554432}
     depends_on:
       api-a:
         condition: service_healthy
@@ -364,7 +414,12 @@ services:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:1234/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
       interval: 10s
       timeout: 5s
-      retries: 6
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: "${COLLABORATION_CPU_LIMIT:-1.0}"
+          memory: ${COLLABORATION_MEMORY_LIMIT:-768M}
 
   web:
     image: ${WEB_IMAGE:-colla-platform-web:latest}
@@ -397,6 +452,10 @@ services:
       api-a:
         condition: service_healthy
       api-b:
+        condition: service_healthy
+      event-gateway-a:
+        condition: service_healthy
+      event-gateway-b:
         condition: service_healthy
       collaboration-a:
         condition: service_healthy

@@ -4,7 +4,6 @@ import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.Knowle
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContentBlockDraft;
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContentComment;
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContentCommentAnchor;
-import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContentCollaborationState;
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeCollaborationBinaryState;
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeCollaborationStoredUpdate;
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeCollaborationTicketRecord;
@@ -555,85 +554,6 @@ public class JdbcKnowledgeRepository implements KnowledgeBaseItemRepository, Kno
     }
 
     @Override
-    public Optional<KnowledgeContentCollaborationState> findCollaborationState(UUID workspaceId, UUID itemId) {
-        try {
-            return Optional.ofNullable(jdbcTemplate.queryForObject(
-                """
-                    select item_id, state_vector, snapshot_payload::text snapshot_payload,
-                           server_clock, last_client_id, updated_by, last_saved_at, updated_at
-                    from knowledge_content_collaboration_states
-                    where workspace_id = ? and item_id = ?
-                    """,
-                (rs, rowNum) -> new KnowledgeContentCollaborationState(
-                    rs.getObject("item_id", UUID.class),
-                    rs.getString("state_vector"),
-                    contentFromSnapshotPayload(rs.getString("snapshot_payload")),
-                    rs.getString("snapshot_payload"),
-                    rs.getLong("server_clock"),
-                    rs.getString("last_client_id"),
-                    rs.getObject("updated_by", UUID.class),
-                    rs.getTimestamp("last_saved_at") == null ? null : rs.getTimestamp("last_saved_at").toInstant(),
-                    rs.getTimestamp("updated_at").toInstant()
-                ),
-                workspaceId,
-                itemId
-            ));
-        } catch (EmptyResultDataAccessException exception) {
-            return Optional.empty();
-        }
-    }
-
-    @Override
-    public void upsertCollaborationState(
-        UUID workspaceId,
-        UUID itemId,
-        String stateVector,
-        String snapshotContent,
-        String snapshotPayload,
-        long serverClock,
-        String lastClientId,
-        UUID updatedBy
-    ) {
-        jdbcTemplate.update(
-            """
-                insert into knowledge_content_collaboration_states
-                    (id, workspace_id, item_id, state_vector, snapshot_payload,
-                     server_clock, last_client_id, updated_by, created_at, updated_at)
-                values (?, ?, ?, ?, ?::jsonb, ?, ?, ?, now(), now())
-                on conflict (workspace_id, item_id)
-                do update set state_vector = excluded.state_vector,
-                              snapshot_payload = excluded.snapshot_payload,
-                              server_clock = excluded.server_clock,
-                              last_client_id = excluded.last_client_id,
-                              updated_by = excluded.updated_by,
-                              updated_at = now()
-                """,
-            UUID.randomUUID(),
-            workspaceId,
-            itemId,
-            stateVector,
-            snapshotPayload,
-            serverClock,
-            lastClientId,
-            updatedBy
-        );
-    }
-
-    @Override
-    public void markCollaborationStateSaved(UUID workspaceId, UUID itemId, long serverClock) {
-        jdbcTemplate.update(
-            """
-                update knowledge_content_collaboration_states
-                set last_saved_at = now()
-                where workspace_id = ? and item_id = ? and server_clock <= ?
-                """,
-            workspaceId,
-            itemId,
-            serverClock
-        );
-    }
-
-    @Override
     public void createCollaborationTicket(
         String tokenHash,
         UUID workspaceId,
@@ -654,21 +574,32 @@ public class JdbcKnowledgeRepository implements KnowledgeBaseItemRepository, Kno
     }
 
     @Override
-    public Optional<KnowledgeCollaborationTicketRecord> findActiveCollaborationTicket(String tokenHash) {
+    public Optional<KnowledgeCollaborationTicketRecord> consumeActiveCollaborationTicket(String tokenHash) {
+        List<KnowledgeCollaborationTicketRecord> records = jdbcTemplate.query(
+            """
+                update knowledge_content_collaboration_tickets
+                set consumed_at = now()
+                where token_hash = ? and revoked_at is null and consumed_at is null and expires_at > now()
+                returning id, token_hash, workspace_id, item_id, user_id, device_id, client_id,
+                          expires_at, revoked_at, consumed_at
+                """,
+            this::mapCollaborationTicket,
+            tokenHash
+        );
+        return records.stream().findFirst();
+    }
+
+    @Override
+    public Optional<KnowledgeCollaborationTicketRecord> findActiveCollaborationSession(String tokenHash) {
         try {
             return Optional.ofNullable(jdbcTemplate.queryForObject(
                 """
-                    select id, token_hash, workspace_id, item_id, user_id, device_id, client_id, expires_at, revoked_at
+                    select id, token_hash, workspace_id, item_id, user_id, device_id, client_id,
+                           expires_at, revoked_at, consumed_at
                     from knowledge_content_collaboration_tickets
-                    where token_hash = ? and revoked_at is null and expires_at > now()
+                    where token_hash = ? and revoked_at is null and consumed_at is not null and expires_at > now()
                     """,
-                (rs, rowNum) -> new KnowledgeCollaborationTicketRecord(
-                    rs.getObject("id", UUID.class), rs.getString("token_hash"),
-                    rs.getObject("workspace_id", UUID.class), rs.getObject("item_id", UUID.class),
-                    rs.getObject("user_id", UUID.class), rs.getObject("device_id", UUID.class),
-                    rs.getString("client_id"), rs.getTimestamp("expires_at").toInstant(),
-                    rs.getTimestamp("revoked_at") == null ? null : rs.getTimestamp("revoked_at").toInstant()
-                ),
+                this::mapCollaborationTicket,
                 tokenHash
             ));
         } catch (EmptyResultDataAccessException exception) {
@@ -677,18 +608,44 @@ public class JdbcKnowledgeRepository implements KnowledgeBaseItemRepository, Kno
     }
 
     @Override
+    public boolean collaborationPersistenceReady() {
+        Integer value = jdbcTemplate.queryForObject(
+            """
+                select 1 from knowledge_content_collaboration_tickets where false
+                union all
+                select 1
+                limit 1
+                """,
+            Integer.class
+        );
+        return value != null && value == 1;
+    }
+
+    private KnowledgeCollaborationTicketRecord mapCollaborationTicket(java.sql.ResultSet rs, int rowNum)
+        throws java.sql.SQLException {
+        return new KnowledgeCollaborationTicketRecord(
+            rs.getObject("id", UUID.class), rs.getString("token_hash"),
+            rs.getObject("workspace_id", UUID.class), rs.getObject("item_id", UUID.class),
+            rs.getObject("user_id", UUID.class), rs.getObject("device_id", UUID.class),
+            rs.getString("client_id"), rs.getTimestamp("expires_at").toInstant(),
+            rs.getTimestamp("revoked_at") == null ? null : rs.getTimestamp("revoked_at").toInstant(),
+            rs.getTimestamp("consumed_at") == null ? null : rs.getTimestamp("consumed_at").toInstant()
+        );
+    }
+
+    @Override
     public Optional<KnowledgeCollaborationBinaryState> findCollaborationBinaryState(UUID workspaceId, UUID itemId) {
         try {
             return Optional.ofNullable(jdbcTemplate.queryForObject(
                 """
-                    select yjs_snapshot, yjs_state_vector, schema_version, snapshot_sequence, snapshot_hash,
+                    select yjs_snapshot, yjs_state_vector, schema_version, generation, snapshot_sequence, snapshot_hash,
                            canonical_snapshot::text canonical_snapshot, updated_at
                     from knowledge_content_collaboration_states
                     where workspace_id = ? and item_id = ?
                     """,
                 (rs, rowNum) -> new KnowledgeCollaborationBinaryState(
                     rs.getBytes("yjs_snapshot"), rs.getBytes("yjs_state_vector"), rs.getInt("schema_version"),
-                    rs.getLong("snapshot_sequence"), rs.getString("snapshot_hash"),
+                    rs.getLong("generation"), rs.getLong("snapshot_sequence"), rs.getString("snapshot_hash"),
                     rs.getString("canonical_snapshot"), rs.getTimestamp("updated_at").toInstant()
                 ),
                 workspaceId, itemId
@@ -705,14 +662,56 @@ public class JdbcKnowledgeRepository implements KnowledgeBaseItemRepository, Kno
                 select sequence_no, update_payload, update_id, actor_id, client_id, created_at
                 from knowledge_content_collaboration_updates
                 where workspace_id = ? and item_id = ? and sequence_no > ?
+                  and generation = (
+                      select collaboration_generation
+                      from knowledge_base_items
+                      where workspace_id = ? and id = ?
+                  )
                 order by sequence_no
                 """,
             (rs, rowNum) -> new KnowledgeCollaborationStoredUpdate(
                 rs.getLong("sequence_no"), rs.getBytes("update_payload"), rs.getString("update_id"),
                 rs.getObject("actor_id", UUID.class), rs.getString("client_id"), rs.getTimestamp("created_at").toInstant()
             ),
-            workspaceId, itemId, sequence
+            workspaceId, itemId, sequence, workspaceId, itemId
         );
+    }
+
+    @Override
+    public long findCollaborationGeneration(UUID workspaceId, UUID itemId) {
+        Long generation = jdbcTemplate.queryForObject(
+            """
+                select collaboration_generation
+                from knowledge_base_items
+                where workspace_id = ? and id = ? and deleted_at is null
+                """,
+            Long.class,
+            workspaceId,
+            itemId
+        );
+        return generation == null ? 0 : generation;
+    }
+
+    @Override
+    public long findLatestCollaborationSequence(UUID workspaceId, UUID itemId) {
+        Long sequence = jdbcTemplate.queryForObject(
+            """
+                select coalesce(max(sequence_no), 0)
+                from knowledge_content_collaboration_updates
+                where workspace_id = ? and item_id = ?
+                  and generation = (
+                      select collaboration_generation
+                      from knowledge_base_items
+                      where workspace_id = ? and id = ?
+                  )
+                """,
+            Long.class,
+            workspaceId,
+            itemId,
+            workspaceId,
+            itemId
+        );
+        return sequence == null ? 0 : sequence;
     }
 
     @Override
@@ -723,21 +722,25 @@ public class JdbcKnowledgeRepository implements KnowledgeBaseItemRepository, Kno
         byte[] payload,
         UUID actorId,
         String clientId,
-        int schemaVersion
+        int schemaVersion,
+        long generation
     ) {
-        Long sequence = jdbcTemplate.queryForObject(
+        List<Long> sequences = jdbcTemplate.query(
             """
                 insert into knowledge_content_collaboration_updates
-                    (workspace_id, item_id, update_id, update_payload, actor_id, client_id, schema_version)
-                values (?, ?, ?, ?, ?, ?, ?)
-                on conflict (workspace_id, item_id, update_id)
+                    (workspace_id, item_id, update_id, update_payload, actor_id, client_id, schema_version, generation)
+                select ?, ?, ?, ?, ?, ?, ?, ?
+                from knowledge_base_items
+                where workspace_id = ? and id = ? and collaboration_generation = ? and deleted_at is null
+                on conflict (workspace_id, item_id, generation, update_id)
                 do update set update_id = excluded.update_id
                 returning sequence_no
                 """,
-            Long.class,
-            workspaceId, itemId, updateId, payload, actorId, clientId, schemaVersion
+            (rs, rowNum) -> rs.getLong("sequence_no"),
+            workspaceId, itemId, updateId, payload, actorId, clientId, schemaVersion, generation,
+            workspaceId, itemId, generation
         );
-        return sequence == null ? 0 : sequence;
+        return sequences.isEmpty() ? 0 : sequences.getFirst();
     }
 
     @Override
@@ -748,11 +751,16 @@ public class JdbcKnowledgeRepository implements KnowledgeBaseItemRepository, Kno
                     select actor_id
                     from knowledge_content_collaboration_updates
                     where workspace_id = ? and item_id = ?
+                      and generation = (
+                          select collaboration_generation
+                          from knowledge_base_items
+                          where workspace_id = ? and id = ?
+                      )
                     order by sequence_no desc
                     limit 1
                     """,
                 UUID.class,
-                workspaceId, itemId
+                workspaceId, itemId, workspaceId, itemId
             ));
         } catch (EmptyResultDataAccessException exception) {
             return Optional.empty();
@@ -768,6 +776,7 @@ public class JdbcKnowledgeRepository implements KnowledgeBaseItemRepository, Kno
                 where states.workspace_id = ? and states.item_id = ?
                   and updates.workspace_id = states.workspace_id
                   and updates.item_id = states.item_id
+                  and updates.generation = states.generation
                   and updates.sequence_no <= greatest(states.snapshot_sequence - ?, 0)
                 """,
             workspaceId, itemId, Math.max(0, retainedUpdates)
@@ -783,7 +792,18 @@ public class JdbcKnowledgeRepository implements KnowledgeBaseItemRepository, Kno
     }
 
     @Override
-    public void deleteCollaborationState(UUID workspaceId, UUID itemId) {
+    public long invalidateCollaborationState(UUID workspaceId, UUID itemId) {
+        Long generation = jdbcTemplate.queryForObject(
+            """
+                update knowledge_base_items
+                set collaboration_generation = collaboration_generation + 1
+                where workspace_id = ? and id = ? and deleted_at is null
+                returning collaboration_generation
+                """,
+            Long.class,
+            workspaceId,
+            itemId
+        );
         jdbcTemplate.update(
             "delete from knowledge_content_collaboration_updates where workspace_id = ? and item_id = ?",
             workspaceId, itemId
@@ -792,50 +812,57 @@ public class JdbcKnowledgeRepository implements KnowledgeBaseItemRepository, Kno
             "delete from knowledge_content_collaboration_states where workspace_id = ? and item_id = ?",
             workspaceId, itemId
         );
+        return generation == null ? 0 : generation;
     }
 
     @Override
-    public void storeCollaborationSnapshot(
+    public boolean storeCollaborationSnapshot(
         UUID workspaceId,
         UUID itemId,
         byte[] snapshot,
         byte[] stateVector,
         String snapshotHash,
         int schemaVersion,
+        long generation,
+        long snapshotSequence,
         String canonicalSnapshot,
         String clientId,
         UUID actorId
     ) {
-        jdbcTemplate.update(
+        List<Integer> stored = jdbcTemplate.query(
             """
                 insert into knowledge_content_collaboration_states
-                    (id, workspace_id, item_id, state_vector, snapshot_payload, server_clock, last_client_id,
-                     updated_by, last_saved_at, yjs_snapshot, yjs_state_vector, schema_version,
-                     snapshot_sequence, snapshot_hash, canonical_snapshot, created_at, updated_at)
-                values (?, ?, ?, ?, jsonb_build_object('encoding', 'yjs-v1'),
-                        (select coalesce(max(sequence_no), 0) from knowledge_content_collaboration_updates where workspace_id = ? and item_id = ?),
-                        ?, ?, now(), ?, ?, ?,
-                        (select coalesce(max(sequence_no), 0) from knowledge_content_collaboration_updates where workspace_id = ? and item_id = ?),
-                        ?, ?::jsonb, now(), now())
+                    (id, workspace_id, item_id, yjs_snapshot, yjs_state_vector, schema_version,
+                     generation, snapshot_sequence, snapshot_hash, canonical_snapshot, created_at, updated_at)
+                select ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, now(), now()
+                from knowledge_base_items item
+                where item.workspace_id = ? and item.id = ? and item.deleted_at is null
+                  and item.collaboration_generation = ?
+                  and ? >= (
+                      select coalesce(max(updates.sequence_no), 0)
+                      from knowledge_content_collaboration_updates updates
+                      where updates.workspace_id = ? and updates.item_id = ? and updates.generation = ?
+                  )
                 on conflict (workspace_id, item_id)
-                do update set state_vector = excluded.state_vector,
-                              snapshot_payload = excluded.snapshot_payload,
-                              server_clock = excluded.server_clock,
-                              last_client_id = excluded.last_client_id,
-                              updated_by = excluded.updated_by,
-                              last_saved_at = now(),
-                              yjs_snapshot = excluded.yjs_snapshot,
+                do update set yjs_snapshot = excluded.yjs_snapshot,
                               yjs_state_vector = excluded.yjs_state_vector,
                               schema_version = excluded.schema_version,
+                              generation = excluded.generation,
                               snapshot_sequence = excluded.snapshot_sequence,
                               snapshot_hash = excluded.snapshot_hash,
                               canonical_snapshot = excluded.canonical_snapshot,
                               updated_at = now()
+                where knowledge_content_collaboration_states.generation = excluded.generation
+                  and knowledge_content_collaboration_states.snapshot_sequence <= excluded.snapshot_sequence
+                returning 1
                 """,
-            UUID.randomUUID(), workspaceId, itemId, java.util.Base64.getEncoder().encodeToString(stateVector),
-            workspaceId, itemId, clientId, actorId, snapshot, stateVector, schemaVersion,
-            workspaceId, itemId, snapshotHash, canonicalSnapshot
+            (rs, rowNum) -> rs.getInt(1),
+            UUID.randomUUID(), workspaceId, itemId, snapshot, stateVector, schemaVersion,
+            generation, snapshotSequence, snapshotHash, canonicalSnapshot,
+            workspaceId, itemId, generation,
+            snapshotSequence, workspaceId, itemId, generation
         );
+        return !stored.isEmpty();
     }
 
     @Override
@@ -2260,21 +2287,6 @@ public class JdbcKnowledgeRepository implements KnowledgeBaseItemRepository, Kno
         }
     }
 
-    private String contentFromSnapshotPayload(String payload) {
-        Object blocks = readJsonMap(payload).get("blocks");
-        if (blocks == null) {
-            return "";
-        }
-        try {
-            return objectMapper.convertValue(blocks, BLOCK_DRAFT_LIST).stream()
-                .map(block -> markdownLine(block.blockType(), block.content()))
-                .reduce((left, right) -> left + "\n" + right)
-                .orElse("");
-        } catch (IllegalArgumentException exception) {
-            throw new IllegalStateException("Invalid collaboration block snapshot", exception);
-        }
-    }
-
     private String blockSnapshotFromContent(String content) {
         List<KnowledgeContentBlockDraft> blocks = Arrays.stream((content == null ? "" : content).split("\\R", -1))
             .map(line -> new KnowledgeContentBlockDraft("paragraph", line, 0))
@@ -2319,6 +2331,3 @@ public class JdbcKnowledgeRepository implements KnowledgeBaseItemRepository, Kno
         }
     }
 }
-
-
-

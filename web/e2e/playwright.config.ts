@@ -1,7 +1,9 @@
 import { defineConfig } from '@playwright/test'
 
 const suite = process.env.COLLA_E2E_SUITE ?? 'smoke'
-const suitePattern = suite === 'route-final'
+const suitePattern = suite === 'all'
+  ? /.*/
+  : suite === 'route-final'
   ? /@route-final/
   : suite === 'pilot-m9'
     ? /@pilot-m9/

@@ -9,11 +9,12 @@ import { useAuthStore } from '../authStore'
 export function RequireAuth({ children }: { children: ReactNode }) {
   const location = useLocation()
   const accessToken = useAuthStore((state) => state.accessToken)
+  const contextVersion = useAuthStore((state) => state.contextVersion)
   const setCurrentUser = useAuthStore((state) => state.setCurrentUser)
   const clearAuth = useAuthStore((state) => state.clearAuth)
 
   const meQuery = useQuery({
-    queryKey: ['auth', 'me'],
+    queryKey: ['auth', 'me', contextVersion],
     queryFn: getCurrentUser,
     enabled: Boolean(accessToken),
     retry: false,

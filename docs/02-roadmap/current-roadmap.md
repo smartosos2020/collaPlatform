@@ -1,159 +1,165 @@
 ---
-title: PLATFORM-SCALE-S04 通用实时事件网关与知识协同收口当前执行路线
+title: PLATFORM-SCALE-S05 容量、故障、恢复和运维收口当前执行路线
 status: active
-route: PLATFORM-SCALE-S04
+route: PLATFORM-SCALE-S05
 program: PLATFORM-SCALE
 program_doc: docs/00-product/initiatives/platform-scale-program.md
-program_revision: 7
-stage: PLATFORM-SCALE-S04
-stage_final_milestone: PLATFORM-SCALE-S04-M5
-last_code_check: 2026-07-24
+program_revision: 9
+stage: PLATFORM-SCALE-S05
+stage_final_milestone: PLATFORM-SCALE-S05-M5
+last_code_check: 2026-07-25
 source_rule: 本文件是唯一执行路线入口；长期专项只提供 Stage 索引，不直接执行。
 ---
 
-# PLATFORM-SCALE-S04 通用实时事件网关与知识协同收口
+# PLATFORM-SCALE-S05 容量、故障、恢复和运维收口
 
 ## 1. Stage 目标
 
-在 S02 已隔离 Event Gateway 运行角色、S03 已交付可靠多 Worker 和 durable realtime signal 的基础上，把当前只在单 Spring 进程内查找 session 并发送消息的通用 WebSocket 升级为可独立部署、可横向增加节点的实时事件网关。
+在 S01-S04 已完成模块边界门禁、双 API、可靠多 Worker、双 Event Gateway、双 collaboration 和客户端事实校准的基础上，为当前单企业部署形态建立可重复、可解释且不夸大的容量与运维承诺。
 
-S04 交付版本化实时信号 envelope、Redis pub/sub fanout、本地 session registry、双 Gateway 部署、IM/通知/项目/权限信号迁移、客户端 sequence/去重/重连/REST 校准，以及旧 Spring 知识 room/presence/autosave 链路退出。知识内容继续由独立 Hocuspocus/Yjs 组件负责实时协同，PostgreSQL snapshot/update 保持 durable source。S04 不把 Redis 作为业务事实，不拆业务微服务，也不提前发布 S05 的生产容量、长稳或基础设施高可用承诺。
+S05 交付固定容量环境、确定性数据种子、锁定版本的 HTTP/WebSocket/Yjs/Worker 负载器、单域和混合目标负载、60 分钟目标负载、8 小时低强度 soak、具名节点与依赖故障恢复、发布/扩缩/回退/诊断手册、历史边界例外到期复核，以及专项最终 Go/No-Go。容量结论只对明确记录的硬件、容器、数据和拓扑有效；S05 不把 PostgreSQL、Redis 或 MinIO 单点描述为高可用，也不以调整门槛掩盖未达到的候选目标。
 
 ## 2. 固定输入与当前缺口
 
-- 上一 Stage：`PLATFORM-SCALE-S03` 已完成并归档为 `docs/99-archive/superseded-roadmaps/platform-scale-s03-roadmap-completed-2026-07-24.md`。
-- 活动专项：`docs/00-product/initiatives/platform-scale-program.md` revision 7。
-- 目标架构：`docs/01-architecture/platform-scale-target-architecture.md` revision 7，重点执行通用实时事件、知识协同、观测和故障矩阵章节。
-- 运行基线：同一 Server artifact 已支持 `event-gateway` 角色；API/Worker 不创建本地 session registry，`combined` 只用于 local/test。
-- 可靠信号基线：S03 已将业务事实转为版本化 Handler delivery，并把低延迟提示持久化为可观察 realtime signal；尚无 Redis transport publisher/consumer。
-- 当前 Gateway 事实：`WebSocketSessionRegistry` 只保存当前进程 user-session 映射；`WebSocketMessageSender` 直接遍历本地 session；没有跨节点 topic、订阅、sequence watermark、慢客户端隔离或双节点 fanout。
-- 当前客户端事实：WebSocket 能自动连接，但各业务域的去重、水位、退避、切换 workspace 和 REST 校准合同尚未统一；瞬时信号丢失可能只能依赖用户刷新。
-- 当前知识协同事实：Hocuspocus 已有 ticket、Redis 和 durable update 能力；Spring 仍保留 `CollaborationMessageHandler`、旧 room/presence/autosave/maintenance 路径，存在双协议理解负担。
-- 数据基线：V001-V069；S04 如需新 schema 必须兼容空库和旧库升级，不修改既有迁移。
-- 边界基线：project/shared P0 与 foreign write 保持 0；批准的跨 owner read 不能因 Gateway 或协同收口扩散。
-- 决策边界：S03 Go/No-Go 已批准 S04；`PROJECT-PLATFORM` 继续暂停在 S05 之前，S04 不恢复项目专项。
+- 上一 Stage：`PLATFORM-SCALE-S04` 已完成并归档为 `docs/99-archive/superseded-roadmaps/platform-scale-s04-roadmap-completed-2026-07-25.md`。
+- 活动专项：`docs/00-product/initiatives/platform-scale-program.md` revision 9。
+- 目标架构：`docs/01-architecture/platform-scale-target-architecture.md` revision 9，重点执行容量验收草案、S05 激活合同、观测与运维边界。
+- 运行基线：同一 Server artifact 已支持独立 `api`、`worker`、`event-gateway`、`maintenance` 角色；生产模板已有双 API、双 Worker、双 Gateway 和双 collaboration。
+- 事实边界：PostgreSQL 是业务、outbox、delivery、realtime signal 与知识 durable state 的事实源；Redis 是跨节点瞬时 fanout，MinIO 是文件对象存储。
+- 当前证据边界：S02-S04 的性能数字只证明对应功能和恢复门槛，尚未绑定固定硬件、完整混合负载、60 分钟目标持续负载或 8 小时 soak。
+- 候选 C1：2,000 注册成员、500 在线成员、150 HTTP RPS、1,000 普通 WS、100 协同客户端、25 协同房间、30 events/s 持续与 150 events/s 五分钟突发；M1 必须复核后才能冻结为目标。
+- 数据候选：1,000,000 工作项、100,000 知识节点、1,000,000 知识块；必须通过可重复 manifest 和清理合同建立，不能依赖手工脏数据。
+- 候选服务门槛：HTTP read P95 300 ms、write P95 500 ms、非预期 5xx 低于 0.5%、fanout/协同 P95 1 s、重连校准 10 s、outbox oldest age P95 5 s；未达到时发布实际边界和瓶颈。
+- 基础设施边界：PostgreSQL、Redis、MinIO 当前仍是单点故障域；S05 验证中断与恢复，不把集群 HA 作为已实现能力。
+- 边界基线：project/shared P0 与 foreign write 保持 0；历史批准的跨 owner read 以当前扫描重新核对，禁止整批自动续期。
+- 决策边界：S05 最终决定恢复 `PROJECT-PLATFORM-S05`、新增平台修复 Stage 或停止扩容承诺；当前路线不提前实现项目布局能力。
 
 ## 3. 执行规则
 
 1. 每轮只推进一个 Milestone；每个 Task 必须有唯一 Verification Contract、Acceptance Evidence 和执行报告行。
-2. PostgreSQL 中的通知、消息、项目、权限和知识 durable state 是事实源；Redis 与 WebSocket 只提供低延迟失效提示。
-3. 实时 envelope 必须具备稳定 type/version、workspace、recipient/audience、object、sequence、occurredAt、correlation 和最小 payload；禁止携带 token、正文、隐藏标题或 ACL 快照。
-4. Worker 只发布 transport-neutral signal；Gateway 只订阅、筛选并发送本地 session，不直接访问业务私有 Repository 或执行业务写事务。
-5. 每个 Gateway 节点只保存本地连接。跨节点广播通过 Redis channel 完成，不引入粘性会话，也不在 Redis 保存唯一未读或消息事实。
-6. 客户端必须按 domain/object sequence 去重；连接成功、断线重连、sequence gap、workspace 切换和权限变化均触发显式 REST 校准。
-7. Redis 中断不得破坏业务写入；Gateway 明确降级 readiness/指标，恢复后客户端通过校准收敛，不伪造补发历史 Redis 消息。
-8. 慢客户端、发送异常和无效 session 必须隔离并有界处理，不能阻塞订阅线程或其他用户。
-9. Hocuspocus/Yjs 是知识实时协议唯一主链路；Spring 仅保留权限 ticket、load/store/invalidate gateway，不保留第二套 room/presence/autosave 协议。
-10. M1-M4 使用影响范围验证；M5 执行完整后端、迁移、前端、collaboration、工作台、安全、真实双 Gateway/双 collaboration 浏览器与 `route-final`。
+2. 所有容量证据绑定提交、镜像、依赖版本、宿主机、容器限制、服务副本、运行参数、数据 manifest 和脚本校验和。
+3. 候选 C1 不是预设通过结论。M1 可以基于资源和安全边界冻结目标、分级目标或明确降级，但不能在测试失败后静默改门槛。
+4. 数据种子必须确定、幂等、跨 workspace 隔离、可清理且有规模/分布/校验和；禁止把共享开发库或人工数据作为正式容量输入。
+5. 单域负载用于定位瓶颈，容量承诺必须来自 HTTP、Worker、普通 WS 和知识协同同时运行的混合场景。
+6. 报告必须同时记录延迟分位数、错误率、吞吐、队列、backlog/oldest age、dead letter、连接/收敛、CPU、内存、GC、线程、连接池和依赖资源；平均值不能替代尾延迟。
+7. 60 分钟目标负载和 8 小时 soak 必须保留完整时间序列、资源斜率、错误样本及前后数据一致性；进程存活不等于通过。
+8. 故障注入必须具名、可重复并记录开始/恢复时间。恢复结论同时检查 RTO、事实缺口、重复副作用、授权隔离和资源泄漏。
+9. PostgreSQL、Redis、MinIO 单点必须进入非承诺清单和恢复手册；不得用应用双节点证据推导基础设施高可用。
+10. 发布、扩缩、降容和回退使用不可变 artifact、兼容 schema、连接预算和 draining；不得依赖手工改表、数据库回滚或恢复旧 Spring 协同。
+11. M1-M4 使用影响范围验证；M5 执行完整后端、迁移、前端、collaboration、工作台、安全、容量证据完整性和 `route-final`。
 
 ## 4. Milestone 总览
 
 | Milestone | 目标 | 依赖 | 执行报告 | 状态 |
 | --- | --- | --- | --- | --- |
-| PLATFORM-SCALE-S04-M1 | 通用实时 envelope、Redis fanout 与双 Gateway 基础 | S03 归档与 revision 7 | `docs/90-reports/platform-scale-s04-m1-execution-report.md` | Pending |
-| PLATFORM-SCALE-S04-M2 | IM、通知、项目与权限信号迁移 | M1 | `docs/90-reports/platform-scale-s04-m2-execution-report.md` | Pending |
-| PLATFORM-SCALE-S04-M3 | 客户端 sequence、去重、重连与 REST 校准 | M1-M2 | `docs/90-reports/platform-scale-s04-m3-execution-report.md` | Pending |
-| PLATFORM-SCALE-S04-M4 | Spring 旧知识协同观测、关闭与删除 | M1-M3 | `docs/90-reports/platform-scale-s04-m4-execution-report.md` | Pending |
-| PLATFORM-SCALE-S04-M5 | 多 Gateway、多 collaboration 故障验收与 Stage 收口 | M1-M4 | `docs/90-reports/platform-scale-s04-m5-execution-report.md` | Pending |
+| PLATFORM-SCALE-S05-M1 | 固定容量环境、数据种子、负载器与证据合同 | S04 归档与 revision 9 | `docs/90-reports/platform-scale-s05-m1-execution-report.md` | Pending |
+| PLATFORM-SCALE-S05-M2 | HTTP、Worker、普通 WS 与知识协同目标负载 | M1 | `docs/90-reports/platform-scale-s05-m2-execution-report.md` | Pending |
+| PLATFORM-SCALE-S05-M3 | 60 分钟目标负载、8 小时 soak 与故障恢复 | M1-M2 | `docs/90-reports/platform-scale-s05-m3-execution-report.md` | Pending |
+| PLATFORM-SCALE-S05-M4 | 发布、扩缩、降容、回退与诊断运行闭环 | M1-M3 | `docs/90-reports/platform-scale-s05-m4-execution-report.md` | Pending |
+| PLATFORM-SCALE-S05-M5 | 容量基线、边界例外复核与专项 Go/No-Go | M1-M4 | `docs/90-reports/platform-scale-s05-m5-execution-report.md` | Pending |
 
 ## 5. 详细任务
 
-### PLATFORM-SCALE-S04-M1 通用实时 envelope、Redis fanout 与双 Gateway 基础
+### PLATFORM-SCALE-S05-M1 固定容量环境、数据种子、负载器与证据合同
 
 | 任务 | 内容 | 验收标准 | 状态 |
 | --- | --- | --- | --- |
-| PLATFORM-SCALE-S04-M1-T01 | 复核 realtime signal 生产、持久化、当前 WebSocket 发送、session registry、认证和部署路径 | 每个 signal type、生产 Handler、recipient/audience、当前 sender、事实校准入口和跨节点缺口均可定位 | Pending |
-| PLATFORM-SCALE-S04-M1-T02 | 冻结版本化 realtime envelope、topic、channel 和兼容策略 | type/version、workspace、recipient/audience、object、sequence、occurredAt、correlation、payload 与未知版本行为定义唯一 | Pending |
-| PLATFORM-SCALE-S04-M1-T03 | 建立 transport-neutral publisher/consumer 公共合同与模块边界 | Worker 不 import Redis/Gateway 私有实现；Gateway 不 import业务 Repository；shared 不新增业务反向依赖 | Pending |
-| PLATFORM-SCALE-S04-M1-T04 | 实现 realtime signal 到 Redis 的可靠发布适配与结果观测 | durable signal 成功后发布；Redis 失败不回滚业务事实并可重试/诊断；重复发布由 sequence 去重 | Pending |
-| PLATFORM-SCALE-S04-M1-T05 | 实现 Gateway Redis subscriber、channel 生命周期和本地 fanout dispatcher | 每个 Gateway 都接收目标 channel；只向本地匹配 session 发送；重订阅不重复注册监听器 | Pending |
-| PLATFORM-SCALE-S04-M1-T06 | 升级本地 session registry 的连接、用户、workspace、设备和生命周期合同 | 注册/注销/重复连接/关闭竞态安全；workspace 目标筛选明确；节点退出关闭连接并要求重连 | Pending |
-| PLATFORM-SCALE-S04-M1-T07 | 实现 recipient/workspace audience 解析、权限安全降级和最小披露 | 用户定向与 workspace 广播无串租户；删除/无权对象不泄露标题、正文、ACL 或目标成员清单 | Pending |
-| PLATFORM-SCALE-S04-M1-T08 | 实现发送队列、慢客户端隔离、失败清理和有界资源保护 | 单连接发送串行且有界；慢/坏连接不阻塞订阅线程；达到预算后安全关闭并记录原因 | Pending |
-| PLATFORM-SCALE-S04-M1-T09 | 增加 Redis、连接、订阅、fanout、丢弃、发送失败、慢客户端和重连指标 | 指标按 role/instance/type 聚合，不使用 user/workspace 高基数或 payload 标签；日志可按 correlation 定位 | Pending |
-| PLATFORM-SCALE-S04-M1-T10 | 配置 `gateway-a`/`gateway-b` 同镜像、独立 instance id、共享 Redis 的生产模板 | 两节点不承载业务 Controller/Worker/知识协议；upstream 无粘性会话；可独立扩缩和回退单 Gateway | Pending |
-| PLATFORM-SCALE-S04-M1-T11 | 建立 envelope、边界、双 Gateway fanout、重复、隔离、慢客户端和角色矩阵测试并收口 M1 | 同一用户连接不同节点均收到一次信号；Redis/发送异常不破坏事实；目标门禁和 checkpoint 通过 | Pending |
+| PLATFORM-SCALE-S05-M1-T01 | 复核当前 Compose、镜像、运行角色、资源限制、连接预算、指标、种子和压测入口 | 每个服务、副本、端口、依赖、资源、连接、观测入口、现有脚本与容量缺口均可定位 | Pending |
+| PLATFORM-SCALE-S05-M1-T02 | 冻结容量等级、C1 目标、服务指标、非目标和结论用语 | 候选值逐项确认或有依据调整；通过、未通过、部分通过和不可承诺语义唯一 | Pending |
+| PLATFORM-SCALE-S05-M1-T03 | 冻结宿主机、OS、Docker、CPU/内存/磁盘/网络、时钟和依赖版本清单 | 一条 preflight 命令生成机器可读 manifest；关键输入漂移会阻止结果并入同一基线 | Pending |
+| PLATFORM-SCALE-S05-M1-T04 | 冻结 API/Worker/Gateway/collaboration 副本、容器限制、JVM/Node 参数和连接预算 | 拓扑与资源公式可重复；总 PostgreSQL/Redis/MinIO 连接不越预算；非法配置启动前失败 | Pending |
+| PLATFORM-SCALE-S05-M1-T05 | 设计成员、权限、项目、知识、通知、IM、文件和协同的确定性数据分布 | 规模、倾斜、关系、workspace 数、热点/冷点、正文大小和权限组合有版本化 schema | Pending |
+| PLATFORM-SCALE-S05-M1-T06 | 实现幂等数据种子、校验、续跑和清理工具 | 相同 seed 产生相同标识与校验和；失败可续跑；只清理具名夹具；跨 workspace 无污染 | Pending |
+| PLATFORM-SCALE-S05-M1-T07 | 建立固定版本、容器化的 HTTP read/write 负载器 | 登录、查询、命令、幂等和上传场景参数化；响应语义与权限同时校验，不只统计状态码 | Pending |
+| PLATFORM-SCALE-S05-M1-T08 | 建立普通 WebSocket 连接、fanout、重连和校准负载器 | 可控制连接/用户/节点/消息率；验证 sequence、重复、gap 和 REST 收敛并输出分位数 | Pending |
+| PLATFORM-SCALE-S05-M1-T09 | 建立 Hocuspocus/Yjs 多房间、多客户端和编辑分布负载器 | 真实协议客户端可跨两个节点编辑、断开、重连并校验最终文档状态和收敛延迟 | Pending |
+| PLATFORM-SCALE-S05-M1-T10 | 建立 Worker 持续/突发生产、backlog、接管和结果校验负载器 | 可按 event/Handler/aggregate 生成具名负载；检测丢失、重复副作用、顺序和 dead letter | Pending |
+| PLATFORM-SCALE-S05-M1-T11 | 建立统一场景清单、预热/持续/中止规则、指标采集和证据包格式 | 每次运行产生版本、manifest、阈值、原始时序、摘要和校验和；中止原因不会被记为通过 | Pending |
+| PLATFORM-SCALE-S05-M1-T12 | 完成环境可重复性、种子隔离、负载器自检、安全和 M1 收口 | 两次干净初始化结果一致；负载器失败可被测试识别；目标门禁和 checkpoint 通过 | Pending |
 
-### PLATFORM-SCALE-S04-M2 IM、通知、项目与权限信号迁移
-
-| 任务 | 内容 | 验收标准 | 状态 |
-| --- | --- | --- | --- |
-| PLATFORM-SCALE-S04-M2-T01 | 建立 IM、通知、项目、权限及遗留 sender 调用的实时副作用矩阵 | 每个业务动作、durable fact、signal type/version、recipient、sequence、REST 校准和现有直接发送路径明确 | Pending |
-| PLATFORM-SCALE-S04-M2-T02 | 冻结各业务域最小 payload、sequence 来源、失效语义和兼容窗口 | payload 只含安全定位字段；sequence 可比较；旧/未知事件安全忽略并触发校准，不靠时间戳猜顺序 | Pending |
-| PLATFORM-SCALE-S04-M2-T03 | 将通知创建、已读和未读数变化迁移到通用 signal pipeline | 通知事实先落库；多节点只提示变化；重复 Handler/发布不重复增加未读数 | Pending |
-| PLATFORM-SCALE-S04-M2-T04 | 将 IM 消息、会话更新和消息转任务提示迁移到通用 signal pipeline | 消息事实和会话水位来自 PostgreSQL；发送者/接收者目标正确；重复信号不重复插入消息 | Pending |
-| PLATFORM-SCALE-S04-M2-T05 | 将项目工作项、评论、成员和状态变化迁移到通用 signal pipeline | 项目事件只携带对象标识/version；权限仍按当前事实判断；跨 workspace 不广播 | Pending |
-| PLATFORM-SCALE-S04-M2-T06 | 将权限、角色、成员状态和资源授权失效提示迁移到通用 signal pipeline | 权限收紧后客户端及时校准；signal 不复制完整授权关系；无权用户只收到安全失效提示 | Pending |
-| PLATFORM-SCALE-S04-M2-T07 | 从业务模块和 Worker 移除对本地 `WebSocketSessionRegistry`/sender 的直接依赖 | API/Worker 无本地 session 操作；业务模块只依赖公开 signal contract；架构门禁无新增例外 | Pending |
-| PLATFORM-SCALE-S04-M2-T08 | 建立旧 WebSocket event type 到新 envelope 的短期兼容与退出开关 | 升级窗口内旧客户端可安全工作；兼容层可观测、默认期限明确，不形成第二事实源 | Pending |
-| PLATFORM-SCALE-S04-M2-T09 | 复验用户多设备、离线、重复连接、workspace 切换和删除/停用场景 | 目标设备与用户行为一致；离线不丢 durable fact；停用/删除不会继续暴露资源内容 | Pending |
-| PLATFORM-SCALE-S04-M2-T10 | 建立四业务域 Handler、幂等、顺序、权限、敏感字段和跨节点集成测试 | 任一 signal 发布失败不阻塞其他 Handler；重复/乱序安全；两个 Gateway 收敛到同一业务事实 | Pending |
-| PLATFORM-SCALE-S04-M2-T11 | 完成真实 IM/通知/项目/权限流程、指标、边界和 M2 收口 | 四域真实产品流均经通用 pipeline 到达正确客户端；目标测试、浏览器 smoke 和 checkpoint 通过 | Pending |
-
-### PLATFORM-SCALE-S04-M3 客户端 sequence、去重、重连与 REST 校准
+### PLATFORM-SCALE-S05-M2 HTTP、Worker、普通 WS 与知识协同目标负载
 
 | 任务 | 内容 | 验收标准 | 状态 |
 | --- | --- | --- | --- |
-| PLATFORM-SCALE-S04-M3-T01 | 复核当前 WebSocket hook、业务页面订阅、缓存更新、错误提示和重连行为 | 每个 event type 的消费者、缓存副作用、断线行为、重复风险和校准缺口可定位 | Pending |
-| PLATFORM-SCALE-S04-M3-T02 | 实现统一客户端 realtime envelope parser、版本校验和类型路由 | 非法/未知/超限 payload 不影响连接；已知版本类型安全；业务页面不重复解析原始 JSON | Pending |
-| PLATFORM-SCALE-S04-M3-T03 | 实现连接状态机、指数退避、抖动、在线恢复和显式停止 | connecting/ready/degraded/reconnecting/stopped 状态唯一；无重连风暴；登出后不再自动连接 | Pending |
-| PLATFORM-SCALE-S04-M3-T04 | 实现按 domain/object 的 sequence watermark、去重和 gap 检测 | 重复/旧信号不重复更新；sequence gap 不猜测缺失内容并立即标记对应域待校准 | Pending |
-| PLATFORM-SCALE-S04-M3-T05 | 建立通知未读/列表 REST 校准和缓存原子替换 | 首连、重连、gap 和窗口重新聚焦后未读数/列表与服务端事实一致 | Pending |
-| PLATFORM-SCALE-S04-M3-T06 | 建立 IM 会话/消息增量校准与分页水位合同 | 不重复消息、不跳页；断线期间新消息通过 REST 补齐；删除/撤回按服务端事实收敛 | Pending |
-| PLATFORM-SCALE-S04-M3-T07 | 建立项目对象和权限失效校准合同 | 工作项变化按对象 version 刷新；权限收紧清除缓存并安全退出资源页；无权状态不显示旧内容 | Pending |
-| PLATFORM-SCALE-S04-M3-T08 | 实现 workspace、账号、设备和标签页切换时的订阅与水位重置 | 旧 workspace/账号事件不能污染新上下文；多标签页行为可解释且不会无限重复校准 | Pending |
-| PLATFORM-SCALE-S04-M3-T09 | 提供低噪音连接状态、降级和恢复交互 | 短暂抖动不打断主流程；持续降级可见且可重试；恢复后提示与事实状态一致 | Pending |
-| PLATFORM-SCALE-S04-M3-T10 | 建立重复、乱序、gap、Redis 丢信号、Gateway 切换和权限变化前端测试 | 缓存最终与 REST 一致；无永久未读、消息、项目或权限缺口；计时器和连接正确清理 | Pending |
-| PLATFORM-SCALE-S04-M3-T11 | 完成真实浏览器断线/重连/校准、多标签页和 M3 收口 | 停止单 Gateway 后客户端连接另一节点并在冻结时间内完成四域校准；构建和 checkpoint 通过 | Pending |
+| PLATFORM-SCALE-S05-M2-T01 | 执行空闲、预热和稳定基线并校准观测开销 | 空闲资源、启动时间、预热收敛和指标抓取成本明确；测试前无历史 backlog 或残留连接 | Pending |
+| PLATFORM-SCALE-S05-M2-T02 | 执行混合 HTTP read 目标负载 | 150 RPS 候选下 read P50/P95/P99、错误、数据库与缓存指标完整；结果按端点和权限态可解释 | Pending |
+| PLATFORM-SCALE-S05-M2-T03 | 执行 HTTP write、幂等命令和文件元数据/对象混合负载 | write P95、冲突、outbox/audit、重复请求和 MinIO 结果一致；无部分业务事实 | Pending |
+| PLATFORM-SCALE-S05-M2-T04 | 执行 Worker 30 events/s 持续与 150 events/s 五分钟突发 | backlog、oldest age、吞吐、lease、retry、dead letter 和恢复时间达到冻结门槛或暴露实际拐点 | Pending |
+| PLATFORM-SCALE-S05-M2-T05 | 执行 1,000 普通 WS 连接、定向/workspace fanout 和重连负载 | fanout P95、连接成功率、队列和校准完整；无跨租户、重复投递或无界慢连接 | Pending |
+| PLATFORM-SCALE-S05-M2-T06 | 执行 100 协同客户端、至少 25 房间和跨节点编辑负载 | update 收敛 P95、持久化、room/connection/queue 指标完整；最终内容一致且无丢块 | Pending |
+| PLATFORM-SCALE-S05-M2-T07 | 执行 HTTP、Worker、Gateway 和 collaboration 同时运行的 C1 混合负载 | 各域同时达到冻结流量；共享依赖竞争可见；单域通过不能掩盖混合场景失败 | Pending |
+| PLATFORM-SCALE-S05-M2-T08 | 复验百万级工作项、知识节点/块规模下的分页、搜索、权限和索引路径 | 关键查询计划、尾延迟、索引命中和内存稳定；无全表回退、越权召回或无界响应 | Pending |
+| PLATFORM-SCALE-S05-M2-T09 | 在目标负载下执行跨 workspace、停用成员、撤权和资源删除隔离校验 | 错误授权为零；缓存和实时提示最终按当前事实收敛；敏感标题/正文不进入负载日志 | Pending |
+| PLATFORM-SCALE-S05-M2-T10 | 执行阶梯增压、饱和与安全降载，定位每个角色和共享依赖的拐点 | 饱和前后吞吐/尾延迟/错误/队列曲线完整；保护机制生效且不会级联耗尽依赖 | Pending |
+| PLATFORM-SCALE-S05-M2-T11 | 只通过版本化配置完成有预算的调优和对照复验 | 每项调优有假设、前后指标和资源代价；不删除安全校验、不扩大未审连接预算、不覆盖失败原始证据 | Pending |
+| PLATFORM-SCALE-S05-M2-T12 | 发布目标负载结果、实际容量包络、瓶颈和 M2 收口结论 | 原始证据可复算；候选目标逐项有 Pass/Fail/Bounded 结论；目标门禁和 checkpoint 通过 | Pending |
 
-### PLATFORM-SCALE-S04-M4 Spring 旧知识协同观测、关闭与删除
-
-| 任务 | 内容 | 验收标准 | 状态 |
-| --- | --- | --- | --- |
-| PLATFORM-SCALE-S04-M4-T01 | 复核 Spring 与 Hocuspocus 两条知识协同链路、schema、任务、ticket 和客户端入口 | room/presence/update/snapshot/autosave/cleanup/权限/连接的当前 owner、调用量和替代路径完整 | Pending |
-| PLATFORM-SCALE-S04-M4-T02 | 冻结知识协同唯一协议、durable source、权限和组件责任矩阵 | Hocuspocus/Yjs 负责实时协议；PostgreSQL snapshot/update 是事实；Spring 只保留 ticket/load/store/invalidate | Pending |
-| PLATFORM-SCALE-S04-M4-T03 | 为旧 Spring 协同入口、room、presence、update 和 maintenance 增加迁移观测 | 可区分真实旧流量、测试和内部调用；指标无用户/文档高基数；零使用判断有明确观察窗口 | Pending |
-| PLATFORM-SCALE-S04-M4-T04 | 实现旧协议关闭开关、拒绝语义和安全回退演练 | 关闭后旧连接明确升级提示，不静默写第二份状态；回退只恢复兼容入口，不改变 durable 数据 | Pending |
-| PLATFORM-SCALE-S04-M4-T05 | 验证 Hocuspocus ticket、权限收紧、load/store/invalidate 与版本一致性 | ticket 单次/短时且绑定文档权限；撤权及时断开/拒写；更新和 snapshot sequence 单调 | Pending |
-| PLATFORM-SCALE-S04-M4-T06 | 验证 collaboration Redis 多节点广播、awareness 和 durable recovery | 两节点同文档编辑收敛；awareness 不持久化为业务事实；Redis 丢失后从 PostgreSQL 恢复内容 | Pending |
-| PLATFORM-SCALE-S04-M4-T07 | 移除 Spring `CollaborationMessageHandler`、旧 room/presence/autosave/cleanup 运行链路 | Event Gateway 不再处理知识编辑命令；API/Worker 无旧 scheduler 或内存 room 状态 | Pending |
-| PLATFORM-SCALE-S04-M4-T08 | 收敛旧配置、Controller/DTO/service/repository/schema 活动引用和前端兼容入口 | 活动代码只保留 Hocuspocus gateway 必需面；旧表按数据策略迁移/冻结/删除且历史 Flyway 不改写 | Pending |
-| PLATFORM-SCALE-S04-M4-T09 | 更新角色 Bean 矩阵、架构合同、命名门禁和运行文档 | 生产角色不再实例化旧协议 Bean；知识协同唯一入口自动可验证；无新增跨 owner write | Pending |
-| PLATFORM-SCALE-S04-M4-T10 | 建立单人、多用户、权限、刷新、离线恢复、版本和双节点协同回归 | 内容无丢失/重复/回退；评论/版本/权限主流程不受退出旧链路影响 | Pending |
-| PLATFORM-SCALE-S04-M4-T11 | 完成真实双 collaboration 浏览器流程、旧链路零调用证明和 M4 收口 | Hocuspocus 是唯一知识实时协议；目标后端/collaboration/浏览器/架构门禁和 checkpoint 通过 | Pending |
-
-### PLATFORM-SCALE-S04-M5 多 Gateway、多 collaboration 故障验收与 Stage 收口
+### PLATFORM-SCALE-S05-M3 60 分钟目标负载、8 小时 soak 与故障恢复
 
 | 任务 | 内容 | 验收标准 | 状态 |
 | --- | --- | --- | --- |
-| PLATFORM-SCALE-S04-M5-T01 | 复核 M1-M4 的 44 项实现任务与 M5 的 10 项收口合同 | 路线共 54 项均有唯一可重复证据；无静默跳过、阻断残留或越界 S05 容量实现 | Pending |
-| PLATFORM-SCALE-S04-M5-T02 | 执行 V001 至最新空库、旧库升级、并发启动和兼容 migration rehearsal | API/Worker/Gateway/collaboration 使用同一最新 schema；迁移只由 Maintenance 执行；fresh/upgrade 通过 | Pending |
-| PLATFORM-SCALE-S04-M5-T03 | 执行双 Gateway 跨节点用户/workspace fanout、重复和隔离回归 | 同一信号在每个目标连接最多一次；非目标/跨租户为零；两个节点指标和 correlation 可定位 | Pending |
-| PLATFORM-SCALE-S04-M5-T04 | 执行 Gateway 优雅/强制退出、客户端重连和四域 REST 校准 | 新连接切换节点；断线期间 durable 变化全部收敛；无永久未读、消息、项目或权限缺口 | Pending |
-| PLATFORM-SCALE-S04-M5-T05 | 执行 Redis 中断、恢复、重订阅和信号丢失故障注入 | 业务写入继续；Gateway 显式降级；恢复后无订阅泄漏/重复 fanout，客户端校准到事实状态 | Pending |
-| PLATFORM-SCALE-S04-M5-T06 | 执行慢客户端、发送异常、连接突发和有界资源恢复测试 | 慢连接被隔离；健康连接延迟不被拖垮；队列、线程、内存和连接预算不无限增长 | Pending |
-| PLATFORM-SCALE-S04-M5-T07 | 执行双 collaboration 节点编辑、节点退出、Redis 中断和 PostgreSQL 恢复 | Yjs 内容最终一致；awareness 可短暂降级；节点恢复后从 durable update/snapshot 收敛且不双写 | Pending |
-| PLATFORM-SCALE-S04-M5-T08 | 编写 Gateway/collaboration 部署、扩缩、指标、告警、故障、回退和校准 runbook | 操作者无需访问私表即可诊断和恢复；危险操作有确认/审计；可回退单节点但不恢复旧 Spring 协议 | Pending |
-| PLATFORM-SCALE-S04-M5-T09 | 更新 Program、目标架构、当前事实和专项索引并输出 S05/PROJECT Go/No-Go | revision 与状态一致；明确进入容量收口、暂停专项恢复项目或补充 S04，不提前激活下一 Stage | Pending |
-| PLATFORM-SCALE-S04-M5-T10 | 完成 S04 报告、影响审计和路线级 `route-final` | 完整后端、迁移、前端、collaboration、工作台、安全、真实双 Gateway/双协同故障证据 fresh 通过 | Pending |
+| PLATFORM-SCALE-S05-M3-T01 | 冻结长稳场景、故障时间线、RTO/RPO、允许失败和数据一致性清单 | 每个故障的触发、持续、恢复、观测和阻断条件唯一；禁止临场改变成功口径 | Pending |
+| PLATFORM-SCALE-S05-M3-T02 | 执行一轮 60 分钟目标混合负载 | 全时段阈值、资源斜率、错误样本、GC/线程/连接和前后事实校验完整，无隐藏重启或手工清障 | Pending |
+| PLATFORM-SCALE-S05-M3-T03 | 执行一轮 8 小时低强度 soak | 内存、连接、线程、room/session、队列、backlog 和存储增长有界；结束后数据与权限一致 | Pending |
+| PLATFORM-SCALE-S05-M3-T04 | 在负载中分别执行 API 优雅退出、强制退出和恢复 | 新请求继续；只允许定义的在途失败；幂等结果、登录状态和上传事实无节点依赖 | Pending |
+| PLATFORM-SCALE-S05-M3-T05 | 在 processing 与突发积压中执行 Worker 崩溃、lease 接管和恢复 | 旧 fencing 写入被拒绝；冻结 RTO 内接管；无丢失、双副作用或永久 processing | Pending |
+| PLATFORM-SCALE-S05-M3-T06 | 在连接和 fanout 负载中执行 Gateway 节点退出、重连和恢复 | 客户端切换节点并校准；无永久未读/消息/项目/权限缺口；恢复后无重复订阅 | Pending |
+| PLATFORM-SCALE-S05-M3-T07 | 中断并恢复 Redis，覆盖 Gateway 与 collaboration 跨节点路径 | durable 写入按合同继续或明确降级；恢复后订阅、awareness 和校准收敛，无伪造补发 | Pending |
+| PLATFORM-SCALE-S05-M3-T08 | 在多房间编辑中执行 collaboration 节点退出、重建和 durable reload | 内容最终一致；awareness 允许短暂丢失；pending update、snapshot 和 room 资源恢复有界 | Pending |
+| PLATFORM-SCALE-S05-M3-T09 | 中断并恢复 PostgreSQL，覆盖 API、Worker、Gateway 和 collaboration | readiness 正确降级；无部分提交；有界宽限/队列不越预算；恢复后 durable facts 一致 | Pending |
+| PLATFORM-SCALE-S05-M3-T10 | 中断并恢复 MinIO，覆盖上传、完成、下载和非文件业务 | 文件操作明确失败或续跑；无孤立已完成对象；非文件能力按合同继续且恢复后可校验 | Pending |
+| PLATFORM-SCALE-S05-M3-T11 | 重复关键故障并汇总 RTO/RPO、方差、永久缺口、重复副作用和资源泄漏 | 至少三次关键恢复结果可比较；异常轮次不删除；实际置信度与剩余单点明确 | Pending |
+| PLATFORM-SCALE-S05-M3-T12 | 完成长稳证据完整性、安全、数据清理和 M3 收口 | 原始时序、日志、manifest 与摘要校验和一致；夹具可清理；目标门禁和 checkpoint 通过 | Pending |
+
+### PLATFORM-SCALE-S05-M4 发布、扩缩、降容、回退与诊断运行闭环
+
+| 任务 | 内容 | 验收标准 | 状态 |
+| --- | --- | --- | --- |
+| PLATFORM-SCALE-S05-M4-T01 | 复核现有发布、备份恢复、Worker、Gateway、collaboration 和故障 runbook | 所有命令、权限、前置条件、危险操作、过期内容和手工私表步骤可定位 | Pending |
+| PLATFORM-SCALE-S05-M4-T02 | 冻结不可变 artifact、镜像摘要、配置/密钥、schema 和版本兼容矩阵 | 每个角色使用同一受审版本；配置漂移可检测；密钥不进入镜像、日志或证据包 | Pending |
+| PLATFORM-SCALE-S05-M4-T03 | 建立发布 preflight、Maintenance migration、兼容检查和中止合同 | 依赖/容量/备份/schema 不满足时在流量切换前失败；API/Worker/Gateway 不并发执行 Flyway | Pending |
+| PLATFORM-SCALE-S05-M4-T04 | 实现并演练 Web、API、Worker、Gateway、collaboration 与 Nginx 滚动发布顺序 | 逐角色 readiness/draining 生效；用户事实连续；失败步骤有明确停止点和回退入口 | Pending |
+| PLATFORM-SCALE-S05-M4-T05 | 实现并演练 API/Worker/Gateway/collaboration 扩容 | 扩容前连接与资源预算通过；新节点完成就绪再接流量；容量变化与指标可验证 | Pending |
+| PLATFORM-SCALE-S05-M4-T06 | 实现并演练各角色降容、draining 和单节点回退 | 停止 claim/接流量/接连接顺序正确；无未归属 delivery、僵尸 session 或未持久化 update | Pending |
+| PLATFORM-SCALE-S05-M4-T07 | 实现并演练应用版本回退与前后向兼容 | 不回滚已应用 schema；旧版本只在兼容窗口内恢复；不恢复旧 Spring 知识协议或本地事实 | Pending |
+| PLATFORM-SCALE-S05-M4-T08 | 复验备份、独立恢复、对象一致性和恢复后的容量前置条件 | PostgreSQL/MinIO/配置恢复点一致；恢复环境通过完整性检查后才允许重新承载目标流量 | Pending |
+| PLATFORM-SCALE-S05-M4-T09 | 将容量结果转化为 dashboard、告警、降级和升级阈值 | 告警绑定实际基线与持续窗口；覆盖尾延迟、错误、资源、backlog、连接、收敛和依赖状态 | Pending |
+| PLATFORM-SCALE-S05-M4-T10 | 建立按 correlation/instance/role 的诊断入口和安全操作者流程 | 无需读私表即可定位；危险命令要求确认、理由、权限和审计；证据不泄露租户数据 | Pending |
+| PLATFORM-SCALE-S05-M4-T11 | 完成发布、扩缩、降容、回退、恢复与告警综合 rehearsal 和 M4 收口 | 新操作者可按文档完成具名场景；自动断言识别失败；目标门禁和 checkpoint 通过 | Pending |
+
+### PLATFORM-SCALE-S05-M5 容量基线、边界例外复核与专项 Go/No-Go
+
+| 任务 | 内容 | 验收标准 | 状态 |
+| --- | --- | --- | --- |
+| PLATFORM-SCALE-S05-M5-T01 | 复核 M1-M4 的 47 项实现任务与 M5 的 12 项收口合同 | 路线共 59 项均有唯一可重复证据；无静默跳过、过期长稳结果或越界项目功能实现 | Pending |
+| PLATFORM-SCALE-S05-M5-T02 | 复验提交、镜像、环境、资源、拓扑、种子和负载脚本 provenance | 所有发布结论能还原到不可变输入；漂移结果被隔离，不混入最终容量基线 | Pending |
+| PLATFORM-SCALE-S05-M5-T03 | 执行最终短时混合置信复验并核对 M2/M3 原始长稳证据 | 关键指标与已发布区间一致；长稳时序和校验和完整；异常或方差扩大触发阻断评审 | Pending |
+| PLATFORM-SCALE-S05-M5-T04 | 抽样重放节点/依赖故障、回退和独立恢复路径 | RTO/RPO、事实一致性、无重复副作用和操作者步骤与 M3/M4 结论一致 | Pending |
+| PLATFORM-SCALE-S05-M5-T05 | 执行完整后端、V001 至最新迁移、前端、collaboration、工作台和安全回归 | 全部门禁使用 fresh 证据通过；失败、跳过、豁免或生成物污染形成阻断决定 | Pending |
+| PLATFORM-SCALE-S05-M5-T06 | 发布带适用条件、分位数、置信度和实际拐点的容量基线 | 支持负载、环境、数据、SLO、资源、扩容公式和不支持场景清晰；不只给单一最大数字 | Pending |
+| PLATFORM-SCALE-S05-M5-T07 | 发布 PostgreSQL、Redis、MinIO 单点及其他非承诺清单 | 每个单点有影响、检测、恢复、RPO/RTO 证据和升级入口；应用双节点不被表述为基础设施 HA | Pending |
+| PLATFORM-SCALE-S05-M5-T08 | 重新生成跨模块/表 owner 边界清单并删除已失效例外 | 当前计数、精确路径/SQL、owner、方向和风险可重复；不存在的例外从 baseline 移除 | Pending |
+| PLATFORM-SCALE-S05-M5-T09 | 对仍存在的跨 owner read 逐项修复或重新批准 | 每项有业务原因、精确范围、责任 owner、风险和新的退出决定；foreign write 和新增未批例外为 0 | Pending |
+| PLATFORM-SCALE-S05-M5-T10 | 完成 PLATFORM-SCALE 专项和 PROJECT-PLATFORM 恢复 Go/No-Go | 明确恢复 PROJECT-PLATFORM-S05、增加平台修复 Stage 或暂停；依据、阻断和下一入口可执行 | Pending |
+| PLATFORM-SCALE-S05-M5-T11 | 更新 Program、目标架构、当前架构、产品范围、专项索引和路线状态 | revision 与事实一致；S05 完成时 current_stage 暂置 none；不得在同一路线提前激活下一 Program/Stage | Pending |
+| PLATFORM-SCALE-S05-M5-T12 | 完成 S05 报告、影响审计、证据归档和路线级 `route-final` | 59 项逐 Task 闭环；容量/长稳/故障/运维/边界证据 fresh 且可追溯；最终门禁通过 | Pending |
 
 ## 6. Stage 全局验收标准
 
-- realtime envelope 具备稳定 type/version、workspace、recipient/audience、object、sequence、correlation 和最小敏感字段边界。
-- Worker 只产生 transport-neutral signal；Gateway 只订阅 Redis 并向本地 session fanout，API/Worker 不直接操作本地连接。
-- 两个 Gateway 使用相同 artifact、独立 instance id 和共享 Redis，可单独扩缩，不依赖粘性会话。
-- Redis 不是业务事实；Redis 中断不回滚 HTTP/Worker durable fact，客户端恢复后通过 REST 校准收敛。
-- IM、通知、项目和权限全部经通用 signal pipeline；重复/乱序信号不重复业务副作用或泄露资源。
-- 客户端有统一连接状态机、退避、sequence watermark、去重、gap 检测和按域 REST 校准。
-- Gateway 节点退出后客户端连接另一节点，并在冻结时间内恢复未读、消息、项目和权限事实。
-- 慢客户端、坏连接和发送失败有界隔离；订阅线程、内存、队列和连接不会无限增长。
-- Hocuspocus/Yjs 是唯一知识实时协议；Spring 只保留 ticket/load/store/invalidate gateway，无旧 room/presence/autosave 运行链路。
-- 双 collaboration 节点通过 Redis 收敛实时 update/awareness，并能从 PostgreSQL durable update/snapshot 恢复。
-- Event Gateway 与 collaboration 分别提供 role/instance 级连接、fanout、重连、校准、room、update、恢复和 Redis 指标。
-- S01-S03 边界保持：project/shared P0 与 foreign write 为 0，批准的历史 read 例外不能扩散。
-- S04 的多节点与故障数据只证明功能和恢复门槛，不构成 S05 生产容量、长稳或基础设施 HA 承诺。
-- M5 最终执行完整后端、迁移、前端、collaboration、工作台、安全、真实隔离浏览器和 `route-final`。
+- 容量基线绑定不可变代码、镜像、宿主机、容器限制、服务副本、运行参数、依赖版本、数据 manifest 和负载脚本。
+- 数据种子确定、幂等、隔离、可清理并覆盖现实规模与分布；共享开发数据不进入正式结论。
+- HTTP、Worker、普通 WS 和知识协同负载器固定版本、可自动断言业务语义，失败不会只被记录为性能样本。
+- C1 候选逐项有 Pass、Fail 或 Bounded 结论；未达到目标时发布实际拐点和瓶颈，不回写历史门槛制造通过。
+- 混合负载同时覆盖 read/write、异步消费、实时 fanout 和协同编辑，并保持 workspace、权限、幂等、顺序和敏感字段边界。
+- 指标覆盖 P50/P95/P99、错误率、吞吐、backlog/oldest age、dead letter、fanout/协同收敛、CPU、内存、线程、GC、连接池和依赖资源。
+- 至少一轮 60 分钟目标混合负载和一轮 8 小时低强度 soak 有完整原始时序、资源斜率、错误样本和前后数据校验。
+- API、Worker、Gateway、collaboration、Redis、PostgreSQL 和 MinIO 故障有具名自动证据；RTO、事实缺口、重复副作用和恢复后泄漏明确。
+- 发布、扩容、降容、回退、备份恢复和诊断无需访问业务私表；危险操作受权限、确认、理由和审计约束。
+- PostgreSQL、Redis、MinIO 单点和未验证负载进入非承诺清单，不冒充集群高可用或无限水平扩展。
+- 历史跨 owner read 例外按当前事实逐项删除、修复或重新批准；project/shared P0 与 foreign write 保持 0。
+- M5 执行完整后端、迁移、前端、collaboration、工作台、安全、容量证据完整性和 `route-final`。
+- 最终 Go/No-Go 明确唯一下一入口；当前路线完成和归档前不激活新的 Program 或 Stage。
 
 ## 7. 当前执行入口
 
-从 `PLATFORM-SCALE-S04-M1-T01` 开始，按 Milestone 分轮执行。S04 激活不代表 S05 或 `PROJECT-PLATFORM-S05` 已启动。
+从 `PLATFORM-SCALE-S05-M1-T01` 开始，按 Milestone 分轮执行。S05 激活不代表候选 C1 已达到，也不代表 PostgreSQL、Redis、MinIO 已具备高可用，更不代表 `PROJECT-PLATFORM-S05` 已恢复。

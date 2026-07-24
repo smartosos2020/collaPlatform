@@ -11,11 +11,11 @@ updated_at: 2026-07-16
 Production Compose routes `/collaboration` through Nginx to
 `collaboration-a` and `collaboration-b` using least-connections balancing.
 Both Hocuspocus/Yjs nodes use the same Redis room prefix and the same Spring
-backend. PostgreSQL is the durable source for Yjs updates and snapshots;
+API upstream. PostgreSQL is the durable source for Yjs updates and snapshots;
 Redis carries room broadcast, awareness and coordination only.
 
 This protects an active room from one collaboration-process restart. It does
-not make the single Spring backend, Redis, PostgreSQL or MinIO highly
+not make Redis, PostgreSQL or MinIO highly
 available.
 
 ## Required Configuration
@@ -28,6 +28,9 @@ available.
 | `COLLA_COLLABORATION_REDIS_PREFIX` | Shared room namespace |
 | `COLLA_COLLABORATION_BACKEND_TIMEOUT_MS` | Per-attempt backend timeout |
 | `COLLA_COLLABORATION_BACKEND_RETRIES` | Bounded transient retry count |
+| `COLLA_COLLABORATION_AUTH_GRACE_MS` | Bounded transient authorization grace for established sessions |
+| `COLLA_COLLABORATION_AUTH_RETRY_MS` | Minimum retry interval while the backend is transiently unavailable |
+| `COLLA_COLLABORATION_MAX_PENDING_UPDATES/BYTES` | Per-node bounded durable queue while PostgreSQL is unavailable |
 | `VITE_COLLABORATION_OFFLINE_MAX_UPDATES/BYTES` | Browser offline editing budget |
 
 The backend retains 100 updates behind the latest snapshot and removes
@@ -60,10 +63,14 @@ curl --fail -H "X-Colla-Collaboration-Secret: $COLLA_COLLABORATION_INTERNAL_SECR
 | Failure | Expected behavior | Operator action |
 | --- | --- | --- |
 | One collaboration node exits | Existing socket disconnects; client reconnects through Nginx and Yjs exchanges missing state | Confirm the other node is ready, restart the failed node, then compare room watermarks |
-| Redis is unavailable | Nodes report degraded readiness; accepted local updates remain database-first, but cross-node live broadcast is unavailable | Restore Redis, wait for both clients to become ready, and verify database recovery/watermarks before reopening traffic |
-| Spring backend is slow/unavailable | Calls time out after bounded retries; the editor shows offline/recovery state instead of a false save | Restore backend health, inspect persistence failures, reconnect and verify the canonical content |
+| Redis is unavailable | Nodes report degraded readiness; transient broadcast/awareness is unavailable, but accepted edits queue for durable storage without crashing the node | Restore Redis, wait for both clients to become ready, and verify database recovery/watermarks before reopening traffic |
+| API/PostgreSQL is slow or unavailable | Established sessions may use the last verified authorization for at most 120 seconds; durable writes use a finite in-memory queue and then apply backpressure | Restore the dependency before the grace/queue budget expires, inspect recovery counters, reconnect and verify canonical content |
 | Browser loses network | Editing continues only inside the finite update/byte budget; status and recovery export are visible | Reconnect normally or export the `.yjs` recovery copy before exceeding the budget |
 | Node restarts mid-room | Room reloads snapshot plus updates from PostgreSQL and rejoins Redis | Verify no duplicate update IDs and that both clients converge |
+
+Collaboration tickets are single-use and short-lived. A reconnect must request a
+new ticket; reusing a consumed ticket is an authentication failure. Permission
+denial is never covered by the transient authorization grace.
 
 Do not flush Redis as a data recovery procedure. Redis messages are not the
 durable record; recover from PostgreSQL snapshot and update rows.
@@ -109,7 +116,9 @@ corrupt. A normal node or Redis outage does not require database rollback.
 - Redis pub/sub is transient and is not an update log.
 - The browser offline queue is deliberately finite, not an offline-first
   document store.
-- Dual collaboration nodes do not remove the single backend, Redis and
-  PostgreSQL failure domains.
+- Dual collaboration nodes do not remove Redis, PostgreSQL and MinIO failure
+  domains. Dual API upstreams remove only the single API-process dependency.
+- Single-node fallback may retain one Hocuspocus node, but must never restore
+  the retired Spring room/presence/autosave protocol.
 - Full platform high availability, automatic scaling and Kubernetes remain
   outside this milestone.

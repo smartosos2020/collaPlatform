@@ -67,7 +67,8 @@ class RoleControllerIntegrationTests {
                 .content(objectMapper.writeValueAsString(Map.of(
                     "roleId", roleId,
                     "subjectType", "department",
-                    "subjectId", departmentId
+                    "subjectId", departmentId,
+                    "effectiveAt", "2000-01-01T00:00:00Z"
                 ))))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.subjectType").value("department"))
@@ -108,7 +109,8 @@ class RoleControllerIntegrationTests {
                 .content(objectMapper.writeValueAsString(Map.of(
                     "roleId", roleId,
                     "subjectType", "user_group",
-                    "subjectId", groupId
+                    "subjectId", groupId,
+                    "effectiveAt", "2000-01-01T00:00:00Z"
                 ))))
             .andExpect(status().isOk())
             .andReturn()

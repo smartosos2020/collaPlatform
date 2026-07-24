@@ -64,19 +64,16 @@ public class NotificationDomainEventHandler implements DomainEventHandler {
             canonicalDedupeKey(stringValue(payload, "dedupeKey", event.eventId().toString()))
         ).ifPresent(notification -> outbox.append(
             event.workspaceId(),
-            "realtime.signal.requested",
-            "notification",
-            notification.id(),
+            "notification.realtime.changed",
+            "notification_recipient",
+            recipientId,
             event.actorId(),
             Map.of(
                 "recipientId", recipientId.toString(),
-                "signalType", "notification.changed",
-                "objectType", "notification",
-                "objectId", notification.id().toString(),
-                "sourceVersion", event.aggregateSequence(),
-                "calibrationPath", "/api/notifications"
+                "changeType", "created",
+                "notificationId", notification.id().toString()
             ),
-            "realtime:notification:" + notification.id()
+            "notification.realtime:created:" + notification.id()
         ));
     }
 

@@ -4,7 +4,6 @@ import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.Knowle
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContentCommentAnchor;
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContentBlock;
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContentBlockDraft;
-import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContentCollaborationState;
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeCollaborationBinaryState;
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeCollaborationStoredUpdate;
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeCollaborationTicketRecord;
@@ -77,35 +76,28 @@ public interface KnowledgeContentRepository {
 
     Optional<String> findContent(UUID workspaceId, UUID itemId);
 
-    Optional<KnowledgeContentCollaborationState> findCollaborationState(UUID workspaceId, UUID itemId);
-
-    void upsertCollaborationState(
-        UUID workspaceId,
-        UUID itemId,
-        String stateVector,
-        String snapshotContent,
-        String snapshotPayload,
-        long serverClock,
-        String lastClientId,
-        UUID updatedBy
-    );
-
-    void markCollaborationStateSaved(UUID workspaceId, UUID itemId, long serverClock);
-
     void createCollaborationTicket(
         String tokenHash, UUID workspaceId, UUID itemId, UUID userId, UUID deviceId,
         String clientId, Instant expiresAt
     );
 
-    Optional<KnowledgeCollaborationTicketRecord> findActiveCollaborationTicket(String tokenHash);
+    Optional<KnowledgeCollaborationTicketRecord> consumeActiveCollaborationTicket(String tokenHash);
+
+    Optional<KnowledgeCollaborationTicketRecord> findActiveCollaborationSession(String tokenHash);
+
+    boolean collaborationPersistenceReady();
 
     Optional<KnowledgeCollaborationBinaryState> findCollaborationBinaryState(UUID workspaceId, UUID itemId);
 
     List<KnowledgeCollaborationStoredUpdate> listCollaborationUpdatesAfter(UUID workspaceId, UUID itemId, long sequence);
 
+    long findCollaborationGeneration(UUID workspaceId, UUID itemId);
+
+    long findLatestCollaborationSequence(UUID workspaceId, UUID itemId);
+
     long appendCollaborationUpdate(
         UUID workspaceId, UUID itemId, String updateId, byte[] payload, UUID actorId,
-        String clientId, int schemaVersion
+        String clientId, int schemaVersion, long generation
     );
 
     Optional<UUID> findLatestCollaborationActor(UUID workspaceId, UUID itemId);
@@ -114,11 +106,12 @@ public interface KnowledgeContentRepository {
 
     int purgeExpiredCollaborationTickets(Instant cutoff);
 
-    void deleteCollaborationState(UUID workspaceId, UUID itemId);
+    long invalidateCollaborationState(UUID workspaceId, UUID itemId);
 
-    void storeCollaborationSnapshot(
+    boolean storeCollaborationSnapshot(
         UUID workspaceId, UUID itemId, byte[] snapshot, byte[] stateVector, String snapshotHash,
-        int schemaVersion, String canonicalSnapshot, String clientId, UUID actorId
+        int schemaVersion, long generation, long snapshotSequence, String canonicalSnapshot,
+        String clientId, UUID actorId
     );
 
     boolean markCollaborationAuditCheckpoint(UUID workspaceId, UUID itemId, Instant cutoff);
@@ -244,4 +237,3 @@ public interface KnowledgeContentRepository {
 
     List<UUID> findActiveUserIdsByUsernames(UUID workspaceId, List<String> usernames);
 }
-

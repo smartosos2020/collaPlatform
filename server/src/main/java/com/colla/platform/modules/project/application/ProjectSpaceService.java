@@ -1,6 +1,7 @@
 package com.colla.platform.modules.project.application;
 
 import com.colla.platform.modules.audit.contract.AuditLog;
+import com.colla.platform.modules.event.contract.TransactionalOutbox;
 import com.colla.platform.modules.permission.contract.ProjectAuthorization;
 import com.colla.platform.modules.platform.contract.PlatformObjectCommands;
 import com.colla.platform.modules.project.domain.ProjectSpaceMigrationModels.LegacySpaceMapRecord;
@@ -12,6 +13,8 @@ import com.colla.platform.modules.project.infrastructure.ProjectLegacySpaceMapRe
 import com.colla.platform.modules.project.infrastructure.ProjectRepository;
 import com.colla.platform.modules.project.infrastructure.ProjectSpaceRepository;
 import com.colla.platform.shared.auth.CurrentUser;
+import com.colla.platform.shared.request.RequestBoundaryContext;
+import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -35,6 +38,7 @@ public class ProjectSpaceService {
     private final ProjectAuthorization permissionService;
     private final AuditLog auditService;
     private final WorkItemTypePresetReconciliationService presetReconciliationService;
+    private final TransactionalOutbox eventRepository;
 
     public ProjectSpaceService(
         ProjectSpaceRepository projectSpaceRepository,
@@ -43,7 +47,8 @@ public class ProjectSpaceService {
         PlatformObjectCommands platformObjectCommands,
         ProjectAuthorization permissionService,
         AuditLog auditService,
-        WorkItemTypePresetReconciliationService presetReconciliationService
+        WorkItemTypePresetReconciliationService presetReconciliationService,
+        TransactionalOutbox eventRepository
     ) {
         this.projectSpaceRepository = projectSpaceRepository;
         this.projectRepository = projectRepository;
@@ -52,6 +57,7 @@ public class ProjectSpaceService {
         this.permissionService = permissionService;
         this.auditService = auditService;
         this.presetReconciliationService = presetReconciliationService;
+        this.eventRepository = eventRepository;
     }
 
     public List<ProjectSpaceSummary> listVisible(CurrentUser currentUser) {
@@ -101,6 +107,7 @@ public class ProjectSpaceService {
             "visibility", created.visibility(),
             "ownerId", currentUser.id().toString()
         ));
+        appendSpaceChange(currentUser, created, "created", false);
         return created;
     }
 
@@ -135,6 +142,12 @@ public class ProjectSpaceService {
         ProjectSpaceSummary after = requireSpace(currentUser, spaceId);
         registerObject(after, currentUser.id());
         auditService.log(currentUser, "project_space.updated", "project_space", spaceId, changedMetadata(before, after, "space_settings"));
+        appendSpaceChange(
+            currentUser,
+            after,
+            "settings",
+            !before.visibility().equals(after.visibility())
+        );
         return after;
     }
 
@@ -237,7 +250,28 @@ public class ProjectSpaceService {
             before.id(),
             changedMetadata(before, after, source)
         );
+        appendSpaceChange(currentUser, after, "status-" + target.name(), target != ProjectSpaceStatus.active);
         return after;
+    }
+
+    private void appendSpaceChange(
+        CurrentUser currentUser,
+        ProjectSpaceSummary space,
+        String mutation,
+        boolean accessInvalidated
+    ) {
+        eventRepository.append(
+            currentUser.workspaceId(),
+            ProjectRealtimeDomainEventHandler.PROJECT_SPACE_CHANGED,
+            "project_space",
+            space.id(),
+            currentUser.id(),
+            Map.of("accessInvalidated", accessInvalidated),
+            "project.change:" + UUID.nameUUIDFromBytes((
+                "project_space:" + space.id() + ":" + mutation + ":"
+                    + RequestBoundaryContext.current().requestId()
+            ).getBytes(StandardCharsets.UTF_8))
+        );
     }
 
     private String transitionAction(ProjectSpaceStatus target) {

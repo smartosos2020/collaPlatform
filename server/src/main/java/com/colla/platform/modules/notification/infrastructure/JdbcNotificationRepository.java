@@ -124,6 +124,7 @@ public class JdbcNotificationRepository implements NotificationRepository {
                 update notifications
                 set read_at = coalesce(read_at, now())
                 where workspace_id = ? and recipient_id = ? and id = ?
+                  and read_at is null
                   and notification_type not like 'admin_%'
                   and notification_type not like 'governance_%'
                 """,

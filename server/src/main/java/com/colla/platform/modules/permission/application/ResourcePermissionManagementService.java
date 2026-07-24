@@ -13,6 +13,7 @@ import com.colla.platform.modules.permission.domain.PermissionModels.ResourcePer
 import com.colla.platform.modules.permission.domain.PermissionModels.ResourcePermissionTransitionPreview;
 import com.colla.platform.modules.permission.infrastructure.ResourcePermissionRepository;
 import com.colla.platform.shared.auth.CurrentUser;
+import com.colla.platform.shared.request.RequestBoundaryContext;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.nio.charset.StandardCharsets;
@@ -39,6 +40,7 @@ public class ResourcePermissionManagementService {
     private final TransactionalOutbox eventRepository;
     private final AuditService auditService;
     private final JdbcTemplate jdbcTemplate;
+    private final PermissionSecurityChangePublisher securityChanges;
 
     public ResourcePermissionManagementService(
         ResourcePermissionRepository resourcePermissionRepository,
@@ -47,7 +49,8 @@ public class ResourcePermissionManagementService {
         KnowledgeContentRepository contentRepository,
         TransactionalOutbox eventRepository,
         AuditService auditService,
-        JdbcTemplate jdbcTemplate
+        JdbcTemplate jdbcTemplate,
+        PermissionSecurityChangePublisher securityChanges
     ) {
         this.resourcePermissionRepository = resourcePermissionRepository;
         this.permissionDecisionService = permissionDecisionService;
@@ -56,6 +59,7 @@ public class ResourcePermissionManagementService {
         this.eventRepository = eventRepository;
         this.auditService = auditService;
         this.jdbcTemplate = jdbcTemplate;
+        this.securityChanges = securityChanges;
     }
 
     public List<ResourcePermissionEntry> list(CurrentUser currentUser, String resourceType, UUID resourceId) {
@@ -219,10 +223,15 @@ public class ResourcePermissionManagementService {
             "权限级别：" + normalizedPermission,
             "resource.permission.granted:" + normalizedResourceType + ":" + resourceId + ":" + subjectId + ":" + normalizedPermission
         );
-        return resourcePermissionRepository.listGrants(currentUser.workspaceId(), normalizedResourceType, resourceId).stream()
+        ResourcePermissionEntry changed = resourcePermissionRepository
+            .listGrants(currentUser.workspaceId(), normalizedResourceType, resourceId).stream()
             .filter(entry -> entry.subjectType().equals(normalizedSubjectType) && entry.subjectId().equals(subjectId))
             .findFirst()
             .orElseThrow();
+        publishResourcePermissionChange(
+            currentUser, normalizedResourceType, resourceId, "grant-" + changed.id()
+        );
+        return changed;
     }
 
     @Transactional
@@ -276,6 +285,9 @@ public class ResourcePermissionManagementService {
             "你的资源访问权限已被撤销",
             "原权限级别：" + entry.permissionLevel(),
             "resource.permission.revoked:" + permissionId
+        );
+        publishResourcePermissionChange(
+            currentUser, entry.resourceType(), entry.resourceId(), "revoke-" + permissionId
         );
     }
 
@@ -394,6 +406,9 @@ public class ResourcePermissionManagementService {
             resourceId,
             Map.of("revokedInherited", revoked)
         );
+        publishResourcePermissionChange(
+            currentUser, normalizedResourceType, resourceId, "break-inheritance"
+        );
     }
 
     @Transactional
@@ -430,6 +445,9 @@ public class ResourcePermissionManagementService {
             "knowledge_content",
             resourceId,
             Map.of("restoredInherited", restored)
+        );
+        publishResourcePermissionChange(
+            currentUser, normalizedResourceType, resourceId, "restore-inheritance"
         );
     }
 
@@ -931,6 +949,23 @@ public class ResourcePermissionManagementService {
                 "dedupeKey", "resource.permission_request.decision:" + request.id()
             ),
             "notification.resource.permission_request.decision:" + request.id()
+        );
+    }
+
+    private void publishResourcePermissionChange(
+        CurrentUser currentUser,
+        String resourceType,
+        UUID resourceId,
+        String mutation
+    ) {
+        securityChanges.publish(
+            currentUser.workspaceId(),
+            currentUser.id(),
+            "resource_permission",
+            resourceId,
+            resourceType,
+            "/api/resource-permissions/" + resourceType + "/" + resourceId,
+            mutation + ":" + resourceId + ":" + RequestBoundaryContext.current().requestId()
         );
     }
 

@@ -2,8 +2,8 @@
 title: 模块化单体与独立运行组件目标架构
 status: target
 program: PLATFORM-SCALE
-program_revision: 7
-updated_at: 2026-07-24
+program_revision: 9
+updated_at: 2026-07-25
 source_baseline: docs/90-reports/platform-scale-readiness-baseline-2026-07-24.md
 ---
 
@@ -11,7 +11,7 @@ source_baseline: docs/90-reports/platform-scale-readiness-baseline-2026-07-24.md
 
 ## 1. 文档定位
 
-本文是已激活的 `PLATFORM-SCALE` 正式目标架构，约束已完成的 S03、当前执行的 S04 及后续平台化 Stage。它描述目标和演进边界，不代表目标能力已经实现；当前事实仍以 `docs/01-architecture/current-architecture.md` 为准。
+本文是已激活的 `PLATFORM-SCALE` 正式目标架构，约束已完成的 S01-S04 和当前执行的 S05。它描述目标和演进边界，不代表尚未完成的容量能力已经实现；当前事实仍以 `docs/01-architecture/current-architecture.md` 为准。
 
 源基线已在干净主干 `134c370` 复验：当前为 15 个后端模块、233 个 Java 文件、204 条跨模块 import、47 条 foreign infrastructure import、58 个依赖方向，11 个核心模块仍处于同一强连通分量。S04 相对 `ee8fb68` 新增 18 个 Java 文件、10 条跨模块 import 和 6 条 foreign infrastructure import，但没有新增依赖方向；前端仍为 16 个 feature、64 条跨 feature import 和 `knowledgeBases <-> search` 循环。
 
@@ -316,6 +316,17 @@ Worker 通过 handler registry 按 event type/version 分派：
 
 `event-gateway` 保存自身节点上的 WebSocket session，并订阅 Redis pub/sub。每个 gateway 节点都接收面向用户或 workspace 的瞬时信号，再只向本地 session 推送。
 
+S04-M1 冻结以下 transport 合同：
+
+- `RealtimeSignalEnvelope` 当前 `envelopeVersion=1`、`signalVersion=1`，字段唯一包含 signal type/id、workspace、user/workspace audience、对象 type/id、sequence scope/key/value、occurredAt、correlationId、REST calibration path 和最小安全 payload。
+- Redis channel 按环境隔离；生产默认 `colla:prod:realtime:v1`，可通过 `COLLA_REALTIME_CHANNEL` 覆盖，本地与测试使用各自 channel。单 envelope 上限默认 16 KiB。
+- Worker 先消费 durable `realtime.signal.requested`，在 PostgreSQL 中幂等保存 signal 并追加 `realtime.transport.requested`；transport Handler 再通过公共 `RealtimeSignalPublisher` 发布。Redis 发布失败只让该 delivery 重试，不回滚原业务事实。
+- Event Gateway 通过公共 `RealtimeSignalConsumer` 接收已校验 envelope。非法 JSON、超限 payload、未知 envelope/signal version 安全丢弃并计数；每节点以 `(signalId, sequence scope, sequence key, sequence value)` 做默认 10,000 项有界近期去重。
+- user audience 只匹配同 workspace 的目标用户本地连接，workspace audience 只匹配该 workspace 本地连接。payload 禁止 token、密码、正文、标题、ACL 和成员清单等敏感事实。
+- 本地 registry 同时维护 connection、user、workspace 和 device 索引；节点关闭时原子拒绝注册、关闭连接并清空索引，客户端必须重连校准。
+- 每条连接使用容量 64 的串行队列，公共发送执行器默认 4 线程、容量 512。单个慢连接溢出或发送失败只关闭该连接，不阻塞 Redis subscriber 或其他连接。
+- Redis publish/consume、版本丢弃、consumer failure、连接、发送结果和本地队列均进入低基数指标；API、Worker、Gateway 的 readiness 均检查其角色所需 Redis 状态。
+
 Redis pub/sub 可以用于通用事件，因为：
 
 - 通知、消息、项目和权限的数据库记录是事实源。
@@ -333,6 +344,8 @@ Redis pub/sub 可以用于通用事件，因为：
 
 Gateway 节点退出时，客户端重连到其他节点并执行校准，不依赖粘性会话恢复事实。
 
+生产模板使用同一不可变 Server image 的 `event-gateway-a` 与 `event-gateway-b`，各自拥有独立 instance id，共享 PostgreSQL/Redis，Nginx 以无粘性的 least-connections upstream 分流。允许回退为单 Gateway，但不得把通用 WebSocket 重新放回 API。
+
 ### 10.3 知识协同
 
 Hocuspocus/Yjs 保持独立链路：
@@ -340,7 +353,11 @@ Hocuspocus/Yjs 保持独立链路：
 - Redis 负责跨节点广播和 awareness。
 - PostgreSQL snapshot/update 是 durable source。
 - Spring 只提供权限 ticket、load/store/invalidate gateway。
-- 旧 Spring room/presence/autosave 链路经过观测后退出。
+- 知识条目的 generation 是失效边界；update、snapshot、去重键和恢复查询都必须绑定同一 generation。
+- snapshot 只允许以它实际包含的 update sequence 提交；数据库拒绝错误 generation、落后 durable 水位或 sequence 倒退。
+- collaboration 节点按配置的 API 地址顺序故障转移，readiness 验证内部 gateway 协议和 schema，不只检查进程存活。
+- `/ws/events` 收到旧知识编辑命令时仅执行低基数观测并返回升级提示，不创建第二套写链路。
+- 旧 Spring room/presence/autosave/cleanup 链路已在 S04-M4 从活动代码退出。
 
 ## 11. 观测和运维
 
@@ -524,7 +541,37 @@ S04 在 S03 完成路线归档后按 Go 决策激活。revision 7 保留 S03 的
 11. Event Gateway 指标至少覆盖连接、订阅、fanout、发送失败、慢客户端、重连、校准和 Redis 状态；collaboration 继续覆盖 room、connection、watermark、update、persistence、recovery 和 Redis 状态。
 12. S04 最终必须以真实双 Gateway 和双 collaboration 节点验证 fanout、节点退出、Redis 中断、重连校准、知识编辑收敛和 durable recovery；结果只证明功能与恢复门槛，不构成 S05 容量或基础设施 HA 承诺。
 
-## 19. 修订记录
+## 19. S04 收口事实与 S05 准入
+
+S04 M1-M5 已完成并形成以下可重复事实：
+
+1. 双 Event Gateway 使用同一 Server artifact、独立 instance id 和共享 Redis；业务模块只产生 transport-neutral signal。
+2. 通知、IM、项目、身份和权限 signal 经 durable transport 投递，客户端通过统一 sequence/去重/gap/重连状态机和 REST 校准恢复事实。
+3. Hocuspocus/Yjs 是唯一知识实时协议；旧 Spring room、presence、autosave、cleanup 和知识编辑 WebSocket 已退出活动代码。
+4. 双 collaboration 节点支持单次 ticket、跨节点 Redis 广播、PostgreSQL durable update/snapshot、节点退出与恢复。
+5. Redis 中断不回滚 durable 业务事实；PostgreSQL 暂态故障只允许既有会话使用 120 秒有界授权宽限和 1024 updates/32 MiB durable queue，明确拒权不使用宽限。
+6. 真实隔离浏览器证据覆盖 Gateway 节点退出、四域 REST 校准、Redis 中断、双节点协同、PostgreSQL 中断与 durable reload；结果不构成生产容量或基础设施 HA 承诺。
+
+S05 准入结论为 Go，但只允许在 S04 完成路线归档后单独激活。S05 必须冻结硬件/容器/数据种子，建立 HTTP、Worker、Gateway 和协同负载合同，完成 60 分钟目标负载、8 小时 soak、故障恢复、发布/扩缩/回退手册及 93 条历史只读例外复核。`PROJECT-PLATFORM` 在 S05 专项 Go/No-Go 前继续暂停。
+
+## 20. S05 激活合同
+
+S05 在 S04 完成路线归档后按 Go 决策激活。revision 9 保留 S01-S04 的历史功能、故障和性能证据，只冻结以下容量与运维合同：
+
+1. 容量结论必须绑定不可变提交、镜像、依赖版本、宿主机规格、容器 CPU/内存限制、服务副本、JVM/Node 参数、连接池、数据库参数、数据清单和负载脚本校验和；任一关键输入变化都形成新的基线。
+2. C1 候选值只能在 M1 复核后冻结为目标或降级目标。未达到目标时必须发布实际拐点、失败模式和支持边界，不能调低门槛后声称原目标通过。
+3. 数据种子必须确定、幂等、隔离、可清理并产生 manifest；至少覆盖成员、权限、项目工作项、知识节点/块、通知、IM、文件元数据和协同房间的现实分布。
+4. HTTP、普通 WebSocket、Worker 和 Hocuspocus/Yjs 使用固定版本、容器化或锁定依赖的负载器；脚本、场景、阈值、预热、持续时间和中止条件全部进入版本控制。
+5. 单域测试用于定位瓶颈，容量结论必须来自同时覆盖 HTTP read/write、异步写入、实时 fanout 和知识协同的混合负载；跨 workspace 与权限隔离在负载下仍为阻断条件。
+6. M2 必须记录 P50/P95/P99、错误率、吞吐、连接、队列、backlog/oldest age、dead letter、fanout/协同收敛、CPU、内存、线程、GC、连接池和依赖资源；只给平均值不能形成容量结论。
+7. M3 至少执行一轮 60 分钟目标混合负载和一轮 8 小时低强度 soak。每轮保留开始/结束状态、时间序列、资源斜率、错误样本和数据一致性复核；进程存活不等于长稳通过。
+8. 故障矩阵覆盖 API、Worker、Gateway、collaboration 节点退出，Redis 中断，PostgreSQL 暂态不可用和 MinIO 中断；明确测量 RTO、允许的在途失败、事实缺口、重复副作用和恢复后资源泄漏。
+9. PostgreSQL、Redis 和 MinIO 的集群 HA 不属于 S05 强制实现范围。它们仍是单点时，容量基线必须明确部署前提、恢复步骤、RPO/RTO 证据和不可承诺范围。
+10. 发布、扩容、降容和回退使用同一不可变 artifact 与兼容 schema；扩缩前必须校验 PostgreSQL 连接预算，降容必须先 draining，回退不得依赖回滚数据库迁移或恢复旧 Spring 协同协议。
+11. 93 条历史跨 owner 只读例外以当前扫描事实重新核对；已消失的例外删除，仍存在的逐项保留 owner、理由、精确路径/方向、风险和新的退出决定，禁止整批自动续期。
+12. S05 最终只发布对冻结环境有效的容量包络和运维承诺，同时列出剩余单点、未覆盖工作负载和置信度。专项 Go/No-Go 再决定恢复 PROJECT-PLATFORM、增加新的平台 Stage 或停止扩容承诺。
+
+## 21. 修订记录
 
 | Revision | 日期 | 变更 | 依据 |
 | --- | --- | --- | --- |
@@ -535,3 +582,5 @@ S04 在 S03 完成路线归档后按 Go 决策激活。revision 7 保留 S03 的
 | 5 | 2026-07-24 | 归档 S02 并激活 S03，冻结逐 Handler delivery、lease/fencing、dead letter/replay、多 Worker、背压和 Handler 迁移合同 | 用户在 S02 Go/No-Go 后选择继续平台扩展；当前单 Worker 和硬编码消费仍是明确运行风险 |
 | 6 | 2026-07-24 | 收口 S03 可靠消费、多 Worker 分流/接管、Handler 隔离、迁移并发和故障恢复合同 | S03 的 54 项验收与真实 PostgreSQL、双 Worker、路由级验证完成；下一运行风险转移到通用实时 Gateway 和旧协同退出 | S03 Completed 等待归档；S04 建议 Go，PROJECT-PLATFORM 本轮保持 Paused |
 | 7 | 2026-07-24 | 归档 S03 并激活 S04，冻结 realtime envelope、Redis fanout、双 Gateway、客户端重连校准和旧 Spring 知识协同退出合同 | S03 已提供可靠 signal 生产与多 Worker 基线；当前单 Gateway、本地 session 和双知识协议仍阻断应用层水平扩展 |
+| 8 | 2026-07-24 | 记录 S04 双 Gateway、双 collaboration、客户端校准、旧协议退出和故障恢复事实，冻结 S05 准入边界 | S04 多节点证据证明应用层功能和恢复，但 PostgreSQL/Redis/MinIO 仍是单点，尚无固定容量与长稳承诺 |
+| 9 | 2026-07-25 | 归档 S04 并激活 S05，冻结容量环境、负载器、混合场景、长稳、故障、运维、例外复核和容量承诺边界 | S04 功能与恢复门槛已经通过；S05 必须用固定输入和 fresh 长稳证据建立实际容量包络，并明确单点与非承诺范围 |

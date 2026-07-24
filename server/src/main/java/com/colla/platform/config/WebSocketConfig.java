@@ -15,16 +15,22 @@ import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistry
 public class WebSocketConfig implements WebSocketConfigurer {
     private final PlatformWebSocketHandler handler;
     private final WebSocketAuthInterceptor authInterceptor;
+    private final WebSecurityProperties webSecurityProperties;
 
-    public WebSocketConfig(PlatformWebSocketHandler handler, WebSocketAuthInterceptor authInterceptor) {
+    public WebSocketConfig(
+        PlatformWebSocketHandler handler,
+        WebSocketAuthInterceptor authInterceptor,
+        WebSecurityProperties webSecurityProperties
+    ) {
         this.handler = handler;
         this.authInterceptor = authInterceptor;
+        this.webSecurityProperties = webSecurityProperties;
     }
 
     @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
         registry.addHandler(handler, "/ws/events")
             .addInterceptors(authInterceptor)
-            .setAllowedOrigins("http://localhost:5173", "http://127.0.0.1:5173");
+            .setAllowedOrigins(webSecurityProperties.getCorsAllowedOrigins().toArray(String[]::new));
     }
 }

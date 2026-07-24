@@ -73,7 +73,11 @@ M31/M40 仿真和试运行材料已经归档，不再作为默认数据或发布
 | `05-runbooks/browser-smoke.md` | 浏览器冒烟验证 |
 | `05-runbooks/admin-operations.md` | 管理员部署、备份、恢复和回退手册 |
 | `05-runbooks/knowledge-collaboration.md` | 双协作节点、重连、故障恢复和指标手册 |
+| `05-runbooks/event-worker-fleet.md` | 双 Worker 扩缩、故障接管、积压和 dead-letter 操作 |
+| `05-runbooks/platform-scale-s04-realtime.md` | 双 Event Gateway、双协作节点、校准、故障与单节点回退 |
 | `05-runbooks/local-artifacts.md` | 本地生成物和忽略规则 |
+
+`05-runbooks/platform-scale-s02-runtime.md` 是已被 S03/S04 手册替代的历史运行角色基线，不再作为当前操作入口。
 
 ## 历史文档读取规则
 

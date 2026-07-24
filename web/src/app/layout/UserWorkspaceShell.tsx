@@ -14,6 +14,7 @@ import { logout } from '../../modules/auth/api/authApi'
 import { canAccessAdmin } from '../../modules/auth/authorization'
 import { useAuthStore } from '../../modules/auth/authStore'
 import { mobileUserNavEntries, userNavEntries } from '../navigation/userWorkspaceNav'
+import { RealtimeHealthBanner } from '../realtime/RealtimeHealthBanner'
 
 const { Header, Sider, Content } = Layout
 
@@ -172,6 +173,7 @@ export function UserWorkspaceShell() {
             message="当前处于离线状态，已打开页面可继续查看，新的保存操作会失败。"
           />
         ) : null}
+        {online ? <RealtimeHealthBanner /> : null}
         <Content className="app-content">
           <Outlet />
         </Content>

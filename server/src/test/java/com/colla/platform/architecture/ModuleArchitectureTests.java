@@ -27,4 +27,34 @@ class ModuleArchitectureTests {
             .that().resideInAPackage("com.colla.platform.shared..")
             .should().dependOnClassesThat().resideInAPackage("com.colla.platform.modules..")
             .because("shared infrastructure exposes inbound ports and must not select a business-module provider");
+
+    @ArchTest
+    static final ArchRule EVENT_MODULE_MUST_NOT_IMPORT_REDIS_TRANSPORT =
+        noClasses()
+            .that().resideInAPackage("com.colla.platform.modules.event..")
+            .should().dependOnClassesThat().resideInAPackage("org.springframework.data.redis..")
+            .because("event workers publish through the shared realtime port, not a Redis implementation");
+
+    @ArchTest
+    static final ArchRule BUSINESS_MODULES_MUST_NOT_SEND_TO_LOCAL_WEBSOCKET_SESSIONS =
+        noClasses()
+            .that().resideInAPackage("com.colla.platform.modules..")
+            .should().dependOnClassesThat()
+            .haveFullyQualifiedName("com.colla.platform.shared.websocket.WebSocketMessageSender")
+            .because("business modules publish durable realtime signals instead of addressing gateway-local sessions");
+
+    @ArchTest
+    static final ArchRule BUSINESS_MODULES_MUST_NOT_ACCESS_LOCAL_WEBSOCKET_REGISTRY =
+        noClasses()
+            .that().resideInAPackage("com.colla.platform.modules..")
+            .should().dependOnClassesThat()
+            .haveFullyQualifiedName("com.colla.platform.shared.websocket.WebSocketSessionRegistry")
+            .because("gateway-local session ownership must not leak into API or Worker business modules");
+
+    @ArchTest
+    static final ArchRule KNOWLEDGE_COLLABORATION_MUST_NOT_USE_PLATFORM_SIGNAL_SOCKET =
+        noClasses()
+            .that().resideInAPackage("com.colla.platform.modules.knowledge..")
+            .should().dependOnClassesThat().resideInAPackage("com.colla.platform.shared.websocket..")
+            .because("knowledge editing is exclusively owned by the Hocuspocus/Yjs collaboration protocol");
 }

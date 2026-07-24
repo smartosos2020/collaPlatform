@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -46,6 +47,7 @@ class KnowledgeCollaborationGatewayServiceTests {
     private UUID itemId;
     private String ticket;
     private String documentName;
+    private KnowledgeCollaborationTicketRecord ticketRecord;
 
     @BeforeEach
     void setUp() {
@@ -59,12 +61,17 @@ class KnowledgeCollaborationGatewayServiceTests {
         ticket = "test-ticket";
         documentName = "knowledge:" + workspaceId + ":" + itemId;
         user = new CurrentUser(UUID.randomUUID(), workspaceId, UUID.randomUUID(), "editor", "Editor", Set.of("member"), Set.of());
-        KnowledgeCollaborationTicketRecord ticketRecord = new KnowledgeCollaborationTicketRecord(
+        ticketRecord = new KnowledgeCollaborationTicketRecord(
             UUID.randomUUID(), sha256(ticket.getBytes(StandardCharsets.UTF_8)), workspaceId, itemId,
-            user.id(), user.deviceId(), "client:test", Instant.now().plusSeconds(300), null
+            user.id(), user.deviceId(), "client:test", Instant.now().plusSeconds(300), null, Instant.now()
         );
-        when(repository.findActiveCollaborationTicket(ticketRecord.tokenHash())).thenReturn(Optional.of(ticketRecord));
+        when(repository.consumeActiveCollaborationTicket(ticketRecord.tokenHash())).thenReturn(Optional.of(ticketRecord));
+        when(repository.findActiveCollaborationSession(ticketRecord.tokenHash())).thenReturn(Optional.of(ticketRecord));
         when(identityRepository.findCurrentUser(user.id(), user.deviceId())).thenReturn(Optional.of(user));
+        when(repository.findCollaborationGeneration(workspaceId, itemId)).thenReturn(7L);
+        when(repository.storeCollaborationSnapshot(
+            any(), any(), any(), any(), any(), anyInt(), anyLong(), anyLong(), any(), any(), any()
+        )).thenReturn(true);
     }
 
     @Test
@@ -72,10 +79,10 @@ class KnowledgeCollaborationGatewayServiceTests {
         editableItem("edit");
         byte[] update = "merge-update".getBytes(StandardCharsets.UTF_8);
         String updateId = sha256(update);
-        when(repository.appendCollaborationUpdate(any(), any(), eq(updateId), any(), any(), any(), eq(3))).thenReturn(42L);
+        when(repository.appendCollaborationUpdate(any(), any(), eq(updateId), any(), any(), any(), eq(3), eq(7L))).thenReturn(42L);
 
-        var first = service.appendUpdate(ticket, documentName, Base64.getEncoder().encodeToString(update), "client:test", updateId, 3);
-        var duplicate = service.appendUpdate(ticket, documentName, Base64.getEncoder().encodeToString(update), "client:test", updateId, 3);
+        var first = service.appendUpdate(ticket, documentName, Base64.getEncoder().encodeToString(update), "client:test", updateId, 3, 7);
+        var duplicate = service.appendUpdate(ticket, documentName, Base64.getEncoder().encodeToString(update), "client:test", updateId, 3, 7);
 
         assertThat(first.sequence()).isEqualTo(42L);
         assertThat(duplicate.sequence()).isEqualTo(42L);
@@ -83,21 +90,37 @@ class KnowledgeCollaborationGatewayServiceTests {
     }
 
     @Test
+    void rejectsAnUpdateFromAnInvalidatedDocumentGeneration() {
+        editableItem("edit");
+        byte[] update = "stale-generation".getBytes(StandardCharsets.UTF_8);
+        String updateId = sha256(update);
+        when(repository.appendCollaborationUpdate(
+            any(), any(), eq(updateId), any(), any(), any(), eq(3), eq(6L)
+        )).thenReturn(0L);
+
+        assertThatThrownBy(() -> service.appendUpdate(
+            ticket, documentName, Base64.getEncoder().encodeToString(update),
+            "client:test", updateId, 3, 6
+        )).isInstanceOf(KnowledgeCollaborationGatewayService.CollaborationFailure.class)
+            .hasMessageContaining("generation is stale");
+    }
+
+    @Test
     void rejectsReadOnlyAndOversizedUpdatesBeforePersistence() {
         editableItem("view");
         byte[] small = "small".getBytes(StandardCharsets.UTF_8);
         assertThatThrownBy(() -> service.appendUpdate(
-            ticket, documentName, Base64.getEncoder().encodeToString(small), "client:test", sha256(small), 3
+            ticket, documentName, Base64.getEncoder().encodeToString(small), "client:test", sha256(small), 3, 7
         )).isInstanceOf(KnowledgeCollaborationGatewayService.CollaborationFailure.class)
             .hasMessageContaining("read only");
 
         editableItem("edit");
         byte[] oversized = new byte[33];
         assertThatThrownBy(() -> service.appendUpdate(
-            ticket, documentName, Base64.getEncoder().encodeToString(oversized), "client:test", sha256(oversized), 3
+            ticket, documentName, Base64.getEncoder().encodeToString(oversized), "client:test", sha256(oversized), 3, 7
         )).isInstanceOf(KnowledgeCollaborationGatewayService.CollaborationFailure.class)
             .hasMessageContaining("too large");
-        verify(repository, never()).appendCollaborationUpdate(any(), any(), any(), any(), any(), any(), anyInt());
+        verify(repository, never()).appendCollaborationUpdate(any(), any(), any(), any(), any(), any(), anyInt(), anyLong());
     }
 
     @Test
@@ -119,16 +142,44 @@ class KnowledgeCollaborationGatewayServiceTests {
 
         var ack = service.storeSnapshot(
             ticket, documentName, Base64.getEncoder().encodeToString(snapshot), Base64.getEncoder().encodeToString(vector),
-            document, 3, "client:test"
+            document, 3, "client:test", 7, 42
         );
 
         assertThat(ack.snapshotHash()).isEqualTo(sha256(snapshot));
         verify(repository).updateContentSnapshot(user.workspaceId(), itemId, "Shared title", "Shared body", user.id());
         verify(repository).storeCollaborationSnapshot(
             eq(user.workspaceId()), eq(itemId), eq(snapshot), eq(vector), eq(sha256(snapshot)), eq(3),
-            any(), eq("client:test"), eq(user.id())
+            eq(7L), eq(42L), any(), eq("client:test"), eq(user.id())
         );
         verify(auditService, never()).log(any(CurrentUser.class), any(), any(), any(), any());
+    }
+
+    @Test
+    void rejectsAStaleSnapshotBeforeItCanReplaceCanonicalContent() {
+        properties.setMaxUpdateBytes(1024);
+        editableItem("edit");
+        ObjectNode document = objectMapper.createObjectNode();
+        document.put("type", "doc");
+        document.put("schemaVersion", 3);
+        document.put("collaborationTitle", "Stale title");
+        document.putArray("content");
+        when(repository.storeCollaborationSnapshot(
+            any(), any(), any(), any(), any(), eq(3), eq(6L), eq(40L), any(), any(), any()
+        )).thenReturn(false);
+
+        assertThatThrownBy(() -> service.storeSnapshot(
+            ticket,
+            documentName,
+            Base64.getEncoder().encodeToString("snapshot".getBytes(StandardCharsets.UTF_8)),
+            Base64.getEncoder().encodeToString("vector".getBytes(StandardCharsets.UTF_8)),
+            document,
+            3,
+            "client:test",
+            6,
+            40
+        )).isInstanceOf(KnowledgeCollaborationGatewayService.CollaborationFailure.class)
+            .hasMessageContaining("behind the durable generation");
+        verify(repository, never()).updateContentSnapshot(any(), any(), any(), any(), any());
     }
 
     @Test
@@ -150,7 +201,7 @@ class KnowledgeCollaborationGatewayServiceTests {
             documentName,
             Base64.getEncoder().encodeToString("node-snapshot".getBytes(StandardCharsets.UTF_8)),
             Base64.getEncoder().encodeToString("node-vector".getBytes(StandardCharsets.UTF_8)),
-            document, 3, "client:test", "collaboration-a"
+            document, 3, "client:test", "collaboration-a", 7, 42
         );
 
         assertThat(ack.compactedUpdates()).isEqualTo(17);
@@ -175,7 +226,7 @@ class KnowledgeCollaborationGatewayServiceTests {
                 ticket, documentName,
                 Base64.getEncoder().encodeToString(("snapshot-" + index).getBytes(StandardCharsets.UTF_8)),
                 Base64.getEncoder().encodeToString(("vector-" + index).getBytes(StandardCharsets.UTF_8)),
-                document, 3, "client:test"
+                document, 3, "client:test", 7, 42
             );
         }
 
@@ -192,7 +243,7 @@ class KnowledgeCollaborationGatewayServiceTests {
 
         service.invalidateCollaborationState(workspaceId, targetItemId);
 
-        verify(repository).deleteCollaborationState(workspaceId, targetItemId);
+        verify(repository).invalidateCollaborationState(workspaceId, targetItemId);
     }
 
     @Test
@@ -203,6 +254,18 @@ class KnowledgeCollaborationGatewayServiceTests {
         assertThatThrownBy(() -> service.authenticate(ticket, documentName))
             .isInstanceOf(KnowledgeCollaborationGatewayService.CollaborationFailure.class)
             .hasMessageContaining("no longer active");
+    }
+
+    @Test
+    void consumesATicketOnlyOnceForWebSocketAuthentication() {
+        editableItem("edit");
+        when(repository.consumeActiveCollaborationTicket(ticketRecord.tokenHash()))
+            .thenReturn(Optional.of(ticketRecord), Optional.empty());
+
+        assertThat(service.authenticate(ticket, documentName).canEdit()).isTrue();
+        assertThatThrownBy(() -> service.authenticate(ticket, documentName))
+            .isInstanceOf(KnowledgeCollaborationGatewayService.CollaborationFailure.class)
+            .hasMessageContaining("expired or invalid");
     }
 
     private void editableItem(String permissionLevel) {

@@ -7,7 +7,6 @@ import {
   currentUser,
   getKnowledgeContent,
   grantKnowledgePermission,
-  knowledgeCollaborationHealth,
   knowledgeContentUrl,
 } from './support/knowledge'
 import { roleCredential } from './support/roles'
@@ -68,10 +67,8 @@ test('@route-final configured editor sees presence, receives remote content and 
     await page.getByRole('button', { name: '切换到兼容编辑器' }).click()
     await editorPage.getByRole('button', { name: '切换到兼容编辑器' }).click()
 
-    await expect.poll(async () => (await knowledgeCollaborationHealth(request, administrator, space.id, document.item.id)).activeUsers, {
-      timeout: 15_000,
-      message: 'two browser identities should join the same collaboration room',
-    }).toBeGreaterThanOrEqual(2)
+    await expect(page.getByText('实时已同步')).toBeVisible({ timeout: 15_000 })
+    await expect(editorPage.getByText('实时已同步')).toBeVisible({ timeout: 15_000 })
 
     await editorPage.getByLabel('知识内容标题').fill('M3 Remote Editor Update')
     await expect(page.getByLabel('知识内容标题')).toHaveValue('M3 Remote Editor Update', { timeout: 15_000 })

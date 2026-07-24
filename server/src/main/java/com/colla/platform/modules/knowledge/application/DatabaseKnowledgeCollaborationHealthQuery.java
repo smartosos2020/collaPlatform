@@ -9,7 +9,7 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 
 @Service
-@ConditionalOnRuntimeRole(RuntimeRole.API)
+@ConditionalOnRuntimeRole({RuntimeRole.API, RuntimeRole.COMBINED})
 public class DatabaseKnowledgeCollaborationHealthQuery implements KnowledgeCollaborationHealthQuery {
     private final KnowledgeContentService contentService;
     private final KnowledgeContentRepository contentRepository;
@@ -25,15 +25,19 @@ public class DatabaseKnowledgeCollaborationHealthQuery implements KnowledgeColla
     @Override
     public KnowledgeContentCollaborationHealth health(CurrentUser currentUser, UUID itemId) {
         contentService.requireView(currentUser, itemId);
-        var state = contentRepository.findCollaborationState(currentUser.workspaceId(), itemId).orElse(null);
-        long serverClock = state == null ? 0 : state.serverClock();
+        var state = contentRepository.findCollaborationBinaryState(currentUser.workspaceId(), itemId).orElse(null);
+        long snapshotSequence = state == null ? 0 : state.snapshotSequence();
+        long latestSequence = contentRepository.findLatestCollaborationSequence(currentUser.workspaceId(), itemId);
+        long serverClock = Math.max(snapshotSequence, latestSequence);
         return new KnowledgeContentCollaborationHealth(
             itemId,
             serverClock,
             0,
-            false,
-            state == null ? Long.toString(serverClock) : state.stateVector(),
-            state == null ? null : state.lastSavedAt(),
+            latestSequence > snapshotSequence,
+            state == null || state.stateVector() == null
+                ? ""
+                : java.util.Base64.getEncoder().encodeToString(state.stateVector()),
+            state == null ? null : state.updatedAt(),
             state == null ? null : state.updatedAt()
         );
     }

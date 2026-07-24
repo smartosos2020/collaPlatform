@@ -88,6 +88,7 @@ function start(options: WorkCycleOptions): void {
       'docs/00-product/current-product-scope.md',
       ...(planning ? [planning.initiativeIndexDoc] : []),
       ...(planning ? [planning.programDoc] : []),
+      'docs/00-product/initiatives/project-platform-program.md',
       'docs/01-architecture/current-architecture.md',
       ...(planning ? [planning.targetArchitectureDoc] : []),
       'docs/01-architecture/technology-selection.md',
@@ -159,6 +160,7 @@ async function verify(options: WorkCycleOptions): Promise<void> {
     ...(context.allowedActiveDocs ?? []),
     'docs/01-architecture/platform-module-contracts.md',
     'docs/01-architecture/event-side-effect-matrix.md',
+    'docs/00-product/initiatives/project-platform-program.md',
   ])]
   if (context.planning?.program && (planning.program !== context.planning.program || planning.stage !== context.planning.stage)) throw new Error('Active Program or Stage changed during the work cycle; restart the cycle after reviewing the planning change')
   if (context.planning?.program && planning.programRevision !== context.planning.programRevision && !(options.stage === 'finish' && context.planning.isStageFinalMilestone)) throw new Error('Program revision changed during the work cycle; restart after reviewing the planning change')
@@ -177,16 +179,24 @@ async function verify(options: WorkCycleOptions): Promise<void> {
   if (hasSpecs) {
     const evidenceKind = options.browserEvidenceKind!
     const evidenceEnvironment = options.browserEvidenceEnvironment!
-    const args = ['--dir', 'web', 'exec', 'playwright', 'test', ...browserSpecs]
+    const webRoot = join(repositoryRoot, 'web')
+    const playwrightCli = join(webRoot, 'node_modules', '@playwright', 'test', 'cli.js')
+    if (!existsSync(playwrightCli)) throw new Error(`Playwright CLI is not installed: ${playwrightCli}`)
+    const args = [playwrightCli, 'test', ...browserSpecs, '--config', 'e2e/playwright.config.ts']
     if (options.browserGrep) args.push('--grep', options.browserGrep)
     if (evidenceKind === 'real') assertRealBrowserEvidence(browserSpecs.join(' '), repositoryRoot)
-    const output = await run('pnpm', args, { cwd: repositoryRoot, capture: true, trimOutput: false })
+    const output = await run('node', args, {
+      cwd: webRoot,
+      env: { COLLA_E2E_SUITE: 'all' },
+      capture: true,
+      trimOutput: false,
+    })
     const browserLog = join(reportDir, `work-cycle-browser-${new Date().toISOString().replace(/[-:]/g, '').replace(/\..+$/, '')}.log`)
     writeFileSync(browserLog, output)
     if (output) console.log(output)
     context.browserEvidence = {
       status: 'passed', kind: evidenceKind, environment: evidenceEnvironment,
-      command: `pnpm ${args.join(' ')}`, logPath: browserLog, completedAt: new Date().toISOString(),
+      command: `node ${args.join(' ')}`, logPath: browserLog, completedAt: new Date().toISOString(),
     }
   } else if (hasReason) {
     const reason = options.browserNotRequiredReason!.trim()

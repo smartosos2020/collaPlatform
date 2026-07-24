@@ -16,7 +16,9 @@ export async function releaseCheck(root: string, options: ReleaseOptions): Promi
   const dirty = gitStatusPaths(root).length > 0; if (dirty && !options.allowDirty) throw new Error('Working tree is dirty')
   const environment = assertProductionEnvironment(paths.envPath); const head = gitHead(root).toLowerCase(); if (environment.SOURCE_COMMIT.toLowerCase() !== head) throw new Error('SOURCE_COMMIT does not match HEAD')
   const model = composeModel(paths); const project = composeProjectName(paths); if (options.expectedProjectName && project !== options.expectedProjectName) throw new Error(`Release target mismatch: ${project}`)
-  for (const service of ['postgres', 'redis', 'minio', 'server', 'collaboration-a', 'collaboration-b', 'web', 'nginx']) if (!model.services?.[service]?.healthcheck) throw new Error(`Missing service or health check: ${service}`)
+  const required = ['postgres', 'redis', 'minio', 'maintenance', 'api-a', 'api-b', 'worker-a', 'worker-b', 'event-gateway-a', 'event-gateway-b', 'collaboration-a', 'collaboration-b', 'web', 'nginx']
+  for (const service of required) if (!model.services?.[service]) throw new Error(`Missing production service: ${service}`)
+  for (const service of required.filter((service) => service !== 'maintenance')) if (!model.services[service].healthcheck) throw new Error(`Missing service health check: ${service}`)
   let backupPath = options.backupPath
   if (!options.skipBackupCheck) {
     if (options.createBackup) backupPath = backup(root, { composeFile: options.composeFile, envFile: options.envFile, backupDir: options.backupDir })
@@ -26,7 +28,7 @@ export async function releaseCheck(root: string, options: ReleaseOptions): Promi
   if (!options.skipQualityGate) await runQualityGate(root, { mode: options.gateMode ?? 'full', backend: options.gateMode === 'quick' ? 'compile' : 'full', frontend: 'full', collaboration: options.gateMode === 'quick' ? 'skip' : 'test' })
   let artifact: Record<string, unknown> | undefined
   if (!options.skipImageBuild) {
-    runSync('docker', ['compose', '--env-file', paths.envPath, '-f', paths.composePath, 'build', 'server', 'web', 'collaboration-a'], { cwd: root })
+    runSync('docker', ['compose', '--env-file', paths.envPath, '-f', paths.composePath, 'build', 'maintenance', 'web', 'collaboration-a'], { cwd: root })
     const inspect = (image: string): any => JSON.parse(runSync('docker', ['image', 'inspect', image, '--format', '{{json .}}']))
     const images = [environment.SERVER_IMAGE, environment.WEB_IMAGE, environment.COLLABORATION_IMAGE].map(inspect)
     if (images.some((item) => item.Config?.Labels?.['org.opencontainers.image.revision'] !== head)) throw new Error('Built image revision does not match HEAD')

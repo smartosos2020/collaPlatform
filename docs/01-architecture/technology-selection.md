@@ -18,7 +18,7 @@ last_code_check: 2026-07-24
 | WebSocket | Spring WebSocket | `spring-boot-starter-websocket`, `/ws/events` |
 | 安全 | Spring Security + JWT | `SecurityConfig`, `JwtTokenService` |
 | 数据库 | PostgreSQL 16 | `docker-compose.yml`, Flyway migrations |
-| 数据库迁移 | Flyway | `server/src/main/resources/db/migration/V001...V065` |
+| 数据库迁移 | Flyway | `server/src/main/resources/db/migration/V001...V072` |
 | Redis | Redis 7 | `docker-compose.yml`, Spring Data Redis, collaboration Redis extension |
 | 对象存储 | MinIO | `docker-compose.yml`, `minio` dependency |
 | OpenAPI | springdoc-openapi | `springdoc-openapi-starter-webmvc-ui` |
@@ -55,6 +55,17 @@ S04-M5 保持上述选型并完成迁移与规模复核：Flyway 可从 V063 保
 | Cross-node rooms | Hocuspocus Redis extension | `collaboration/src/server.js` |
 | Durable recovery | PostgreSQL Yjs snapshot and update log | Flyway V052, knowledge collaboration gateway |
 | Browser transport | Hocuspocus provider over WebSocket | realtime collaboration hook |
+| Collaboration ticket | 单次消费、短时 JWT ticket | Flyway V072, collaboration auth hook |
+
+## Realtime Event Runtime
+
+| 方向 | 当前选型 | 代码依据 |
+| --- | --- | --- |
+| Event Gateway | 同一 Spring Server artifact 的 `event-gateway` 运行角色 | `RealtimeConfiguration`, production Compose |
+| Cross-node fanout | Redis Pub/Sub + PostgreSQL durable realtime transport | V069-V070, `RedisRealtimeSignalPublisher/Subscriber` |
+| Browser protocol | 版本化 JSON envelope、sequence watermark、去重、gap 检测、REST 校准 | `web/src/shared/realtime` |
+| Slow-client isolation | 每连接串行有界队列和独立关闭 | `WebSocketMessageSender` |
+| Knowledge realtime | Hocuspocus/Yjs only；Spring 只保留 ticket/load/store/invalidate | V071, knowledge collaboration gateway |
 
 ## 本地依赖
 

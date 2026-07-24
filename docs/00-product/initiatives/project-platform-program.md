@@ -2,7 +2,7 @@
 title: 项目协作平台长期专项规划
 status: paused
 program: PROJECT-PLATFORM
-revision: 15
+revision: 16
 updated_at: 2026-07-24
 planning_mode: rolling
 current_stage: none
@@ -18,7 +18,7 @@ target_architecture_doc: docs/01-architecture/project-platform-target-architectu
 
 规划采用滚动维护：当前 Stage 细化到 Task，下一 Stage 细化到 Milestone，后续 Stage 只冻结目标、依赖和退出证据。新调研、技术验证、代码事实或真实用户反馈可以修改未来规划，但不得静默改写已完成 Stage 的历史结论，也不得在没有变更记录的情况下改变正在执行 Stage 的目标。
 
-当前专项已在 S04 完成并归档后暂停于 S05 之前。暂停原因是先执行 `PLATFORM-SCALE`，建立模块边界门禁、公共合同、双 API 运行隔离和可靠多 Worker 消费，避免 S05-S07 继续扩大 project 对 identity、file、platform、event、audit 和 IM 的直接耦合。`PLATFORM-SCALE-S01/S02` 已完成，用户选择继续其 S03；S01-S04 历史结论不变，S03 收口后再从 S05 重新核对准入，不直接执行旧路线。
+当前专项已在 S04 完成并归档后暂停于 S05 之前。暂停期间 `PLATFORM-SCALE-S01-S04` 已依次建立模块边界门禁、公共合同、双 API、可靠双 Worker、双 Event Gateway、统一客户端校准和唯一知识协同协议。S04 多节点证据仍不构成生产容量、长稳或基础设施 HA 承诺，因此下一检查点延后到 `PLATFORM-SCALE-S05` 专项 Go/No-Go；S01-S04 历史结论不变，恢复时必须基于当时事实重新拆解 PROJECT-PLATFORM-S05，不能直接执行旧路线。
 
 ## 2. 专项目标
 
@@ -332,6 +332,7 @@ S02 固定输入见目标架构 17：落 `project_spaces`、成员、角色分�
 | 13 | 2026-07-24 | S04 五个 Milestone、53 个 Task 完成；复核隔离、永久 key、规则安全、并发、幂等、审计脱敏、V001-V065 空库与 V063 升级迁移、六类身份真实隔离浏览器及字段配置规模，并在目标架构第 21 节冻结 S05 布局和 S06 发布准入 | S04 只拥有字段配置目录，不拥有规范工作项实例；因此把 120 字段/2400 选项/3 秒作为 S04 已验收预算，把 10 万工作项查询预算纠正到 S07/S13 | S04 Completed；`current_stage` 暂置 none，当前路线 completed 等待归档；Go S05，S06 需等待 S05 完成后激活 |
 | 14 | 2026-07-24 | 归档 S04，并在 S05 之前暂停 PROJECT-PLATFORM；将唯一活动专项切换为 PLATFORM-SCALE-S01 | S04 后干净主干复扫确认 204 条跨模块 import、47 条 foreign infrastructure import，S04 本身新增 10/6 条；继续布局、发布和运行时会扩大边界债 | S01-S04 历史保持 Completed；S05-S21 保持 Planned；完成 PLATFORM-SCALE-S01/S02 的 Go/No-Go 后再决定恢复 S05 |
 | 15 | 2026-07-24 | 保持 PROJECT-PLATFORM 暂停，并把恢复复核点从 PLATFORM-SCALE-S02 延后到其 S03 收口 | S02 已完成双 API 与运行角色隔离；用户明确选择继续消除单 Worker、无 lease/fencing、硬编码 Handler 和无 dead-letter/replay 的风险 | S05-S21 保持 Planned；PLATFORM-SCALE-S03 成为唯一活动路线；S03 Go/No-Go 再决定是否恢复 S05 |
+| 16 | 2026-07-24 | 保持 PROJECT-PLATFORM 暂停，并把恢复复核点延后到 PLATFORM-SCALE-S05 专项 Go/No-Go | S04 已消除单 Gateway、本地 session 和双知识协议风险，但尚无固定容量、8 小时长稳、基础设施单点处置和 93 条历史例外复核结论 | S05-S21 保持 Planned；S04 归档后建议先执行 PLATFORM-SCALE-S05，完成后再重建 PROJECT-PLATFORM-S05 准入 |
 
 ## 10. 主要产品参考
 

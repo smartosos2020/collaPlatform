@@ -272,7 +272,6 @@
       "web/src/modules/messenger/pages/MessengerPage.tsx|messenger|auth|web/src/modules/auth/authStore.ts|import",
       "web/src/modules/messenger/pages/MessengerPage.tsx|messenger|platform|web/src/modules/platform/components/InternalLinkCard.tsx|import",
       "web/src/modules/messenger/pages/MessengerPage.tsx|messenger|projects|web/src/modules/projects/api/projectsApi.ts|import",
-      "web/src/modules/notifications/pages/NotificationsPage.tsx|notifications|auth|web/src/modules/auth/authStore.ts|import",
       "web/src/modules/notifications/pages/NotificationsPage.tsx|notifications|platform|web/src/modules/platform/components/InternalLinkCard.tsx|import",
       "web/src/modules/permissions/components/ResourcePermissionsModal.tsx|permissions|admin|web/src/modules/admin/api/adminUsersApi.ts|import",
       "web/src/modules/permissions/components/ResourcePermissionsModal.tsx|permissions|admin|web/src/modules/admin/api/departmentsApi.ts|import",
@@ -320,7 +319,6 @@
       "messenger|auth",
       "messenger|platform",
       "messenger|projects",
-      "notifications|auth",
       "notifications|platform",
       "permissions|admin",
       "projectSpaces|auth",
@@ -337,10 +335,6 @@
       "workspace|projects"
     ],
     "stronglyConnectedComponents": [
-      [
-        "auth",
-        "notifications"
-      ],
       [
         "knowledgeBases",
         "search"

@@ -26,7 +26,7 @@ class NotificationDomainEventHandlerTests {
     private static final UUID RECIPIENT_ID = UUID.randomUUID();
 
     @Test
-    void createsNotificationOnceAndPublishesOnlyCalibrationSignalData() {
+    void createsNotificationOnceAndPublishesDurableRecipientFactWithoutPrivateContent() {
         NotificationRepository repository = mock(NotificationRepository.class);
         AtomicReference<TransactionalOutbox.EventEnvelope> published = new AtomicReference<>();
         TransactionalOutbox outbox = event -> {
@@ -71,15 +71,14 @@ class NotificationDomainEventHandlerTests {
             "dedupeKey", "dedupe-1"
         )));
 
-        assertThat(published.get().eventType()).isEqualTo("realtime.signal.requested");
-        assertThat(published.get().payload()).containsEntry("calibrationPath", "/api/notifications");
+        assertThat(published.get().eventType()).isEqualTo("notification.realtime.changed");
+        assertThat(published.get().aggregateType()).isEqualTo("notification_recipient");
+        assertThat(published.get().aggregateId()).isEqualTo(RECIPIENT_ID);
+        assertThat(published.get().payload()).containsEntry("changeType", "created");
         assertThat(published.get().payload().keySet()).isEqualTo(Set.of(
             "recipientId",
-            "signalType",
-            "objectType",
-            "objectId",
-            "sourceVersion",
-            "calibrationPath"
+            "changeType",
+            "notificationId"
         ));
         assertThat(published.get().payload()).doesNotContainKeys("title", "body");
     }

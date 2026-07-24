@@ -1,5 +1,7 @@
 package com.colla.platform.modules.knowledge.application;
 
+import com.colla.platform.config.runtime.ConditionalOnRuntimeRole;
+import com.colla.platform.config.runtime.RuntimeRole;
 import com.colla.platform.config.KnowledgeCollaborationProperties;
 import com.colla.platform.modules.audit.application.AuditService;
 import com.colla.platform.modules.identity.infrastructure.IdentityRepository;
@@ -40,6 +42,7 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Service
+@ConditionalOnRuntimeRole({RuntimeRole.API, RuntimeRole.COMBINED})
 public class KnowledgeCollaborationGatewayService {
     public static final String PROTOCOL_VERSION = "colla-yjs-v1";
     public static final int SCHEMA_VERSION = KnowledgeContentCanonicalModels.CURRENT_SCHEMA_VERSION;
@@ -98,8 +101,25 @@ public class KnowledgeCollaborationGatewayService {
     }
 
     public KnowledgeCollaborationAuthorization authenticate(String ticket, String requestedDocumentName) {
-        KnowledgeCollaborationTicketRecord record = repository.findActiveCollaborationTicket(sha256(ticket))
+        KnowledgeCollaborationTicketRecord record = repository.consumeActiveCollaborationTicket(sha256(ticket))
             .orElseThrow(() -> failure(HttpStatus.UNAUTHORIZED, "COLLAB_AUTH_EXPIRED", "Collaboration ticket expired or invalid"));
+        return authorize(record, requestedDocumentName);
+    }
+
+    public KnowledgeCollaborationAuthorization authorizeSession(String ticket, String requestedDocumentName) {
+        KnowledgeCollaborationTicketRecord record = repository.findActiveCollaborationSession(sha256(ticket))
+            .orElseThrow(() -> failure(HttpStatus.UNAUTHORIZED, "COLLAB_AUTH_EXPIRED", "Collaboration session expired or invalid"));
+        return authorize(record, requestedDocumentName);
+    }
+
+    public boolean persistenceReady() {
+        return repository.collaborationPersistenceReady();
+    }
+
+    private KnowledgeCollaborationAuthorization authorize(
+        KnowledgeCollaborationTicketRecord record,
+        String requestedDocumentName
+    ) {
         if (!documentName(record.workspaceId(), record.itemId()).equals(requestedDocumentName)) {
             throw failure(HttpStatus.FORBIDDEN, "COLLAB_FORBIDDEN", "Collaboration ticket does not match document");
         }
@@ -117,10 +137,13 @@ public class KnowledgeCollaborationGatewayService {
     }
 
     public CollaborationLoad load(String ticket, String documentName) {
-        KnowledgeCollaborationAuthorization authorization = authenticate(ticket, documentName);
+        KnowledgeCollaborationAuthorization authorization = authorizeSession(ticket, documentName);
+        long generation = repository.findCollaborationGeneration(
+            authorization.workspaceId(), authorization.itemId()
+        );
         KnowledgeCollaborationBinaryState state = repository.findCollaborationBinaryState(
             authorization.workspaceId(), authorization.itemId()
-        ).orElse(null);
+        ).filter(candidate -> candidate.generation() == generation).orElse(null);
         long snapshotSequence = state == null ? 0 : state.snapshotSequence();
         List<KnowledgeCollaborationStoredUpdate> updates = repository.listCollaborationUpdatesAfter(
             authorization.workspaceId(), authorization.itemId(), snapshotSequence
@@ -132,7 +155,7 @@ public class KnowledgeCollaborationGatewayService {
         return new CollaborationLoad(
             detail.item().title(), encode(state == null ? null : state.snapshot()),
             encode(state == null ? null : state.stateVector()), state == null ? SCHEMA_VERSION : state.schemaVersion(),
-            snapshotSequence, updates.stream().map(update -> new CollaborationUpdate(
+            generation, snapshotSequence, updates.stream().map(update -> new CollaborationUpdate(
                 update.sequence(), update.updateId(), encode(update.payload()), update.actorId(), update.clientId(), update.createdAt()
             )).toList(), canonical
         );
@@ -145,7 +168,8 @@ public class KnowledgeCollaborationGatewayService {
         String encodedUpdate,
         String clientId,
         String updateId,
-        int schemaVersion
+        int schemaVersion,
+        long generation
     ) {
         KnowledgeCollaborationAuthorization authorization = requireEditable(ticket, documentName);
         requireSchema(schemaVersion);
@@ -155,8 +179,15 @@ public class KnowledgeCollaborationGatewayService {
         }
         long sequence = repository.appendCollaborationUpdate(
             authorization.workspaceId(), authorization.itemId(), updateId, update, authorization.userId(),
-            normalizeClientId(clientId, authorization.clientId()), schemaVersion
+            normalizeClientId(clientId, authorization.clientId()), schemaVersion, generation
         );
+        if (sequence == 0) {
+            throw failure(
+                HttpStatus.CONFLICT,
+                "COLLAB_GENERATION_STALE",
+                "Collaboration document generation is stale; reload before editing"
+            );
+        }
         return new CollaborationUpdateAck(sequence, updateId, true);
     }
 
@@ -168,13 +199,15 @@ public class KnowledgeCollaborationGatewayService {
         String encodedStateVector,
         JsonNode canonicalDocument,
         int schemaVersion,
-        String clientId
+        String clientId,
+        long generation,
+        long snapshotSequence
     ) {
         KnowledgeCollaborationAuthorization authorization = requireEditable(ticket, documentName);
         return persistSnapshot(
             authorization.workspaceId(), authorization.itemId(), asCurrentUser(authorization), encodedSnapshot,
             encodedStateVector, canonicalDocument, schemaVersion,
-            normalizeClientId(clientId, authorization.clientId()), null
+            normalizeClientId(clientId, authorization.clientId()), null, generation, snapshotSequence
         );
     }
 
@@ -186,7 +219,9 @@ public class KnowledgeCollaborationGatewayService {
         JsonNode canonicalDocument,
         int schemaVersion,
         String clientId,
-        String nodeId
+        String nodeId,
+        long generation,
+        long snapshotSequence
     ) {
         CollaborationRoomKey key = parseDocumentName(documentName);
         UUID actorId = repository.findLatestCollaborationActor(key.workspaceId(), key.itemId())
@@ -199,7 +234,8 @@ public class KnowledgeCollaborationGatewayService {
         );
         return persistSnapshot(
             key.workspaceId(), key.itemId(), actor, encodedSnapshot, encodedStateVector, canonicalDocument,
-            schemaVersion, normalizeClientId(clientId, "node:" + normalizeNodeId(nodeId)), normalizeNodeId(nodeId)
+            schemaVersion, normalizeClientId(clientId, "node:" + normalizeNodeId(nodeId)), normalizeNodeId(nodeId),
+            generation, snapshotSequence
         );
     }
 
@@ -212,7 +248,9 @@ public class KnowledgeCollaborationGatewayService {
         JsonNode canonicalDocument,
         int schemaVersion,
         String clientId,
-        String nodeId
+        String nodeId,
+        long generation,
+        long snapshotSequence
     ) {
         requireSchema(schemaVersion);
         byte[] snapshot = decode(encodedSnapshot, properties.getMaxUpdateBytes() * 20L);
@@ -227,6 +265,17 @@ public class KnowledgeCollaborationGatewayService {
                 .map(com.colla.platform.modules.knowledge.domain.KnowledgeBaseItemModels.KnowledgeBaseItem::title)
                 .orElseThrow(() -> failure(HttpStatus.NOT_FOUND, "COLLAB_DOCUMENT_NOT_FOUND", "Collaboration document no longer exists"));
         }
+        boolean stored = repository.storeCollaborationSnapshot(
+            workspaceId, itemId, snapshot, stateVector, sha256(snapshot), schemaVersion,
+            generation, snapshotSequence, writeJson(canonical.document()), clientId, actor.id()
+        );
+        if (!stored) {
+            throw failure(
+                HttpStatus.CONFLICT,
+                "COLLAB_SNAPSHOT_STALE",
+                "Collaboration snapshot is behind the durable generation or update watermark"
+            );
+        }
         repository.updateContentSnapshot(
             workspaceId, itemId, title, canonical.markdown(), actor.id()
         );
@@ -234,10 +283,6 @@ public class KnowledgeCollaborationGatewayService {
             workspaceId, itemId, schemaService.toBlockDrafts(canonical), actor.id()
         );
         contentService.reanchorSelectionComments(workspaceId, itemId, canonical.markdown());
-        repository.storeCollaborationSnapshot(
-            workspaceId, itemId, snapshot, stateVector, sha256(snapshot), schemaVersion,
-            writeJson(canonical.document()), clientId, actor.id()
-        );
         int compactedUpdates = repository.compactCollaborationUpdates(workspaceId, itemId, properties.getRetainedUpdates());
         if (repository.markCollaborationAuditCheckpoint(
             workspaceId, itemId, Instant.now().minus(1, ChronoUnit.MINUTES)
@@ -269,7 +314,7 @@ public class KnowledgeCollaborationGatewayService {
      * and deferred until after commit so a reconnecting client never reloads pre-commit state.
      */
     public void invalidateCollaborationState(UUID workspaceId, UUID itemId) {
-        repository.deleteCollaborationState(workspaceId, itemId);
+        repository.invalidateCollaborationState(workspaceId, itemId);
         String documentName = documentName(workspaceId, itemId);
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
@@ -313,7 +358,7 @@ public class KnowledgeCollaborationGatewayService {
     }
 
     private KnowledgeCollaborationAuthorization requireEditable(String ticket, String documentName) {
-        KnowledgeCollaborationAuthorization authorization = authenticate(ticket, documentName);
+        KnowledgeCollaborationAuthorization authorization = authorizeSession(ticket, documentName);
         if (!authorization.canEdit()) {
             throw failure(HttpStatus.FORBIDDEN, "COLLAB_READ_ONLY", "Collaboration session is read only");
         }
@@ -414,7 +459,7 @@ public class KnowledgeCollaborationGatewayService {
     }
 
     public record CollaborationLoad(
-        String title, String snapshot, String stateVector, int schemaVersion, long snapshotSequence,
+        String title, String snapshot, String stateVector, int schemaVersion, long generation, long snapshotSequence,
         List<CollaborationUpdate> updates, JsonNode canonicalDocument
     ) {}
     public record CollaborationUpdate(long sequence, String updateId, String update, UUID actorId, String clientId, Instant createdAt) {}
