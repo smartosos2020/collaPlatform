@@ -269,13 +269,13 @@ services:
       COLLA_COLLABORATION_INTERNAL_URL: http://collaboration-a:1234,http://collaboration-b:1234
       LOG_PATH: /app/logs
 
-  event-gateway:
+  event-gateway-a:
     extends:
       service: api-a
     environment:
       SPRING_PROFILES_ACTIVE: prod
       COLLA_RUNTIME_ROLE: event-gateway
-      COLLA_INSTANCE_ID: event-gateway-1
+      COLLA_INSTANCE_ID: event-gateway-a
       SPRING_FLYWAY_ENABLED: "false"
       SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: ${GATEWAY_DB_POOL_SIZE:-4}
       SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE: 1
@@ -298,11 +298,40 @@ services:
       COLLA_COLLABORATION_INTERNAL_URL: http://collaboration-a:1234,http://collaboration-b:1234
       LOG_PATH: /app/logs
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:8080/actuator/health"]
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/actuator/health/readiness"]
       interval: 10s
       timeout: 5s
       retries: 12
       start_period: 20s
+
+  event-gateway-b:
+    extends:
+      service: event-gateway-a
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      COLLA_RUNTIME_ROLE: event-gateway
+      COLLA_INSTANCE_ID: event-gateway-b
+      SPRING_FLYWAY_ENABLED: "false"
+      SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: ${GATEWAY_DB_POOL_SIZE:-4}
+      SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE: 1
+      SPRING_DATASOURCE_HIKARI_CONNECTION_TIMEOUT: ${GATEWAY_DB_CONNECTION_TIMEOUT_MS:-5000}
+      SPRING_DATASOURCE_HIKARI_VALIDATION_TIMEOUT: ${GATEWAY_DB_VALIDATION_TIMEOUT_MS:-3000}
+      COLLA_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
+      COLLA_DATASOURCE_USERNAME: ${POSTGRES_USER}
+      COLLA_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      MINIO_BUCKET: ${MINIO_BUCKET}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS}
+      COLLA_COLLABORATION_INTERNAL_SECRET: ${COLLA_COLLABORATION_INTERNAL_SECRET}
+      COLLA_COLLABORATION_PUBLIC_URL: /collaboration
+      COLLA_COLLABORATION_INTERNAL_URL: http://collaboration-a:1234,http://collaboration-b:1234
+      LOG_PATH: /app/logs
 
   collaboration-a:
     image: ${COLLABORATION_IMAGE:-colla-platform-collaboration:latest}
@@ -325,8 +354,6 @@ services:
       api-a:
         condition: service_healthy
       api-b:
-        condition: service_healthy
-      event-gateway:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -397,6 +424,10 @@ services:
       api-a:
         condition: service_healthy
       api-b:
+        condition: service_healthy
+      event-gateway-a:
+        condition: service_healthy
+      event-gateway-b:
         condition: service_healthy
       collaboration-a:
         condition: service_healthy

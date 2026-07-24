@@ -12,7 +12,7 @@ class DualWorkerDeploymentContractTests {
     @Test
     void productionComposeUsesTwoBoundedWorkerInstancesWithoutPublishedPorts() throws Exception {
         String compose = Files.readString(repository.resolve("deploy/docker-compose.prod.yml"));
-        String workerSection = compose.substring(compose.indexOf("  worker-a:"), compose.indexOf("  event-gateway:"));
+        String workerSection = compose.substring(compose.indexOf("  worker-a:"), compose.indexOf("  event-gateway-a:"));
 
         assertThat(workerSection).contains(
             "worker-a:", "worker-b:", "COLLA_INSTANCE_ID: worker-a", "COLLA_INSTANCE_ID: worker-b",

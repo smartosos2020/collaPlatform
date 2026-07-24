@@ -22,8 +22,13 @@ export function backup(root: string, options: BackupOptions): string {
   let resume: string[] = []; let resumeMinio = false; let minioContainer = ''; let objectCount: number | null = null
   let consistencyMode = 'operator-managed'
   try {
-    if (!options.skipQuiesce && services.includes('server') && running.includes('server')) {
-      resume = services.includes('nginx') && running.includes('nginx') ? ['nginx', 'server'] : ['server']; compose(paths, ['stop', ...resume]); consistencyMode = 'application-quiesced'
+    const applicationServices = ['nginx', 'web', 'api-a', 'api-b', 'worker-a', 'worker-b', 'event-gateway-a', 'event-gateway-b', 'collaboration-a', 'collaboration-b']
+    if (!options.skipQuiesce) {
+      resume = applicationServices.filter((service) => services.includes(service) && running.includes(service))
+      if (resume.length) {
+        compose(paths, ['stop', ...resume])
+        consistencyMode = 'application-quiesced'
+      }
     } else if (options.skipQuiesce) consistencyMode = 'non-quiesced-explicit'
     if (!options.skipMinio) {
       if (!running.includes('minio')) throw new Error('MinIO must be running before a full backup')

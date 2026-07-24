@@ -15,7 +15,9 @@ export async function restore(root: string, options: RestoreOptions): Promise<st
   const backupDir = resolve(options.backupPath); const manifest = readBackupManifest(backupDir, true)
   const dump = assertWithin(backupDir, join(backupDir, 'postgres.sql'), 'database dump')
   const hasMinio = manifest.files.some((file) => file.name === 'minio-data.tgz')
-  const services = composeServices(paths); const app = ['nginx', 'web', 'server'].filter((name) => services.includes(name)); const dependencies = ['postgres', 'redis', 'minio'].filter((name) => services.includes(name))
+  const services = composeServices(paths)
+  const app = ['nginx', 'web', 'api-a', 'api-b', 'worker-a', 'worker-b', 'event-gateway-a', 'event-gateway-b', 'collaboration-a', 'collaboration-b'].filter((name) => services.includes(name))
+  const dependencies = ['postgres', 'redis', 'minio'].filter((name) => services.includes(name))
   const reportDir = join(root, '.local-reports'); mkdirSync(reportDir, { recursive: true }); const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, '')
   const results: string[] = []; let passed = false
   try {
@@ -32,7 +34,7 @@ export async function restore(root: string, options: RestoreOptions): Promise<st
     compareCounts(manifest.databaseCounts, databaseCounts(paths))
     if (hasMinio && manifest.minioObjectCount !== null && minioObjectCount(paths, options.backupHelperImage ?? helperDefault) !== manifest.minioObjectCount) throw new Error('Restored MinIO object count mismatch')
     if (app.length) compose(paths, ['up', '-d', '--wait', ...app])
-    if (!options.skipHealthCheck && services.includes('server')) await healthCheck(root, { composeFile: options.composeFile, envFile: options.envFile, baseUrl: options.baseUrl, expectedProjectName: options.expectedProjectName })
+    if (!options.skipHealthCheck && services.includes('api-a')) await healthCheck(root, { composeFile: options.composeFile, envFile: options.envFile, baseUrl: options.baseUrl, expectedProjectName: options.expectedProjectName })
     passed = true; return join(reportDir, `restore-${stamp}.md`)
   } finally {
     const report = join(reportDir, `restore-${stamp}.md`); writeFileSync(report, ['# Restore Evidence', '', `- Target project: ${actualProject}`, `- Source project: ${manifest.projectName}`, `- Backup path: ${backupDir}`, `- Decision: ${passed ? 'PASS' : 'FAIL'}`, '', ...results.map((value) => `- PASS: ${value}`), ''].join('\n'))
