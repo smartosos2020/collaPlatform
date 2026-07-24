@@ -1,5 +1,7 @@
 package com.colla.platform.config;
 
+import com.colla.platform.config.runtime.ConditionalOnRuntimeRole;
+import com.colla.platform.config.runtime.RuntimeRole;
 import com.colla.platform.shared.websocket.PlatformWebSocketHandler;
 import com.colla.platform.shared.websocket.WebSocketAuthInterceptor;
 import org.springframework.context.annotation.Configuration;
@@ -9,6 +11,7 @@ import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistry
 
 @Configuration
 @EnableWebSocket
+@ConditionalOnRuntimeRole({RuntimeRole.EVENT_GATEWAY, RuntimeRole.COMBINED})
 public class WebSocketConfig implements WebSocketConfigurer {
     private final PlatformWebSocketHandler handler;
     private final WebSocketAuthInterceptor authInterceptor;

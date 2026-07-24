@@ -625,7 +625,7 @@ public class JdbcBaseRepository implements BaseRepository {
             """
                 insert into base_record_activity_logs
                     (id, workspace_id, record_id, actor_id, action, metadata, created_at)
-                values (?, ?, ?, ?, ?, ?::jsonb, now())
+                values (?, ?, ?, ?, ?, ?::jsonb, clock_timestamp())
                 """,
             UUID.randomUUID(),
             workspaceId,

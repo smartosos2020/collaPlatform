@@ -4,7 +4,7 @@ import com.colla.platform.modules.audit.application.AuditService;
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContent;
 import com.colla.platform.modules.knowledge.domain.KnowledgeBaseItemModels.KnowledgeBaseItem;
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContentContext;
-import com.colla.platform.modules.event.infrastructure.DomainEventRepository;
+import com.colla.platform.modules.event.contract.TransactionalOutbox;
 import com.colla.platform.modules.project.application.ProjectService;
 import com.colla.platform.modules.project.domain.ProjectModels.IssueDetail;
 import com.colla.platform.shared.auth.CurrentUser;
@@ -20,13 +20,13 @@ import org.springframework.transaction.annotation.Transactional;
 public class KnowledgeContentCrossModuleService {
     private final KnowledgeContentService contentService;
     private final ProjectService projectService;
-    private final DomainEventRepository eventRepository;
+    private final TransactionalOutbox eventRepository;
     private final AuditService auditService;
 
     public KnowledgeContentCrossModuleService(
         KnowledgeContentService contentService,
         ProjectService projectService,
-        DomainEventRepository eventRepository,
+        TransactionalOutbox eventRepository,
         AuditService auditService
     ) {
         this.contentService = contentService;

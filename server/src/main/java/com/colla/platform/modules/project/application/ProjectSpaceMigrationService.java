@@ -19,9 +19,9 @@ import static com.colla.platform.modules.project.domain.ProjectSpaceMigrationMod
 import static com.colla.platform.modules.project.domain.ProjectSpaceMigrationModels.PROJECT_FAILURE_ROLLBACK_FAILED;
 import static com.colla.platform.modules.project.domain.ProjectSpaceMigrationModels.PROJECT_FAILURE_UNIT_FAILED;
 
-import com.colla.platform.modules.audit.application.AuditService;
-import com.colla.platform.modules.permission.application.PermissionService;
-import com.colla.platform.modules.platform.infrastructure.PlatformObjectRepository;
+import com.colla.platform.modules.audit.contract.AuditLog;
+import com.colla.platform.modules.permission.contract.ProjectAuthorization;
+import com.colla.platform.modules.platform.contract.PlatformObjectCommands;
 import com.colla.platform.modules.project.domain.ProjectLegacyMappingModels.ActiveSpaceMap;
 import com.colla.platform.modules.project.domain.ProjectLegacyMappingModels.LegacySpaceMappingPlan;
 import com.colla.platform.modules.project.domain.ProjectLegacyMappingModels.MemberFailure;
@@ -97,9 +97,9 @@ public class ProjectSpaceMigrationService {
     private final ProjectSpaceRepository spaceRepository;
     private final ProjectSpaceMembershipRepository membershipRepository;
     private final ProjectSpaceMembershipService membershipService;
-    private final PlatformObjectRepository platformObjectRepository;
-    private final PermissionService permissionService;
-    private final AuditService auditService;
+    private final PlatformObjectCommands platformObjectCommands;
+    private final ProjectAuthorization permissionService;
+    private final AuditLog auditService;
     private final WorkItemTypePresetReconciliationService presetReconciliationService;
     private final TransactionTemplate lockTemplate;
     private final TransactionTemplate readSnapshotTemplate;
@@ -113,9 +113,9 @@ public class ProjectSpaceMigrationService {
         ProjectSpaceRepository spaceRepository,
         ProjectSpaceMembershipRepository membershipRepository,
         ProjectSpaceMembershipService membershipService,
-        PlatformObjectRepository platformObjectRepository,
-        PermissionService permissionService,
-        AuditService auditService,
+        PlatformObjectCommands platformObjectCommands,
+        ProjectAuthorization permissionService,
+        AuditLog auditService,
         WorkItemTypePresetReconciliationService presetReconciliationService,
         PlatformTransactionManager transactionManager
     ) {
@@ -126,7 +126,7 @@ public class ProjectSpaceMigrationService {
         this.spaceRepository = spaceRepository;
         this.membershipRepository = membershipRepository;
         this.membershipService = membershipService;
-        this.platformObjectRepository = platformObjectRepository;
+        this.platformObjectCommands = platformObjectCommands;
         this.permissionService = permissionService;
         this.auditService = auditService;
         this.presetReconciliationService = presetReconciliationService;
@@ -529,9 +529,9 @@ public class ProjectSpaceMigrationService {
             null, "private", actorId
         );
         presetReconciliationService.reconcile(workspaceId, spaceId, actorId);
-        platformObjectRepository.upsertObjectLink(
+        platformObjectCommands.upsertLink(
             workspaceId, "project_space", spaceId,
-            "/project-spaces/" + spaceId, "colla://project-space/" + spaceId, projectPlan.projectName()
+            "/project-spaces/" + spaceId, "colla://project-space/" + spaceId, projectPlan.projectName(), actorId
         );
         for (MemberMapping memberMapping : projectPlan.memberMappings()) {
             membershipService.addMigratedMember(
@@ -550,7 +550,7 @@ public class ProjectSpaceMigrationService {
         membershipRepository.deleteAllForSpace(workspaceId, spaceId);
         spaceMapRepository.markRolledBack(workspaceId, map.id(), actorId);
         spaceRepository.deleteSpace(workspaceId, spaceId);
-        platformObjectRepository.markObjectLinkDeleted(workspaceId, "project_space", spaceId);
+        platformObjectCommands.removeLink(workspaceId, "project_space", spaceId, actorId);
     }
 
     private MigrationBatchRecord finalizeApply(

@@ -11,6 +11,8 @@ public interface FileRepository {
 
     Optional<FileMetadata> complete(UUID workspaceId, UUID fileId, UUID uploadedBy);
 
+    boolean completePending(UUID workspaceId, UUID fileId, UUID uploadedBy);
+
     Optional<FileMetadata> find(UUID workspaceId, UUID fileId);
 
     void addUsage(UUID workspaceId, UUID fileId, String targetType, UUID targetId, UUID createdBy);

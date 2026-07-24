@@ -32,6 +32,8 @@ public interface IdentityRepository {
 
     boolean hasAnyUser();
 
+    void lockAdminInitialization();
+
     UUID createUser(UUID workspaceId, String username, String passwordHash, String displayName, String email, UUID createdBy);
 
     void assignRole(UUID workspaceId, UUID userId, String roleCode, UUID createdBy);

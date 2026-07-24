@@ -2,6 +2,7 @@ package com.colla.platform.config;
 
 import com.colla.platform.shared.auth.JwtAuthenticationFilter;
 import java.util.List;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.Customizer;
@@ -16,6 +17,7 @@ import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 @Configuration
+@ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
 public class SecurityConfig {
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final WebSecurityProperties webSecurityProperties;
@@ -39,6 +41,7 @@ public class SecurityConfig {
                     "/api/auth/refresh",
                     "/api/internal/knowledge-collaboration/**",
                     "/actuator/health",
+                    "/actuator/health/**",
                     "/actuator/prometheus",
                     "/error",
                     "/ws/**",

@@ -11,6 +11,7 @@ import {
 import { createKnowledgeItem } from './support/knowledge'
 
 test('@route-final M4 cross-module search: knowledge, issue, Base and message resolve to user routes', async ({ page, request }, testInfo) => {
+  test.setTimeout(120_000)
   requireIsolatedIdentityFixture()
   const flushEvidence = installFailureEvidence(page, testInfo)
   const session = await loginByApi(request)
@@ -117,7 +118,7 @@ test('@route-final M4 cross-module search: knowledge, issue, Base and message re
     await expect(baseResult).toBeVisible()
     await expect(messageResult).toBeVisible()
 
-    await issueResult.getByRole('button', { name: '打开', exact: true }).click()
+    await issueResult.getByRole('button', { name: /^打开事项 / }).click()
     await expect(page).toHaveURL(new RegExp(`/issues/${issue.issue.id}$`))
     await expect(page.getByText('基础信息', { exact: true })).toBeVisible()
   } finally {

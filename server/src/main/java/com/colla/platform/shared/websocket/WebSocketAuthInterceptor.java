@@ -1,6 +1,8 @@
 package com.colla.platform.shared.websocket;
 
-import com.colla.platform.modules.identity.infrastructure.IdentityRepository;
+import com.colla.platform.config.runtime.ConditionalOnRuntimeRole;
+import com.colla.platform.config.runtime.RuntimeRole;
+import com.colla.platform.shared.auth.AuthenticatedUserResolver;
 import com.colla.platform.shared.auth.CurrentUser;
 import com.colla.platform.shared.auth.JwtTokenService;
 import java.net.URI;
@@ -14,15 +16,16 @@ import org.springframework.web.socket.server.HandshakeInterceptor;
 import org.springframework.web.util.UriComponentsBuilder;
 
 @Component
+@ConditionalOnRuntimeRole({RuntimeRole.EVENT_GATEWAY, RuntimeRole.COMBINED})
 public class WebSocketAuthInterceptor implements HandshakeInterceptor {
     public static final String CURRENT_USER_ATTRIBUTE = "currentUser";
 
     private final JwtTokenService jwtTokenService;
-    private final IdentityRepository identityRepository;
+    private final AuthenticatedUserResolver authenticatedUserResolver;
 
-    public WebSocketAuthInterceptor(JwtTokenService jwtTokenService, IdentityRepository identityRepository) {
+    public WebSocketAuthInterceptor(JwtTokenService jwtTokenService, AuthenticatedUserResolver authenticatedUserResolver) {
         this.jwtTokenService = jwtTokenService;
-        this.identityRepository = identityRepository;
+        this.authenticatedUserResolver = authenticatedUserResolver;
     }
 
     @Override
@@ -39,7 +42,7 @@ public class WebSocketAuthInterceptor implements HandshakeInterceptor {
         }
         try {
             JwtTokenService.JwtClaims claims = jwtTokenService.parseAccessToken(token);
-            CurrentUser currentUser = identityRepository.findCurrentUser(claims.userId(), claims.deviceId()).orElseThrow();
+            CurrentUser currentUser = authenticatedUserResolver.resolve(claims.userId(), claims.deviceId()).orElseThrow();
             attributes.put(CURRENT_USER_ATTRIBUTE, currentUser);
             return true;
         } catch (RuntimeException exception) {

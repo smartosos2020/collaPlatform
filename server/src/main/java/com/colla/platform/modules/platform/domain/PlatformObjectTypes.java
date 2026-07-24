@@ -1,19 +1,15 @@
 package com.colla.platform.modules.platform.domain;
 
-import java.util.Locale;
-
 /** Canonical platform object identities and finite read aliases. */
+@Deprecated(forRemoval = false)
 public final class PlatformObjectTypes {
-    public static final String KNOWLEDGE_CONTENT = "knowledge_content";
+    public static final String KNOWLEDGE_CONTENT =
+        com.colla.platform.modules.platform.contract.PlatformObjectTypes.KNOWLEDGE_CONTENT;
 
     private PlatformObjectTypes() {
     }
 
     public static String canonicalize(String objectType) {
-        if (objectType == null) {
-            return null;
-        }
-        String normalized = objectType.trim().toLowerCase(Locale.ROOT).replace('-', '_');
-        return normalized;
+        return com.colla.platform.modules.platform.contract.PlatformObjectTypes.canonicalize(objectType);
     }
 }

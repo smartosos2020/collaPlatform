@@ -10,6 +10,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -50,6 +54,7 @@ class KnowledgeObjectEntryIntegrationTests {
             {"fileName":"m7-%s.txt","contentType":"text/plain","sizeBytes":12}
             """.formatted(suffix), 200));
         UUID fileId = UUID.fromString(upload.get("uploadId").asText());
+        uploadObject(upload.get("uploadUrl").asText(), "hello world!");
         postJson(adminToken, "/api/files/complete", """
             {"fileId":"%s"}
             """.formatted(fileId), 200);
@@ -77,6 +82,17 @@ class KnowledgeObjectEntryIntegrationTests {
         assertFalse(memberChoices.contains("M7 Base " + suffix));
         assertFalse(memberChoices.contains("M7 Project " + suffix));
         assertFalse(memberChoices.contains("M7 Knowledge " + suffix));
+    }
+
+    private void uploadObject(String uploadUrl, String content) throws Exception {
+        HttpResponse<Void> response = HttpClient.newHttpClient().send(
+            HttpRequest.newBuilder(URI.create(uploadUrl))
+                .header("Content-Type", "text/plain")
+                .PUT(HttpRequest.BodyPublishers.ofString(content))
+                .build(),
+            HttpResponse.BodyHandlers.discarding()
+        );
+        assertTrue(response.statusCode() >= 200 && response.statusCode() < 300);
     }
 
     @Test

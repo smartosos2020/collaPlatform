@@ -1,7 +1,7 @@
 package com.colla.platform.modules.project.application;
 
-import com.colla.platform.modules.audit.infrastructure.AuditRepository;
-import com.colla.platform.modules.event.infrastructure.DomainEventRepository;
+import com.colla.platform.modules.audit.contract.AuditLog;
+import com.colla.platform.modules.event.contract.TransactionalOutbox;
 import com.colla.platform.modules.project.domain.WorkItemTypeModels.CreateWorkItemType;
 import com.colla.platform.modules.project.domain.WorkItemTypeModels.WorkItemTypeDefinition;
 import com.colla.platform.modules.project.domain.WorkItemTypeModels.WorkItemTypeException;
@@ -22,15 +22,15 @@ public class WorkItemTypePresetReconciliationService {
     private final WorkItemTypePresetCatalog catalog;
     private final WorkItemTypeDefinitionService definitionService;
     private final WorkItemTypeRepository repository;
-    private final AuditRepository auditRepository;
-    private final DomainEventRepository eventRepository;
+    private final AuditLog auditRepository;
+    private final TransactionalOutbox eventRepository;
 
     public WorkItemTypePresetReconciliationService(
         WorkItemTypePresetCatalog catalog,
         WorkItemTypeDefinitionService definitionService,
         WorkItemTypeRepository repository,
-        AuditRepository auditRepository,
-        DomainEventRepository eventRepository
+        AuditLog auditRepository,
+        TransactionalOutbox eventRepository
     ) {
         this.catalog = catalog;
         this.definitionService = definitionService;

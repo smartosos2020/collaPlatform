@@ -4,7 +4,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
-import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectSummary;
+import com.colla.platform.modules.platform.contract.PlatformObjectSummary;
 
 public final class ProjectModels {
     private ProjectModels() {

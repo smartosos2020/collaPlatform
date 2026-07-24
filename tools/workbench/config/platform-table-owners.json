@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "migrationRange": "V001-V069",
+  "defaultKind": "business",
+  "owners": {
+    "approval": ["approval_action_logs","approval_flow_nodes","approval_forms","approval_instances","approval_tasks"],
+    "audit": ["audit_logs"],
+    "base": ["base_fields","base_members","base_record_activity_logs","base_record_comments","base_record_relations","base_record_values","base_records","base_tables","base_views","bases"],
+    "event": ["domain_event_delivery_replays","domain_event_handler_deliveries","domain_event_handler_receipts","domain_events","realtime_signals"],
+    "file": ["file_usages","files"],
+    "identity": ["department_managers","department_members","departments","push_tokens","sessions","user_devices","user_group_members","user_groups","users","workspaces"],
+    "im": ["conversation_members","conversations","message_links","message_mentions","message_reactions","messages"],
+    "knowledge": ["knowledge_base_items","knowledge_base_spaces","knowledge_content_blocks","knowledge_content_canonical_documents","knowledge_content_collaboration_states","knowledge_content_collaboration_tickets","knowledge_content_collaboration_updates","knowledge_content_comments","knowledge_content_migration_batches","knowledge_content_migration_items","knowledge_content_templates","knowledge_content_versions","knowledge_item_relations","knowledge_item_share_links","knowledge_subscriptions"],
+    "notification": ["notification_preferences","notifications"],
+    "permission": ["permissions","resource_permission_requests","resource_permissions","role_assignments","role_permissions","roles","user_roles"],
+    "platform": ["object_favorites","object_links","object_recent_accesses","object_type_rules"],
+    "project": ["issue_activity_logs","issue_attachments","issue_comments","issue_relations","issue_verification_logs","issues","iterations","project_legacy_space_maps","project_members","project_space_invitations","project_space_members","project_space_migration_batches","project_space_role_assignments","project_spaces","project_work_item_field_commands","project_work_item_field_definitions","project_work_item_field_options","project_work_item_type_commands","project_work_item_type_versions","project_work_item_types","projects"],
+    "search": ["search_index_entries","search_projection_versions"]
+  },
+  "specialTreatment": {
+    "technical": ["audit_logs","domain_event_delivery_replays","domain_event_handler_deliveries","domain_event_handler_receipts","domain_events","realtime_signals","search_index_entries","search_projection_versions"],
+    "mapping": ["knowledge_content_migration_batches","knowledge_content_migration_items","project_legacy_space_maps","project_space_migration_batches"],
+    "history": ["approval_action_logs","base_record_activity_logs","issue_activity_logs","issue_verification_logs","knowledge_content_versions"],
+    "shared": [],
+    "ownerless": [],
+    "retired": []
+  },
+  "rules": {
+    "foreignWrite": "forbidden",
+    "foreignRead": "requires-exact-approved-exception",
+    "foreignKey": "allowed-across-owners",
+    "schema": "shared-postgresql-public",
+    "newTable": "must-add-exactly-one-owner-in-the-same-change"
+  }
+}

@@ -1,6 +1,8 @@
 package com.colla.platform.modules.admin.application;
 
 import com.colla.platform.modules.audit.application.AuditService;
+import com.colla.platform.modules.identity.contract.IdentityGovernance;
+import com.colla.platform.modules.permission.contract.RoleGovernance;
 import com.colla.platform.modules.permission.application.PermissionService;
 import com.colla.platform.shared.auth.CurrentUser;
 import jakarta.validation.constraints.NotBlank;
@@ -10,7 +12,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -18,12 +19,19 @@ import org.springframework.http.HttpStatus;
 
 @Service
 public class AdminBatchGovernanceService {
-    private final JdbcTemplate jdbcTemplate;
+    private final IdentityGovernance identityGovernance;
+    private final RoleGovernance roleGovernance;
     private final PermissionService permissionService;
     private final AuditService auditService;
 
-    public AdminBatchGovernanceService(JdbcTemplate jdbcTemplate, PermissionService permissionService, AuditService auditService) {
-        this.jdbcTemplate = jdbcTemplate;
+    public AdminBatchGovernanceService(
+        IdentityGovernance identityGovernance,
+        RoleGovernance roleGovernance,
+        PermissionService permissionService,
+        AuditService auditService
+    ) {
+        this.identityGovernance = identityGovernance;
+        this.roleGovernance = roleGovernance;
         this.permissionService = permissionService;
         this.auditService = auditService;
     }
@@ -68,22 +76,22 @@ public class AdminBatchGovernanceService {
     }
 
     private List<BatchItem> inspect(CurrentUser user, String resourceType, List<UUID> targetIds) {
-        String table = table(resourceType);
         List<BatchItem> items = new ArrayList<>();
         for (UUID targetId : targetIds) {
-            Integer count = jdbcTemplate.queryForObject("select count(*) from " + table + " where id = ? and workspace_id = ?" + activePredicate(resourceType), Integer.class, targetId, user.workspaceId());
-            items.add(new BatchItem(targetId, count != null && count > 0 ? "ready" : "not_found", count != null && count > 0 ? "权限检查通过" : "目标不存在或不属于当前工作区"));
+            boolean active = "roles".equals(resourceType)
+                ? roleGovernance.isActive(user.workspaceId(), targetId)
+                : identityGovernance.isActive(user.workspaceId(), identityResource(resourceType), targetId);
+            items.add(new BatchItem(targetId, active ? "ready" : "not_found", active ? "权限检查通过" : "目标不存在或不属于当前工作区"));
         }
         return items;
     }
 
     private void disable(CurrentUser user, String resourceType, UUID targetId) {
-        String table = table(resourceType);
         if ("roles".equals(resourceType)) {
-            jdbcTemplate.update("update roles set status = 'disabled', updated_at = now() where id = ? and workspace_id = ? and status = 'active'", targetId, user.workspaceId());
+            roleGovernance.disable(user.workspaceId(), user.id(), targetId);
             return;
         }
-        jdbcTemplate.update("update " + table + " set status = 'disabled', updated_by = ?, updated_at = now() where id = ? and workspace_id = ? and deleted_at is null", user.id(), targetId, user.workspaceId());
+        identityGovernance.disable(user.workspaceId(), user.id(), identityResource(resourceType), targetId);
     }
 
     private void requirePermission(CurrentUser user, String resourceType) {
@@ -96,15 +104,13 @@ public class AdminBatchGovernanceService {
         }
     }
 
-    private String table(String resourceType) {
+    private IdentityGovernance.Resource identityResource(String resourceType) {
         return switch (resourceType) {
-            case "users", "departments", "user_groups", "roles" -> resourceType;
+            case "users" -> IdentityGovernance.Resource.MEMBER;
+            case "departments" -> IdentityGovernance.Resource.DEPARTMENT;
+            case "user_groups" -> IdentityGovernance.Resource.USER_GROUP;
             default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "不支持的批量资源类型");
         };
-    }
-
-    private String activePredicate(String resourceType) {
-        return "roles".equals(resourceType) ? " and status = 'active'" : " and deleted_at is null";
     }
 
     private String normalizeResource(String value) { return value == null ? "" : value.trim().toLowerCase(Locale.ROOT); }

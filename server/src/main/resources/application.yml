@@ -28,9 +28,12 @@ spring:
     multipart:
       max-file-size: 100MB
       max-request-size: 100MB
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
 
 server:
   port: 8080
+  shutdown: graceful
   error:
     include-path: never
 
@@ -43,12 +46,43 @@ management:
     health:
       probes:
         enabled: true
+      group:
+        readiness:
+          include: readinessState,runtimeRoleReadiness,domainEventWorkerReadiness
+        liveness:
+          include: livenessState
 
 springdoc:
   swagger-ui:
     path: /swagger-ui
 
 colla:
+  runtime:
+    role: ${COLLA_RUNTIME_ROLE:}
+    instance-id: ${COLLA_INSTANCE_ID:${HOSTNAME:local}}
+    version: ${COLLA_VERSION:0.1.0}
+    commit: ${SOURCE_COMMIT:unknown}
+  events:
+    worker:
+      enabled: ${COLLA_EVENT_WORKER_ENABLED:false}
+      poll-interval: ${COLLA_EVENT_WORKER_POLL_INTERVAL:1s}
+      recovery-interval: ${COLLA_EVENT_WORKER_RECOVERY_INTERVAL:15s}
+      heartbeat-interval: ${COLLA_EVENT_WORKER_HEARTBEAT_INTERVAL:10s}
+      shutdown-grace: ${COLLA_EVENT_WORKER_SHUTDOWN_GRACE:25s}
+      claim-batch: ${COLLA_EVENT_WORKER_CLAIM_BATCH:20}
+      concurrency: ${COLLA_EVENT_WORKER_CONCURRENCY:4}
+      queue-capacity: ${COLLA_EVENT_WORKER_QUEUE_CAPACITY:16}
+      connection-budget: ${COLLA_EVENT_WORKER_CONNECTION_BUDGET:6}
+      expected-instances: ${COLLA_EVENT_WORKER_EXPECTED_INSTANCES:2}
+      postgresql-connection-budget: ${COLLA_POSTGRESQL_CONNECTION_BUDGET:100}
+    delivery:
+      lease-duration: ${COLLA_EVENT_LEASE_DURATION:30s}
+      max-execution-duration: ${COLLA_EVENT_MAX_EXECUTION_DURATION:10m}
+      base-retry-delay: ${COLLA_EVENT_BASE_RETRY_DELAY:2s}
+      max-retry-delay: ${COLLA_EVENT_MAX_RETRY_DELAY:5m}
+      max-attempts: ${COLLA_EVENT_MAX_ATTEMPTS:8}
+      max-claim-batch: ${COLLA_EVENT_MAX_CLAIM_BATCH:100}
+      max-maintenance-batch: ${COLLA_EVENT_MAX_MAINTENANCE_BATCH:100}
   storage:
     endpoint: http://localhost:9000
     access-key: colla_minio

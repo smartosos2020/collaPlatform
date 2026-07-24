@@ -80,7 +80,6 @@ public class SearchService {
             parseInstantOrDate(updatedFrom, false),
             parseInstantOrDate(updatedTo, true)
         );
-        searchIndexService.refreshWorkspaceIndex(currentUser.workspaceId());
         List<SearchResult> items = searchRepository.search(currentUser.workspaceId(), currentUser.id(), normalizedQuery, filters, boundedLimit).stream()
             .filter(result -> isUserContentResult(result.objectType()))
             .map(result -> hydrateResult(currentUser, result))
@@ -96,11 +95,6 @@ public class SearchService {
             );
         }
         return new SearchResponse(normalizedQuery, "user_content", items);
-    }
-
-    public void reindex(CurrentUser currentUser) {
-        permissionService.requireManageUsers(currentUser);
-        searchIndexService.refreshWorkspaceIndex(currentUser.workspaceId());
     }
 
     public AdminGovernanceSearchResponse searchGovernance(CurrentUser currentUser, String query, int limit) {

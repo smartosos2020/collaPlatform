@@ -39,6 +39,9 @@ jobs:
       - name: Run workbench contracts
         run: pnpm work:test
 
+      - name: Validate architecture boundaries
+        run: pnpm architecture:boundaries
+
       - name: Scan sensitive data
         run: pnpm security:scan -- --skip-report
 

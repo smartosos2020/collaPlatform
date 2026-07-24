@@ -9,7 +9,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.colla.platform.modules.event.application.DomainEventWorker;
-import com.colla.platform.modules.event.infrastructure.DomainEventRepository;
+import com.colla.platform.modules.event.contract.TransactionalOutbox;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Map;
 import java.util.UUID;
@@ -27,7 +27,7 @@ class NotificationPermissionIntegrationTests {
     @Autowired MockMvc mockMvc;
     @Autowired ObjectMapper objectMapper;
     @Autowired JdbcTemplate jdbcTemplate;
-    @Autowired DomainEventRepository eventRepository;
+    @Autowired TransactionalOutbox eventRepository;
     @Autowired DomainEventWorker eventWorker;
 
     @Test

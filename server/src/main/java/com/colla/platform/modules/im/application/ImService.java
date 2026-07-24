@@ -1,6 +1,6 @@
 package com.colla.platform.modules.im.application;
 
-import com.colla.platform.modules.event.infrastructure.DomainEventRepository;
+import com.colla.platform.modules.event.contract.TransactionalOutbox;
 import com.colla.platform.modules.im.domain.ImModels.ConversationDetail;
 import com.colla.platform.modules.im.domain.ImModels.ConversationSummary;
 import com.colla.platform.modules.im.domain.ImModels.MessagePage;
@@ -35,14 +35,14 @@ public class ImService {
 
     private final ImRepository imRepository;
     private final InternalLinkService internalLinkService;
-    private final DomainEventRepository eventRepository;
+    private final TransactionalOutbox eventRepository;
     private final WebSocketMessageSender webSocketMessageSender;
     private final PlatformObjectRepository objectRepository;
 
     public ImService(
         ImRepository imRepository,
         InternalLinkService internalLinkService,
-        DomainEventRepository eventRepository,
+        TransactionalOutbox eventRepository,
         WebSocketMessageSender webSocketMessageSender,
         PlatformObjectRepository objectRepository
     ) {

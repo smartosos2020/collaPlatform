@@ -1,9 +1,10 @@
+# syntax=docker/dockerfile:1.7
 FROM maven:3.9-eclipse-temurin-21@sha256:2b4496088e7b80ae10a8c9f74e574ea21380325a006ec684532ad6bad5bc7273 AS build
 WORKDIR /workspace
 COPY pom.xml .
-RUN mvn -B -DskipTests dependency:go-offline
 COPY src ./src
-RUN mvn -B -DskipTests package
+RUN --mount=type=cache,target=/root/.m2/repository \
+    mvn -B -Dmaven.test.skip=true package
 
 FROM eclipse-temurin:21-jre@sha256:d2b9f8f12212cadcfdf889461531784e8fd097feade954d65b31ee7a71c473ec
 ARG SOURCE_COMMIT=unknown

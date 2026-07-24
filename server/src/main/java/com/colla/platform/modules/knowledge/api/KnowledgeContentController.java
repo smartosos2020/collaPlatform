@@ -13,7 +13,7 @@ import com.colla.platform.modules.knowledge.api.KnowledgeApiDtos.KnowledgeConten
 import com.colla.platform.modules.knowledge.api.KnowledgeApiDtos.KnowledgeContentShareLinkView;
 import com.colla.platform.modules.knowledge.api.KnowledgeApiDtos.KnowledgeContentVersionDiffView;
 import com.colla.platform.modules.knowledge.api.KnowledgeApiDtos.KnowledgeContentVersionView;
-import com.colla.platform.modules.knowledge.application.KnowledgeContentCollaborationService;
+import com.colla.platform.modules.knowledge.application.KnowledgeCollaborationHealthQuery;
 import com.colla.platform.modules.knowledge.application.KnowledgeCollaborationGatewayService;
 import com.colla.platform.modules.knowledge.application.KnowledgeContentCanonicalService;
 import com.colla.platform.modules.knowledge.application.KnowledgeContentCrossModuleService;
@@ -47,7 +47,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/knowledge-bases/{spaceId}/items/{itemId}")
 public class KnowledgeContentController {
-    private final KnowledgeContentCollaborationService collaborationService;
+    private final KnowledgeCollaborationHealthQuery collaborationService;
     private final KnowledgeCollaborationGatewayService collaborationGatewayService;
     private final KnowledgeContentCanonicalService canonicalService;
     private final KnowledgeContentCrossModuleService crossModuleService;
@@ -56,7 +56,7 @@ public class KnowledgeContentController {
     private final ResourcePermissionManagementService resourcePermissionManagementService;
 
     public KnowledgeContentController(
-        KnowledgeContentCollaborationService collaborationService,
+        KnowledgeCollaborationHealthQuery collaborationService,
         KnowledgeCollaborationGatewayService collaborationGatewayService,
         KnowledgeContentCanonicalService canonicalService,
         KnowledgeContentCrossModuleService crossModuleService,

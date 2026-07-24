@@ -14,11 +14,17 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
+import com.colla.platform.config.runtime.RuntimeRoleProperties;
 
 @Component
 public class RequestLoggingFilter extends OncePerRequestFilter {
     private static final Logger log = LoggerFactory.getLogger(RequestLoggingFilter.class);
     private static final String REQUEST_ID_HEADER = "X-Colla-Request-Id";
+    private final RuntimeRoleProperties runtimeRoleProperties;
+
+    public RequestLoggingFilter(RuntimeRoleProperties runtimeRoleProperties) {
+        this.runtimeRoleProperties = runtimeRoleProperties;
+    }
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
@@ -33,7 +39,9 @@ public class RequestLoggingFilter extends OncePerRequestFilter {
         } finally {
             long durationMs = (System.nanoTime() - startedAt) / 1_000_000;
             log.info(
-                "http_request requestId={} method={} path={} status={} durationMs={} client={} user={}",
+                "http_request role={} instanceId={} requestId={} method={} path={} status={} durationMs={} client={} user={}",
+                runtimeRoleProperties.role().value(),
+                runtimeRoleProperties.getInstanceId(),
                 requestId,
                 request.getMethod(),
                 request.getRequestURI(),

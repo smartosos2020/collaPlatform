@@ -41,17 +41,23 @@ public class JdbcFileRepository implements FileRepository {
 
     @Override
     public Optional<FileMetadata> complete(UUID workspaceId, UUID fileId, UUID uploadedBy) {
-        jdbcTemplate.update(
+        completePending(workspaceId, fileId, uploadedBy);
+        return find(workspaceId, fileId);
+    }
+
+    @Override
+    public boolean completePending(UUID workspaceId, UUID fileId, UUID uploadedBy) {
+        return jdbcTemplate.update(
             """
                 update files
                 set status = 'completed', completed_at = coalesce(completed_at, now())
-                where workspace_id = ? and id = ? and uploaded_by = ? and deleted_at is null
+                where workspace_id = ? and id = ? and uploaded_by = ?
+                  and status = 'pending' and deleted_at is null
                 """,
             workspaceId,
             fileId,
             uploadedBy
-        );
-        return find(workspaceId, fileId);
+        ) == 1;
     }
 
     @Override

@@ -1,6 +1,5 @@
 package com.colla.platform.shared.auth;
 
-import com.colla.platform.modules.identity.infrastructure.IdentityRepository;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -16,11 +15,11 @@ import org.springframework.web.filter.OncePerRequestFilter;
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private final JwtTokenService jwtTokenService;
-    private final IdentityRepository identityRepository;
+    private final AuthenticatedUserResolver authenticatedUserResolver;
 
-    public JwtAuthenticationFilter(JwtTokenService jwtTokenService, IdentityRepository identityRepository) {
+    public JwtAuthenticationFilter(JwtTokenService jwtTokenService, AuthenticatedUserResolver authenticatedUserResolver) {
         this.jwtTokenService = jwtTokenService;
-        this.identityRepository = identityRepository;
+        this.authenticatedUserResolver = authenticatedUserResolver;
     }
 
     @Override
@@ -31,7 +30,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             String token = authorization.substring("Bearer ".length());
             try {
                 JwtTokenService.JwtClaims claims = jwtTokenService.parseAccessToken(token);
-                CurrentUser currentUser = identityRepository.findCurrentUser(claims.userId(), claims.deviceId()).orElseThrow();
+                CurrentUser currentUser = authenticatedUserResolver.resolve(claims.userId(), claims.deviceId()).orElseThrow();
                 UsernamePasswordAuthenticationToken authentication =
                     new UsernamePasswordAuthenticationToken(currentUser, null, List.of());
                 SecurityContextHolder.getContext().setAuthentication(authentication);

@@ -1,11 +1,10 @@
 package com.colla.platform.modules.project.application;
 
-import com.colla.platform.modules.platform.application.PlatformObjectResolver;
-import com.colla.platform.modules.platform.domain.PlatformModels.ObjectAccessState;
-import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectSummary;
+import com.colla.platform.modules.platform.contract.ObjectAccessState;
+import com.colla.platform.modules.platform.contract.PlatformObjectResolver;
+import com.colla.platform.modules.platform.contract.PlatformObjectSummary;
 import com.colla.platform.modules.project.domain.ProjectSpaceModels.ProjectSpaceSummary;
 import com.colla.platform.modules.project.infrastructure.ProjectSpaceRepository;
-import com.colla.platform.shared.auth.CurrentUser;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -25,9 +24,9 @@ public class ProjectSpacePlatformObjectResolver implements PlatformObjectResolve
     }
 
     @Override
-    public Optional<PlatformObjectSummary> resolve(CurrentUser currentUser, UUID objectId) {
+    public Optional<PlatformObjectSummary> resolve(UUID workspaceId, UUID actorId, UUID objectId) {
         Optional<ProjectSpaceSummary> found = projectSpaceRepository.findById(
-            currentUser.workspaceId(), objectId, currentUser.id()
+            workspaceId, objectId, actorId
         );
         if (found.isEmpty()) {
             return Optional.empty();
@@ -56,5 +55,12 @@ public class ProjectSpacePlatformObjectResolver implements PlatformObjectResolve
                 "updatedAt", space.updatedAt().toString()
             )
         ));
+    }
+
+    @Override
+    public ObjectAccessState accessState(UUID workspaceId, UUID actorId, UUID objectId) {
+        return resolve(workspaceId, actorId, objectId)
+            .map(PlatformObjectSummary::accessState)
+            .orElse(ObjectAccessState.not_found);
     }
 }

@@ -1,0 +1,1597 @@
+{
+  "schemaVersion": 1,
+  "approvalPolicy": {
+    "approvers": [
+      "source-module-owner",
+      "target-module-owner",
+      "platform-architecture"
+    ],
+    "wildcards": "forbidden",
+    "foreignWrite": "forbidden",
+    "expiry": "exitStage is mandatory; expiryDecision must be remove, replace-with-contract, or replace-with-projection",
+    "touchRule": "A modified source file may not add a target, table, mode, occurrence, or direction covered by an existing exception."
+  },
+  "exceptions": [
+    {
+      "id": "BOUNDARY-READ-001",
+      "kind": "sql",
+      "sourceModule": "admin",
+      "targetModule": "approval",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/admin/application/AdminApplicationGovernanceService.java",
+      "target": "approval_forms",
+      "modes": [
+        "read"
+      ],
+      "reason": "admin currently reads approval facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "enterprise-governance",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-002",
+      "kind": "sql",
+      "sourceModule": "admin",
+      "targetModule": "approval",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/admin/application/AdminApplicationGovernanceService.java",
+      "target": "approval_instances",
+      "modes": [
+        "read"
+      ],
+      "reason": "admin currently reads approval facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "enterprise-governance",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-003",
+      "kind": "sql",
+      "sourceModule": "admin",
+      "targetModule": "approval",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/admin/application/AdminApplicationGovernanceService.java",
+      "target": "approval_tasks",
+      "modes": [
+        "read"
+      ],
+      "reason": "admin currently reads approval facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "enterprise-governance",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-004",
+      "kind": "sql",
+      "sourceModule": "admin",
+      "targetModule": "base",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/admin/application/AdminApplicationGovernanceService.java",
+      "target": "base_records",
+      "modes": [
+        "read"
+      ],
+      "reason": "admin currently reads base facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "enterprise-governance",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-005",
+      "kind": "sql",
+      "sourceModule": "admin",
+      "targetModule": "base",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/admin/application/AdminApplicationGovernanceService.java",
+      "target": "base_tables",
+      "modes": [
+        "read"
+      ],
+      "reason": "admin currently reads base facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "enterprise-governance",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-006",
+      "kind": "sql",
+      "sourceModule": "admin",
+      "targetModule": "base",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/admin/application/AdminApplicationGovernanceService.java",
+      "target": "bases",
+      "modes": [
+        "read"
+      ],
+      "reason": "admin currently reads base facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "enterprise-governance",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-007",
+      "kind": "sql",
+      "sourceModule": "admin",
+      "targetModule": "im",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/admin/application/AdminApplicationGovernanceService.java",
+      "target": "conversation_members",
+      "modes": [
+        "read"
+      ],
+      "reason": "admin currently reads im facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "enterprise-governance",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-008",
+      "kind": "sql",
+      "sourceModule": "admin",
+      "targetModule": "im",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/admin/application/AdminApplicationGovernanceService.java",
+      "target": "conversations",
+      "modes": [
+        "read"
+      ],
+      "reason": "admin currently reads im facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "enterprise-governance",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-009",
+      "kind": "sql",
+      "sourceModule": "admin",
+      "targetModule": "im",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/admin/application/AdminApplicationGovernanceService.java",
+      "target": "messages",
+      "modes": [
+        "read"
+      ],
+      "reason": "admin currently reads im facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "enterprise-governance",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-010",
+      "kind": "sql",
+      "sourceModule": "admin",
+      "targetModule": "project",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/admin/application/AdminApplicationGovernanceService.java",
+      "target": "issues",
+      "modes": [
+        "read"
+      ],
+      "reason": "admin currently reads project facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "enterprise-governance",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-011",
+      "kind": "sql",
+      "sourceModule": "admin",
+      "targetModule": "project",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/admin/application/AdminApplicationGovernanceService.java",
+      "target": "project_members",
+      "modes": [
+        "read"
+      ],
+      "reason": "admin currently reads project facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "enterprise-governance",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-012",
+      "kind": "sql",
+      "sourceModule": "admin",
+      "targetModule": "project",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/admin/application/AdminApplicationGovernanceService.java",
+      "target": "projects",
+      "modes": [
+        "read"
+      ],
+      "reason": "admin currently reads project facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "enterprise-governance",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-013",
+      "kind": "sql",
+      "sourceModule": "admin",
+      "targetModule": "identity",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/admin/application/AdminSystemSettingsService.java",
+      "target": "sessions",
+      "modes": [
+        "read"
+      ],
+      "reason": "admin currently reads identity facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "enterprise-governance",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-014",
+      "kind": "sql",
+      "sourceModule": "admin",
+      "targetModule": "identity",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/admin/application/AdminSystemSettingsService.java",
+      "target": "user_devices",
+      "modes": [
+        "read"
+      ],
+      "reason": "admin currently reads identity facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "enterprise-governance",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-015",
+      "kind": "sql",
+      "sourceModule": "admin",
+      "targetModule": "identity",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/admin/application/AdminSystemSettingsService.java",
+      "target": "users",
+      "modes": [
+        "read"
+      ],
+      "reason": "admin currently reads identity facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "enterprise-governance",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-016",
+      "kind": "sql",
+      "sourceModule": "admin",
+      "targetModule": "identity",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/admin/application/AdminSystemSettingsService.java",
+      "target": "workspaces",
+      "modes": [
+        "read"
+      ],
+      "reason": "admin currently reads identity facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "enterprise-governance",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-017",
+      "kind": "sql",
+      "sourceModule": "approval",
+      "targetModule": "identity",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/approval/infrastructure/JdbcApprovalRepository.java",
+      "target": "users",
+      "modes": [
+        "read"
+      ],
+      "reason": "approval currently reads identity facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "approval",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-018",
+      "kind": "sql",
+      "sourceModule": "approval",
+      "targetModule": "permission",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/approval/infrastructure/JdbcApprovalRepository.java",
+      "target": "roles",
+      "modes": [
+        "read"
+      ],
+      "reason": "approval currently reads permission facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "approval",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-019",
+      "kind": "sql",
+      "sourceModule": "approval",
+      "targetModule": "permission",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/approval/infrastructure/JdbcApprovalRepository.java",
+      "target": "user_roles",
+      "modes": [
+        "read"
+      ],
+      "reason": "approval currently reads permission facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "approval",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-020",
+      "kind": "sql",
+      "sourceModule": "audit",
+      "targetModule": "identity",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/audit/infrastructure/JdbcAuditRepository.java",
+      "target": "users",
+      "modes": [
+        "read"
+      ],
+      "reason": "audit currently reads identity facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "audit",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-021",
+      "kind": "sql",
+      "sourceModule": "base",
+      "targetModule": "identity",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/base/infrastructure/JdbcBaseRepository.java",
+      "target": "users",
+      "modes": [
+        "read"
+      ],
+      "reason": "base currently reads identity facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "base",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-022",
+      "kind": "sql",
+      "sourceModule": "identity",
+      "targetModule": "permission",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/identity/infrastructure/JdbcIdentityRepository.java",
+      "target": "permissions",
+      "modes": [
+        "read"
+      ],
+      "reason": "identity currently reads permission facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "identity",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-023",
+      "kind": "sql",
+      "sourceModule": "identity",
+      "targetModule": "permission",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/identity/infrastructure/JdbcIdentityRepository.java",
+      "target": "role_assignments",
+      "modes": [
+        "read"
+      ],
+      "reason": "identity currently reads permission facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "identity",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-024",
+      "kind": "sql",
+      "sourceModule": "identity",
+      "targetModule": "permission",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/identity/infrastructure/JdbcIdentityRepository.java",
+      "target": "role_permissions",
+      "modes": [
+        "read"
+      ],
+      "reason": "identity currently reads permission facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "identity",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-025",
+      "kind": "sql",
+      "sourceModule": "identity",
+      "targetModule": "permission",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/identity/infrastructure/JdbcIdentityRepository.java",
+      "target": "roles",
+      "modes": [
+        "read"
+      ],
+      "reason": "identity currently reads permission facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "identity",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-026",
+      "kind": "sql",
+      "sourceModule": "identity",
+      "targetModule": "permission",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/identity/infrastructure/JdbcIdentityRepository.java",
+      "target": "user_roles",
+      "modes": [
+        "read"
+      ],
+      "reason": "identity currently reads permission facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "identity",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-027",
+      "kind": "sql",
+      "sourceModule": "im",
+      "targetModule": "identity",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/im/infrastructure/JdbcImRepository.java",
+      "target": "users",
+      "modes": [
+        "read"
+      ],
+      "reason": "im currently reads identity facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "messaging",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-028",
+      "kind": "sql",
+      "sourceModule": "knowledge",
+      "targetModule": "audit",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/knowledge/application/KnowledgeBaseSpaceService.java",
+      "target": "audit_logs",
+      "modes": [
+        "read"
+      ],
+      "reason": "knowledge currently reads audit facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "knowledge",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-029",
+      "kind": "sql",
+      "sourceModule": "knowledge",
+      "targetModule": "identity",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/knowledge/application/KnowledgeBaseSpaceService.java",
+      "target": "departments",
+      "modes": [
+        "read"
+      ],
+      "reason": "knowledge currently reads identity facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "knowledge",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-030",
+      "kind": "sql",
+      "sourceModule": "knowledge",
+      "targetModule": "identity",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/knowledge/application/KnowledgeBaseSpaceService.java",
+      "target": "user_groups",
+      "modes": [
+        "read"
+      ],
+      "reason": "knowledge currently reads identity facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "knowledge",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-031",
+      "kind": "sql",
+      "sourceModule": "knowledge",
+      "targetModule": "identity",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/knowledge/application/KnowledgeBaseSpaceService.java",
+      "target": "users",
+      "modes": [
+        "read"
+      ],
+      "reason": "knowledge currently reads identity facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "knowledge",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-032",
+      "kind": "sql",
+      "sourceModule": "knowledge",
+      "targetModule": "permission",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/knowledge/application/KnowledgeBaseSpaceService.java",
+      "target": "resource_permissions",
+      "modes": [
+        "read"
+      ],
+      "reason": "knowledge currently reads permission facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "knowledge",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-033",
+      "kind": "sql",
+      "sourceModule": "knowledge",
+      "targetModule": "permission",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/knowledge/application/KnowledgeBaseSpaceService.java",
+      "target": "roles",
+      "modes": [
+        "read"
+      ],
+      "reason": "knowledge currently reads permission facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "knowledge",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-034",
+      "kind": "sql",
+      "sourceModule": "knowledge",
+      "targetModule": "platform",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/knowledge/application/KnowledgeBaseSpaceService.java",
+      "target": "object_recent_accesses",
+      "modes": [
+        "read"
+      ],
+      "reason": "knowledge currently reads platform facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "knowledge",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-035",
+      "kind": "sql",
+      "sourceModule": "knowledge",
+      "targetModule": "identity",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/knowledge/infrastructure/JdbcKnowledgeBaseSpaceRepository.java",
+      "target": "users",
+      "modes": [
+        "read"
+      ],
+      "reason": "knowledge currently reads identity facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "knowledge",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-036",
+      "kind": "sql",
+      "sourceModule": "knowledge",
+      "targetModule": "identity",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/knowledge/infrastructure/JdbcKnowledgeRepository.java",
+      "target": "department_members",
+      "modes": [
+        "read"
+      ],
+      "reason": "knowledge currently reads identity facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "knowledge",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-037",
+      "kind": "sql",
+      "sourceModule": "knowledge",
+      "targetModule": "identity",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/knowledge/infrastructure/JdbcKnowledgeRepository.java",
+      "target": "departments",
+      "modes": [
+        "read"
+      ],
+      "reason": "knowledge currently reads identity facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "knowledge",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-038",
+      "kind": "sql",
+      "sourceModule": "knowledge",
+      "targetModule": "identity",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/knowledge/infrastructure/JdbcKnowledgeRepository.java",
+      "target": "user_group_members",
+      "modes": [
+        "read"
+      ],
+      "reason": "knowledge currently reads identity facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "knowledge",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-039",
+      "kind": "sql",
+      "sourceModule": "knowledge",
+      "targetModule": "identity",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/knowledge/infrastructure/JdbcKnowledgeRepository.java",
+      "target": "user_groups",
+      "modes": [
+        "read"
+      ],
+      "reason": "knowledge currently reads identity facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "knowledge",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-040",
+      "kind": "sql",
+      "sourceModule": "knowledge",
+      "targetModule": "identity",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/knowledge/infrastructure/JdbcKnowledgeRepository.java",
+      "target": "users",
+      "modes": [
+        "read"
+      ],
+      "reason": "knowledge currently reads identity facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "knowledge",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-041",
+      "kind": "sql",
+      "sourceModule": "knowledge",
+      "targetModule": "permission",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/knowledge/infrastructure/JdbcKnowledgeRepository.java",
+      "target": "resource_permissions",
+      "modes": [
+        "read"
+      ],
+      "reason": "knowledge currently reads permission facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "knowledge",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-042",
+      "kind": "sql",
+      "sourceModule": "knowledge",
+      "targetModule": "permission",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/knowledge/infrastructure/JdbcKnowledgeRepository.java",
+      "target": "roles",
+      "modes": [
+        "read"
+      ],
+      "reason": "knowledge currently reads permission facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "knowledge",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-043",
+      "kind": "sql",
+      "sourceModule": "knowledge",
+      "targetModule": "permission",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/knowledge/infrastructure/JdbcKnowledgeRepository.java",
+      "target": "user_roles",
+      "modes": [
+        "read"
+      ],
+      "reason": "knowledge currently reads permission facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "knowledge",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-044",
+      "kind": "sql",
+      "sourceModule": "knowledge",
+      "targetModule": "platform",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/knowledge/infrastructure/JdbcKnowledgeRepository.java",
+      "target": "object_links",
+      "modes": [
+        "read"
+      ],
+      "reason": "knowledge currently reads platform facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "knowledge",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-045",
+      "kind": "sql",
+      "sourceModule": "permission",
+      "targetModule": "identity",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/permission/application/PermissionGovernanceService.java",
+      "target": "departments",
+      "modes": [
+        "read"
+      ],
+      "reason": "permission currently reads identity facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "permission",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-046",
+      "kind": "sql",
+      "sourceModule": "permission",
+      "targetModule": "identity",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/permission/application/PermissionGovernanceService.java",
+      "target": "user_groups",
+      "modes": [
+        "read"
+      ],
+      "reason": "permission currently reads identity facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "permission",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-047",
+      "kind": "sql",
+      "sourceModule": "permission",
+      "targetModule": "identity",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/permission/application/PermissionGovernanceService.java",
+      "target": "users",
+      "modes": [
+        "read"
+      ],
+      "reason": "permission currently reads identity facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "permission",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-048",
+      "kind": "sql",
+      "sourceModule": "permission",
+      "targetModule": "knowledge",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/permission/application/PermissionGovernanceService.java",
+      "target": "knowledge_base_items",
+      "modes": [
+        "read"
+      ],
+      "reason": "permission currently reads knowledge facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "permission",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-049",
+      "kind": "sql",
+      "sourceModule": "permission",
+      "targetModule": "knowledge",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/permission/application/PermissionGovernanceService.java",
+      "target": "knowledge_base_spaces",
+      "modes": [
+        "read"
+      ],
+      "reason": "permission currently reads knowledge facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "permission",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-050",
+      "kind": "sql",
+      "sourceModule": "permission",
+      "targetModule": "identity",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/permission/application/ResourcePermissionManagementService.java",
+      "target": "department_members",
+      "modes": [
+        "read"
+      ],
+      "reason": "permission currently reads identity facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "permission",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-051",
+      "kind": "sql",
+      "sourceModule": "permission",
+      "targetModule": "identity",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/permission/application/ResourcePermissionManagementService.java",
+      "target": "user_group_members",
+      "modes": [
+        "read"
+      ],
+      "reason": "permission currently reads identity facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "permission",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-052",
+      "kind": "sql",
+      "sourceModule": "permission",
+      "targetModule": "identity",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/permission/application/ResourcePermissionManagementService.java",
+      "target": "users",
+      "modes": [
+        "read"
+      ],
+      "reason": "permission currently reads identity facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "permission",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-053",
+      "kind": "sql",
+      "sourceModule": "permission",
+      "targetModule": "knowledge",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/permission/application/ResourcePermissionManagementService.java",
+      "target": "knowledge_base_items",
+      "modes": [
+        "read"
+      ],
+      "reason": "permission currently reads knowledge facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "permission",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-054",
+      "kind": "sql",
+      "sourceModule": "permission",
+      "targetModule": "knowledge",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/permission/application/ResourcePermissionManagementService.java",
+      "target": "knowledge_base_spaces",
+      "modes": [
+        "read"
+      ],
+      "reason": "permission currently reads knowledge facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "permission",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-055",
+      "kind": "sql",
+      "sourceModule": "permission",
+      "targetModule": "identity",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/permission/infrastructure/JdbcResourcePermissionRepository.java",
+      "target": "department_members",
+      "modes": [
+        "read"
+      ],
+      "reason": "permission currently reads identity facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "permission",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-056",
+      "kind": "sql",
+      "sourceModule": "permission",
+      "targetModule": "identity",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/permission/infrastructure/JdbcResourcePermissionRepository.java",
+      "target": "departments",
+      "modes": [
+        "read"
+      ],
+      "reason": "permission currently reads identity facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "permission",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-057",
+      "kind": "sql",
+      "sourceModule": "permission",
+      "targetModule": "identity",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/permission/infrastructure/JdbcResourcePermissionRepository.java",
+      "target": "user_group_members",
+      "modes": [
+        "read"
+      ],
+      "reason": "permission currently reads identity facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "permission",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-058",
+      "kind": "sql",
+      "sourceModule": "permission",
+      "targetModule": "identity",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/permission/infrastructure/JdbcResourcePermissionRepository.java",
+      "target": "user_groups",
+      "modes": [
+        "read"
+      ],
+      "reason": "permission currently reads identity facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "permission",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-059",
+      "kind": "sql",
+      "sourceModule": "permission",
+      "targetModule": "identity",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/permission/infrastructure/JdbcResourcePermissionRepository.java",
+      "target": "users",
+      "modes": [
+        "read"
+      ],
+      "reason": "permission currently reads identity facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "permission",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-060",
+      "kind": "sql",
+      "sourceModule": "permission",
+      "targetModule": "identity",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/permission/infrastructure/JdbcRoleRepository.java",
+      "target": "departments",
+      "modes": [
+        "read"
+      ],
+      "reason": "permission currently reads identity facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "permission",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-061",
+      "kind": "sql",
+      "sourceModule": "permission",
+      "targetModule": "identity",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/permission/infrastructure/JdbcRoleRepository.java",
+      "target": "user_groups",
+      "modes": [
+        "read"
+      ],
+      "reason": "permission currently reads identity facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "permission",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-062",
+      "kind": "sql",
+      "sourceModule": "permission",
+      "targetModule": "identity",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/permission/infrastructure/JdbcRoleRepository.java",
+      "target": "users",
+      "modes": [
+        "read"
+      ],
+      "reason": "permission currently reads identity facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "permission",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-063",
+      "kind": "sql",
+      "sourceModule": "project",
+      "targetModule": "identity",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/project/infrastructure/JdbcProjectLegacyMappingRepository.java",
+      "target": "users",
+      "modes": [
+        "read"
+      ],
+      "reason": "project currently reads identity facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "project",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-064",
+      "kind": "sql",
+      "sourceModule": "project",
+      "targetModule": "identity",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/project/infrastructure/JdbcProjectLegacyMappingRepository.java",
+      "target": "workspaces",
+      "modes": [
+        "read"
+      ],
+      "reason": "project currently reads identity facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "project",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-065",
+      "kind": "sql",
+      "sourceModule": "project",
+      "targetModule": "identity",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/project/infrastructure/JdbcProjectLegacyProfileRepository.java",
+      "target": "users",
+      "modes": [
+        "read"
+      ],
+      "reason": "project currently reads identity facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "project",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-066",
+      "kind": "sql",
+      "sourceModule": "project",
+      "targetModule": "im",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/project/infrastructure/JdbcProjectLegacyProfileRepository.java",
+      "target": "conversation_members",
+      "modes": [
+        "read"
+      ],
+      "reason": "project currently reads im facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "project",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-067",
+      "kind": "sql",
+      "sourceModule": "project",
+      "targetModule": "im",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/project/infrastructure/JdbcProjectLegacyProfileRepository.java",
+      "target": "conversations",
+      "modes": [
+        "read"
+      ],
+      "reason": "project currently reads im facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "project",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-068",
+      "kind": "sql",
+      "sourceModule": "project",
+      "targetModule": "file",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/project/infrastructure/JdbcProjectRepository.java",
+      "target": "files",
+      "modes": [
+        "read"
+      ],
+      "reason": "project currently reads file facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "project",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-069",
+      "kind": "sql",
+      "sourceModule": "project",
+      "targetModule": "identity",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/project/infrastructure/JdbcProjectRepository.java",
+      "target": "users",
+      "modes": [
+        "read"
+      ],
+      "reason": "project currently reads identity facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "project",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-070",
+      "kind": "sql",
+      "sourceModule": "project",
+      "targetModule": "identity",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/project/infrastructure/JdbcProjectSpaceMembershipRepository.java",
+      "target": "users",
+      "modes": [
+        "read"
+      ],
+      "reason": "project currently reads identity facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "project",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-071",
+      "kind": "sql",
+      "sourceModule": "project",
+      "targetModule": "identity",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/project/infrastructure/JdbcProjectSpaceMigrationBatchRepository.java",
+      "target": "workspaces",
+      "modes": [
+        "read"
+      ],
+      "reason": "project currently reads identity facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "project",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-contract",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-072",
+      "kind": "sql",
+      "sourceModule": "search",
+      "targetModule": "base",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/search/infrastructure/JdbcSearchRepository.java",
+      "target": "base_fields",
+      "modes": [
+        "read"
+      ],
+      "reason": "search currently reads base facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "search",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-projection",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-073",
+      "kind": "sql",
+      "sourceModule": "search",
+      "targetModule": "base",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/search/infrastructure/JdbcSearchRepository.java",
+      "target": "base_members",
+      "modes": [
+        "read"
+      ],
+      "reason": "search currently reads base facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "search",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-projection",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-074",
+      "kind": "sql",
+      "sourceModule": "search",
+      "targetModule": "base",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/search/infrastructure/JdbcSearchRepository.java",
+      "target": "base_record_values",
+      "modes": [
+        "read"
+      ],
+      "reason": "search currently reads base facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "search",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-projection",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-075",
+      "kind": "sql",
+      "sourceModule": "search",
+      "targetModule": "base",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/search/infrastructure/JdbcSearchRepository.java",
+      "target": "base_records",
+      "modes": [
+        "read"
+      ],
+      "reason": "search currently reads base facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "search",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-projection",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-076",
+      "kind": "sql",
+      "sourceModule": "search",
+      "targetModule": "base",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/search/infrastructure/JdbcSearchRepository.java",
+      "target": "base_tables",
+      "modes": [
+        "read"
+      ],
+      "reason": "search currently reads base facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "search",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-projection",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-077",
+      "kind": "sql",
+      "sourceModule": "search",
+      "targetModule": "base",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/search/infrastructure/JdbcSearchRepository.java",
+      "target": "bases",
+      "modes": [
+        "read"
+      ],
+      "reason": "search currently reads base facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "search",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-projection",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-078",
+      "kind": "sql",
+      "sourceModule": "search",
+      "targetModule": "identity",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/search/infrastructure/JdbcSearchRepository.java",
+      "target": "department_members",
+      "modes": [
+        "read"
+      ],
+      "reason": "search currently reads identity facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "search",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-projection",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-079",
+      "kind": "sql",
+      "sourceModule": "search",
+      "targetModule": "identity",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/search/infrastructure/JdbcSearchRepository.java",
+      "target": "departments",
+      "modes": [
+        "read"
+      ],
+      "reason": "search currently reads identity facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "search",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-projection",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-080",
+      "kind": "sql",
+      "sourceModule": "search",
+      "targetModule": "identity",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/search/infrastructure/JdbcSearchRepository.java",
+      "target": "user_group_members",
+      "modes": [
+        "read"
+      ],
+      "reason": "search currently reads identity facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "search",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-projection",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-081",
+      "kind": "sql",
+      "sourceModule": "search",
+      "targetModule": "identity",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/search/infrastructure/JdbcSearchRepository.java",
+      "target": "user_groups",
+      "modes": [
+        "read"
+      ],
+      "reason": "search currently reads identity facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "search",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-projection",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-082",
+      "kind": "sql",
+      "sourceModule": "search",
+      "targetModule": "identity",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/search/infrastructure/JdbcSearchRepository.java",
+      "target": "users",
+      "modes": [
+        "read"
+      ],
+      "reason": "search currently reads identity facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "search",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-projection",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-083",
+      "kind": "sql",
+      "sourceModule": "search",
+      "targetModule": "im",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/search/infrastructure/JdbcSearchRepository.java",
+      "target": "conversation_members",
+      "modes": [
+        "read"
+      ],
+      "reason": "search currently reads im facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "search",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-projection",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-084",
+      "kind": "sql",
+      "sourceModule": "search",
+      "targetModule": "im",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/search/infrastructure/JdbcSearchRepository.java",
+      "target": "conversations",
+      "modes": [
+        "read"
+      ],
+      "reason": "search currently reads im facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "search",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-projection",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-085",
+      "kind": "sql",
+      "sourceModule": "search",
+      "targetModule": "im",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/search/infrastructure/JdbcSearchRepository.java",
+      "target": "messages",
+      "modes": [
+        "read"
+      ],
+      "reason": "search currently reads im facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "search",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-projection",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-086",
+      "kind": "sql",
+      "sourceModule": "search",
+      "targetModule": "knowledge",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/search/infrastructure/JdbcSearchRepository.java",
+      "target": "knowledge_base_items",
+      "modes": [
+        "read"
+      ],
+      "reason": "search currently reads knowledge facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "search",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-projection",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-087",
+      "kind": "sql",
+      "sourceModule": "search",
+      "targetModule": "knowledge",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/search/infrastructure/JdbcSearchRepository.java",
+      "target": "knowledge_base_spaces",
+      "modes": [
+        "read"
+      ],
+      "reason": "search currently reads knowledge facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "search",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-projection",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-088",
+      "kind": "sql",
+      "sourceModule": "search",
+      "targetModule": "knowledge",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/search/infrastructure/JdbcSearchRepository.java",
+      "target": "knowledge_content_blocks",
+      "modes": [
+        "read"
+      ],
+      "reason": "search currently reads knowledge facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "search",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-projection",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-089",
+      "kind": "sql",
+      "sourceModule": "search",
+      "targetModule": "knowledge",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/search/infrastructure/JdbcSearchRepository.java",
+      "target": "knowledge_content_comments",
+      "modes": [
+        "read"
+      ],
+      "reason": "search currently reads knowledge facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "search",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-projection",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-090",
+      "kind": "sql",
+      "sourceModule": "search",
+      "targetModule": "permission",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/search/infrastructure/JdbcSearchRepository.java",
+      "target": "resource_permissions",
+      "modes": [
+        "read"
+      ],
+      "reason": "search currently reads permission facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "search",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-projection",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-091",
+      "kind": "sql",
+      "sourceModule": "search",
+      "targetModule": "permission",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/search/infrastructure/JdbcSearchRepository.java",
+      "target": "user_roles",
+      "modes": [
+        "read"
+      ],
+      "reason": "search currently reads permission facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "search",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-projection",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-092",
+      "kind": "sql",
+      "sourceModule": "search",
+      "targetModule": "project",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/search/infrastructure/JdbcSearchRepository.java",
+      "target": "issues",
+      "modes": [
+        "read"
+      ],
+      "reason": "search currently reads project facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "search",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-projection",
+      "status": "approved"
+    },
+    {
+      "id": "BOUNDARY-READ-093",
+      "kind": "sql",
+      "sourceModule": "search",
+      "targetModule": "project",
+      "sourceFile": "server/src/main/java/com/colla/platform/modules/search/infrastructure/JdbcSearchRepository.java",
+      "target": "project_members",
+      "modes": [
+        "read"
+      ],
+      "reason": "search currently reads project facts until an approved query contract or owned projection replaces this exact access.",
+      "owner": "search",
+      "introducedStage": "PLATFORM-SCALE-S01",
+      "exitStage": "PLATFORM-SCALE-S05",
+      "expiryDecision": "replace-with-projection",
+      "status": "approved"
+    }
+  ]
+}

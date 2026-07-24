@@ -88,7 +88,7 @@ class ProjectWorkItemFieldSchemaIntegrationTests {
     }
 
     @Test
-    void v063UpgradePreservesLegacyRowsAndAddsOnlyFieldConfigurationSchema() throws Exception {
+    void v063UpgradeToV066PreservesLegacyRowsAndAddsOnlyFieldConfigurationSchema() throws Exception {
         PostgreSQLContainer<?> container = new PostgreSQLContainer<>("postgres:16");
         container.start();
         try {
@@ -156,11 +156,12 @@ class ProjectWorkItemFieldSchemaIntegrationTests {
 
             Flyway latest = Flyway.configure()
                 .dataSource(container.getJdbcUrl(), container.getUsername(), container.getPassword())
+                .target("66")
                 .load();
-            assertEquals(2, latest.migrate().migrationsExecuted);
+            assertEquals(3, latest.migrate().migrationsExecuted);
             assertEquals(0, latest.migrate().migrationsExecuted);
 
-            assertEquals(latestMigrationVersion(), isolated.queryForObject(
+            assertEquals("066", isolated.queryForObject(
                 "select max(version) from flyway_schema_history",
                 String.class
             ));

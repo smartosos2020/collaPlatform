@@ -1,6 +1,7 @@
 package com.colla.platform.shared.websocket;
 
-import com.colla.platform.modules.knowledge.application.KnowledgeContentCollaborationService;
+import com.colla.platform.config.runtime.ConditionalOnRuntimeRole;
+import com.colla.platform.config.runtime.RuntimeRole;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -11,23 +12,26 @@ import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
+import org.springframework.context.event.ContextClosedEvent;
+import org.springframework.context.event.EventListener;
 
 @Component
+@ConditionalOnRuntimeRole({RuntimeRole.EVENT_GATEWAY, RuntimeRole.COMBINED})
 public class PlatformWebSocketHandler extends TextWebSocketHandler {
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
     };
 
     private final WebSocketSessionRegistry registry;
-    private final KnowledgeContentCollaborationService documentCollaborationService;
+    private final CollaborationMessageHandler collaborationMessageHandler;
     private final ObjectMapper objectMapper;
 
     public PlatformWebSocketHandler(
         WebSocketSessionRegistry registry,
-        KnowledgeContentCollaborationService documentCollaborationService,
+        CollaborationMessageHandler collaborationMessageHandler,
         ObjectMapper objectMapper
     ) {
         this.registry = registry;
-        this.documentCollaborationService = documentCollaborationService;
+        this.collaborationMessageHandler = collaborationMessageHandler;
         this.objectMapper = objectMapper;
     }
 
@@ -47,16 +51,21 @@ public class PlatformWebSocketHandler extends TextWebSocketHandler {
             return;
         }
         String type = command.get("type") == null ? "" : String.valueOf(command.get("type"));
-        if (documentCollaborationService.supports(type)) {
-            documentCollaborationService.handle(currentUser(session), session, message.getPayload());
+        if (collaborationMessageHandler.supports(type)) {
+            collaborationMessageHandler.handle(currentUser(session), session, message.getPayload());
         }
     }
 
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
         CurrentUser currentUser = currentUser(session);
-        documentCollaborationService.disconnect(session, currentUser);
+        collaborationMessageHandler.disconnect(session, currentUser);
         registry.unregister(currentUser.id(), session);
+    }
+
+    @EventListener
+    public void onShutdown(ContextClosedEvent event) {
+        registry.closeAll();
     }
 
     private CurrentUser currentUser(WebSocketSession session) {

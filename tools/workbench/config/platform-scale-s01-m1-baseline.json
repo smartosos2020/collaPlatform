@@ -1,0 +1,84 @@
+{
+  "schemaVersion": 1,
+  "baselineId": "PLATFORM-SCALE-S01-M1",
+  "sourceCommit": "134c3706db280f364eeffd7ae44526b6b1d6180d",
+  "compareRef": "ee8fb6883ac5868976cb261a25ab6d4972c33981",
+  "expected": {
+    "backend": {
+      "modules": 15,
+      "javaFiles": 233,
+      "crossModuleImports": 204,
+      "crossModuleFiles": 59,
+      "foreignInfrastructureImports": 47,
+      "foreignInfrastructureFiles": 22,
+      "directedEdges": 58,
+      "transactionalForeignInfrastructureFiles": 16,
+      "sharedToModuleImports": 3,
+      "stronglyConnectedComponents": [
+        [
+          "audit",
+          "base",
+          "event",
+          "file",
+          "identity",
+          "im",
+          "knowledge",
+          "permission",
+          "platform",
+          "project",
+          "search"
+        ]
+      ]
+    },
+    "frontend": {
+      "features": 16,
+      "sourceFiles": 76,
+      "crossFeatureImports": 64,
+      "crossFeatureFiles": 23,
+      "directedEdges": 40,
+      "stronglyConnectedComponents": [
+        [
+          "knowledgeBases",
+          "search"
+        ]
+      ]
+    },
+    "database": {
+      "migrations": 65,
+      "activeTables": 85,
+      "unresolvedOwners": 0,
+      "crossOwnerCandidates": 96,
+      "crossOwnerFiles": 22,
+      "dynamicSqlCandidates": 41
+    },
+    "runtime": {
+      "scheduledTasks": 3,
+      "inMemoryStateLocations": 6,
+      "productionServices": 8
+    },
+    "comparison": {
+      "ref": "ee8fb6883ac5868976cb261a25ab6d4972c33981",
+      "backend": {
+        "javaFiles": 18,
+        "crossModuleImports": 10,
+        "crossModuleFiles": 2,
+        "foreignInfrastructureImports": 6,
+        "foreignInfrastructureFiles": 2,
+        "directedEdges": 0,
+        "transactionalForeignInfrastructureFiles": 1
+      },
+      "frontend": {
+        "sourceFiles": 3,
+        "crossFeatureImports": 0,
+        "crossFeatureFiles": 0,
+        "directedEdges": 0
+      },
+      "database": {
+        "migrations": 2,
+        "activeTables": 3,
+        "crossOwnerCandidates": 0,
+        "crossOwnerFiles": 0
+      }
+    }
+  }
+}

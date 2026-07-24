@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "contractVersion": 1,
+  "rootPackage": "com.colla.platform.modules",
+  "contractPolicy": {
+    "publicPackage": "contract",
+    "allowedKinds": ["facade", "spi", "record", "value", "event"],
+    "forbiddenProviderLayers": ["api", "application", "domain", "infrastructure"],
+    "compatibility": "Additive changes remain in the current contract version. Removing, renaming, narrowing, or changing semantics requires a new versioned contract and a migration Stage."
+  },
+  "modules": [
+    {"name":"admin","owner":"enterprise-governance","rootPackage":"com.colla.platform.modules.admin","publicContract":"com.colla.platform.modules.admin.contract","privatePackages":["api","application","domain","infrastructure"],"compositionRole":"governance-read-model","compositionPermission":"admin-governance-only","status":"active"},
+    {"name":"approval","owner":"approval","rootPackage":"com.colla.platform.modules.approval","publicContract":"com.colla.platform.modules.approval.contract","privatePackages":["api","application","domain","infrastructure"],"compositionRole":"none","compositionPermission":"not-applicable","status":"active"},
+    {"name":"audit","owner":"audit","rootPackage":"com.colla.platform.modules.audit","publicContract":"com.colla.platform.modules.audit.contract","privatePackages":["api","application","domain","infrastructure"],"compositionRole":"technical-port-provider","compositionPermission":"append-only","status":"active"},
+    {"name":"base","owner":"base","rootPackage":"com.colla.platform.modules.base","publicContract":"com.colla.platform.modules.base.contract","privatePackages":["api","application","domain","infrastructure"],"compositionRole":"none","compositionPermission":"not-applicable","status":"active"},
+    {"name":"event","owner":"event-platform","rootPackage":"com.colla.platform.modules.event","publicContract":"com.colla.platform.modules.event.contract","privatePackages":["api","application","domain","infrastructure"],"compositionRole":"technical-port-provider","compositionPermission":"transactional-append-only","status":"active"},
+    {"name":"file","owner":"file-platform","rootPackage":"com.colla.platform.modules.file","publicContract":"com.colla.platform.modules.file.contract","privatePackages":["api","application","domain","infrastructure"],"compositionRole":"none","compositionPermission":"metadata-and-access-only","status":"active"},
+    {"name":"identity","owner":"identity","rootPackage":"com.colla.platform.modules.identity","publicContract":"com.colla.platform.modules.identity.contract","privatePackages":["api","application","domain","infrastructure"],"compositionRole":"directory-provider","compositionPermission":"minimum-disclosure-query","status":"active"},
+    {"name":"im","owner":"messaging","rootPackage":"com.colla.platform.modules.im","publicContract":"com.colla.platform.modules.im.contract","privatePackages":["api","application","domain","infrastructure"],"compositionRole":"none","compositionPermission":"explicit-command-and-query","status":"active"},
+    {"name":"knowledge","owner":"knowledge","rootPackage":"com.colla.platform.modules.knowledge","publicContract":"com.colla.platform.modules.knowledge.contract","privatePackages":["api","application","domain","infrastructure"],"compositionRole":"none","compositionPermission":"not-applicable","status":"active"},
+    {"name":"notification","owner":"notification","rootPackage":"com.colla.platform.modules.notification","publicContract":"com.colla.platform.modules.notification.contract","privatePackages":["api","application","domain","infrastructure"],"compositionRole":"none","compositionPermission":"not-applicable","status":"active"},
+    {"name":"permission","owner":"permission","rootPackage":"com.colla.platform.modules.permission","publicContract":"com.colla.platform.modules.permission.contract","privatePackages":["api","application","domain","infrastructure"],"compositionRole":"policy-provider","compositionPermission":"decision-and-governance-query","status":"active"},
+    {"name":"platform","owner":"platform-object","rootPackage":"com.colla.platform.modules.platform","publicContract":"com.colla.platform.modules.platform.contract","privatePackages":["api","application","domain","infrastructure"],"compositionRole":"object-registry","compositionPermission":"summary-access-link-favorite","status":"active"},
+    {"name":"project","owner":"project","rootPackage":"com.colla.platform.modules.project","publicContract":"com.colla.platform.modules.project.contract","privatePackages":["api","application","domain","infrastructure"],"compositionRole":"none","compositionPermission":"not-applicable","status":"active"},
+    {"name":"search","owner":"search","rootPackage":"com.colla.platform.modules.search","publicContract":"com.colla.platform.modules.search.contract","privatePackages":["api","application","domain","infrastructure"],"compositionRole":"read-projection","compositionPermission":"approved-read-only-sources","status":"active"},
+    {"name":"workspace","owner":"workspace-experience","rootPackage":"com.colla.platform.modules.workspace","publicContract":"com.colla.platform.modules.workspace.contract","privatePackages":["api","application","domain","infrastructure"],"compositionRole":"user-read-composition","compositionPermission":"query-facades-only","status":"active"}
+  ]
+}

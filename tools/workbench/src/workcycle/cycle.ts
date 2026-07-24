@@ -92,6 +92,8 @@ function start(options: WorkCycleOptions): void {
       ...(planning ? [planning.targetArchitectureDoc] : []),
       'docs/01-architecture/technology-selection.md',
       'docs/01-architecture/platform-object-model.md',
+      'docs/01-architecture/platform-module-contracts.md',
+      'docs/01-architecture/event-side-effect-matrix.md',
       'docs/02-roadmap/current-roadmap.md',
       'docs/03-engineering/ai-engineering-governance.md',
     ],
@@ -153,6 +155,11 @@ async function verify(options: WorkCycleOptions): Promise<void> {
   const areas = affected(context)
   const profile = options.validationProfile ?? (options.stage === 'finish' ? 'stage' : 'light')
   const planning = loadActivePlanningContract(repositoryRoot)
+  context.allowedActiveDocs = [...new Set([
+    ...(context.allowedActiveDocs ?? []),
+    'docs/01-architecture/platform-module-contracts.md',
+    'docs/01-architecture/event-side-effect-matrix.md',
+  ])]
   if (context.planning?.program && (planning.program !== context.planning.program || planning.stage !== context.planning.stage)) throw new Error('Active Program or Stage changed during the work cycle; restart the cycle after reviewing the planning change')
   if (context.planning?.program && planning.programRevision !== context.planning.programRevision && !(options.stage === 'finish' && context.planning.isStageFinalMilestone)) throw new Error('Program revision changed during the work cycle; restart after reviewing the planning change')
   assertStageFinalValidationProfile(options.stage, Boolean(context.planning?.isStageFinalMilestone), profile, context.milestone)

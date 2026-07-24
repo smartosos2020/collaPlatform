@@ -1,0 +1,88 @@
+{
+  "schemaVersion": 1,
+  "baselineId": "PLATFORM-SCALE-S01-M1",
+  "sourceCommit": "134c3706db280f364eeffd7ae44526b6b1d6180d",
+  "risks": [
+    {
+      "id": "PS-P0-001",
+      "priority": "P0",
+      "owner": "platform-architecture",
+      "fixStage": "PLATFORM-SCALE-S01-M3",
+      "blocking": "Blocks new cross-module private dependencies from being accepted after S01.",
+      "summary": "Backend has 204 cross-module imports, including 47 foreign infrastructure imports, without an automatic boundary gate.",
+      "evidence": ["architecture-inventory.json:backend"]
+    },
+    {
+      "id": "PS-P0-002",
+      "priority": "P0",
+      "owner": "project",
+      "fixStage": "PLATFORM-SCALE-S01-M4",
+      "blocking": "Blocks PROJECT-PLATFORM-S05 because layout, publish, and WorkItem runtime would expand the same private dependencies.",
+      "summary": "Project directly imports identity, file, platform, event, audit, permission, and IM private layers.",
+      "evidence": ["architecture-inventory.json:backend.crossModuleImports[sourceModule=project]"]
+    },
+    {
+      "id": "PS-P0-003",
+      "priority": "P0",
+      "owner": "platform-architecture",
+      "fixStage": "PLATFORM-SCALE-S01-M4",
+      "blocking": "Shared code cannot remain a stable technical dependency while it imports business providers.",
+      "summary": "Three shared imports point to identity infrastructure or knowledge application.",
+      "evidence": ["architecture-inventory.json:backend.sharedToModuleImports"]
+    },
+    {
+      "id": "PS-P0-004",
+      "priority": "P0",
+      "owner": "data-governance",
+      "fixStage": "PLATFORM-SCALE-S01-M2/M3",
+      "blocking": "New foreign writes or ownerless tables must fail before S01 closes.",
+      "summary": "The current schema has 85 active tables and Java contains 96 cross-owner file-table candidates in 22 files.",
+      "evidence": ["architecture-inventory.json:database"]
+    },
+    {
+      "id": "PS-P0-005",
+      "priority": "P0",
+      "owner": "platform-architecture",
+      "fixStage": "PLATFORM-SCALE-S01-M2/M4",
+      "blocking": "Contract extraction must preserve atomic outbox/audit behavior and expose other cross-owner writes explicitly.",
+      "summary": "Sixteen transactional application files import foreign infrastructure.",
+      "evidence": ["architecture-inventory.json:backend.transactionalForeignInfrastructureFiles"]
+    },
+    {
+      "id": "PS-P1-001",
+      "priority": "P1",
+      "owner": "platform-runtime",
+      "fixStage": "PLATFORM-SCALE-S02",
+      "blocking": "Blocks a supported two-API deployment.",
+      "summary": "One Spring server hosts HTTP API, worker polling, general WebSocket sessions, and legacy collaboration schedules.",
+      "evidence": ["architecture-inventory.json:runtime.roles"]
+    },
+    {
+      "id": "PS-P1-002",
+      "priority": "P1",
+      "owner": "event",
+      "fixStage": "PLATFORM-SCALE-S03",
+      "blocking": "Blocks independent worker scaling and crash recovery.",
+      "summary": "DomainEventWorker is scheduled in the API process and has no lease/dead-letter/replay runtime boundary.",
+      "evidence": ["architecture-inventory.json:runtime.scheduledTasks"]
+    },
+    {
+      "id": "PS-P1-003",
+      "priority": "P1",
+      "owner": "realtime",
+      "fixStage": "PLATFORM-SCALE-S04",
+      "blocking": "Blocks multi-node general realtime delivery.",
+      "summary": "General WebSocket and legacy Spring knowledge collaboration retain six process-memory state locations.",
+      "evidence": ["architecture-inventory.json:runtime.inMemoryState"]
+    },
+    {
+      "id": "PS-P2-001",
+      "priority": "P2",
+      "owner": "platform-operations",
+      "fixStage": "PLATFORM-SCALE-S05",
+      "blocking": "Does not block S01; blocks publishing an actual capacity commitment.",
+      "summary": "No fixed multi-role load, soak, failure, or recovery baseline exists.",
+      "evidence": ["docs/90-reports/platform-scale-readiness-baseline-2026-07-24.md"]
+    }
+  ]
+}

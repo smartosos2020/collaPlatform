@@ -33,7 +33,7 @@ import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.Knowle
 import com.colla.platform.modules.knowledge.domain.KnowledgeBaseItemModels.KnowledgeReviewReminderResult;
 import com.colla.platform.modules.knowledge.infrastructure.KnowledgeContentRepository;
 import com.colla.platform.modules.knowledge.infrastructure.KnowledgeBaseSpaceRepository;
-import com.colla.platform.modules.event.infrastructure.DomainEventRepository;
+import com.colla.platform.modules.event.contract.TransactionalOutbox;
 import com.colla.platform.modules.file.infrastructure.FileRepository;
 import com.colla.platform.modules.identity.domain.UserGroupModels.UserGroupSummary;
 import com.colla.platform.modules.identity.infrastructure.UserGroupRepository;
@@ -115,7 +115,7 @@ public class KnowledgeContentService {
     private final KnowledgeContentRepository contentRepository;
     private final KnowledgeBaseSpaceRepository knowledgeBaseSpaceRepository;
     private final PlatformObjectRepository objectRepository;
-    private final DomainEventRepository eventRepository;
+    private final TransactionalOutbox eventRepository;
     private final ProjectRepository projectRepository;
     private final FileRepository fileRepository;
     private final BaseService baseService;
@@ -130,7 +130,7 @@ public class KnowledgeContentService {
         KnowledgeContentRepository contentRepository,
         KnowledgeBaseSpaceRepository knowledgeBaseSpaceRepository,
         PlatformObjectRepository objectRepository,
-        DomainEventRepository eventRepository,
+        TransactionalOutbox eventRepository,
         ProjectRepository projectRepository,
         FileRepository fileRepository,
         BaseService baseService,
@@ -3281,7 +3281,6 @@ public class KnowledgeContentService {
     private record AnchorRange(int start, int end) {
     }
 }
-
 
 
 

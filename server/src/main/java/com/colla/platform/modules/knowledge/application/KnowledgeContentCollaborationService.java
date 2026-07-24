@@ -1,11 +1,14 @@
 package com.colla.platform.modules.knowledge.application;
 
+import com.colla.platform.config.runtime.ConditionalOnRuntimeRole;
+import com.colla.platform.config.runtime.RuntimeRole;
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContentCollaborationState;
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContentCollaborationHealth;
 import com.colla.platform.modules.knowledge.domain.KnowledgeBaseItemModels.KnowledgeBaseItem;
 import com.colla.platform.modules.knowledge.infrastructure.KnowledgeContentRepository;
 import com.colla.platform.shared.auth.CurrentUser;
 import com.colla.platform.shared.websocket.WebSocketEventPayload;
+import com.colla.platform.shared.websocket.CollaborationMessageHandler;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -18,7 +21,6 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import org.springframework.http.HttpStatus;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -26,7 +28,8 @@ import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 
 @Service
-public class KnowledgeContentCollaborationService {
+@ConditionalOnRuntimeRole({RuntimeRole.WORKER, RuntimeRole.EVENT_GATEWAY, RuntimeRole.COMBINED})
+public class KnowledgeContentCollaborationService implements CollaborationMessageHandler, KnowledgeCollaborationHealthQuery {
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
     };
     private static final String SNAPSHOT_ENCODING = "snapshot-v1";
@@ -48,6 +51,7 @@ public class KnowledgeContentCollaborationService {
         this.objectMapper = objectMapper;
     }
 
+    @Override
     public boolean supports(String type) {
         return type != null && type.startsWith("knowledge.content.");
     }
@@ -71,6 +75,7 @@ public class KnowledgeContentCollaborationService {
         );
     }
 
+    @Override
     public void handle(CurrentUser currentUser, WebSocketSession session, String rawPayload) {
         Map<String, Object> command;
         try {
@@ -104,6 +109,7 @@ public class KnowledgeContentCollaborationService {
         }
     }
 
+    @Override
     public void disconnect(WebSocketSession session, CurrentUser currentUser) {
         List<ContentRoomKey> affectedRooms = new ArrayList<>();
         for (Map.Entry<ContentRoomKey, ContentRoom> entry : rooms.entrySet()) {
@@ -257,7 +263,6 @@ public class KnowledgeContentCollaborationService {
         sendSnapshot(session, requestId, key, room);
     }
 
-    @Scheduled(fixedDelayString = "${colla.docs.collaboration.autosave-delay-ms:1000}")
     @Transactional
     public void flushDirtySnapshots() {
         for (Map.Entry<ContentRoomKey, DirtySnapshot> entry : List.copyOf(dirtySnapshots.entrySet())) {
@@ -284,7 +289,6 @@ public class KnowledgeContentCollaborationService {
         }
     }
 
-    @Scheduled(fixedDelayString = "${colla.docs.collaboration.presence-cleanup-delay-ms:30000}")
     public void pruneInactiveRooms() {
         Instant cutoff = Instant.now().minusSeconds(PRESENCE_TTL_SECONDS);
         for (Map.Entry<ContentRoomKey, ContentRoom> entry : List.copyOf(rooms.entrySet())) {

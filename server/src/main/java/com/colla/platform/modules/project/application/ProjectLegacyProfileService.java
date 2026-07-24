@@ -1,7 +1,7 @@
 package com.colla.platform.modules.project.application;
 
-import com.colla.platform.modules.audit.application.AuditService;
-import com.colla.platform.modules.permission.application.PermissionService;
+import com.colla.platform.modules.audit.contract.AuditLog;
+import com.colla.platform.modules.permission.contract.ProjectAuthorization;
 import com.colla.platform.modules.project.domain.ProjectLegacyProfileModels.ProjectLegacyProfile;
 import com.colla.platform.modules.project.infrastructure.ProjectLegacyProfileRepository;
 import com.colla.platform.shared.auth.CurrentUser;
@@ -16,13 +16,13 @@ public class ProjectLegacyProfileService {
     static final int MAX_FINDINGS_PER_CATEGORY = 200;
 
     private final ProjectLegacyProfileRepository projectLegacyProfileRepository;
-    private final PermissionService permissionService;
-    private final AuditService auditService;
+    private final ProjectAuthorization permissionService;
+    private final AuditLog auditService;
 
     public ProjectLegacyProfileService(
         ProjectLegacyProfileRepository projectLegacyProfileRepository,
-        PermissionService permissionService,
-        AuditService auditService
+        ProjectAuthorization permissionService,
+        AuditLog auditService
     ) {
         this.projectLegacyProfileRepository = projectLegacyProfileRepository;
         this.permissionService = permissionService;

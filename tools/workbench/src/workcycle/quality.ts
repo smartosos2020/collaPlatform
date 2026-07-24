@@ -6,6 +6,7 @@ import { namingGuard } from '../knowledge/checks.js'
 import { runSecurityAudit } from '../security/audit.js'
 import { scanSensitiveData } from '../security/sensitiveScan.js'
 import { activePlatformViolations } from '../security/platformGuard.js'
+import { checkArchitectureBoundaries } from '../architecture/boundaries.js'
 import { loadActivePlanningContract, planningSummary } from './planning.js'
 import { assertDocumentationStructure, assertFrontendRouteLazyLoading, assertGeneratedArtifacts, assertMockitoJavaAgent, implementationMarkers } from './staticChecks.js'
 
@@ -303,6 +304,12 @@ export async function runQualityGate(root: string, options: QualityOptions): Pro
   step('Toolchain', () => { for (const [cmd, args] of [['java', ['-version']], ['mvn', ['-version']], ['node', ['--version']], ['pnpm', ['--version']], ['docker', ['--version']]] as const) runSync(cmd, [...args], { cwd: root }) })
   const planning = loadActivePlanningContract(root)
   step('Active planning contract', () => console.log(planningSummary(planning)))
+  if (existsSync(join(root, 'tools/workbench/config/platform-boundary-baseline.json'))) {
+    step('Architecture boundaries', () => checkArchitectureBoundaries(root, {
+      outputDirectory: '.local-reports',
+      label: `architecture-boundaries-${stamp}`,
+    }))
+  }
   if (!options.skipDocker) command('Docker dependencies', 'docker', [...dockerDependencyArgs])
   if (options.backend === 'compile') command('Backend compile', 'mvn', ['-DskipTests', 'test'], join(root, 'server'))
   if (options.backend === 'targeted') {

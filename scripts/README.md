@@ -15,6 +15,9 @@ The only active automation runtime is the Node.js + TypeScript package at `tools
 
 ```text
 pnpm audit:snapshot -- --profile light --label before-change
+pnpm architecture:inventory -- --compare-ref <git-ref> --expectation-path tools/workbench/config/platform-scale-s01-m1-baseline.json
+pnpm architecture:contracts
+pnpm architecture:boundaries
 pnpm work:start -- --goal project-platform-s01-m1 --task-range "PROJECT-PLATFORM-S01-M1-T01 to PROJECT-PLATFORM-S01-M1-T09"
 pnpm work:checkpoint -- --goal project-platform-s01-m1
 pnpm work:finish -- --goal project-platform-s01-m1 --backend-test-pattern ProjectControllerIntegrationTests --browser-spec e2e/cross-module-route-final.spec.ts --browser-evidence-kind real --browser-evidence-environment isolated
@@ -48,6 +51,12 @@ pnpm pilot:readiness -- --manifest-path .local-pilot/pilot.json --initialization
 ```
 
 Options use lowercase kebab-case. Legacy PowerShell-style `-PascalCase` names are normalized by the CLI parser during the migration window, but new documentation and automation must use `--kebab-case`.
+
+`architecture:inventory` parses Java module imports, TypeScript feature references, effective Flyway tables, Java SQL access, scheduled tasks, process-memory state and production Compose services. It writes deterministic JSON and Markdown below `.local-reports/`; `--compare-ref` scans a historical Git tree without changing the worktree, and `--expectation-path` fails on baseline drift. Paths in the schema are always repository-relative POSIX paths.
+
+`architecture:contracts` validates the 15-module manifest, V001-V065 effective table-owner manifest, exact boundary-exception schema, public Java contract packages and the accepted module-boundary ADR. Unknown modules, duplicate/missing tables, ownerless active tables, wildcard exceptions, foreign-write exceptions and contract imports of provider-private packages fail.
+
+`architecture:boundaries` applies the ratcheted Java/TypeScript/module-graph baseline and table-owner rules. It rejects shared-to-feature dependencies, new or stale private imports, SCC drift, unapproved cross-owner reads, and every cross-owner write. The same gate runs in quick/full work cycles and the Windows/macOS/Linux CI matrix.
 
 ## Program And Stage Contract
 

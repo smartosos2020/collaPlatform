@@ -1,11 +1,10 @@
 package com.colla.platform.modules.project.application;
 
-import com.colla.platform.modules.platform.application.PlatformObjectResolver;
-import com.colla.platform.modules.platform.domain.PlatformModels.ObjectAccessState;
-import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectSummary;
+import com.colla.platform.modules.platform.contract.ObjectAccessState;
+import com.colla.platform.modules.platform.contract.PlatformObjectResolver;
+import com.colla.platform.modules.platform.contract.PlatformObjectSummary;
 import com.colla.platform.modules.project.domain.ProjectModels.ProjectSummary;
 import com.colla.platform.modules.project.infrastructure.ProjectRepository;
-import com.colla.platform.shared.auth.CurrentUser;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -25,12 +24,12 @@ public class ProjectPlatformObjectResolver implements PlatformObjectResolver {
     }
 
     @Override
-    public Optional<PlatformObjectSummary> resolve(CurrentUser currentUser, UUID objectId) {
-        Optional<ProjectSummary> project = projectRepository.findProjectById(currentUser.workspaceId(), objectId);
+    public Optional<PlatformObjectSummary> resolve(UUID workspaceId, UUID actorId, UUID objectId) {
+        Optional<ProjectSummary> project = projectRepository.findProjectById(workspaceId, objectId);
         if (project.isEmpty()) {
             return Optional.empty();
         }
-        if (!projectRepository.isProjectMember(currentUser.workspaceId(), objectId, currentUser.id())) {
+        if (!projectRepository.isProjectMember(workspaceId, objectId, actorId)) {
             return Optional.of(PlatformObjectSummary.unavailable(objectType(), objectId, ObjectAccessState.forbidden));
         }
         ProjectSummary value = project.get();
@@ -51,5 +50,12 @@ public class ProjectPlatformObjectResolver implements PlatformObjectResolver {
                 "updatedAt", value.updatedAt().toString()
             )
         ));
+    }
+
+    @Override
+    public ObjectAccessState accessState(UUID workspaceId, UUID actorId, UUID objectId) {
+        return resolve(workspaceId, actorId, objectId)
+            .map(PlatformObjectSummary::accessState)
+            .orElse(ObjectAccessState.not_found);
     }
 }

@@ -21,7 +21,8 @@ services:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 12
+      start_period: 20s
 
   redis:
     image: redis:7-alpine@sha256:6ab0b6e7381779332f97b8ca76193e45b0756f38d4c0dcda72dbb3c32061ab99
@@ -52,16 +53,19 @@ services:
       timeout: 5s
       retries: 5
 
-  server:
+  maintenance:
     image: ${SERVER_IMAGE:-colla-platform-server:latest}
     build:
       context: ../server
       args:
         SOURCE_COMMIT: ${SOURCE_COMMIT:-unknown}
-    restart: unless-stopped
+    restart: "no"
     logging: *default-logging
     environment:
       SPRING_PROFILES_ACTIVE: prod
+      SPRING_MAIN_WEB_APPLICATION_TYPE: none
+      COLLA_RUNTIME_ROLE: maintenance
+      COLLA_INSTANCE_ID: maintenance
       COLLA_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
       COLLA_DATASOURCE_USERNAME: ${POSTGRES_USER}
       COLLA_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
@@ -94,6 +98,205 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+
+  api-a:
+    image: ${SERVER_IMAGE:-colla-platform-server:latest}
+    build:
+      context: ../server
+      args:
+        SOURCE_COMMIT: ${SOURCE_COMMIT:-unknown}
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      COLLA_RUNTIME_ROLE: api
+      COLLA_INSTANCE_ID: api-a
+      SPRING_FLYWAY_ENABLED: "false"
+      SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: ${API_DB_POOL_SIZE:-12}
+      SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE: ${API_DB_MIN_IDLE:-2}
+      SPRING_DATASOURCE_HIKARI_CONNECTION_TIMEOUT: ${API_DB_CONNECTION_TIMEOUT_MS:-5000}
+      SPRING_DATASOURCE_HIKARI_VALIDATION_TIMEOUT: ${API_DB_VALIDATION_TIMEOUT_MS:-3000}
+      COLLA_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
+      COLLA_DATASOURCE_USERNAME: ${POSTGRES_USER}
+      COLLA_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      MINIO_BUCKET: ${MINIO_BUCKET}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      JWT_ACCESS_TOKEN_TTL_MINUTES: ${JWT_ACCESS_TOKEN_TTL_MINUTES}
+      JWT_REFRESH_TOKEN_TTL_DAYS: ${JWT_REFRESH_TOKEN_TTL_DAYS}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS}
+      MAX_UPLOAD_SIZE_BYTES: ${MAX_UPLOAD_SIZE_BYTES}
+      COLLA_COLLABORATION_INTERNAL_SECRET: ${COLLA_COLLABORATION_INTERNAL_SECRET}
+      COLLA_COLLABORATION_PUBLIC_URL: /collaboration
+      COLLA_COLLABORATION_INTERNAL_URL: http://collaboration-a:1234,http://collaboration-b:1234
+      LOG_PATH: /app/logs
+    volumes:
+      - server_logs:/app/logs
+    depends_on:
+      maintenance:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/actuator/health/readiness"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  api-b:
+    extends:
+      service: api-a
+    build:
+      context: ../server
+      args:
+        SOURCE_COMMIT: ${SOURCE_COMMIT:-unknown}
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      COLLA_RUNTIME_ROLE: api
+      COLLA_INSTANCE_ID: api-b
+      SPRING_FLYWAY_ENABLED: "false"
+      SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: ${API_DB_POOL_SIZE:-12}
+      SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE: ${API_DB_MIN_IDLE:-2}
+      SPRING_DATASOURCE_HIKARI_CONNECTION_TIMEOUT: ${API_DB_CONNECTION_TIMEOUT_MS:-5000}
+      SPRING_DATASOURCE_HIKARI_VALIDATION_TIMEOUT: ${API_DB_VALIDATION_TIMEOUT_MS:-3000}
+      COLLA_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
+      COLLA_DATASOURCE_USERNAME: ${POSTGRES_USER}
+      COLLA_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      MINIO_BUCKET: ${MINIO_BUCKET}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      JWT_ACCESS_TOKEN_TTL_MINUTES: ${JWT_ACCESS_TOKEN_TTL_MINUTES}
+      JWT_REFRESH_TOKEN_TTL_DAYS: ${JWT_REFRESH_TOKEN_TTL_DAYS}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS}
+      MAX_UPLOAD_SIZE_BYTES: ${MAX_UPLOAD_SIZE_BYTES}
+      COLLA_COLLABORATION_INTERNAL_SECRET: ${COLLA_COLLABORATION_INTERNAL_SECRET}
+      COLLA_COLLABORATION_PUBLIC_URL: /collaboration
+      COLLA_COLLABORATION_INTERNAL_URL: http://collaboration-a:1234,http://collaboration-b:1234
+      LOG_PATH: /app/logs
+
+  worker-a:
+    extends:
+      service: api-a
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      COLLA_RUNTIME_ROLE: worker
+      COLLA_INSTANCE_ID: worker-a
+      SPRING_FLYWAY_ENABLED: "false"
+      SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: ${WORKER_DB_POOL_SIZE:-6}
+      SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE: 1
+      SPRING_DATASOURCE_HIKARI_CONNECTION_TIMEOUT: ${WORKER_DB_CONNECTION_TIMEOUT_MS:-5000}
+      SPRING_DATASOURCE_HIKARI_VALIDATION_TIMEOUT: ${WORKER_DB_VALIDATION_TIMEOUT_MS:-3000}
+      COLLA_EVENT_WORKER_ENABLED: "true"
+      COLLA_EVENT_WORKER_POLL_INTERVAL: ${COLLA_EVENT_WORKER_POLL_INTERVAL:-1s}
+      COLLA_EVENT_WORKER_RECOVERY_INTERVAL: ${COLLA_EVENT_WORKER_RECOVERY_INTERVAL:-15s}
+      COLLA_EVENT_WORKER_HEARTBEAT_INTERVAL: ${COLLA_EVENT_WORKER_HEARTBEAT_INTERVAL:-10s}
+      COLLA_EVENT_WORKER_SHUTDOWN_GRACE: ${COLLA_EVENT_WORKER_SHUTDOWN_GRACE:-25s}
+      COLLA_EVENT_WORKER_CLAIM_BATCH: ${COLLA_EVENT_WORKER_CLAIM_BATCH:-20}
+      COLLA_EVENT_WORKER_CONCURRENCY: ${COLLA_EVENT_WORKER_CONCURRENCY:-4}
+      COLLA_EVENT_WORKER_QUEUE_CAPACITY: ${COLLA_EVENT_WORKER_QUEUE_CAPACITY:-16}
+      COLLA_EVENT_WORKER_CONNECTION_BUDGET: ${WORKER_DB_POOL_SIZE:-6}
+      COLLA_EVENT_WORKER_EXPECTED_INSTANCES: ${COLLA_EVENT_WORKER_EXPECTED_INSTANCES:-2}
+      COLLA_POSTGRESQL_CONNECTION_BUDGET: ${COLLA_POSTGRESQL_CONNECTION_BUDGET:-100}
+      COLLA_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
+      COLLA_DATASOURCE_USERNAME: ${POSTGRES_USER}
+      COLLA_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      MINIO_BUCKET: ${MINIO_BUCKET}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS}
+      COLLA_COLLABORATION_INTERNAL_SECRET: ${COLLA_COLLABORATION_INTERNAL_SECRET}
+      COLLA_COLLABORATION_PUBLIC_URL: /collaboration
+      COLLA_COLLABORATION_INTERNAL_URL: http://collaboration-a:1234,http://collaboration-b:1234
+      LOG_PATH: /app/logs
+    stop_grace_period: ${COLLA_EVENT_WORKER_STOP_GRACE:-30s}
+    deploy:
+      resources:
+        limits:
+          cpus: ${WORKER_CPU_LIMIT:-1.0}
+          memory: ${WORKER_MEMORY_LIMIT:-768M}
+
+  worker-b:
+    extends:
+      service: worker-a
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      COLLA_RUNTIME_ROLE: worker
+      COLLA_INSTANCE_ID: worker-b
+      SPRING_FLYWAY_ENABLED: "false"
+      SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: ${WORKER_DB_POOL_SIZE:-6}
+      SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE: 1
+      SPRING_DATASOURCE_HIKARI_CONNECTION_TIMEOUT: ${WORKER_DB_CONNECTION_TIMEOUT_MS:-5000}
+      SPRING_DATASOURCE_HIKARI_VALIDATION_TIMEOUT: ${WORKER_DB_VALIDATION_TIMEOUT_MS:-3000}
+      COLLA_EVENT_WORKER_ENABLED: "true"
+      COLLA_EVENT_WORKER_POLL_INTERVAL: ${COLLA_EVENT_WORKER_POLL_INTERVAL:-1s}
+      COLLA_EVENT_WORKER_RECOVERY_INTERVAL: ${COLLA_EVENT_WORKER_RECOVERY_INTERVAL:-15s}
+      COLLA_EVENT_WORKER_HEARTBEAT_INTERVAL: ${COLLA_EVENT_WORKER_HEARTBEAT_INTERVAL:-10s}
+      COLLA_EVENT_WORKER_SHUTDOWN_GRACE: ${COLLA_EVENT_WORKER_SHUTDOWN_GRACE:-25s}
+      COLLA_EVENT_WORKER_CLAIM_BATCH: ${COLLA_EVENT_WORKER_CLAIM_BATCH:-20}
+      COLLA_EVENT_WORKER_CONCURRENCY: ${COLLA_EVENT_WORKER_CONCURRENCY:-4}
+      COLLA_EVENT_WORKER_QUEUE_CAPACITY: ${COLLA_EVENT_WORKER_QUEUE_CAPACITY:-16}
+      COLLA_EVENT_WORKER_CONNECTION_BUDGET: ${WORKER_DB_POOL_SIZE:-6}
+      COLLA_EVENT_WORKER_EXPECTED_INSTANCES: ${COLLA_EVENT_WORKER_EXPECTED_INSTANCES:-2}
+      COLLA_POSTGRESQL_CONNECTION_BUDGET: ${COLLA_POSTGRESQL_CONNECTION_BUDGET:-100}
+      COLLA_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
+      COLLA_DATASOURCE_USERNAME: ${POSTGRES_USER}
+      COLLA_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      MINIO_BUCKET: ${MINIO_BUCKET}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS}
+      COLLA_COLLABORATION_INTERNAL_SECRET: ${COLLA_COLLABORATION_INTERNAL_SECRET}
+      COLLA_COLLABORATION_PUBLIC_URL: /collaboration
+      COLLA_COLLABORATION_INTERNAL_URL: http://collaboration-a:1234,http://collaboration-b:1234
+      LOG_PATH: /app/logs
+
+  event-gateway:
+    extends:
+      service: api-a
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      COLLA_RUNTIME_ROLE: event-gateway
+      COLLA_INSTANCE_ID: event-gateway-1
+      SPRING_FLYWAY_ENABLED: "false"
+      SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: ${GATEWAY_DB_POOL_SIZE:-4}
+      SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE: 1
+      SPRING_DATASOURCE_HIKARI_CONNECTION_TIMEOUT: ${GATEWAY_DB_CONNECTION_TIMEOUT_MS:-5000}
+      SPRING_DATASOURCE_HIKARI_VALIDATION_TIMEOUT: ${GATEWAY_DB_VALIDATION_TIMEOUT_MS:-3000}
+      COLLA_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
+      COLLA_DATASOURCE_USERNAME: ${POSTGRES_USER}
+      COLLA_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      MINIO_BUCKET: ${MINIO_BUCKET}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS}
+      COLLA_COLLABORATION_INTERNAL_SECRET: ${COLLA_COLLABORATION_INTERNAL_SECRET}
+      COLLA_COLLABORATION_PUBLIC_URL: /collaboration
+      COLLA_COLLABORATION_INTERNAL_URL: http://collaboration-a:1234,http://collaboration-b:1234
+      LOG_PATH: /app/logs
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8080/actuator/health"]
       interval: 10s
@@ -111,7 +314,7 @@ services:
     restart: unless-stopped
     logging: *default-logging
     environment:
-      COLLA_BACKEND_INTERNAL_URL: http://server:8080/api/internal/knowledge-collaboration
+      COLLA_BACKEND_INTERNAL_URL: http://api-a:8080/api/internal/knowledge-collaboration,http://api-b:8080/api/internal/knowledge-collaboration
       COLLA_COLLABORATION_INTERNAL_SECRET: ${COLLA_COLLABORATION_INTERNAL_SECRET}
       COLLA_COLLABORATION_PORT: 1234
       COLLA_COLLABORATION_NODE_ID: collaboration-a
@@ -119,7 +322,11 @@ services:
       COLLA_COLLABORATION_REDIS_PORT: 6379
       COLLA_COLLABORATION_MAX_UPDATE_BYTES: 1048576
     depends_on:
-      server:
+      api-a:
+        condition: service_healthy
+      api-b:
+        condition: service_healthy
+      event-gateway:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -139,7 +346,7 @@ services:
     restart: unless-stopped
     logging: *default-logging
     environment:
-      COLLA_BACKEND_INTERNAL_URL: http://server:8080/api/internal/knowledge-collaboration
+      COLLA_BACKEND_INTERNAL_URL: http://api-a:8080/api/internal/knowledge-collaboration,http://api-b:8080/api/internal/knowledge-collaboration
       COLLA_COLLABORATION_INTERNAL_SECRET: ${COLLA_COLLABORATION_INTERNAL_SECRET}
       COLLA_COLLABORATION_PORT: 1234
       COLLA_COLLABORATION_NODE_ID: collaboration-b
@@ -147,7 +354,9 @@ services:
       COLLA_COLLABORATION_REDIS_PORT: 6379
       COLLA_COLLABORATION_MAX_UPDATE_BYTES: 1048576
     depends_on:
-      server:
+      api-a:
+        condition: service_healthy
+      api-b:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -185,7 +394,9 @@ services:
     depends_on:
       web:
         condition: service_healthy
-      server:
+      api-a:
+        condition: service_healthy
+      api-b:
         condition: service_healthy
       collaboration-a:
         condition: service_healthy

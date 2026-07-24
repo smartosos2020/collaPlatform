@@ -12,6 +12,7 @@ import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.Knowle
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContentRelation;
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContentShareLink;
 import com.colla.platform.modules.knowledge.domain.KnowledgeBaseItemModels.KnowledgeBaseItem;
+import com.colla.platform.modules.permission.contract.KnowledgePermissionCommands;
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContentTemplate;
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContentVersion;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -43,14 +44,19 @@ public class JdbcKnowledgeRepository implements KnowledgeBaseItemRepository, Kno
      * compatibility, not as an independent document product model.
      */
     private final JdbcTemplate jdbcTemplate;
+    private final KnowledgePermissionCommands knowledgePermissionCommands;
     private final ObjectMapper objectMapper = new ObjectMapper();
     private static final TypeReference<Map<String, Object>> STRING_OBJECT_MAP = new TypeReference<>() {
     };
     private static final TypeReference<List<KnowledgeContentBlockDraft>> BLOCK_DRAFT_LIST = new TypeReference<>() {
     };
 
-    public JdbcKnowledgeRepository(JdbcTemplate jdbcTemplate) {
+    public JdbcKnowledgeRepository(
+        JdbcTemplate jdbcTemplate,
+        KnowledgePermissionCommands knowledgePermissionCommands
+    ) {
         this.jdbcTemplate = jdbcTemplate;
+        this.knowledgePermissionCommands = knowledgePermissionCommands;
     }
 
     @Override
@@ -228,67 +234,7 @@ public class JdbcKnowledgeRepository implements KnowledgeBaseItemRepository, Kno
 
     @Override
     public void copyParentPermissions(UUID workspaceId, UUID itemId, UUID parentId, UUID actorId) {
-        jdbcTemplate.update(
-            """
-                update resource_permissions
-                set status = 'revoked', updated_by = ?, updated_at = now()
-                where workspace_id = ?
-                  and resource_type = 'knowledge_content'
-                  and resource_id = ?
-                  and source_type = 'inherited'
-                  and status = 'active'
-                """,
-            actorId,
-            workspaceId,
-            itemId
-        );
-        if (parentId == null) {
-            return;
-        }
-        List<Map<String, Object>> parentResourcePermissions = jdbcTemplate.queryForList(
-            """
-                select subject_type, subject_id, permission_level, expires_at
-                from resource_permissions rp
-                where rp.workspace_id = ?
-                  and rp.resource_type = 'knowledge_content'
-                  and rp.resource_id = ?
-                  and rp.status = 'active'
-                  and (rp.expires_at is null or rp.expires_at > now())
-                  and not exists (
-                      select 1
-                      from resource_permissions existing
-                      where existing.workspace_id = rp.workspace_id
-                        and existing.resource_type = 'knowledge_content'
-                        and existing.resource_id = ?
-                        and existing.subject_type = rp.subject_type
-                        and existing.subject_id = rp.subject_id
-                        and existing.status = 'active'
-                  )
-                """,
-            workspaceId,
-            parentId,
-            itemId
-        );
-        for (Map<String, Object> permission : parentResourcePermissions) {
-            jdbcTemplate.update(
-                """
-                    insert into resource_permissions
-                        (id, workspace_id, resource_type, resource_id, subject_type, subject_id, permission_level,
-                         source_type, source_id, expires_at, status, created_by, created_at, updated_by, updated_at)
-                    values (?, ?, 'knowledge_content', ?, ?, ?, ?, 'inherited', ?, ?, 'active', ?, now(), ?, now())
-                    """,
-                UUID.randomUUID(),
-                workspaceId,
-                itemId,
-                permission.get("subject_type"),
-                permission.get("subject_id"),
-                permission.get("permission_level"),
-                parentId,
-                permission.get("expires_at"),
-                actorId,
-                actorId
-            );
-        }
+        knowledgePermissionCommands.copyInherited(workspaceId, itemId, parentId, actorId);
     }
 
     @Override
@@ -1079,45 +1025,12 @@ public class JdbcKnowledgeRepository implements KnowledgeBaseItemRepository, Kno
         String permissionLevel,
         UUID actorId
     ) {
-        int updated = jdbcTemplate.update(
-            """
-                update resource_permissions
-                set permission_level = ?,
-                    source_type = 'direct',
-                    source_id = null,
-                    status = 'active',
-                    updated_by = ?,
-                    updated_at = now()
-                where workspace_id = ?
-                  and resource_type = 'knowledge_content'
-                  and resource_id = ?
-                  and subject_type = ?
-                  and subject_id = ?
-                """,
-            permissionLevel,
-            actorId,
-            workspaceId,
-            itemId,
-            subjectType,
-            subjectId
-        );
-        if (updated > 0) {
-            return;
-        }
-        jdbcTemplate.update(
-            """
-                insert into resource_permissions
-                    (id, workspace_id, resource_type, resource_id, subject_type, subject_id, permission_level,
-                     source_type, source_id, status, created_by, created_at, updated_by, updated_at)
-                values (?, ?, 'knowledge_content', ?, ?, ?, ?, 'direct', null, 'active', ?, now(), ?, now())
-                """,
-            UUID.randomUUID(),
+        knowledgePermissionCommands.upsertDirect(
             workspaceId,
             itemId,
             subjectType,
             subjectId,
             permissionLevel,
-            actorId,
             actorId
         );
     }
@@ -2406,7 +2319,6 @@ public class JdbcKnowledgeRepository implements KnowledgeBaseItemRepository, Kno
         }
     }
 }
-
 
 
 

@@ -1,8 +1,8 @@
 package com.colla.platform.modules.project.application;
 
-import com.colla.platform.modules.audit.application.AuditService;
-import com.colla.platform.modules.permission.application.PermissionService;
-import com.colla.platform.modules.platform.infrastructure.PlatformObjectRepository;
+import com.colla.platform.modules.audit.contract.AuditLog;
+import com.colla.platform.modules.permission.contract.ProjectAuthorization;
+import com.colla.platform.modules.platform.contract.PlatformObjectCommands;
 import com.colla.platform.modules.project.domain.ProjectSpaceMigrationModels.LegacySpaceMapRecord;
 import com.colla.platform.modules.project.domain.ProjectSpaceMigrationModels.LegacySpaceResolution;
 import com.colla.platform.modules.project.domain.ProjectSpaceModels.ProjectSpaceStatus;
@@ -31,24 +31,24 @@ public class ProjectSpaceService {
     private final ProjectSpaceRepository projectSpaceRepository;
     private final ProjectRepository projectRepository;
     private final ProjectLegacySpaceMapRepository legacySpaceMapRepository;
-    private final PlatformObjectRepository platformObjectRepository;
-    private final PermissionService permissionService;
-    private final AuditService auditService;
+    private final PlatformObjectCommands platformObjectCommands;
+    private final ProjectAuthorization permissionService;
+    private final AuditLog auditService;
     private final WorkItemTypePresetReconciliationService presetReconciliationService;
 
     public ProjectSpaceService(
         ProjectSpaceRepository projectSpaceRepository,
         ProjectRepository projectRepository,
         ProjectLegacySpaceMapRepository legacySpaceMapRepository,
-        PlatformObjectRepository platformObjectRepository,
-        PermissionService permissionService,
-        AuditService auditService,
+        PlatformObjectCommands platformObjectCommands,
+        ProjectAuthorization permissionService,
+        AuditLog auditService,
         WorkItemTypePresetReconciliationService presetReconciliationService
     ) {
         this.projectSpaceRepository = projectSpaceRepository;
         this.projectRepository = projectRepository;
         this.legacySpaceMapRepository = legacySpaceMapRepository;
-        this.platformObjectRepository = platformObjectRepository;
+        this.platformObjectCommands = platformObjectCommands;
         this.permissionService = permissionService;
         this.auditService = auditService;
         this.presetReconciliationService = presetReconciliationService;
@@ -94,7 +94,7 @@ public class ProjectSpaceService {
         }
         presetReconciliationService.reconcile(currentUser.workspaceId(), spaceId, currentUser.id());
         ProjectSpaceSummary created = requireSpace(currentUser, spaceId);
-        registerObject(created);
+        registerObject(created, currentUser.id());
         auditService.log(currentUser, "project_space.created", "project_space", spaceId, Map.of(
             "spaceKey", created.spaceKey(),
             "status", created.status(),
@@ -133,7 +133,7 @@ public class ProjectSpaceService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Project space update conflicts with current state", exception);
         }
         ProjectSpaceSummary after = requireSpace(currentUser, spaceId);
-        registerObject(after);
+        registerObject(after, currentUser.id());
         auditService.log(currentUser, "project_space.updated", "project_space", spaceId, changedMetadata(before, after, "space_settings"));
         return after;
     }
@@ -229,7 +229,7 @@ public class ProjectSpaceService {
         }
         projectSpaceRepository.transitionSpace(currentUser.workspaceId(), before.id(), target.name(), currentUser.id());
         ProjectSpaceSummary after = requireSpace(currentUser, before.id());
-        registerObject(after);
+        registerObject(after, currentUser.id());
         auditService.log(
             currentUser,
             "project_space." + transitionAction(target),
@@ -259,14 +259,15 @@ public class ProjectSpaceService {
         }
     }
 
-    private void registerObject(ProjectSpaceSummary space) {
-        platformObjectRepository.upsertObjectLink(
+    private void registerObject(ProjectSpaceSummary space, UUID actorId) {
+        platformObjectCommands.upsertLink(
             space.workspaceId(),
             "project_space",
             space.id(),
             "/project-spaces/" + space.id(),
             "colla://project-space/" + space.id(),
-            space.name()
+            space.name(),
+            actorId
         );
     }
 

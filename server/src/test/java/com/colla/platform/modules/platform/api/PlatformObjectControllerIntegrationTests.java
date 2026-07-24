@@ -3,12 +3,17 @@ package com.colla.platform.modules.platform.api;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.blankOrNullString;
 import static org.hamcrest.Matchers.hasItem;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -162,7 +167,9 @@ class PlatformObjectControllerIntegrationTests {
             .andReturn()
             .getResponse()
             .getContentAsString();
-        UUID fileId = UUID.fromString(objectMapper.readTree(uploadResponse).get("uploadId").asText());
+        var upload = objectMapper.readTree(uploadResponse);
+        UUID fileId = UUID.fromString(upload.get("uploadId").asText());
+        uploadObject(upload.get("uploadUrl").asText(), "0123456789abcdef0123456789abcdef");
 
         mockMvc.perform(post("/api/files/complete")
                 .header("Authorization", "Bearer " + adminToken)
@@ -199,6 +206,17 @@ class PlatformObjectControllerIntegrationTests {
                         """.formatted(UUID.randomUUID())
                 ))
             .andExpect(status().isForbidden());
+    }
+
+    private void uploadObject(String uploadUrl, String content) throws Exception {
+        HttpResponse<Void> response = HttpClient.newHttpClient().send(
+            HttpRequest.newBuilder(URI.create(uploadUrl))
+                .header("Content-Type", "text/plain")
+                .PUT(HttpRequest.BodyPublishers.ofString(content))
+                .build(),
+            HttpResponse.BodyHandlers.discarding()
+        );
+        assertTrue(response.statusCode() >= 200 && response.statusCode() < 300);
     }
 
     private UUID currentWorkspaceId() {

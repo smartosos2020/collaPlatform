@@ -1,13 +1,12 @@
 package com.colla.platform.modules.project.application;
 
-import com.colla.platform.modules.file.domain.FileModels.FileMetadata;
-import com.colla.platform.modules.file.infrastructure.FileRepository;
-import com.colla.platform.modules.identity.domain.AuthModels.UserAccount;
-import com.colla.platform.modules.identity.infrastructure.IdentityRepository;
-import com.colla.platform.modules.identity.infrastructure.OrganizationRepository;
-import com.colla.platform.modules.identity.infrastructure.UserGroupRepository;
-import com.colla.platform.modules.platform.application.PlatformObjectResolverRegistry;
-import com.colla.platform.modules.platform.domain.PlatformModels.ObjectAccessState;
+import com.colla.platform.modules.file.contract.FileAccess;
+import com.colla.platform.modules.identity.contract.SubjectDirectory;
+import com.colla.platform.modules.identity.contract.SubjectDirectory.SubjectRef;
+import com.colla.platform.modules.identity.contract.SubjectDirectory.SubjectState;
+import com.colla.platform.modules.identity.contract.SubjectDirectory.SubjectType;
+import com.colla.platform.modules.platform.contract.ObjectAccessState;
+import com.colla.platform.modules.platform.contract.PlatformObjectRegistry;
 import com.colla.platform.modules.project.domain.WorkItemFieldModels.WorkItemFieldException;
 import com.colla.platform.modules.project.infrastructure.WorkItemTypeRepository;
 import com.colla.platform.shared.auth.CurrentUser;
@@ -19,26 +18,20 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class WorkItemFieldComplexReferenceValidator {
-    private final IdentityRepository identityRepository;
-    private final OrganizationRepository organizationRepository;
-    private final UserGroupRepository userGroupRepository;
-    private final FileRepository fileRepository;
-    private final PlatformObjectResolverRegistry objectResolverRegistry;
+    private final SubjectDirectory subjectDirectory;
+    private final FileAccess fileAccess;
+    private final PlatformObjectRegistry objectRegistry;
     private final WorkItemTypeRepository typeRepository;
 
     public WorkItemFieldComplexReferenceValidator(
-        IdentityRepository identityRepository,
-        OrganizationRepository organizationRepository,
-        UserGroupRepository userGroupRepository,
-        FileRepository fileRepository,
-        PlatformObjectResolverRegistry objectResolverRegistry,
+        SubjectDirectory subjectDirectory,
+        FileAccess fileAccess,
+        PlatformObjectRegistry objectRegistry,
         WorkItemTypeRepository typeRepository
     ) {
-        this.identityRepository = identityRepository;
-        this.organizationRepository = organizationRepository;
-        this.userGroupRepository = userGroupRepository;
-        this.fileRepository = fileRepository;
-        this.objectResolverRegistry = objectResolverRegistry;
+        this.subjectDirectory = subjectDirectory;
+        this.fileAccess = fileAccess;
+        this.objectRegistry = objectRegistry;
         this.typeRepository = typeRepository;
     }
 
@@ -63,7 +56,7 @@ public class WorkItemFieldComplexReferenceValidator {
 
     private void validateUser(CurrentUser actor, JsonNode config) {
         JsonNode typeConfig = config.path("typeConfig");
-        Set<UUID> permittedMembers = permittedMembers(actor.workspaceId(), typeConfig.path("selectionScope"));
+        Set<UUID> permittedMembers = permittedMembers(actor.workspaceId(), actor.id(), typeConfig.path("selectionScope"));
         boolean unrestricted = typeConfig.path("selectionScope").isEmpty();
         JsonNode defaults = config.path("defaultValue");
         if (defaults.isNull()) {
@@ -71,53 +64,36 @@ public class WorkItemFieldComplexReferenceValidator {
         }
         for (JsonNode value : defaults) {
             UUID userId = UUID.fromString(value.asText());
-            UserAccount account = identityRepository.findUserById(userId).orElseThrow(this::hiddenReference);
-            if (!actor.workspaceId().equals(account.workspaceId())
-                || !"active".equals(account.status())
+            SubjectRef subject = new SubjectRef(SubjectType.MEMBER, userId);
+            var snapshot = subjectDirectory.resolve(actor.workspaceId(), actor.id(), Set.of(subject)).get(subject);
+            if (snapshot == null
+                || snapshot.state() != SubjectState.ACTIVE
                 || (!unrestricted && !permittedMembers.contains(userId))) {
                 throw hiddenReference();
             }
         }
     }
 
-    private Set<UUID> permittedMembers(UUID workspaceId, JsonNode scope) {
-        Set<UUID> result = new HashSet<>();
+    private Set<UUID> permittedMembers(UUID workspaceId, UUID actorId, JsonNode scope) {
+        Set<SubjectRef> subjects = new HashSet<>();
         for (JsonNode entry : scope) {
             UUID subjectId = UUID.fromString(entry.path("subjectId").asText());
-            switch (entry.path("subjectType").asText()) {
-                case "member" -> {
-                    UserAccount account = identityRepository.findUserById(subjectId).orElseThrow(this::hiddenReference);
-                    if (!workspaceId.equals(account.workspaceId()) || !"active".equals(account.status())) {
-                        throw hiddenReference();
-                    }
-                    result.add(account.id());
-                }
-                case "department" -> {
-                    var department = organizationRepository.findDepartment(workspaceId, subjectId)
-                        .orElseThrow(this::hiddenReference);
-                    if (!"active".equals(department.status())) {
-                        throw hiddenReference();
-                    }
-                    organizationRepository.listDepartmentMembers(workspaceId, subjectId).stream()
-                        .filter(member -> "active".equals(member.status()) && member.endedAt() == null)
-                        .map(member -> member.userId())
-                        .forEach(result::add);
-                }
-                case "user_group" -> {
-                    var group = userGroupRepository.findGroup(workspaceId, subjectId)
-                        .orElseThrow(this::hiddenReference);
-                    if (!"active".equals(group.status())) {
-                        throw hiddenReference();
-                    }
-                    userGroupRepository.listExpandedMembers(workspaceId, subjectId).stream()
-                        .filter(member -> "active".equals(member.status()))
-                        .map(member -> member.userId())
-                        .forEach(result::add);
-                }
+            SubjectType subjectType = switch (entry.path("subjectType").asText()) {
+                case "member" -> SubjectType.MEMBER;
+                case "department" -> SubjectType.DEPARTMENT;
+                case "user_group" -> SubjectType.USER_GROUP;
                 default -> throw hiddenReference();
-            }
+            };
+            subjects.add(new SubjectRef(subjectType, subjectId));
         }
-        return result;
+        var resolved = subjectDirectory.resolve(workspaceId, actorId, subjects);
+        if (subjects.stream().anyMatch(subject -> {
+            var snapshot = resolved.get(subject);
+            return snapshot == null || snapshot.state() != SubjectState.ACTIVE;
+        })) {
+            throw hiddenReference();
+        }
+        return subjectDirectory.expandActiveMembers(workspaceId, actorId, subjects);
     }
 
     private void validateAttachments(CurrentUser actor, JsonNode config) {
@@ -131,11 +107,12 @@ public class WorkItemFieldComplexReferenceValidator {
         typeConfig.path("allowedContentTypes").forEach(value -> allowedTypes.add(value.asText()));
         for (JsonNode value : defaults) {
             UUID fileId = UUID.fromString(value.asText());
-            FileMetadata file = fileRepository.find(actor.workspaceId(), fileId).orElseThrow(this::hiddenReference);
-            if (!"completed".equals(file.status())
-                || file.sizeBytes() > maxSize
-                || !contentTypeAllowed(file.contentType(), allowedTypes)
-                || objectResolverRegistry.resolve(actor, "file", fileId).accessState() != ObjectAccessState.available) {
+            var fileResult = fileAccess.resolve(actor.workspaceId(), actor.id(), Set.of(fileId)).get(fileId);
+            if (fileResult == null
+                || fileResult.availability() != FileAccess.Availability.AVAILABLE
+                || fileResult.metadata().size() > maxSize
+                || !contentTypeAllowed(fileResult.metadata().mimeType(), allowedTypes)
+                || objectRegistry.accessState(actor.workspaceId(), actor.id(), "file", fileId) != ObjectAccessState.available) {
                 throw hiddenReference();
             }
         }

@@ -2,6 +2,8 @@ package com.colla.platform.modules.search.infrastructure;
 
 import com.colla.platform.modules.search.domain.SearchModels.SearchResult;
 import com.colla.platform.modules.search.domain.SearchModels.SearchFilters;
+import com.colla.platform.modules.search.infrastructure.SearchRepository.ProjectionOperation;
+import com.colla.platform.modules.search.infrastructure.SearchRepository.RebuildPage;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
@@ -331,15 +333,137 @@ public class JdbcSearchRepository implements SearchRepository {
         // Serialize same-workspace rebuilds across bean instances and test contexts.
         jdbcTemplate.query("select pg_advisory_xact_lock(hashtext(?))", rs -> { }, "search-index:" + workspaceId);
         jdbcTemplate.update("delete from search_index_entries where workspace_id = ?", workspaceId);
-        indexIssues(workspaceId);
-        indexDocuments(workspaceId);
-        indexBases(workspaceId);
-        indexBaseTables(workspaceId);
-        indexBaseRecords(workspaceId);
-        indexMessages(workspaceId);
+        jdbcTemplate.update("delete from search_projection_versions where workspace_id = ?", workspaceId);
+        indexIssues(workspaceId, null);
+        indexDocuments(workspaceId, null);
+        indexBases(workspaceId, null);
+        indexBaseTables(workspaceId, null);
+        indexBaseRecords(workspaceId, null);
+        indexMessages(workspaceId, null);
     }
 
-    private void indexIssues(UUID workspaceId) {
+    @Override
+    @Transactional
+    public boolean projectObject(
+        UUID workspaceId,
+        String objectType,
+        UUID objectId,
+        long sourceVersion,
+        ProjectionOperation operation
+    ) {
+        requireSupportedObjectType(objectType);
+        if (sourceVersion < 0) {
+            throw new IllegalArgumentException("Search projection version must be non-negative");
+        }
+        int accepted = jdbcTemplate.update(
+            """
+                insert into search_projection_versions
+                    (workspace_id, object_type, object_id, source_version, operation, updated_at)
+                values (?, ?, ?, ?, ?, now())
+                on conflict (workspace_id, object_type, object_id)
+                do update set source_version = excluded.source_version,
+                              operation = excluded.operation,
+                              updated_at = now()
+                where search_projection_versions.source_version <= excluded.source_version
+                """,
+            workspaceId,
+            objectType,
+            objectId,
+            sourceVersion,
+            operation.databaseValue()
+        );
+        if (accepted == 0) {
+            return false;
+        }
+        jdbcTemplate.update(
+            "delete from search_index_entries where workspace_id = ? and object_type = ? and object_id = ?",
+            workspaceId,
+            objectType,
+            objectId
+        );
+        if (operation == ProjectionOperation.DELETE) {
+            return true;
+        }
+        indexObject(workspaceId, objectType, objectId);
+        return true;
+    }
+
+    @Override
+    @Transactional
+    public RebuildPage rebuildBatch(UUID workspaceId, String objectType, UUID afterId, int limit) {
+        requireSupportedObjectType(objectType);
+        int boundedLimit = Math.min(Math.max(limit, 1), 250);
+        jdbcTemplate.query(
+            "select pg_advisory_xact_lock(hashtext(?))",
+            resultSet -> { },
+            "search-index-rebuild:" + workspaceId + ":" + objectType
+        );
+        if (afterId == null) {
+            jdbcTemplate.update(
+                "delete from search_index_entries where workspace_id = ? and object_type = ?",
+                workspaceId,
+                objectType
+            );
+            jdbcTemplate.update(
+                "delete from search_projection_versions where workspace_id = ? and object_type = ?",
+                workspaceId,
+                objectType
+            );
+        }
+        List<UUID> objectIds = listObjectIds(workspaceId, objectType, afterId, boundedLimit);
+        for (UUID objectId : objectIds) {
+            projectObject(workspaceId, objectType, objectId, 0L, ProjectionOperation.UPSERT);
+        }
+        UUID nextCursor = objectIds.isEmpty() ? afterId : objectIds.get(objectIds.size() - 1);
+        return new RebuildPage(objectType, nextCursor, objectIds.size(), objectIds.size() < boundedLimit);
+    }
+
+    private void indexObject(UUID workspaceId, String objectType, UUID objectId) {
+        switch (objectType) {
+            case "issue" -> indexIssues(workspaceId, objectId);
+            case "knowledge_content" -> indexDocuments(workspaceId, objectId);
+            case "base" -> indexBases(workspaceId, objectId);
+            case "base_table" -> indexBaseTables(workspaceId, objectId);
+            case "base_record" -> indexBaseRecords(workspaceId, objectId);
+            case "message" -> indexMessages(workspaceId, objectId);
+            default -> throw new IllegalArgumentException("Unsupported search object type: " + objectType);
+        }
+    }
+
+    private List<UUID> listObjectIds(UUID workspaceId, String objectType, UUID afterId, int limit) {
+        String tableAndPredicate = switch (objectType) {
+            case "issue" -> "issues where deleted_at is null";
+            case "knowledge_content" -> "knowledge_base_items where deleted_at is null and archived_at is null";
+            case "base" -> "bases where archived_at is null";
+            case "base_table" -> "base_tables where archived_at is null";
+            case "base_record" -> "base_records where deleted_at is null";
+            case "message" -> "messages where deleted_at is null and revoked_at is null and coalesce(content, '') <> ''";
+            default -> throw new IllegalArgumentException("Unsupported search object type: " + objectType);
+        };
+        return jdbcTemplate.queryForList(
+            """
+                select id
+                from %s
+                  and workspace_id = ?
+                  and (?::uuid is null or id > ?)
+                order by id
+                limit ?
+                """.formatted(tableAndPredicate),
+            UUID.class,
+            workspaceId,
+            afterId,
+            afterId,
+            limit
+        );
+    }
+
+    private static void requireSupportedObjectType(String objectType) {
+        if (!SearchRepository.SUPPORTED_OBJECT_TYPES.contains(objectType)) {
+            throw new IllegalArgumentException("Unsupported search object type: " + objectType);
+        }
+    }
+
+    private void indexIssues(UUID workspaceId, UUID objectId) {
         jdbcTemplate.update(
             """
                 insert into search_index_entries
@@ -355,7 +479,7 @@ public class JdbcSearchRepository implements SearchRepository {
                        i.updated_at,
                        now()
                 from issues i
-                where i.workspace_id = ? and i.deleted_at is null
+                where i.workspace_id = ? and (?::uuid is null or i.id = ?) and i.deleted_at is null
                 on conflict (workspace_id, object_type, object_id)
                 do update set title = excluded.title,
                               excerpt = excluded.excerpt,
@@ -365,11 +489,13 @@ public class JdbcSearchRepository implements SearchRepository {
                               updated_at = excluded.updated_at,
                               indexed_at = now()
                 """,
-            workspaceId
+            workspaceId,
+            objectId,
+            objectId
         );
     }
 
-    private void indexDocuments(UUID workspaceId) {
+    private void indexDocuments(UUID workspaceId, UUID objectId) {
         jdbcTemplate.update(
             """
                 insert into search_index_entries
@@ -466,7 +592,7 @@ public class JdbcSearchRepository implements SearchRepository {
                       and c.item_id = d.id
                       and c.deleted_at is null
                 ) comments on true
-                where d.workspace_id = ? and d.deleted_at is null and d.archived_at is null
+                where d.workspace_id = ? and (?::uuid is null or d.id = ?) and d.deleted_at is null and d.archived_at is null
                 on conflict (workspace_id, object_type, object_id)
                 do update set title = excluded.title,
                               excerpt = excluded.excerpt,
@@ -484,11 +610,13 @@ public class JdbcSearchRepository implements SearchRepository {
                               hit_source = excluded.hit_source,
                               indexed_at = now()
                 """,
-            workspaceId
+            workspaceId,
+            objectId,
+            objectId
         );
     }
 
-    private void indexBaseRecords(UUID workspaceId) {
+    private void indexBaseRecords(UUID workspaceId, UUID objectId) {
         jdbcTemplate.update(
             """
                 insert into search_index_entries
@@ -508,7 +636,7 @@ public class JdbcSearchRepository implements SearchRepository {
                 join bases b on b.id = bt.base_id and b.archived_at is null
                 join base_record_values brv on brv.record_id = br.id
                 join base_fields bf on bf.id = brv.field_id and bf.archived_at is null
-                where br.workspace_id = ? and br.deleted_at is null
+                where br.workspace_id = ? and (?::uuid is null or br.id = ?) and br.deleted_at is null
                 group by br.workspace_id, br.id, br.record_no, b.id, bt.id, br.updated_at
                 on conflict (workspace_id, object_type, object_id)
                 do update set title = excluded.title,
@@ -519,11 +647,13 @@ public class JdbcSearchRepository implements SearchRepository {
                               updated_at = excluded.updated_at,
                               indexed_at = now()
                 """,
-            workspaceId
+            workspaceId,
+            objectId,
+            objectId
         );
     }
 
-    private void indexBases(UUID workspaceId) {
+    private void indexBases(UUID workspaceId, UUID objectId) {
         jdbcTemplate.update(
             """
                 insert into search_index_entries
@@ -539,7 +669,7 @@ public class JdbcSearchRepository implements SearchRepository {
                        b.updated_at,
                        now()
                 from bases b
-                where b.workspace_id = ? and b.archived_at is null
+                where b.workspace_id = ? and (?::uuid is null or b.id = ?) and b.archived_at is null
                 on conflict (workspace_id, object_type, object_id)
                 do update set title = excluded.title,
                               excerpt = excluded.excerpt,
@@ -549,11 +679,13 @@ public class JdbcSearchRepository implements SearchRepository {
                               updated_at = excluded.updated_at,
                               indexed_at = now()
                 """,
-            workspaceId
+            workspaceId,
+            objectId,
+            objectId
         );
     }
 
-    private void indexBaseTables(UUID workspaceId) {
+    private void indexBaseTables(UUID workspaceId, UUID objectId) {
         jdbcTemplate.update(
             """
                 insert into search_index_entries
@@ -570,7 +702,7 @@ public class JdbcSearchRepository implements SearchRepository {
                        now()
                 from base_tables bt
                 join bases b on b.id = bt.base_id and b.archived_at is null
-                where bt.workspace_id = ? and bt.archived_at is null
+                where bt.workspace_id = ? and (?::uuid is null or bt.id = ?) and bt.archived_at is null
                 on conflict (workspace_id, object_type, object_id)
                 do update set title = excluded.title,
                               excerpt = excluded.excerpt,
@@ -580,11 +712,13 @@ public class JdbcSearchRepository implements SearchRepository {
                               updated_at = excluded.updated_at,
                               indexed_at = now()
                 """,
-            workspaceId
+            workspaceId,
+            objectId,
+            objectId
         );
     }
 
-    private void indexMessages(UUID workspaceId) {
+    private void indexMessages(UUID workspaceId, UUID objectId) {
         jdbcTemplate.update(
             """
                 insert into search_index_entries
@@ -601,7 +735,8 @@ public class JdbcSearchRepository implements SearchRepository {
                        now()
                 from messages m
                 join conversations c on c.id = m.conversation_id and c.archived_at is null
-                where m.workspace_id = ? and m.deleted_at is null and m.revoked_at is null and coalesce(m.content, '') <> ''
+                where m.workspace_id = ? and (?::uuid is null or m.id = ?)
+                  and m.deleted_at is null and m.revoked_at is null and coalesce(m.content, '') <> ''
                 on conflict (workspace_id, object_type, object_id)
                 do update set title = excluded.title,
                               excerpt = excluded.excerpt,
@@ -611,7 +746,9 @@ public class JdbcSearchRepository implements SearchRepository {
                               updated_at = excluded.updated_at,
                               indexed_at = now()
                 """,
-            workspaceId
+            workspaceId,
+            objectId,
+            objectId
         );
     }
 

@@ -1,15 +1,14 @@
 package com.colla.platform.modules.project.application;
 
-import com.colla.platform.modules.audit.application.AuditService;
-import com.colla.platform.modules.event.infrastructure.DomainEventRepository;
-import com.colla.platform.modules.file.infrastructure.FileRepository;
-import com.colla.platform.modules.im.application.ImService;
-import com.colla.platform.modules.im.domain.ImModels.MessageSummary;
-import com.colla.platform.modules.im.infrastructure.ImRepository;
-import com.colla.platform.modules.platform.application.PlatformObjectResolverRegistry;
-import com.colla.platform.modules.platform.domain.PlatformModels.ObjectAccessState;
-import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectSummary;
-import com.colla.platform.modules.platform.infrastructure.PlatformObjectRepository;
+import com.colla.platform.modules.audit.contract.AuditLog;
+import com.colla.platform.modules.event.contract.TransactionalOutbox;
+import com.colla.platform.modules.file.contract.FileAccess;
+import com.colla.platform.modules.im.contract.ProjectMessaging;
+import com.colla.platform.modules.im.contract.ProjectMessaging.MessageSnapshot;
+import com.colla.platform.modules.platform.contract.ObjectAccessState;
+import com.colla.platform.modules.platform.contract.PlatformObjectCommands;
+import com.colla.platform.modules.platform.contract.PlatformObjectRegistry;
+import com.colla.platform.modules.platform.contract.PlatformObjectSummary;
 import com.colla.platform.modules.project.domain.ProjectModels.IssueActivity;
 import com.colla.platform.modules.project.domain.ProjectModels.IssueAttachment;
 import com.colla.platform.modules.project.domain.ProjectModels.IssueComment;
@@ -245,31 +244,28 @@ public class ProjectService {
     }
 
     private final ProjectRepository projectRepository;
-    private final ImRepository imRepository;
-    private final ImService imService;
-    private final PlatformObjectRepository objectRepository;
-    private final PlatformObjectResolverRegistry objectResolverRegistry;
-    private final DomainEventRepository eventRepository;
-    private final FileRepository fileRepository;
-    private final AuditService auditService;
+    private final ProjectMessaging projectMessaging;
+    private final PlatformObjectCommands objectCommands;
+    private final PlatformObjectRegistry objectRegistry;
+    private final TransactionalOutbox eventRepository;
+    private final FileAccess fileAccess;
+    private final AuditLog auditService;
 
     public ProjectService(
         ProjectRepository projectRepository,
-        ImRepository imRepository,
-        ImService imService,
-        PlatformObjectRepository objectRepository,
-        PlatformObjectResolverRegistry objectResolverRegistry,
-        DomainEventRepository eventRepository,
-        FileRepository fileRepository,
-        AuditService auditService
+        ProjectMessaging projectMessaging,
+        PlatformObjectCommands objectCommands,
+        PlatformObjectRegistry objectRegistry,
+        TransactionalOutbox eventRepository,
+        FileAccess fileAccess,
+        AuditLog auditService
     ) {
         this.projectRepository = projectRepository;
-        this.imRepository = imRepository;
-        this.imService = imService;
-        this.objectRepository = objectRepository;
-        this.objectResolverRegistry = objectResolverRegistry;
+        this.projectMessaging = projectMessaging;
+        this.objectCommands = objectCommands;
+        this.objectRegistry = objectRegistry;
         this.eventRepository = eventRepository;
-        this.fileRepository = fileRepository;
+        this.fileAccess = fileAccess;
         this.auditService = auditService;
     }
 
@@ -281,12 +277,11 @@ public class ProjectService {
     public ProjectDetail createProject(CurrentUser currentUser, String projectKey, String name, String description, List<UUID> memberIds) {
         String normalizedKey = normalizeProjectKey(projectKey, name);
         List<UUID> members = normalizeMembers(currentUser.id(), memberIds);
-        UUID conversationId = imRepository.createConversation(
+        UUID conversationId = projectMessaging.createProjectConversation(
             currentUser.workspaceId(),
-            "project",
-            name + " 项目群",
             currentUser.id(),
-            currentUser.id()
+            name + " 项目群",
+            List.of()
         );
         UUID projectId = projectRepository.createProject(
             currentUser.workspaceId(),
@@ -304,14 +299,17 @@ public class ProjectService {
                 currentUser.id().equals(memberId) ? "owner" : "member",
                 currentUser.id()
             );
-            imRepository.addMember(
+            projectMessaging.addMember(
                 currentUser.workspaceId(),
+                currentUser.id(),
                 conversationId,
-                memberId,
-                currentUser.id().equals(memberId) ? "owner" : "member"
+                new ProjectMessaging.Member(
+                    memberId,
+                    currentUser.id().equals(memberId) ? "owner" : "member"
+                )
             );
         }
-        registerProjectObject(currentUser.workspaceId(), projectId, name.trim());
+        registerProjectObject(currentUser.workspaceId(), currentUser.id(), projectId, name.trim());
         eventRepository.append(
             currentUser.workspaceId(),
             "project.created",
@@ -338,7 +336,12 @@ public class ProjectService {
         for (UUID memberId : new LinkedHashSet<>(memberIds == null ? List.of() : memberIds)) {
             projectRepository.addProjectMember(currentUser.workspaceId(), projectId, memberId, "member", currentUser.id());
             if (project.conversationId() != null) {
-                imRepository.addMember(currentUser.workspaceId(), project.conversationId(), memberId, "member");
+                projectMessaging.addMember(
+                    currentUser.workspaceId(),
+                    currentUser.id(),
+                    project.conversationId(),
+                    new ProjectMessaging.Member(memberId, "member")
+                );
             }
             eventRepository.append(
                 currentUser.workspaceId(),
@@ -418,7 +421,7 @@ public class ProjectService {
             currentUser.id()
         );
         projectRepository.addActivity(currentUser.workspaceId(), issueId, currentUser.id(), "created", null, issueKey);
-        registerIssueObject(currentUser.workspaceId(), issueId, type, issueKey, title);
+        registerIssueObject(currentUser.workspaceId(), currentUser.id(), issueId, type, issueKey, title);
         appendIssueEvent(currentUser, "issue.created", issueId, Map.of("projectId", projectId.toString(), "issueId", issueId.toString()));
         notifyAssignee(currentUser, issueId, assigneeId, "issue.assigned", "你被指派了事项 " + issueKey);
         postProjectMessage(currentUser, project.conversationId(), "创建了 " + label(type) + " " + issueKey + " /issues/" + issueId);
@@ -455,8 +458,9 @@ public class ProjectService {
         if (projectId == null || conversationId == null || messageId == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Project and source message are required");
         }
-        MessageSummary sourceMessage = imRepository.findMessageForUser(currentUser.workspaceId(), messageId, currentUser.id())
-            .filter(message -> conversationId.equals(message.conversationId()))
+        MessageSnapshot sourceMessage = projectMessaging.findVisibleMessage(
+            currentUser.workspaceId(), currentUser.id(), conversationId, messageId
+        )
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Source message not found"));
         if (sourceMessage.revokedAt() != null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Revoked message cannot be converted");
@@ -532,7 +536,9 @@ public class ProjectService {
             notifyAssignee(currentUser, issueId, assigneeId, "issue.assigned", "你被指派了事项 " + before.issueKey());
         }
         IssueSummary after = projectRepository.findIssue(currentUser.workspaceId(), issueId).orElseThrow();
-        registerIssueObject(currentUser.workspaceId(), issueId, after.issueType(), after.issueKey(), after.title());
+        registerIssueObject(
+            currentUser.workspaceId(), currentUser.id(), issueId, after.issueType(), after.issueKey(), after.title()
+        );
         auditService.log(currentUser, "issue.updated", "issue", issueId, Map.of("projectId", before.projectId().toString()));
         return getIssue(currentUser, issueId);
     }
@@ -667,10 +673,12 @@ public class ProjectService {
     @Transactional
     public IssueDetail addAttachment(CurrentUser currentUser, UUID issueId, UUID fileId) {
         IssueSummary issue = requireIssueEditor(currentUser, issueId);
-        fileRepository.find(currentUser.workspaceId(), fileId)
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "File not found"));
+        var file = fileAccess.resolve(currentUser.workspaceId(), currentUser.id(), Set.of(fileId)).get(fileId);
+        if (file == null || file.availability() != FileAccess.Availability.AVAILABLE) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "File not found");
+        }
         projectRepository.addAttachment(currentUser.workspaceId(), issueId, fileId, currentUser.id());
-        fileRepository.addUsage(currentUser.workspaceId(), fileId, "issue", issueId, currentUser.id());
+        fileAccess.linkUsage(currentUser.workspaceId(), currentUser.id(), fileId, "issue", issueId);
         projectRepository.addActivity(currentUser.workspaceId(), issueId, currentUser.id(), "attachment.added", null, fileId.toString());
         return getIssue(currentUser, issue.id());
     }
@@ -753,7 +761,11 @@ public class ProjectService {
         if ("issue".equals(normalizedTargetType) && issueId.equals(targetId)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Issue cannot relate to itself");
         }
-        PlatformObjectSummary target = objectResolverRegistry.resolve(currentUser, normalizedTargetType, targetId);
+        PlatformObjectSummary target = objectRegistry.resolve(
+            currentUser.workspaceId(), currentUser.id(), normalizedTargetType, targetId
+        ).orElseGet(() -> PlatformObjectSummary.unavailable(
+            normalizedTargetType, targetId, ObjectAccessState.not_found
+        ));
         if (target.accessState() != ObjectAccessState.available) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Target object is not available");
         }
@@ -893,31 +905,46 @@ public class ProjectService {
             return;
         }
         try {
-            imService.sendMessage(currentUser, conversationId, UUID.randomUUID().toString(), "system", content);
+            projectMessaging.sendSystemMessage(
+                currentUser.workspaceId(),
+                currentUser.id(),
+                conversationId,
+                UUID.randomUUID().toString(),
+                content
+            );
         } catch (RuntimeException ignored) {
             // Project activity remains persisted even if the best-effort IM message fails.
         }
     }
 
-    private void registerIssueObject(UUID workspaceId, UUID issueId, String issueType, String issueKey, String title) {
-        objectRepository.upsertObjectLink(
+    private void registerIssueObject(
+        UUID workspaceId,
+        UUID actorId,
+        UUID issueId,
+        String issueType,
+        String issueKey,
+        String title
+    ) {
+        objectCommands.upsertLink(
             workspaceId,
             "issue",
             issueId,
             "/issues/" + issueId,
             "colla://issue/" + issueId,
-            issueKey + " " + title
+            issueKey + " " + title,
+            actorId
         );
     }
 
-    private void registerProjectObject(UUID workspaceId, UUID projectId, String name) {
-        objectRepository.upsertObjectLink(
+    private void registerProjectObject(UUID workspaceId, UUID actorId, UUID projectId, String name) {
+        objectCommands.upsertLink(
             workspaceId,
             "project",
             projectId,
             "/projects/" + projectId,
             "colla://project/" + projectId,
-            name
+            name,
+            actorId
         );
     }
 
@@ -982,7 +1009,7 @@ public class ProjectService {
         return value;
     }
 
-    private String defaultIssueTitleFromMessage(MessageSummary message) {
+    private String defaultIssueTitleFromMessage(MessageSnapshot message) {
         String content = message.content() == null ? "" : message.content().replaceAll("\\s+", " ").trim();
         if (content.isBlank()) {
             return "来自 IM 的事项";
@@ -990,8 +1017,8 @@ public class ProjectService {
         return content.length() <= 80 ? content : content.substring(0, 80);
     }
 
-    private String messageIssueDescription(String description, UUID conversationId, MessageSummary message) {
-        String messageLink = "/im?conversationId=" + conversationId + "&messageId=" + message.id();
+    private String messageIssueDescription(String description, UUID conversationId, MessageSnapshot message) {
+        String messageLink = "/im?conversationId=" + conversationId + "&messageId=" + message.messageId();
         String sourceBlock = "来源消息：" + messageLink + "\n\n" + message.senderName() + "：" + message.content();
         if (description == null || description.isBlank()) {
             return sourceBlock;
@@ -1084,7 +1111,11 @@ public class ProjectService {
                 relation.createdBy(),
                 relation.createdByName(),
                 relation.createdAt(),
-                objectResolverRegistry.resolve(currentUser, relation.targetType(), relation.targetId())
+                objectRegistry.resolve(
+                    currentUser.workspaceId(), currentUser.id(), relation.targetType(), relation.targetId()
+                ).orElseGet(() -> PlatformObjectSummary.unavailable(
+                    relation.targetType(), relation.targetId(), ObjectAccessState.not_found
+                ))
             ))
             .toList();
     }

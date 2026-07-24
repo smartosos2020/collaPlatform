@@ -665,6 +665,9 @@ AI 可以长时间推进，但必须遵守以下节奏：
 | --- | --- |
 | `pnpm verify` / `pnpm verify:full` | 快速或路线级完整质量门禁 |
 | `pnpm audit:snapshot` | 生成本地审计快照 |
+| `pnpm architecture:inventory` | 生成后端/前端/Flyway/SQL/运行组件架构清单并校验机器基线 |
+| `pnpm architecture:contracts` | 校验模块、公开合同、table owner、精确例外和模块边界 ADR |
+| `pnpm architecture:boundaries` | 校验后端/前端模块边界、SCC、共享层反向依赖与跨 owner SQL 访问 |
 | `pnpm work:start` / `work:checkpoint` / `work:finish` | 工作循环三个阶段 |
 | `pnpm work:plan-check` | 校验 Program、Stage、当前路线和 Task 规划合同 |
 | `pnpm security:audit` / `security:scan` | 安全 guardrail 与敏感信息扫描 |
@@ -677,11 +680,16 @@ AI 可以长时间推进，但必须遵守以下节奏：
 
 ```shell
 pnpm work:plan-check
+pnpm architecture:inventory -- --compare-ref ee8fb6883ac5868976cb261a25ab6d4972c33981 --expectation-path tools/workbench/config/platform-scale-s01-m1-baseline.json
+pnpm architecture:contracts
+pnpm architecture:boundaries
 pnpm work:start -- --goal PROJECT-PLATFORM-S01-M1 --task-range "PROJECT-PLATFORM-S01-M1-T01 到 PROJECT-PLATFORM-S01-M1-T09"
 pnpm work:checkpoint -- --goal project-platform-s01-m1
 pnpm work:finish -- --goal project-platform-s01-m1 --backend-test-pattern ProjectControllerIntegrationTests --browser-spec e2e/cross-module-route-final.spec.ts --browser-evidence-kind real --browser-evidence-environment isolated
 pnpm verify:full
 ```
+
+架构清单命令使用 TypeScript AST 解析前端静态 import、动态 `import()`、重导出、`require()`、相对路径、`@/` 和 tsconfig paths；后端按 Java import 声明统计模块方向；Flyway 按版本顺序执行 `CREATE TABLE`、`RENAME TO`、`DROP TABLE` 的清单语义；SQL 候选按“源文件 + 目标表”去重并聚合 read/write/DDL 模式。输出 schemaVersion、路径格式、去重规则和已知人工复核边界，禁止使用不同口径的手工数字覆盖机器基线。
 
 ## 12. CI 模板边界
 

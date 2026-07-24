@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
 
-import { useAuthStore } from '../../modules/auth/authStore'
 import type { PlatformWebSocketEvent } from './websocketEvents'
 
 const WS_BASE_URL = import.meta.env.VITE_WS_BASE_URL ?? defaultWebSocketUrl()
@@ -13,8 +12,10 @@ function defaultWebSocketUrl() {
 
 export type WebSocketStatus = 'idle' | 'connecting' | 'connected' | 'disconnected'
 
-export function useWebSocketConnection(onEvent: (event: PlatformWebSocketEvent) => void) {
-  const accessToken = useAuthStore((state) => state.accessToken)
+export function useWebSocketConnection(
+  accessToken: string | null,
+  onEvent: (event: PlatformWebSocketEvent) => void,
+) {
   const [status, setStatus] = useState<WebSocketStatus>('idle')
   const eventHandlerRef = useRef(onEvent)
   const reconnectAttemptRef = useRef(0)

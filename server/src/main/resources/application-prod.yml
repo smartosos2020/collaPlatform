@@ -9,6 +9,8 @@ spring:
       port: ${REDIS_PORT:6379}
 
 colla:
+  runtime:
+    role: ${COLLA_RUNTIME_ROLE}
   storage:
     endpoint: ${MINIO_ENDPOINT}
     access-key: ${MINIO_ACCESS_KEY}

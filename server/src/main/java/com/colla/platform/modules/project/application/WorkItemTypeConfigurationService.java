@@ -1,8 +1,8 @@
 package com.colla.platform.modules.project.application;
 
-import com.colla.platform.modules.audit.application.AuditService;
-import com.colla.platform.modules.event.infrastructure.DomainEventRepository;
-import com.colla.platform.modules.permission.application.PermissionService;
+import com.colla.platform.modules.audit.contract.AuditLog;
+import com.colla.platform.modules.event.contract.TransactionalOutbox;
+import com.colla.platform.modules.permission.contract.ProjectAuthorization;
 import com.colla.platform.modules.project.application.WorkItemTypeConfigurationModels.Configuration;
 import com.colla.platform.modules.project.application.WorkItemTypeConfigurationModels.ConfiguredType;
 import com.colla.platform.modules.project.application.WorkItemTypeConfigurationModels.GovernanceTypeCounts;
@@ -36,9 +36,9 @@ public class WorkItemTypeConfigurationService {
     private final WorkItemTypeCommandRepository commandRepository;
     private final WorkItemTypeActionPolicy actionPolicy;
     private final WorkItemTypeConfigCanonicalizer canonicalizer;
-    private final DomainEventRepository eventRepository;
-    private final AuditService auditService;
-    private final PermissionService permissionService;
+    private final TransactionalOutbox eventRepository;
+    private final AuditLog auditService;
+    private final ProjectAuthorization permissionService;
     private final ObjectMapper objectMapper;
 
     public WorkItemTypeConfigurationService(
@@ -47,9 +47,9 @@ public class WorkItemTypeConfigurationService {
         WorkItemTypeCommandRepository commandRepository,
         WorkItemTypeActionPolicy actionPolicy,
         WorkItemTypeConfigCanonicalizer canonicalizer,
-        DomainEventRepository eventRepository,
-        AuditService auditService,
-        PermissionService permissionService,
+        TransactionalOutbox eventRepository,
+        AuditLog auditService,
+        ProjectAuthorization permissionService,
         ObjectMapper objectMapper
     ) {
         this.definitionService = definitionService;

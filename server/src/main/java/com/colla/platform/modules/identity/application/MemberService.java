@@ -3,6 +3,8 @@ package com.colla.platform.modules.identity.application;
 import com.colla.platform.modules.audit.application.AuditService;
 import com.colla.platform.modules.identity.domain.AuthModels.MemberSummary;
 import com.colla.platform.modules.identity.infrastructure.IdentityRepository;
+import com.colla.platform.modules.im.contract.ConversationOwnershipTransfer;
+import com.colla.platform.modules.knowledge.contract.KnowledgeOwnershipTransfer;
 import com.colla.platform.modules.permission.application.PermissionService;
 import com.colla.platform.modules.project.application.ProjectSpaceMembershipService;
 import com.colla.platform.shared.auth.CurrentUser;
@@ -12,7 +14,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -25,7 +26,8 @@ public class MemberService {
     private final PasswordPolicy passwordPolicy;
     private final AuditService auditService;
     private final OrganizationService organizationService;
-    private final JdbcTemplate jdbcTemplate;
+    private final KnowledgeOwnershipTransfer knowledgeOwnershipTransfer;
+    private final ConversationOwnershipTransfer conversationOwnershipTransfer;
     private final ProjectSpaceMembershipService projectSpaceMembershipService;
 
     public MemberService(
@@ -35,7 +37,8 @@ public class MemberService {
         PasswordPolicy passwordPolicy,
         AuditService auditService,
         OrganizationService organizationService,
-        JdbcTemplate jdbcTemplate,
+        KnowledgeOwnershipTransfer knowledgeOwnershipTransfer,
+        ConversationOwnershipTransfer conversationOwnershipTransfer,
         ProjectSpaceMembershipService projectSpaceMembershipService
     ) {
         this.identityRepository = identityRepository;
@@ -44,7 +47,8 @@ public class MemberService {
         this.passwordPolicy = passwordPolicy;
         this.auditService = auditService;
         this.organizationService = organizationService;
-        this.jdbcTemplate = jdbcTemplate;
+        this.knowledgeOwnershipTransfer = knowledgeOwnershipTransfer;
+        this.conversationOwnershipTransfer = conversationOwnershipTransfer;
         this.projectSpaceMembershipService = projectSpaceMembershipService;
     }
 
@@ -120,21 +124,11 @@ public class MemberService {
             .filter(user -> user.workspaceId().equals(operator.workspaceId()) && "active".equals(user.status()))
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Handover member must be active in this workspace"));
 
-        int knowledgeBaseCount = jdbcTemplate.update(
-            """
-                update knowledge_base_spaces
-                set owner_id = ?, updated_by = ?, updated_at = now()
-                where workspace_id = ? and owner_id = ? and deleted_at is null
-                """,
-            handoverToUserId, operator.id(), operator.workspaceId(), userId
+        int knowledgeBaseCount = knowledgeOwnershipTransfer.transfer(
+            operator.workspaceId(), operator.id(), userId, handoverToUserId
         );
-        int conversationCount = jdbcTemplate.update(
-            """
-                update conversations
-                set owner_id = ?, updated_at = now()
-                where workspace_id = ? and owner_id = ? and archived_at is null
-                """,
-            handoverToUserId, operator.workspaceId(), userId
+        int conversationCount = conversationOwnershipTransfer.transfer(
+            operator.workspaceId(), userId, handoverToUserId
         );
         int projectSpaceCount = projectSpaceMembershipService.handoverSoleOwnerSpaces(
             operator, userId, handoverToUserId

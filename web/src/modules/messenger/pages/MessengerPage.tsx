@@ -127,6 +127,7 @@ export function MessengerPage() {
   const previousWsStatusRef = useRef<string>('idle')
   const queryClient = useQueryClient()
   const currentUser = useAuthStore((state) => state.currentUser)
+  const accessToken = useAuthStore((state) => state.accessToken)
   const { message } = AntdApp.useApp()
 
   const selectedConversationId = searchParams.get('conversationId')
@@ -189,7 +190,7 @@ export function MessengerPage() {
     ])
   }, [queryClient, selectedConversationId])
 
-  const wsStatus = useWebSocketConnection((event: PlatformWebSocketEvent) => {
+  const wsStatus = useWebSocketConnection(accessToken, (event: PlatformWebSocketEvent) => {
     if (
       [
         'message.created',

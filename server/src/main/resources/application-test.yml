@@ -6,3 +6,6 @@ spring:
     hibernate:
       ddl-auto: validate
 
+colla:
+  runtime:
+    role: ${COLLA_RUNTIME_ROLE:combined}

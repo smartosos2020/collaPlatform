@@ -5,7 +5,7 @@ import com.colla.platform.modules.knowledge.domain.KnowledgeBaseItemModels.Knowl
 import com.colla.platform.modules.knowledge.domain.KnowledgeBaseItemModels.KnowledgeBaseSpaceSummary;
 import com.colla.platform.modules.knowledge.infrastructure.KnowledgeContentRepository;
 import com.colla.platform.modules.knowledge.infrastructure.KnowledgeBaseSpaceRepository;
-import com.colla.platform.modules.event.infrastructure.DomainEventRepository;
+import com.colla.platform.modules.event.contract.TransactionalOutbox;
 import com.colla.platform.modules.permission.domain.PermissionModels.PermissionDecision;
 import com.colla.platform.modules.permission.domain.PermissionModels.ResourcePermissionEntry;
 import com.colla.platform.modules.permission.domain.PermissionModels.ResourcePermissionGrant;
@@ -36,7 +36,7 @@ public class ResourcePermissionManagementService {
     private final PermissionDecisionService permissionDecisionService;
     private final KnowledgeBaseSpaceRepository knowledgeBaseSpaceRepository;
     private final KnowledgeContentRepository contentRepository;
-    private final DomainEventRepository eventRepository;
+    private final TransactionalOutbox eventRepository;
     private final AuditService auditService;
     private final JdbcTemplate jdbcTemplate;
 
@@ -45,7 +45,7 @@ public class ResourcePermissionManagementService {
         PermissionDecisionService permissionDecisionService,
         KnowledgeBaseSpaceRepository knowledgeBaseSpaceRepository,
         KnowledgeContentRepository contentRepository,
-        DomainEventRepository eventRepository,
+        TransactionalOutbox eventRepository,
         AuditService auditService,
         JdbcTemplate jdbcTemplate
     ) {

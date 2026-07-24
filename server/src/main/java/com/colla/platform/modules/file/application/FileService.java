@@ -12,6 +12,8 @@ import com.colla.platform.shared.auth.CurrentUser;
 import com.colla.platform.shared.storage.StorageProperties;
 import io.minio.GetPresignedObjectUrlArgs;
 import io.minio.MinioClient;
+import io.minio.StatObjectArgs;
+import io.minio.errors.ErrorResponseException;
 import io.minio.http.Method;
 import java.time.Instant;
 import java.util.Map;
@@ -79,10 +81,31 @@ public class FileService {
 
     @Transactional
     public FileMetadata complete(CurrentUser currentUser, UUID fileId, String targetType, UUID targetId) {
-        FileMetadata file = fileRepository.complete(currentUser.workspaceId(), fileId, currentUser.id())
+        FileMetadata pending = fileRepository.find(currentUser.workspaceId(), fileId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "File not found"));
+        if (!currentUser.id().equals(pending.uploadedBy())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "File completion denied");
+        }
+        if ("completed".equals(pending.status())) {
+            return pending;
+        }
+        if (!"pending".equals(pending.status())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "File is not pending");
+        }
         if (targetType != null && targetId != null) {
             requireTargetAccess(currentUser, targetType, targetId);
+        }
+        verifyUploadedObject(pending);
+        boolean completed = fileRepository.completePending(currentUser.workspaceId(), fileId, currentUser.id());
+        FileMetadata file = fileRepository.find(currentUser.workspaceId(), fileId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "File not found"));
+        if (!completed) {
+            if ("completed".equals(file.status())) {
+                return file;
+            }
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "File completion state changed");
+        }
+        if (targetType != null && targetId != null) {
             fileRepository.addUsage(currentUser.workspaceId(), file.id(), targetType, targetId, currentUser.id());
         }
         objectRepository.upsertObjectLink(
@@ -92,6 +115,13 @@ public class FileService {
             "/files/" + file.id(),
             "colla://file/" + file.id(),
             file.originalName()
+        );
+        auditService.log(
+            currentUser,
+            "file.upload.completed",
+            "file",
+            file.id(),
+            Map.of("fileName", file.originalName(), "sizeBytes", Long.toString(file.sizeBytes()))
         );
         return file;
     }
@@ -144,6 +174,30 @@ public class FileService {
             );
         } catch (Exception exception) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to create storage URL", exception);
+        }
+    }
+
+    private void verifyUploadedObject(FileMetadata file) {
+        try {
+            var object = minioClient.statObject(
+                StatObjectArgs.builder()
+                    .bucket(storageProperties.getBucket())
+                    .object(file.objectKey())
+                    .build()
+            );
+            if (object.size() != file.sizeBytes()) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Uploaded object size does not match");
+            }
+        } catch (ErrorResponseException exception) {
+            if ("NoSuchKey".equals(exception.errorResponse().code())
+                || "NoSuchObject".equals(exception.errorResponse().code())) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Uploaded object is missing", exception);
+            }
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Storage is unavailable", exception);
+        } catch (ResponseStatusException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Storage is unavailable", exception);
         }
     }
 

@@ -1,7 +1,7 @@
 package com.colla.platform.modules.project.application;
 
-import com.colla.platform.modules.audit.infrastructure.AuditRepository;
-import com.colla.platform.modules.event.infrastructure.DomainEventRepository;
+import com.colla.platform.modules.audit.contract.AuditLog;
+import com.colla.platform.modules.event.contract.TransactionalOutbox;
 import com.colla.platform.modules.project.application.WorkItemFieldConfigurationModels.Configuration;
 import com.colla.platform.modules.project.application.WorkItemFieldConfigurationModels.ConfiguredField;
 import com.colla.platform.modules.project.application.WorkItemFieldConfigurationModels.ReorderField;
@@ -46,8 +46,8 @@ public class WorkItemFieldConfigurationService {
     private final WorkItemFieldConfigCanonicalizer fieldConfigCanonicalizer;
     private final WorkItemFieldComplexReferenceValidator complexReferenceValidator;
     private final WorkItemFieldOptionRepository optionRepository;
-    private final DomainEventRepository eventRepository;
-    private final AuditRepository auditRepository;
+    private final TransactionalOutbox eventRepository;
+    private final AuditLog auditRepository;
     private final ObjectMapper objectMapper;
 
     public WorkItemFieldConfigurationService(
@@ -61,8 +61,8 @@ public class WorkItemFieldConfigurationService {
         WorkItemFieldConfigCanonicalizer fieldConfigCanonicalizer,
         WorkItemFieldComplexReferenceValidator complexReferenceValidator,
         WorkItemFieldOptionRepository optionRepository,
-        DomainEventRepository eventRepository,
-        AuditRepository auditRepository,
+        TransactionalOutbox eventRepository,
+        AuditLog auditRepository,
         ObjectMapper objectMapper
     ) {
         this.definitionService = definitionService;

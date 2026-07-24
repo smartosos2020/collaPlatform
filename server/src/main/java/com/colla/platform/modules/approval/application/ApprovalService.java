@@ -8,7 +8,7 @@ import com.colla.platform.modules.approval.domain.ApprovalModels.ApprovalStats;
 import com.colla.platform.modules.approval.domain.ApprovalModels.ApprovalTaskSummary;
 import com.colla.platform.modules.approval.infrastructure.ApprovalRepository;
 import com.colla.platform.modules.audit.application.AuditService;
-import com.colla.platform.modules.event.infrastructure.DomainEventRepository;
+import com.colla.platform.modules.event.contract.TransactionalOutbox;
 import com.colla.platform.modules.identity.domain.AuthModels.UserAccount;
 import com.colla.platform.modules.identity.infrastructure.IdentityRepository;
 import com.colla.platform.modules.platform.infrastructure.PlatformObjectRepository;
@@ -29,14 +29,14 @@ public class ApprovalService {
     private final ApprovalRepository approvalRepository;
     private final IdentityRepository identityRepository;
     private final PlatformObjectRepository objectRepository;
-    private final DomainEventRepository eventRepository;
+    private final TransactionalOutbox eventRepository;
     private final AuditService auditService;
 
     public ApprovalService(
         ApprovalRepository approvalRepository,
         IdentityRepository identityRepository,
         PlatformObjectRepository objectRepository,
-        DomainEventRepository eventRepository,
+        TransactionalOutbox eventRepository,
         AuditService auditService
     ) {
         this.approvalRepository = approvalRepository;

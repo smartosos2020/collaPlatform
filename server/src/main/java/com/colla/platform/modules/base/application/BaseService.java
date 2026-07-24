@@ -22,7 +22,7 @@ import com.colla.platform.modules.base.domain.BaseModels.BaseTableDetail;
 import com.colla.platform.modules.base.domain.BaseModels.BaseTableSummary;
 import com.colla.platform.modules.base.domain.BaseModels.BaseView;
 import com.colla.platform.modules.base.infrastructure.BaseRepository;
-import com.colla.platform.modules.event.infrastructure.DomainEventRepository;
+import com.colla.platform.modules.event.contract.TransactionalOutbox;
 import com.colla.platform.modules.file.infrastructure.FileRepository;
 import com.colla.platform.modules.identity.infrastructure.IdentityRepository;
 import com.colla.platform.modules.platform.application.PlatformObjectResolverRegistry;
@@ -80,7 +80,7 @@ public class BaseService {
     private final FileRepository fileRepository;
     private final PlatformObjectRepository objectRepository;
     private final ObjectProvider<PlatformObjectResolverRegistry> objectResolverRegistryProvider;
-    private final DomainEventRepository eventRepository;
+    private final TransactionalOutbox eventRepository;
     private final AuditService auditService;
     private final PermissionDecisionService permissionDecisionService;
 
@@ -90,7 +90,7 @@ public class BaseService {
         FileRepository fileRepository,
         PlatformObjectRepository objectRepository,
         ObjectProvider<PlatformObjectResolverRegistry> objectResolverRegistryProvider,
-        DomainEventRepository eventRepository,
+        TransactionalOutbox eventRepository,
         AuditService auditService,
         PermissionDecisionService permissionDecisionService
     ) {

@@ -2,11 +2,11 @@
 title: 项目协作平台目标架构
 status: target
 program: PROJECT-PLATFORM
-program_revision: 13
+program_revision: 14
 domain_contract_version: 1
 domain_contract_status: frozen-s01-m3
 migration_contract_version: 1
-stage_review_status: s04-completed
+stage_review_status: paused-before-s05-for-platform-scale
 updated_at: 2026-07-24
 ---
 
@@ -693,3 +693,16 @@ S04 评审结论为 **Go S05，S06 保持依赖准入**。S04 已交付字段定
 - 字段配置目录基线为 120 字段、2400 选项、3 秒预算；隔离、永久 key、规则安全、并发、幂等、审计脱敏和六类身份路径均由自动化证据覆盖。
 - S05/S06 必须复用 S04 的复合隔离约束、规范 hash、`availableActions` 和最小披露错误，不得建立第二套字段模型。
 - 100,000 工作项动态查询、投影 rebuild、并发过滤和 p95 <= 200ms 由 S07/S13 验收，不得在 S04/S05/S06 报告中冒充已完成能力。
+
+## 22. S04 归档后的平台化暂停点
+
+S04 已完成并归档，S05 准入合同继续有效，但 PROJECT-PLATFORM 暂停在 S05 之前。暂停不代表撤销 Go S05，而是先由 `PLATFORM-SCALE-S01/S02` 建立模块边界门禁、公共合同和 API 运行隔离，避免布局、发布和规范 WorkItem 继续依赖其他模块私有 infrastructure。
+
+恢复 PROJECT-PLATFORM-S05 前必须重新确认：
+
+- project 访问 identity、file、platform、event、audit 和 IM 时只依赖显式 contract，不新增 foreign infrastructure import。
+- table owner 和例外清单能阻止 S05/S06 直接读写其他 owner 私表。
+- API 角色不混合运行 Worker、旧知识协同定时任务或通用 WebSocket session。
+- PLATFORM-SCALE-S02 的 Go/No-Go 明确选择恢复 S05，而不是继续 S03 或补充平台化阻断项。
+
+暂停期间不得另建 S05 当前路线、不得修改 S04 已发布结论，也不得用平台化任务提前实现布局或发布能力。

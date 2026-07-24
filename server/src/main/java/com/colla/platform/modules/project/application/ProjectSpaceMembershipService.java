@@ -1,10 +1,9 @@
 package com.colla.platform.modules.project.application;
 
-import com.colla.platform.modules.audit.application.AuditService;
-import com.colla.platform.modules.event.infrastructure.DomainEventRepository;
-import com.colla.platform.modules.identity.domain.AuthModels.MemberSummary;
-import com.colla.platform.modules.identity.domain.AuthModels.UserAccount;
-import com.colla.platform.modules.identity.infrastructure.IdentityRepository;
+import com.colla.platform.modules.audit.contract.AuditLog;
+import com.colla.platform.modules.event.contract.TransactionalOutbox;
+import com.colla.platform.modules.identity.contract.SubjectDirectory;
+import com.colla.platform.modules.identity.contract.SubjectDirectory.MemberProfile;
 import com.colla.platform.modules.project.domain.ProjectSpaceModels.ProjectSpaceInvitation;
 import com.colla.platform.modules.project.domain.ProjectSpaceModels.ProjectSpaceMember;
 import com.colla.platform.modules.project.domain.ProjectSpaceModels.ProjectSpaceMemberCandidate;
@@ -38,20 +37,20 @@ public class ProjectSpaceMembershipService {
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
     private final ProjectSpaceMembershipRepository membershipRepository;
-    private final IdentityRepository identityRepository;
+    private final SubjectDirectory subjectDirectory;
     private final ProjectSpaceService projectSpaceService;
-    private final AuditService auditService;
-    private final DomainEventRepository eventRepository;
+    private final AuditLog auditService;
+    private final TransactionalOutbox eventRepository;
 
     public ProjectSpaceMembershipService(
         ProjectSpaceMembershipRepository membershipRepository,
-        IdentityRepository identityRepository,
+        SubjectDirectory subjectDirectory,
         ProjectSpaceService projectSpaceService,
-        AuditService auditService,
-        DomainEventRepository eventRepository
+        AuditLog auditService,
+        TransactionalOutbox eventRepository
     ) {
         this.membershipRepository = membershipRepository;
-        this.identityRepository = identityRepository;
+        this.subjectDirectory = subjectDirectory;
         this.projectSpaceService = projectSpaceService;
         this.auditService = auditService;
         this.eventRepository = eventRepository;
@@ -83,15 +82,14 @@ public class ProjectSpaceMembershipService {
             .filter(member -> "active".equals(member.memberStatus()))
             .map(ProjectSpaceMember::userId)
             .collect(java.util.stream.Collectors.toSet());
-        return identityRepository.listMembers(currentUser.workspaceId()).stream()
-            .filter(member -> "active".equals(member.status()))
+        return subjectDirectory.listActiveMembers(currentUser.workspaceId(), currentUser.id()).stream()
             .filter(member -> !existing.contains(member.id()))
             .filter(member -> matches(member, normalized))
-            .sorted(Comparator.comparing(MemberSummary::displayName, String.CASE_INSENSITIVE_ORDER))
+            .sorted(Comparator.comparing(MemberProfile::displayName, String.CASE_INSENSITIVE_ORDER))
             .limit(50)
             .map(member -> new ProjectSpaceMemberCandidate(
                 member.id(), member.username(), member.displayName(), member.avatarFileId(), member.email(),
-                member.departments().stream().map(department -> department.departmentName()).toList()
+                member.departments()
             ))
             .toList();
     }
@@ -101,7 +99,7 @@ public class ProjectSpaceMembershipService {
         lockActiveSpace(currentUser, spaceId);
         ProjectSpaceMember actor = requireManager(currentUser, spaceId, true);
         ProjectSpaceRole role = assignableRole(actor, roleKey);
-        UserAccount target = requireActiveWorkspaceUser(currentUser, userId);
+        MemberProfile target = requireActiveWorkspaceUser(currentUser, userId);
         ProjectSpaceMember existing = membershipRepository.findMemberByUser(currentUser.workspaceId(), spaceId, userId).orElse(null);
         if (existing != null && "active".equals(existing.memberStatus())) {
             if (role.name().equals(existing.roleKey())) {
@@ -147,8 +145,7 @@ public class ProjectSpaceMembershipService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Project space must be active for migration member writes");
         }
         ProjectSpaceRole role = parseRole(roleKey);
-        UserAccount target = identityRepository.findUserById(userId)
-            .filter(user -> user.workspaceId().equals(workspaceId) && "active".equals(user.status()))
+        MemberProfile target = subjectDirectory.findActiveMember(workspaceId, actorId, userId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Migration member is not an active workspace user"));
         ProjectSpaceMember existing = membershipRepository.findMemberByUser(workspaceId, spaceId, userId).orElse(null);
         if (existing != null && "active".equals(existing.memberStatus())) {
@@ -278,7 +275,7 @@ public class ProjectSpaceMembershipService {
         if (role == ProjectSpaceRole.owner) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Owner role requires transfer");
         }
-        UserAccount invitee = requireActiveWorkspaceUser(currentUser, inviteeUserId);
+        MemberProfile invitee = requireActiveWorkspaceUser(currentUser, inviteeUserId);
         ProjectSpaceMember existingMember = membershipRepository.findMemberByUser(
             currentUser.workspaceId(), spaceId, inviteeUserId
         ).orElse(null);
@@ -505,9 +502,8 @@ public class ProjectSpaceMembershipService {
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Project space member not found"));
     }
 
-    private UserAccount requireActiveWorkspaceUser(CurrentUser currentUser, UUID userId) {
-        return identityRepository.findUserById(userId)
-            .filter(user -> user.workspaceId().equals(currentUser.workspaceId()) && "active".equals(user.status()))
+    private MemberProfile requireActiveWorkspaceUser(CurrentUser currentUser, UUID userId) {
+        return subjectDirectory.findActiveMember(currentUser.workspaceId(), currentUser.id(), userId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Active workspace member not found"));
     }
 
@@ -583,7 +579,7 @@ public class ProjectSpaceMembershipService {
         }
     }
 
-    private boolean matches(MemberSummary member, String query) {
+    private boolean matches(MemberProfile member, String query) {
         if (query.isBlank()) {
             return true;
         }

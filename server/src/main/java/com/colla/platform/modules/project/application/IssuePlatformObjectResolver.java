@@ -1,13 +1,10 @@
 package com.colla.platform.modules.project.application;
 
-import com.colla.platform.modules.platform.application.PlatformObjectResolver;
-import com.colla.platform.modules.platform.domain.PlatformModels.ObjectAccessState;
-import com.colla.platform.modules.platform.domain.PlatformModels.ObjectLinkRecord;
-import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectSummary;
-import com.colla.platform.modules.platform.infrastructure.PlatformObjectRepository;
+import com.colla.platform.modules.platform.contract.ObjectAccessState;
+import com.colla.platform.modules.platform.contract.PlatformObjectResolver;
+import com.colla.platform.modules.platform.contract.PlatformObjectSummary;
 import com.colla.platform.modules.project.domain.ProjectModels.IssueSummary;
 import com.colla.platform.modules.project.infrastructure.ProjectRepository;
-import com.colla.platform.shared.auth.CurrentUser;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -17,11 +14,8 @@ import org.springframework.stereotype.Component;
 @Component
 public class IssuePlatformObjectResolver implements PlatformObjectResolver {
     private final ProjectRepository projectRepository;
-    private final PlatformObjectRepository objectRepository;
-
-    public IssuePlatformObjectResolver(ProjectRepository projectRepository, PlatformObjectRepository objectRepository) {
+    public IssuePlatformObjectResolver(ProjectRepository projectRepository) {
         this.projectRepository = projectRepository;
-        this.objectRepository = objectRepository;
     }
 
     @Override
@@ -30,14 +24,13 @@ public class IssuePlatformObjectResolver implements PlatformObjectResolver {
     }
 
     @Override
-    public Optional<PlatformObjectSummary> resolve(CurrentUser currentUser, UUID objectId) {
-        Optional<IssueSummary> issue = projectRepository.findIssue(currentUser.workspaceId(), objectId);
+    public Optional<PlatformObjectSummary> resolve(UUID workspaceId, UUID actorId, UUID objectId) {
+        Optional<IssueSummary> issue = projectRepository.findIssue(workspaceId, objectId);
         if (issue.isEmpty()) {
-            return objectRepository.findObjectLink(currentUser.workspaceId(), "issue", objectId)
-                .map(this::fallbackSummary);
+            return Optional.empty();
         }
         IssueSummary value = issue.get();
-        if (!projectRepository.isProjectMember(currentUser.workspaceId(), value.projectId(), currentUser.id())) {
+        if (!projectRepository.isProjectMember(workspaceId, value.projectId(), actorId)) {
             return Optional.of(PlatformObjectSummary.unavailable("issue", objectId, ObjectAccessState.forbidden));
         }
         Map<String, Object> metadata = new LinkedHashMap<>();
@@ -66,18 +59,10 @@ public class IssuePlatformObjectResolver implements PlatformObjectResolver {
         ));
     }
 
-    private PlatformObjectSummary fallbackSummary(ObjectLinkRecord link) {
-        ObjectAccessState state = link.deletedAt() == null ? ObjectAccessState.available : ObjectAccessState.deleted;
-        return new PlatformObjectSummary(
-            link.objectType(),
-            link.objectId(),
-            state,
-            state == ObjectAccessState.available ? link.titleSnapshot() : null,
-            null,
-            null,
-            state == ObjectAccessState.available ? link.webPath() : null,
-            state == ObjectAccessState.available ? link.deepLink() : null,
-            Map.of()
-        );
+    @Override
+    public ObjectAccessState accessState(UUID workspaceId, UUID actorId, UUID objectId) {
+        return resolve(workspaceId, actorId, objectId)
+            .map(PlatformObjectSummary::accessState)
+            .orElse(ObjectAccessState.not_found);
     }
 }

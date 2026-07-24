@@ -5,6 +5,7 @@ import com.colla.platform.modules.identity.domain.AuthModels.MemberDepartment;
 import com.colla.platform.modules.identity.domain.AuthModels.MemberSummary;
 import com.colla.platform.modules.identity.domain.AuthModels.DeviceSummary;
 import com.colla.platform.modules.identity.domain.AuthModels.PushTokenSummary;
+import com.colla.platform.modules.permission.contract.RoleAssignmentCommands;
 import com.colla.platform.shared.auth.ClientType;
 import com.colla.platform.shared.auth.CurrentUser;
 import java.sql.ResultSet;
@@ -22,10 +23,14 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public class JdbcIdentityRepository implements IdentityRepository {
-    private final JdbcTemplate jdbcTemplate;
+    private static final long ADMIN_INITIALIZATION_LOCK = 0x434F4C4C4141444DL;
 
-    public JdbcIdentityRepository(JdbcTemplate jdbcTemplate) {
+    private final JdbcTemplate jdbcTemplate;
+    private final RoleAssignmentCommands roleAssignmentCommands;
+
+    public JdbcIdentityRepository(JdbcTemplate jdbcTemplate, RoleAssignmentCommands roleAssignmentCommands) {
         this.jdbcTemplate = jdbcTemplate;
+        this.roleAssignmentCommands = roleAssignmentCommands;
     }
 
     @Override
@@ -204,6 +209,15 @@ public class JdbcIdentityRepository implements IdentityRepository {
     }
 
     @Override
+    public void lockAdminInitialization() {
+        jdbcTemplate.query(
+            "select pg_advisory_xact_lock(?)",
+            resultSet -> null,
+            ADMIN_INITIALIZATION_LOCK
+        );
+    }
+
+    @Override
     public UUID createUser(UUID workspaceId, String username, String passwordHash, String displayName, String email, UUID createdBy) {
         UUID id = UUID.randomUUID();
         jdbcTemplate.update(
@@ -226,29 +240,7 @@ public class JdbcIdentityRepository implements IdentityRepository {
 
     @Override
     public void assignRole(UUID workspaceId, UUID userId, String roleCode, UUID createdBy) {
-        UUID roleId = jdbcTemplate.queryForObject(
-            "select id from roles where workspace_id = ? and code = ?",
-            UUID.class,
-            workspaceId,
-            roleCode
-        );
-        Integer existing = jdbcTemplate.queryForObject(
-            "select count(*) from user_roles where workspace_id = ? and user_id = ? and role_id = ?",
-            Integer.class,
-            workspaceId,
-            userId,
-            roleId
-        );
-        if (existing == null || existing == 0) {
-            jdbcTemplate.update(
-                "insert into user_roles (id, workspace_id, user_id, role_id, created_by, created_at) values (?, ?, ?, ?, ?, now())",
-                UUID.randomUUID(),
-                workspaceId,
-                userId,
-                roleId,
-                createdBy
-            );
-        }
+        roleAssignmentCommands.assign(workspaceId, userId, roleCode, createdBy);
     }
 
     @Override

@@ -1,6 +1,6 @@
 package com.colla.platform.modules.project.application;
 
-import com.colla.platform.modules.permission.application.PermissionService;
+import com.colla.platform.modules.permission.contract.ProjectAuthorization;
 import com.colla.platform.modules.project.domain.ProjectLegacyMappingModels.ActiveSpaceMap;
 import com.colla.platform.modules.project.domain.ProjectLegacyMappingModels.LegacyMemberRow;
 import com.colla.platform.modules.project.domain.ProjectLegacyMappingModels.LegacyProjectRow;
@@ -32,11 +32,11 @@ public class ProjectLegacyMappingService {
     static final String SPACE_ID_SEED_PREFIX = "colla:project-legacy-space:";
 
     private final ProjectLegacyMappingRepository projectLegacyMappingRepository;
-    private final PermissionService permissionService;
+    private final ProjectAuthorization permissionService;
 
     public ProjectLegacyMappingService(
         ProjectLegacyMappingRepository projectLegacyMappingRepository,
-        PermissionService permissionService
+        ProjectAuthorization permissionService
     ) {
         this.projectLegacyMappingRepository = projectLegacyMappingRepository;
         this.permissionService = permissionService;
