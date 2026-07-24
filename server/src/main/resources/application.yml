@@ -48,7 +48,7 @@ management:
         enabled: true
       group:
         readiness:
-          include: readinessState,runtimeRoleReadiness,domainEventWorkerReadiness
+          include: readinessState,runtimeRoleReadiness,domainEventWorkerReadiness,realtimeRedisReadiness
         liveness:
           include: livenessState
 
@@ -62,6 +62,14 @@ colla:
     instance-id: ${COLLA_INSTANCE_ID:${HOSTNAME:local}}
     version: ${COLLA_VERSION:0.1.0}
     commit: ${SOURCE_COMMIT:unknown}
+  realtime:
+    channel: ${COLLA_REALTIME_CHANNEL:colla:local:realtime:v1}
+    max-payload-bytes: ${COLLA_REALTIME_MAX_PAYLOAD_BYTES:16384}
+    send-threads: ${COLLA_REALTIME_SEND_THREADS:4}
+    executor-queue-capacity: ${COLLA_REALTIME_EXECUTOR_QUEUE_CAPACITY:512}
+    session-queue-capacity: ${COLLA_REALTIME_SESSION_QUEUE_CAPACITY:64}
+    recent-signal-capacity: ${COLLA_REALTIME_RECENT_SIGNAL_CAPACITY:10000}
+    shutdown-timeout: ${COLLA_REALTIME_SHUTDOWN_TIMEOUT:5s}
   events:
     worker:
       enabled: ${COLLA_EVENT_WORKER_ENABLED:false}

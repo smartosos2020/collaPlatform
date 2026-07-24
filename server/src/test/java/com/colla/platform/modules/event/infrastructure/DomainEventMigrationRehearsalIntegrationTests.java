@@ -26,7 +26,7 @@ class DomainEventMigrationRehearsalIntegrationTests {
             assertThat(flyway.migrate().migrationsExecuted).isGreaterThan(0);
 
             try (Connection connection = connection(postgres)) {
-                assertThat(appliedVersion(connection)).isEqualTo(69);
+                assertThat(appliedVersion(connection)).isEqualTo(70);
                 assertThat(count(connection, "select count(*) from pg_indexes where indexname = 'idx_event_handler_deliveries_claim'"))
                     .isEqualTo(1);
                 assertThat(count(connection, "select count(*) from pg_indexes where indexname = 'idx_realtime_signals_pending'"))
@@ -99,11 +99,11 @@ class DomainEventMigrationRehearsalIntegrationTests {
                     assertThat(result.getObject("correlation_id", UUID.class)).isEqualTo(eventId);
                     assertThat(result.getObject("occurred_at")).isNotNull();
                 }
-                assertThat(appliedVersion(connection)).isEqualTo(69);
+                assertThat(appliedVersion(connection)).isEqualTo(70);
                 assertThat(count(
                     connection,
-                    "select count(*) from flyway_schema_history where success = true and version in ('067', '068', '069')"
-                )).isEqualTo(3);
+                    "select count(*) from flyway_schema_history where success = true and version in ('067', '068', '069', '070')"
+                )).isEqualTo(4);
             }
         }
     }

@@ -11,6 +11,8 @@ spring:
 colla:
   runtime:
     role: ${COLLA_RUNTIME_ROLE:combined}
+  realtime:
+    channel: ${COLLA_REALTIME_CHANNEL:colla:local:realtime:v1}
   storage:
     endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
     access-key: ${MINIO_ACCESS_KEY:colla_minio}

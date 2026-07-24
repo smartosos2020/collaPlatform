@@ -6,6 +6,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.colla.platform.shared.auth.CurrentUser;
+import java.util.List;
 import java.util.Map;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.CloseStatus;
@@ -22,16 +23,16 @@ public class PlatformWebSocketHandler extends TextWebSocketHandler {
     };
 
     private final WebSocketSessionRegistry registry;
-    private final CollaborationMessageHandler collaborationMessageHandler;
+    private final List<CollaborationMessageHandler> collaborationMessageHandlers;
     private final ObjectMapper objectMapper;
 
     public PlatformWebSocketHandler(
         WebSocketSessionRegistry registry,
-        CollaborationMessageHandler collaborationMessageHandler,
+        List<CollaborationMessageHandler> collaborationMessageHandlers,
         ObjectMapper objectMapper
     ) {
         this.registry = registry;
-        this.collaborationMessageHandler = collaborationMessageHandler;
+        this.collaborationMessageHandlers = List.copyOf(collaborationMessageHandlers);
         this.objectMapper = objectMapper;
     }
 
@@ -51,15 +52,18 @@ public class PlatformWebSocketHandler extends TextWebSocketHandler {
             return;
         }
         String type = command.get("type") == null ? "" : String.valueOf(command.get("type"));
-        if (collaborationMessageHandler.supports(type)) {
-            collaborationMessageHandler.handle(currentUser(session), session, message.getPayload());
+        for (CollaborationMessageHandler handler : collaborationMessageHandlers) {
+            if (handler.supports(type)) {
+                handler.handle(currentUser(session), session, message.getPayload());
+                return;
+            }
         }
     }
 
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
         CurrentUser currentUser = currentUser(session);
-        collaborationMessageHandler.disconnect(session, currentUser);
+        collaborationMessageHandlers.forEach(handler -> handler.disconnect(session, currentUser));
         registry.unregister(currentUser.id(), session);
     }
 

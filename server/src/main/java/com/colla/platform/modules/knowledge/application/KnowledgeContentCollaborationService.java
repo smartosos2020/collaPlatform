@@ -28,7 +28,7 @@ import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 
 @Service
-@ConditionalOnRuntimeRole({RuntimeRole.WORKER, RuntimeRole.EVENT_GATEWAY, RuntimeRole.COMBINED})
+@ConditionalOnRuntimeRole({RuntimeRole.WORKER, RuntimeRole.COMBINED})
 public class KnowledgeContentCollaborationService implements CollaborationMessageHandler, KnowledgeCollaborationHealthQuery {
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
     };

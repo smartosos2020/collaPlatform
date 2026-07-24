@@ -27,4 +27,11 @@ class ModuleArchitectureTests {
             .that().resideInAPackage("com.colla.platform.shared..")
             .should().dependOnClassesThat().resideInAPackage("com.colla.platform.modules..")
             .because("shared infrastructure exposes inbound ports and must not select a business-module provider");
+
+    @ArchTest
+    static final ArchRule EVENT_MODULE_MUST_NOT_IMPORT_REDIS_TRANSPORT =
+        noClasses()
+            .that().resideInAPackage("com.colla.platform.modules.event..")
+            .should().dependOnClassesThat().resideInAPackage("org.springframework.data.redis..")
+            .because("event workers publish through the shared realtime port, not a Redis implementation");
 }

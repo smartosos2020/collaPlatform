@@ -11,6 +11,8 @@ spring:
 colla:
   runtime:
     role: ${COLLA_RUNTIME_ROLE}
+  realtime:
+    channel: ${COLLA_REALTIME_CHANNEL}
   storage:
     endpoint: ${MINIO_ENDPOINT}
     access-key: ${MINIO_ACCESS_KEY}

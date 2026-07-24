@@ -10,6 +10,10 @@ import com.colla.platform.modules.event.application.ReliableDomainEventWorker;
 import com.colla.platform.modules.identity.application.AdminInitializer;
 import com.colla.platform.modules.knowledge.application.KnowledgeCollaborationMaintenanceWorker;
 import com.colla.platform.modules.knowledge.application.KnowledgeContentCollaborationService;
+import com.colla.platform.modules.event.application.RealtimeSignalTransportDomainEventHandler;
+import com.colla.platform.shared.realtime.LocalSessionRealtimeSignalConsumer;
+import com.colla.platform.shared.realtime.RedisRealtimeSignalPublisher;
+import com.colla.platform.shared.realtime.RedisRealtimeSignalSubscriber;
 import com.colla.platform.shared.websocket.PlatformWebSocketHandler;
 import com.colla.platform.shared.websocket.WebSocketAuthInterceptor;
 import com.colla.platform.shared.websocket.WebSocketSessionRegistry;
@@ -41,9 +45,12 @@ class RuntimeRoleBeanContractTests {
         assertRoles(
             KnowledgeContentCollaborationService.class,
             RuntimeRole.WORKER,
-            RuntimeRole.EVENT_GATEWAY,
             RuntimeRole.COMBINED
         );
+        assertRoles(RealtimeSignalTransportDomainEventHandler.class, RuntimeRole.WORKER, RuntimeRole.COMBINED);
+        assertRoles(RedisRealtimeSignalPublisher.class, RuntimeRole.WORKER, RuntimeRole.COMBINED);
+        assertRoles(RedisRealtimeSignalSubscriber.class, RuntimeRole.EVENT_GATEWAY, RuntimeRole.COMBINED);
+        assertRoles(LocalSessionRealtimeSignalConsumer.class, RuntimeRole.EVENT_GATEWAY, RuntimeRole.COMBINED);
         assertRoles(WebSocketConfig.class, RuntimeRole.EVENT_GATEWAY, RuntimeRole.COMBINED);
         assertRoles(PlatformWebSocketHandler.class, RuntimeRole.EVENT_GATEWAY, RuntimeRole.COMBINED);
         assertRoles(WebSocketAuthInterceptor.class, RuntimeRole.EVENT_GATEWAY, RuntimeRole.COMBINED);
