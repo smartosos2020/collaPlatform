@@ -21,6 +21,8 @@ import com.colla.platform.modules.project.domain.ProjectModels.ProjectStats;
 import com.colla.platform.modules.project.domain.ProjectModels.ProjectSummary;
 import com.colla.platform.modules.project.infrastructure.ProjectRepository;
 import com.colla.platform.shared.auth.CurrentUser;
+import com.colla.platform.shared.request.RequestBoundaryContext;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -319,6 +321,7 @@ public class ProjectService {
             Map.of("projectId", projectId.toString(), "conversationId", conversationId.toString()),
             "project.created:" + projectId
         );
+        appendProjectChange(currentUser, projectId, "created");
         auditService.log(currentUser, "project.created", "project", projectId, Map.of("projectKey", normalizedKey));
         return getProject(currentUser, projectId);
     }
@@ -354,6 +357,7 @@ public class ProjectService {
             );
             auditService.log(currentUser, "project.member.added", "project", projectId, Map.of("memberId", memberId.toString()));
         }
+        appendProjectChange(currentUser, projectId, "members");
         return getProject(currentUser, projectId);
     }
 
@@ -423,6 +427,7 @@ public class ProjectService {
         projectRepository.addActivity(currentUser.workspaceId(), issueId, currentUser.id(), "created", null, issueKey);
         registerIssueObject(currentUser.workspaceId(), currentUser.id(), issueId, type, issueKey, title);
         appendIssueEvent(currentUser, "issue.created", issueId, Map.of("projectId", projectId.toString(), "issueId", issueId.toString()));
+        appendIssueChange(currentUser, projectId, issueId, "created");
         notifyAssignee(currentUser, issueId, assigneeId, "issue.assigned", "你被指派了事项 " + issueKey);
         postProjectMessage(currentUser, project.conversationId(), "创建了 " + label(type) + " " + issueKey + " /issues/" + issueId);
         auditService.log(currentUser, "issue.created", "issue", issueId, Map.of("projectId", projectId.toString(), "issueType", type));
@@ -491,6 +496,7 @@ public class ProjectService {
                 "messageId", messageId.toString()
             )
         );
+        appendIssueChange(currentUser, projectId, issueId, "created-from-message");
         auditService.log(
             currentUser,
             "issue.created.from_message",
@@ -540,6 +546,7 @@ public class ProjectService {
             currentUser.workspaceId(), currentUser.id(), issueId, after.issueType(), after.issueKey(), after.title()
         );
         auditService.log(currentUser, "issue.updated", "issue", issueId, Map.of("projectId", before.projectId().toString()));
+        appendIssueChange(currentUser, before.projectId(), issueId, "updated");
         return getIssue(currentUser, issueId);
     }
 
@@ -608,6 +615,7 @@ public class ProjectService {
             eventPayload.put("dueAt", dueAt.toString());
         }
         appendIssueEvent(currentUser, "issue.workflow." + workflowAction.key(), issueId, eventPayload);
+        appendIssueChange(currentUser, issue.projectId(), issueId, "workflow-" + workflowAction.key());
         notifyIssueParticipants(
             currentUser,
             issue,
@@ -667,6 +675,7 @@ public class ProjectService {
         }
         ProjectSummary project = projectRepository.findProjectById(currentUser.workspaceId(), issue.projectId()).orElseThrow();
         postProjectMessage(currentUser, project.conversationId(), "评论了 " + issue.issueKey() + " /issues/" + issueId);
+        appendIssueChange(currentUser, issue.projectId(), issueId, "comment-added");
         return getIssue(currentUser, issueId);
     }
 
@@ -680,6 +689,7 @@ public class ProjectService {
         projectRepository.addAttachment(currentUser.workspaceId(), issueId, fileId, currentUser.id());
         fileAccess.linkUsage(currentUser.workspaceId(), currentUser.id(), fileId, "issue", issueId);
         projectRepository.addActivity(currentUser.workspaceId(), issueId, currentUser.id(), "attachment.added", null, fileId.toString());
+        appendIssueChange(currentUser, issue.projectId(), issueId, "attachment-added");
         return getIssue(currentUser, issue.id());
     }
 
@@ -738,6 +748,7 @@ public class ProjectService {
             issueId,
             Map.of("issueId", issueId.toString(), "verificationId", verificationId.toString(), "result", normalizedResult)
         );
+        appendIssueChange(currentUser, issue.projectId(), issueId, "verified");
         notifyIssueParticipants(
             currentUser,
             issue,
@@ -777,6 +788,7 @@ public class ProjectService {
             issueId,
             Map.of("issueId", issueId.toString(), "targetType", normalizedTargetType, "targetId", targetId.toString())
         );
+        appendIssueChange(currentUser, issue.projectId(), issueId, "relation-added");
         auditService.log(
             currentUser,
             "issue.relation.added",
@@ -898,6 +910,36 @@ public class ProjectService {
             payload,
             eventType + ":" + issueId + ":" + UUID.randomUUID()
         );
+    }
+
+    private void appendProjectChange(CurrentUser currentUser, UUID projectId, String mutation) {
+        eventRepository.append(
+            currentUser.workspaceId(),
+            ProjectRealtimeDomainEventHandler.PROJECT_CHANGED,
+            "project",
+            projectId,
+            currentUser.id(),
+            Map.of(),
+            changeKey("project", projectId, mutation)
+        );
+    }
+
+    private void appendIssueChange(CurrentUser currentUser, UUID projectId, UUID issueId, String mutation) {
+        eventRepository.append(
+            currentUser.workspaceId(),
+            ProjectRealtimeDomainEventHandler.ISSUE_CHANGED,
+            "issue",
+            issueId,
+            currentUser.id(),
+            Map.of("projectId", projectId.toString()),
+            changeKey("issue", issueId, mutation)
+        );
+    }
+
+    private String changeKey(String aggregateType, UUID aggregateId, String mutation) {
+        String source = aggregateType + ":" + aggregateId + ":" + mutation + ":"
+            + RequestBoundaryContext.current().requestId();
+        return "project.change:" + UUID.nameUUIDFromBytes(source.getBytes(StandardCharsets.UTF_8));
     }
 
     private void postProjectMessage(CurrentUser currentUser, UUID conversationId, String content) {

@@ -8,9 +8,14 @@ import org.springframework.stereotype.Service;
 @Service
 public class RoleAssignmentCommandService implements RoleAssignmentCommands {
     private final JdbcTemplate jdbcTemplate;
+    private final PermissionSecurityChangePublisher securityChanges;
 
-    public RoleAssignmentCommandService(JdbcTemplate jdbcTemplate) {
+    public RoleAssignmentCommandService(
+        JdbcTemplate jdbcTemplate,
+        PermissionSecurityChangePublisher securityChanges
+    ) {
         this.jdbcTemplate = jdbcTemplate;
+        this.securityChanges = securityChanges;
     }
 
     @Override
@@ -54,6 +59,15 @@ public class RoleAssignmentCommandService implements RoleAssignmentCommands {
             workspaceId,
             userId,
             roleId
+        );
+        securityChanges.publish(
+            workspaceId,
+            actorId,
+            "role",
+            roleId,
+            "role",
+            "/api/admin/roles/" + roleId,
+            "command-assign:" + roleId + ":" + userId
         );
     }
 }

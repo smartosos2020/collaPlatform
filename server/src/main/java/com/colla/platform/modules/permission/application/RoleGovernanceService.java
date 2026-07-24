@@ -8,9 +8,11 @@ import org.springframework.stereotype.Service;
 @Service
 public class RoleGovernanceService implements RoleGovernance {
     private final JdbcTemplate jdbcTemplate;
+    private final PermissionSecurityChangePublisher securityChanges;
 
-    public RoleGovernanceService(JdbcTemplate jdbcTemplate) {
+    public RoleGovernanceService(JdbcTemplate jdbcTemplate, PermissionSecurityChangePublisher securityChanges) {
         this.jdbcTemplate = jdbcTemplate;
+        this.securityChanges = securityChanges;
     }
 
     @Override
@@ -26,10 +28,17 @@ public class RoleGovernanceService implements RoleGovernance {
 
     @Override
     public int disable(UUID workspaceId, UUID actorId, UUID roleId) {
-        return jdbcTemplate.update(
+        int changed = jdbcTemplate.update(
             "update roles set status = 'disabled', updated_at = now() where id = ? and workspace_id = ? and status = 'active'",
             roleId,
             workspaceId
         );
+        if (changed > 0) {
+            securityChanges.publish(
+                workspaceId, actorId, "role", roleId, "role", "/api/admin/roles/" + roleId,
+                "governance-disable:" + roleId
+            );
+        }
+        return changed;
     }
 }

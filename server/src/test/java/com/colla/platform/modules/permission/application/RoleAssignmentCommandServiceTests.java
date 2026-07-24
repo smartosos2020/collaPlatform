@@ -27,7 +27,10 @@ class RoleAssignmentCommandServiceTests {
             "admin"
         )).thenReturn(roleId);
 
-        new RoleAssignmentCommandService(jdbcTemplate).assign(workspaceId, userId, "admin", actorId);
+        new RoleAssignmentCommandService(
+            jdbcTemplate,
+            mock(PermissionSecurityChangePublisher.class)
+        ).assign(workspaceId, userId, "admin", actorId);
 
         InOrder order = inOrder(jdbcTemplate);
         order.verify(jdbcTemplate).queryForObject(

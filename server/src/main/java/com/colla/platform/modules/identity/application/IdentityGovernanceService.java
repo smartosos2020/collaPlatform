@@ -8,9 +8,14 @@ import org.springframework.stereotype.Service;
 @Service
 public class IdentityGovernanceService implements IdentityGovernance {
     private final JdbcTemplate jdbcTemplate;
+    private final IdentitySecurityChangePublisher securityChanges;
 
-    public IdentityGovernanceService(JdbcTemplate jdbcTemplate) {
+    public IdentityGovernanceService(
+        JdbcTemplate jdbcTemplate,
+        IdentitySecurityChangePublisher securityChanges
+    ) {
         this.jdbcTemplate = jdbcTemplate;
+        this.securityChanges = securityChanges;
     }
 
     @Override
@@ -30,7 +35,7 @@ public class IdentityGovernanceService implements IdentityGovernance {
 
     @Override
     public int disable(UUID workspaceId, UUID actorId, Resource resource, UUID targetId) {
-        return jdbcTemplate.update(
+        int changed = jdbcTemplate.update(
             switch (resource) {
                 case MEMBER -> "update users set status = 'disabled', updated_by = ?, updated_at = now() where id = ? and workspace_id = ? and deleted_at is null";
                 case DEPARTMENT -> "update departments set status = 'disabled', updated_by = ?, updated_at = now() where id = ? and workspace_id = ? and deleted_at is null";
@@ -40,5 +45,26 @@ public class IdentityGovernanceService implements IdentityGovernance {
             targetId,
             workspaceId
         );
+        if (changed > 0) {
+            String aggregateType = switch (resource) {
+                case MEMBER -> "user";
+                case DEPARTMENT -> "department";
+                case USER_GROUP -> "user_group";
+            };
+            String calibrationPath = switch (resource) {
+                case MEMBER -> "/api/admin/users";
+                case DEPARTMENT -> "/api/admin/departments";
+                case USER_GROUP -> "/api/admin/user-groups";
+            };
+            securityChanges.publish(
+                workspaceId,
+                actorId,
+                aggregateType,
+                targetId,
+                calibrationPath,
+                "governance-disable:" + aggregateType + ":" + targetId
+            );
+        }
+        return changed;
     }
 }
