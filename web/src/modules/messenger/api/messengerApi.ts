@@ -142,8 +142,13 @@ export function pinConversation(conversationId: string, pinned: boolean) {
   return apiPost<UserConversationDetailView>(`/conversations/${conversationId}/pin`, { pinned })
 }
 
-export function listMessages(conversationId: string, beforeId?: string | null, afterSeq?: number | null) {
-  const params = new URLSearchParams({ limit: '50' })
+export function listMessages(
+  conversationId: string,
+  beforeId?: string | null,
+  afterSeq?: number | null,
+  limit = 50,
+) {
+  const params = new URLSearchParams({ limit: String(Math.max(1, Math.min(limit, 100))) })
   if (beforeId) {
     params.set('beforeId', beforeId)
   }
