@@ -2,11 +2,11 @@
 title: 项目协作平台目标架构
 status: target
 program: PROJECT-PLATFORM
-program_revision: 18
+program_revision: 19
 domain_contract_version: 1
 domain_contract_status: frozen-s01-m3
 migration_contract_version: 1
-stage_review_status: s05-completed-s06-go
+stage_review_status: s06-active
 updated_at: 2026-07-26
 ---
 
