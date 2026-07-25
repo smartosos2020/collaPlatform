@@ -131,6 +131,7 @@ function initializeEnvironment(target) {
     ['replace-with-disposable-capacity-collaboration-secret', secret()],
     ['replace-with-disposable-capacity-probe-secret', secret()],
     ['replace-with-exact-git-commit', head],
+    ['replace-with-capacity-stack-instance-nonce', secret(32)],
   ])
   let content = source
   for (const [placeholder, value] of replacements) content = content.replaceAll(placeholder, value)
@@ -358,6 +359,7 @@ async function captureProvenance() {
   const provenance = await createCapacityProvenance({
     repoRoot: repositoryRoot,
     sourceCommit: environment.SOURCE_COMMIT,
+    stackInstanceNonce: environment.CAPACITY_STACK_INSTANCE_NONCE,
     preflight: {
       baseline: JSON.parse(readFileSync(baselinePath, 'utf8')),
       current: JSON.parse(readFileSync(currentPath, 'utf8')),

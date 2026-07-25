@@ -63,9 +63,27 @@ test('formal scenarios reject execution before warmup without passing provenance
     }, {
       evidenceDirectory: 'unused',
       manifest: { status: 'Pass', blocked: false },
-      manifestVerified: false,
     }),
     /passing immutable provenance manifest/,
+  )
+  await assert.rejects(
+    runCapacityScenario({
+      ...baseConfig(),
+      evidence: { requireProvenance: true },
+    }, {
+      evidenceDirectory: 'unused',
+      manifest: {
+        schemaVersion: 'colla.capacity-provenance/v1',
+        sourceCommit: 'a'.repeat(40),
+        stack: { instanceNonce: 'n'.repeat(32) },
+        seedExecution: { runId: 's05-m1-previous' },
+      },
+      provenanceEvidenceFiles: {},
+      expectedSeedRunId: 's05-m1-current',
+      expectedSourceCommit: 'b'.repeat(40),
+      expectedStackInstanceNonce: 'x'.repeat(32),
+    }),
+    /expected seed runId|expected sourceCommit|expected runtime/,
   )
 })
 

@@ -88,8 +88,8 @@ function usage() {
   colla-capacity seed apply --plan FILE [--sql FILE] [--database URL|--database-env NAME]
   colla-capacity seed verify --plan FILE [--sql FILE] [--database URL|--database-env NAME]
   colla-capacity seed cleanup --plan FILE [--sql FILE] [--database URL|--database-env NAME]
-  colla-capacity evidence verify --directory DIR
-  colla-capacity scenario run --config FILE --runtime FILE --evidence-dir DIR [--manifest FILE] [--env-file FILE]
+  colla-capacity evidence verify --directory DIR [--expected-seed-run-id ID --expected-source-commit SHA --expected-stack-instance-nonce NONCE]
+  colla-capacity scenario run --config FILE --runtime FILE --evidence-dir DIR [--manifest FILE --expected-seed-run-id ID --expected-source-commit SHA --expected-stack-instance-nonce NONCE] [--env-file FILE]
   colla-capacity load http|websocket|worker|collaboration --config FILE [--env-file FILE]
 `;
 }
@@ -151,6 +151,16 @@ async function resolvePlan(options) {
   return createSeedPlan(seedId, config);
 }
 
+export function seedActionRequiresPass(action) {
+  return action === "verify" || action === "clean-check" || action === "cleanup";
+}
+
+export function seedActionExitCode(action, result) {
+  return seedActionRequiresPass(action) && result?.executed === true && result?.ok !== true
+    ? 4
+    : 0;
+}
+
 async function seedCommand(action, options) {
   if (action === "plan") {
     const plan = await planSeed(required(options, "seed-id"), {
@@ -187,7 +197,7 @@ async function seedCommand(action, options) {
     throw new Error("seed command must be plan, clean-check, apply, verify, or cleanup");
   }
 
-  const checkedAction = action === "verify" || action === "clean-check";
+  const checkedAction = seedActionRequiresPass(action);
   if (!result.executed && !options.sql) {
     process.stdout.write(result.sql ?? generateApplySql(plan));
   } else {
@@ -198,11 +208,13 @@ async function seedCommand(action, options) {
       ...(!result.executed && action === "clean-check" ? { cleanCheckPending: true } : {}),
       sqlOutput: result.sqlOutput,
       ...(result.verification ? { verification: result.verification } : {}),
-      ...(result.cleanCheck ? { cleanCheck: result.cleanCheck } : {})
+      ...(result.cleanCheck ? { cleanCheck: result.cleanCheck } : {}),
+      ...(result.cleanup ? { cleanup: result.cleanup } : {})
     });
   }
-  if (checkedAction && result.executed && !result.ok) {
-    process.exitCode = 4;
+  const exitCode = seedActionExitCode(action, result);
+  if (exitCode !== 0) {
+    process.exitCode = exitCode;
   }
 }
 
@@ -210,7 +222,11 @@ async function evidenceCommand(action, options) {
   if (action !== "verify") {
     throw new Error("evidence command must be verify");
   }
-  const result = await verifyEvidenceBundle(required(options, "directory"));
+  const result = await verifyEvidenceBundle(required(options, "directory"), {
+    expectedSeedRunId: options["expected-seed-run-id"],
+    expectedSourceCommit: options["expected-source-commit"],
+    expectedStackInstanceNonce: options["expected-stack-instance-nonce"]
+  });
   printJson(result);
   if (!result.ok) {
     process.exitCode = 5;
@@ -231,10 +247,16 @@ async function scenarioCommand(action, options) {
   );
   const manifestPath = options.manifest ? path.resolve(options.manifest) : null;
   const manifest = manifestPath ? await readJson(manifestPath) : {};
-  let manifestVerified = false;
+  const expectedIdentity = config.evidence?.requireProvenance === true
+    ? {
+      expectedSeedRunId: required(options, "expected-seed-run-id"),
+      expectedSourceCommit: required(options, "expected-source-commit"),
+      expectedStackInstanceNonce: required(options, "expected-stack-instance-nonce")
+    }
+    : {};
+  let provenanceEvidenceFiles = {};
   if (manifestPath) {
     const manifestRoot = path.dirname(manifestPath);
-    const evidenceFiles = {};
     for (const check of Object.values(manifest.seedExecution?.checks ?? {})) {
       if (typeof check?.path !== "string") continue;
       const evidencePath = path.resolve(manifestRoot, check.path);
@@ -242,16 +264,18 @@ async function scenarioCommand(action, options) {
       if (!relativePath || relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
         throw new Error(`scenario manifest evidence path escapes its run directory: ${check.path}`);
       }
-      evidenceFiles[check.path] = await readFile(evidencePath);
+      provenanceEvidenceFiles[check.path] = await readFile(evidencePath);
     }
     const validation = validateCapacityRunManifest(manifest, {
-      evidenceFiles,
-      requireEvidenceFiles: true
+      evidenceFiles: provenanceEvidenceFiles,
+      requireEvidenceFiles: true,
+      expectedRunId: expectedIdentity.expectedSeedRunId,
+      expectedSourceCommit: expectedIdentity.expectedSourceCommit,
+      expectedStackInstanceNonce: expectedIdentity.expectedStackInstanceNonce
     });
     if (!validation.ok) {
       throw new Error(`scenario manifest validation failed: ${validation.errors.join("; ")}`);
     }
-    manifestVerified = true;
   }
   const bootstrapped = await bootstrapCapacityRuntime(runtime);
   const result = await runCapacityScenario(config, {
@@ -259,7 +283,8 @@ async function scenarioCommand(action, options) {
     loaderOptions: bootstrapped.loaders,
     bootstrapSummary: bootstrapped.summary,
     manifest,
-    manifestVerified
+    provenanceEvidenceFiles,
+    ...expectedIdentity
   });
   printJson(redactSecrets({
     ok: result.run.status === "COMPLETED" && result.summary.conclusion === "Pass",

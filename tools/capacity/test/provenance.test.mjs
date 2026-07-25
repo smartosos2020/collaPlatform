@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   CAPACITY_PROVENANCE_SCHEMA_VERSION,
-  createCapacityProvenance
+  createCapacityProvenance,
+  validateCapacityRunManifest
 } from "../src/provenance.mjs";
 import { sha256, stableStringify } from "../src/contract.mjs";
 
@@ -35,6 +36,7 @@ function cleanInput(overrides = {}) {
     repoRoot: "C:\\workspace\\collaPlatform",
     git: { commit, dirty: false },
     sourceCommit: commit,
+    stackInstanceNonce: "n".repeat(32),
     preflight: {
       baseline: { criticalFingerprint: "preflight-fingerprint" },
       current: {
@@ -232,4 +234,24 @@ test("stable sorting and hashing make identical inputs deterministic", async () 
   const second = await createCapacityProvenance(secondInput);
   assert.deepEqual(second, first);
   assert.equal(second.provenanceFingerprint, first.provenanceFingerprint);
+});
+
+test("run manifest validation rejects schema, seed run id, and trusted identity drift", () => {
+  const manifest = {
+    schemaVersion: "colla.capacity-provenance/v0",
+    sourceCommit: commit,
+    stack: { instanceNonce: "n".repeat(32) },
+    seedExecution: { runId: "" }
+  };
+  const result = validateCapacityRunManifest(manifest, {
+    expectedRunId: "s05-m1-current",
+    expectedSourceCommit: "b".repeat(40),
+    expectedStackInstanceNonce: "x".repeat(32)
+  });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /schemaVersion must be colla\.capacity-provenance\/v1/);
+  assert.match(result.errors.join("\n"), /seedExecution\.runId is missing or invalid/);
+  assert.match(result.errors.join("\n"), /expected seed runId/);
+  assert.match(result.errors.join("\n"), /expected sourceCommit/);
+  assert.match(result.errors.join("\n"), /expected runtime/);
 });

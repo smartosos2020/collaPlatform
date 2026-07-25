@@ -1,7 +1,10 @@
 import { createHash } from 'node:crypto'
 import { join, relative, resolve } from 'node:path'
 import { stableStringify } from '../../tools/capacity/src/contract.mjs'
-import { validateCapacityRunManifest } from '../../tools/capacity/src/provenance.mjs'
+import {
+  CAPACITY_STACK_INSTANCE_NONCE_PATTERN,
+  validateCapacityRunManifest,
+} from '../../tools/capacity/src/provenance.mjs'
 
 const RUN_ID_PATTERN = /^s05-m1-[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/
 export const CAPACITY_STACK_SERVICES = [
@@ -50,6 +53,9 @@ export function createCapacityRunPlan(options) {
   if (!/^[0-9a-f]{40,64}$/i.test(environment.SOURCE_COMMIT ?? '')) {
     throw new Error('run requires SOURCE_COMMIT to be an exact Git commit')
   }
+  if (!CAPACITY_STACK_INSTANCE_NONCE_PATTERN.test(environment.CAPACITY_STACK_INSTANCE_NONCE ?? '')) {
+    throw new Error('run requires a valid CAPACITY_STACK_INSTANCE_NONCE from capacity stack initialization')
+  }
   assertGuardedReason('run', confirmed, reason)
   if (!RUN_ID_PATTERN.test(runId)) {
     throw new Error('run --run-id must match s05-m1-[a-z0-9-] and be at most 70 characters')
@@ -82,6 +88,14 @@ export function createCapacityRunPlan(options) {
   const runManifest = join(runRoot, 'run-manifest.json')
   const scenarioEvidence = join(runRoot, 'scenario')
   const runnerRunRoot = `/evidence/runs/${runId}`
+  const expectedIdentityArgs = [
+    '--expected-seed-run-id',
+    runId,
+    '--expected-source-commit',
+    environment.SOURCE_COMMIT,
+    '--expected-stack-instance-nonce',
+    environment.CAPACITY_STACK_INSTANCE_NONCE,
+  ]
   const postgresArgs = [
     ...composePrefix,
     'exec',
@@ -317,12 +331,20 @@ export function createCapacityRunPlan(options) {
         `${runnerRunRoot}/run-manifest.json`,
         '--evidence-dir',
         `${runnerRunRoot}/scenario`,
+        ...expectedIdentityArgs,
       ],
     },
     {
       label: 'verify the scenario evidence bundle',
       command: process.execPath,
-      args: [capacityCli, 'evidence', 'verify', '--directory', scenarioEvidence],
+      args: [
+        capacityCli,
+        'evidence',
+        'verify',
+        '--directory',
+        scenarioEvidence,
+        ...expectedIdentityArgs,
+      ],
     },
   ]
 

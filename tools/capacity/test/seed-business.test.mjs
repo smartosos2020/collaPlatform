@@ -75,6 +75,20 @@ test("apply SQL materializes registry records into every required business table
   assert.match(applySql, /materialized_count >= 10000/);
   assert.match(applySql, /\\if :capacity_skip_chunk/);
   assert.match(applySql, /ON CONFLICT \(id\) DO UPDATE/);
+  for (const supportDomain of [
+    "support-role",
+    "support-role-permission",
+    "support-conversation",
+    "support-conversation-member",
+    "support-knowledge-space"
+  ]) {
+    assert.match(applySql, new RegExp(`'${supportDomain}'`), supportDomain);
+  }
+  assert.match(applySql, /'roleId', owned_role_permissions\.role_id/);
+  assert.match(applySql, /'permissionId', owned_role_permissions\.permission_id/);
+  assert.match(applySql, /'conversationMemberId', owned_members\.member_id/);
+  assert.match(applySql, /'spaceId', owned_spaces\.space_id/);
+  assert.match(applySql, /row_number\(\) OVER \(\s*ORDER BY role_permissions\.role_id/);
   assert.doesNotMatch(applySql, /INSERT INTO\s+(?:domain_events|event_outbox|outbox_events)\b/i);
 });
 
@@ -105,6 +119,11 @@ test("verification checks exact business counts and required support rows", () =
   assert.match(verifySql, /fixture_credential_fingerprints AS/);
   assert.match(verifySql, /passwordHashFingerprint/);
   assert.match(verifySql, /fixtureFingerprintMatches/);
+  assert.match(verifySql, /fixture\.domain = 'support-role-permission'/);
+  assert.match(verifySql, /fixture\.payload ->> 'roleId'/);
+  assert.match(verifySql, /fixture\.payload ->> 'permissionId'/);
+  assert.match(verifySql, /support-conversation-member\.relations/);
+  assert.match(verifySql, /support-knowledge-space\.relations/);
 });
 
 test("cleanup is named, checksum guarded, and ordered from children to fixture workspaces", () => {
@@ -114,10 +133,25 @@ test("cleanup is named, checksum guarded, and ordered from children to fixture w
   assert.match(cleanupSql, new RegExp(`'fixtureName', '${plan.fixtureName}'`));
   assert.match(cleanupSql, /'businessRecords', business_records/);
   assert.match(cleanupSql, /AND business_records = 0/);
+  assert.match(cleanupSql, /fixture_cleanup_progress/);
+  assert.match(cleanupSql, /completed_ordinal/);
+  assert.match(cleanupSql, /SET LOCAL lock_timeout = '5s'/);
+  assert.match(cleanupSql, /SET LOCAL statement_timeout = '120s'/);
+  assert.match(cleanupSql, /skip committed cleanup issue chunk/);
+  assert.match(cleanupSql, /cleanup progress does not match the exact remaining ownership ordinal set/);
+  assert.match(cleanupSql, /capacity fixture ownership identity mismatch for domain issue/);
+  assert.match(cleanupSql, /actual\.record_id IS DISTINCT FROM expected\.record_id/);
+  assert.match(cleanupSql, /actual\.fixture_key IS DISTINCT FROM expected\.fixture_key/);
+  assert.match(cleanupSql, /actual\.payload IS DISTINCT FROM expected\.payload/);
+  assert.match(cleanupSql, /FULL JOIN actual USING \(domain, ordinal\)/);
+  assert.match(cleanupSql, /DELETE FROM role_permissions target[\s\S]*owned\.payload ->> 'roleId'/);
+  assert.doesNotMatch(cleanupSql, /DELETE FROM knowledge_content_collaboration_(?:tickets|updates)/);
+  assert.doesNotMatch(cleanupSql, /DELETE FROM conversation_members\s+WHERE conversation_id IN/);
+  assert.doesNotMatch(cleanupSql, /DELETE FROM conversations\s+WHERE project_id IN/);
+  assert.doesNotMatch(cleanupSql, /DELETE FROM roles\s+WHERE id IN/);
   assert.doesNotMatch(cleanupSql, /\b(?:TRUNCATE|DROP SCHEMA|DELETE FROM domain_events)\b/i);
 
   const order = [
-    "DELETE FROM knowledge_content_collaboration_tickets",
     "DELETE FROM knowledge_content_collaboration_states",
     "DELETE FROM messages",
     "DELETE FROM conversation_members",
@@ -134,7 +168,6 @@ test("cleanup is named, checksum guarded, and ordered from children to fixture w
     "DELETE FROM files",
     "DELETE FROM users",
     "DELETE FROM workspaces",
-    "DELETE FROM capacity_fixture.fixture_records",
     "DELETE FROM capacity_fixture.fixture_runs"
   ];
   let previous = -1;

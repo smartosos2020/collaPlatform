@@ -3,7 +3,11 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { main } from "../src/cli.mjs";
+import {
+  main,
+  seedActionExitCode,
+  seedActionRequiresPass
+} from "../src/cli.mjs";
 import { loadCapacityConfig } from "../src/contract.mjs";
 import {
   createSeedPlan,
@@ -23,11 +27,13 @@ test("clean-check SQL proves every named seed registry and workspace count is ze
   assert.match(sql, /'evidenceKind', 'clean-state'/);
   assert.match(sql, /'ok', fixture_runs = 0/);
   assert.match(sql, /fixture_phases = 0/);
+  assert.match(sql, /fixture_cleanup = 0/);
   assert.match(sql, /fixture_records = 0/);
   assert.match(sql, /fixture_workspaces = 0/);
   assert.match(sql, /conflicting_runs = 0/);
   assert.match(sql, /'fixtureRuns', fixture_runs/);
   assert.match(sql, /'fixturePhases', fixture_phases/);
+  assert.match(sql, /'fixtureCleanupProgress', fixture_cleanup/);
   assert.match(sql, /'fixtureRecords', fixture_records/);
   assert.match(sql, /'fixtureWorkspaces', fixture_workspaces/);
   assert.match(sql, /'conflictingRuns', conflicting_runs/);
@@ -35,10 +41,25 @@ test("clean-check SQL proves every named seed registry and workspace count is ze
   assert.match(sql, /knowledge_base_items/);
   assert.match(sql, /knowledge_content_collaboration_states/);
   assert.match(sql, /conversation_members/);
+  assert.match(sql, /role_permissions/);
+  assert.match(sql, /roles/);
+  assert.match(sql, /conversations/);
+  assert.match(sql, /knowledge_base_spaces/);
+  assert.match(sql, /user_roles/);
+  assert.match(sql, /domain_events/);
+  assert.match(sql, /audit_logs/);
+  assert.doesNotMatch(sql, /generate_series/i);
   for (const workspace of plan.workspaceIds) {
     assert.match(sql, new RegExp(workspace.id));
   }
   assert.doesNotMatch(sql, /\b(?:INSERT|UPDATE|DELETE|TRUNCATE|DROP)\b/i);
+});
+
+test("cleanup is a checked CLI action and failed cleanup returns a nonzero exit", () => {
+  assert.equal(seedActionRequiresPass("cleanup"), true);
+  assert.equal(seedActionExitCode("cleanup", { executed: true, ok: false }), 4);
+  assert.equal(seedActionExitCode("cleanup", { executed: true, ok: true }), 0);
+  assert.equal(seedActionExitCode("cleanup", { executed: false }), 0);
 });
 
 test("clean-check treats checksum and fixture-name collisions as conflicting runs", () => {

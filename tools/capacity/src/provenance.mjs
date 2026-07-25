@@ -6,6 +6,8 @@ import { redactSecrets } from "./preflight.mjs";
 const SCHEMA_VERSION = "colla.capacity-provenance/v1";
 const gitCommitPattern = /^[0-9a-f]{40,64}$/i;
 const imageIdPattern = /^(?:sha256:)?[0-9a-f]{64}$/i;
+const seedRunIdPattern = /^[a-z0-9](?:[a-z0-9.-]{0,126}[a-z0-9])?$/;
+const stackInstanceNoncePattern = /^[A-Za-z0-9_-]{32,128}$/;
 
 function normalizeText(value) {
   return String(value ?? "").replaceAll("\u0000", "").trim();
@@ -14,6 +16,16 @@ function normalizeText(value) {
 function normalizeCommit(value) {
   const commit = normalizeText(value).toLowerCase();
   return gitCommitPattern.test(commit) ? commit : null;
+}
+
+function normalizeSeedRunId(value) {
+  const runId = normalizeText(value);
+  return seedRunIdPattern.test(runId) ? runId : null;
+}
+
+function normalizeStackInstanceNonce(value) {
+  const nonce = normalizeText(value);
+  return stackInstanceNoncePattern.test(nonce) ? nonce : null;
 }
 
 function normalizeCompose(value) {
@@ -363,6 +375,9 @@ function validateSeedCheckResult(name, result, seedPlan, runId, errors) {
 
 export function validateCapacityRunManifest(manifest, options = {}) {
   const errors = [];
+  if (manifest?.schemaVersion !== SCHEMA_VERSION) {
+    errors.push(`provenance schemaVersion must be ${SCHEMA_VERSION}`);
+  }
   if (manifest?.status !== "Pass" || manifest?.blocked === true) {
     errors.push("provenance status is not Pass");
   }
@@ -381,6 +396,27 @@ export function validateCapacityRunManifest(manifest, options = {}) {
   }
   if (manifest?.git?.dirty !== false || manifest?.git?.commit !== manifest?.sourceCommit) {
     errors.push("provenance Git state does not match sourceCommit");
+  }
+  const expectedSourceCommit = options.expectedSourceCommit === undefined
+    ? null
+    : normalizeCommit(options.expectedSourceCommit);
+  if (options.expectedSourceCommit !== undefined && !expectedSourceCommit) {
+    errors.push("expected sourceCommit is invalid");
+  } else if (expectedSourceCommit && manifest?.sourceCommit !== expectedSourceCommit) {
+    errors.push("provenance sourceCommit does not match the expected sourceCommit");
+  }
+  const stackInstanceNonce = normalizeStackInstanceNonce(manifest?.stack?.instanceNonce);
+  if (!stackInstanceNonce) {
+    errors.push("provenance stack instance nonce is missing or invalid");
+  }
+  const expectedStackInstanceNonce = options.expectedStackInstanceNonce === undefined
+    ? null
+    : normalizeStackInstanceNonce(options.expectedStackInstanceNonce);
+  if (options.expectedStackInstanceNonce !== undefined && !expectedStackInstanceNonce) {
+    errors.push("expected stack instance nonce is invalid");
+  } else if (expectedStackInstanceNonce
+    && stackInstanceNonce !== expectedStackInstanceNonce) {
+    errors.push("provenance stack instance nonce does not match the expected runtime");
   }
   if (manifest?.preflight?.drifted !== false
     || Object.values(manifest?.preflight?.resourceEligibility ?? {}).length !== 5
@@ -410,7 +446,8 @@ export function validateCapacityRunManifest(manifest, options = {}) {
     topology: manifest?.topology,
     seedPlan: manifest?.seedPlan,
     compose: manifest?.compose,
-    images: manifest?.images
+    images: manifest?.images,
+    stack: manifest?.stack
   };
   const expectedProvenanceFingerprint = sha256(stableStringify(provenanceImmutable));
   if (manifest?.provenanceFingerprint !== expectedProvenanceFingerprint) {
@@ -425,6 +462,18 @@ export function validateCapacityRunManifest(manifest, options = {}) {
   }
   if (seedExecution?.provenanceFingerprint !== manifest?.provenanceFingerprint) {
     errors.push("seedExecution provenanceFingerprint does not match provenance");
+  }
+  const seedRunId = normalizeSeedRunId(seedExecution?.runId);
+  if (!seedRunId) {
+    errors.push("seedExecution.runId is missing or invalid");
+  }
+  const expectedRunId = options.expectedRunId === undefined
+    ? null
+    : normalizeSeedRunId(options.expectedRunId);
+  if (options.expectedRunId !== undefined && !expectedRunId) {
+    errors.push("expected seed runId is invalid");
+  } else if (expectedRunId && seedRunId !== expectedRunId) {
+    errors.push("seedExecution.runId does not match the expected seed runId");
   }
   const checkNames = Object.keys(seedExecution?.checks ?? {}).sort();
   const expectedCheckNames = Object.keys(seedCheckContracts).sort();
@@ -448,7 +497,7 @@ export function validateCapacityRunManifest(manifest, options = {}) {
     if (!/^[0-9a-f]{64}$/.test(check.sha256 ?? "")) {
       errors.push(`seedExecution.checks.${name}.sha256 is invalid`);
     }
-    validateSeedCheckResult(name, check.result, manifest?.seedPlan, seedExecution?.runId, errors);
+    validateSeedCheckResult(name, check.result, manifest?.seedPlan, seedRunId, errors);
     if (options.requireEvidenceFiles === true) {
       const raw = options.evidenceFiles?.[check.path];
       if (raw === undefined) {
@@ -495,6 +544,12 @@ export async function createCapacityProvenance(options = {}) {
   if (git.commit && sourceCommit && git.commit !== sourceCommit) {
     blockers.push({ code: "SOURCE_COMMIT_DRIFT", path: "sourceCommit" });
   }
+  const stackInstanceNonce = normalizeStackInstanceNonce(
+    options.stackInstanceNonce ?? process.env.CAPACITY_STACK_INSTANCE_NONCE
+  );
+  if (!stackInstanceNonce) {
+    blockers.push({ code: "STACK_INSTANCE_NONCE_MISSING", path: "stack.instanceNonce" });
+  }
 
   const preflight = resolvePreflight(options, blockers);
   const contractDigest = digestRequired(
@@ -536,7 +591,8 @@ export async function createCapacityProvenance(options = {}) {
     topology: { digest: topologyDigest },
     seedPlan,
     compose: { sha256: composeSha256 },
-    images
+    images,
+    stack: { instanceNonce: stackInstanceNonce }
   };
   const result = {
     ...immutable,
@@ -549,4 +605,8 @@ export async function createCapacityProvenance(options = {}) {
   return redactSecrets(result);
 }
 
-export { SCHEMA_VERSION as CAPACITY_PROVENANCE_SCHEMA_VERSION };
+export {
+  SCHEMA_VERSION as CAPACITY_PROVENANCE_SCHEMA_VERSION,
+  seedRunIdPattern as CAPACITY_SEED_RUN_ID_PATTERN,
+  stackInstanceNoncePattern as CAPACITY_STACK_INSTANCE_NONCE_PATTERN
+};

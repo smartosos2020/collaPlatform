@@ -19,6 +19,25 @@ const requiredDomains = Object.freeze([
   "collaboration-room"
 ]);
 
+const cleanupDomains = Object.freeze([
+  "collaboration-room",
+  "im-message",
+  "support-conversation-member",
+  "support-conversation",
+  "notification",
+  "permission",
+  "support-role-permission",
+  "support-role",
+  "knowledge-block",
+  "support-knowledge-space",
+  "knowledge-item",
+  "issue",
+  "project",
+  "file",
+  "member",
+  "workspace"
+]);
+
 function sqlLiteral(value) {
   return `'${String(value).replaceAll("'", "''")}'`;
 }
@@ -34,6 +53,11 @@ function deterministicUuid(input) {
   hex[12] = "5";
   hex[16] = ["8", "9", "a", "b"][Number.parseInt(hex[16], 16) % 4];
   const value = hex.join("");
+  return `${value.slice(0, 8)}-${value.slice(8, 12)}-${value.slice(12, 16)}-${value.slice(16, 20)}-${value.slice(20)}`;
+}
+
+function postgresMd5Uuid(input) {
+  const value = createHash("md5").update(input).digest("hex");
   return `${value.slice(0, 8)}-${value.slice(8, 12)}-${value.slice(12, 16)}-${value.slice(16, 20)}-${value.slice(20)}`;
 }
 
@@ -253,6 +277,37 @@ function workspaceUuidExpression(plan, domain, seriesAlias = "g") {
   return `(CASE (${ordinal}) ${branches.join(" ")} END)`;
 }
 
+function workspaceContractOrdinalExpression(plan, workspaceExpression) {
+  const branches = plan.workspaceIds.map(
+    (workspace) => `WHEN ${sqlLiteral(workspace.id)}::uuid THEN ${workspace.ordinal}`
+  );
+  return `(CASE ${workspaceExpression} ${branches.join(" ")} END)`;
+}
+
+function workspaceOrdinalForFixtureOrdinal(plan, domain, ordinal) {
+  if (domain === "workspace") return ordinal;
+  const count = countFor(plan, domain);
+  const percentile = count < 100
+    ? Math.floor((ordinal - 1) * 100 / count)
+    : (ordinal - 1) % 100;
+  let upper = 0;
+  for (let index = 0; index < plan.workspaceWeights.length; index += 1) {
+    upper += plan.workspaceWeights[index];
+    if (percentile < upper) return index + 1;
+  }
+  return plan.workspaceIds.length;
+}
+
+function firstFixtureOrdinalForWorkspace(plan, domain, workspaceOrdinal) {
+  const count = countFor(plan, domain);
+  for (let ordinal = 1; ordinal <= Math.min(count, 100); ordinal += 1) {
+    if (workspaceOrdinalForFixtureOrdinal(plan, domain, ordinal) === workspaceOrdinal) {
+      return ordinal;
+    }
+  }
+  throw new Error(`domain ${domain} has no fixture row for workspace ${workspaceOrdinal}`);
+}
+
 function recordUuidExpression(plan, domain, ordinalExpression) {
   return `md5(${sqlLiteral(`${plan.seedId}:${domain}:`)} || (${ordinalExpression})::text)::uuid`;
 }
@@ -348,6 +403,30 @@ CREATE TABLE IF NOT EXISTS ${schema}.fixture_phase_progress (
   status text NOT NULL CHECK (status IN ('pending', 'applying', 'applied')),
   updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
   PRIMARY KEY (seed_id, domain)
+);
+CREATE TABLE IF NOT EXISTS ${schema}.fixture_cleanup_progress (
+  seed_id text NOT NULL,
+  checksum char(64) NOT NULL,
+  domain text NOT NULL,
+  expected_count bigint NOT NULL,
+  completed_ordinal bigint NOT NULL DEFAULT 0,
+  status text NOT NULL CHECK (status IN ('pending', 'deleting', 'deleted')),
+  updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+  PRIMARY KEY (seed_id, domain),
+  CONSTRAINT fixture_cleanup_progress_domain_chk
+    CHECK (domain IN (${cleanupDomains.map(sqlLiteral).join(", ")})),
+  CONSTRAINT fixture_cleanup_progress_range_chk
+    CHECK (
+      expected_count >= 0
+      AND completed_ordinal >= 0
+      AND completed_ordinal <= expected_count
+    ),
+  CONSTRAINT fixture_cleanup_progress_status_chk
+    CHECK (
+      (status = 'pending' AND completed_ordinal = 0 AND expected_count > 0)
+      OR (status = 'deleting' AND completed_ordinal < expected_count)
+      OR (status = 'deleted' AND completed_ordinal = expected_count)
+    )
 );
 
 INSERT INTO ${schema}.fixture_runs (seed_id, checksum, fixture_name, status, completed_phase)
@@ -487,7 +566,96 @@ JOIN permissions ON (
   )
 )
 WHERE role_seed.role_name <> 'disabled'
-ON CONFLICT (role_id, permission_id) DO NOTHING;`;
+ON CONFLICT (role_id, permission_id) DO NOTHING;
+
+WITH fixture_roles(workspace_ordinal, role_name, role_id) AS (
+  VALUES
+    ${roleIdsValues(plan)}
+),
+owned_roles AS (
+  SELECT fixture_roles.*,
+         roles.workspace_id,
+         (fixture_roles.workspace_ordinal - 1) * 5
+           + CASE fixture_roles.role_name
+               WHEN 'owner' THEN 1 WHEN 'admin' THEN 2 WHEN 'editor' THEN 3
+               WHEN 'viewer' THEN 4 ELSE 5
+             END AS support_ordinal
+  FROM fixture_roles
+  JOIN roles ON roles.id = fixture_roles.role_id
+)
+INSERT INTO ${schema}.fixture_records (
+  seed_id, checksum, workspace_id, domain, ordinal, record_id, fixture_key, payload
+)
+SELECT ${sqlLiteral(plan.seedId)},
+       ${sqlLiteral(plan.checksum)},
+       owned_roles.workspace_id,
+       'support-role',
+       owned_roles.support_ordinal,
+       owned_roles.role_id,
+       ${sqlLiteral(`${plan.fixtureName}:support-role:`)}
+         || owned_roles.workspace_ordinal::text || ':' || owned_roles.role_name,
+       jsonb_build_object(
+         'fixture', ${sqlLiteral(plan.fixtureName)},
+         'domain', 'support-role',
+         'roleId', owned_roles.role_id,
+         'roleName', owned_roles.role_name
+       )
+FROM owned_roles
+ON CONFLICT (seed_id, domain, ordinal) DO UPDATE SET
+  checksum = EXCLUDED.checksum,
+  workspace_id = EXCLUDED.workspace_id,
+  record_id = EXCLUDED.record_id,
+  fixture_key = EXCLUDED.fixture_key,
+  payload = EXCLUDED.payload
+WHERE ${schema}.fixture_records.checksum = EXCLUDED.checksum
+  AND ${schema}.fixture_records.fixture_key = EXCLUDED.fixture_key;
+
+WITH owned_role_permissions AS (
+  SELECT roles.workspace_id,
+         role_permissions.role_id,
+         role_permissions.permission_id,
+         row_number() OVER (
+           ORDER BY role_permissions.role_id, role_permissions.permission_id
+         ) AS support_ordinal
+  FROM role_permissions
+  JOIN roles ON roles.id = role_permissions.role_id
+  JOIN ${schema}.fixture_records fixture_role
+    ON fixture_role.record_id = roles.id
+   AND fixture_role.seed_id = ${sqlLiteral(plan.seedId)}
+   AND fixture_role.checksum = ${sqlLiteral(plan.checksum)}
+   AND fixture_role.domain = 'support-role'
+)
+INSERT INTO ${schema}.fixture_records (
+  seed_id, checksum, workspace_id, domain, ordinal, record_id, fixture_key, payload
+)
+SELECT ${sqlLiteral(plan.seedId)},
+       ${sqlLiteral(plan.checksum)},
+       owned_role_permissions.workspace_id,
+       'support-role-permission',
+       owned_role_permissions.support_ordinal,
+       md5(
+         ${sqlLiteral(`${plan.seedId}:support-role-permission:`)}
+         || owned_role_permissions.role_id::text || ':'
+         || owned_role_permissions.permission_id::text
+       )::uuid,
+       ${sqlLiteral(`${plan.fixtureName}:support-role-permission:`)}
+         || owned_role_permissions.role_id::text || ':'
+         || owned_role_permissions.permission_id::text,
+       jsonb_build_object(
+         'fixture', ${sqlLiteral(plan.fixtureName)},
+         'domain', 'support-role-permission',
+         'roleId', owned_role_permissions.role_id,
+         'permissionId', owned_role_permissions.permission_id
+       )
+FROM owned_role_permissions
+ON CONFLICT (seed_id, domain, ordinal) DO UPDATE SET
+  checksum = EXCLUDED.checksum,
+  workspace_id = EXCLUDED.workspace_id,
+  record_id = EXCLUDED.record_id,
+  fixture_key = EXCLUDED.fixture_key,
+  payload = EXCLUDED.payload
+WHERE ${schema}.fixture_records.checksum = EXCLUDED.checksum
+  AND ${schema}.fixture_records.fixture_key = EXCLUDED.fixture_key;`;
   }
   if (phase.domain === "im-message") {
     const memberCount = countFor(plan, "member");
@@ -567,7 +735,101 @@ ON CONFLICT (id) DO UPDATE SET
   conversation_id = EXCLUDED.conversation_id,
   user_id = EXCLUDED.user_id,
   member_role = EXCLUDED.member_role,
-  joined_at = EXCLUDED.joined_at;`;
+  joined_at = EXCLUDED.joined_at;
+
+WITH project_fixture AS (
+  SELECT ordinal, workspace_id
+  FROM ${schema}.fixture_records
+  WHERE seed_id = ${sqlLiteral(plan.seedId)}
+    AND checksum = ${sqlLiteral(plan.checksum)}
+    AND domain = 'project'
+),
+owned_conversations AS (
+  SELECT project_fixture.ordinal,
+         project_fixture.workspace_id,
+         conversations.id conversation_id
+  FROM project_fixture
+  JOIN conversations
+    ON conversations.id = md5(
+      ${sqlLiteral(`${plan.seedId}:conversation:`)} || project_fixture.ordinal::text
+    )::uuid
+)
+INSERT INTO ${schema}.fixture_records (
+  seed_id, checksum, workspace_id, domain, ordinal, record_id, fixture_key, payload
+)
+SELECT ${sqlLiteral(plan.seedId)},
+       ${sqlLiteral(plan.checksum)},
+       owned_conversations.workspace_id,
+       'support-conversation',
+       owned_conversations.ordinal,
+       owned_conversations.conversation_id,
+       ${sqlLiteral(`${plan.fixtureName}:support-conversation:`)}
+         || owned_conversations.ordinal::text,
+       jsonb_build_object(
+         'fixture', ${sqlLiteral(plan.fixtureName)},
+         'domain', 'support-conversation',
+         'conversationId', owned_conversations.conversation_id
+       )
+FROM owned_conversations
+ON CONFLICT (seed_id, domain, ordinal) DO UPDATE SET
+  checksum = EXCLUDED.checksum,
+  workspace_id = EXCLUDED.workspace_id,
+  record_id = EXCLUDED.record_id,
+  fixture_key = EXCLUDED.fixture_key,
+  payload = EXCLUDED.payload
+WHERE ${schema}.fixture_records.checksum = EXCLUDED.checksum
+  AND ${schema}.fixture_records.fixture_key = EXCLUDED.fixture_key;
+
+WITH project_fixture AS (
+  SELECT ordinal, workspace_id
+  FROM ${schema}.fixture_records
+  WHERE seed_id = ${sqlLiteral(plan.seedId)}
+    AND checksum = ${sqlLiteral(plan.checksum)}
+    AND domain = 'project'
+),
+owned_members AS (
+  SELECT project_fixture.ordinal project_ordinal,
+         project_fixture.workspace_id,
+         member_offset,
+         owned_member.id member_id,
+         owned_member.conversation_id
+  FROM project_fixture
+  CROSS JOIN generate_series(0, 1) AS offsets(member_offset)
+  CROSS JOIN LATERAL (
+    SELECT conversation_members.id, conversation_members.conversation_id
+    FROM conversation_members
+    WHERE conversation_members.id = md5(
+        ${sqlLiteral(`${plan.seedId}:conversation-member:`)}
+        || project_fixture.ordinal::text || ':' || member_offset::text
+      )::uuid
+  ) owned_member
+)
+INSERT INTO ${schema}.fixture_records (
+  seed_id, checksum, workspace_id, domain, ordinal, record_id, fixture_key, payload
+)
+SELECT ${sqlLiteral(plan.seedId)},
+       ${sqlLiteral(plan.checksum)},
+       owned_members.workspace_id,
+       'support-conversation-member',
+       (owned_members.project_ordinal - 1) * 2 + owned_members.member_offset + 1,
+       owned_members.member_id,
+       ${sqlLiteral(`${plan.fixtureName}:support-conversation-member:`)}
+         || owned_members.project_ordinal::text || ':' || owned_members.member_offset::text,
+       jsonb_build_object(
+         'fixture', ${sqlLiteral(plan.fixtureName)},
+         'domain', 'support-conversation-member',
+         'conversationMemberId', owned_members.member_id,
+         'conversationId', owned_members.conversation_id
+       )
+FROM owned_members
+ON CONFLICT (seed_id, domain, ordinal) DO UPDATE SET
+  checksum = EXCLUDED.checksum,
+  workspace_id = EXCLUDED.workspace_id,
+  record_id = EXCLUDED.record_id,
+  fixture_key = EXCLUDED.fixture_key,
+  payload = EXCLUDED.payload
+WHERE ${schema}.fixture_records.checksum = EXCLUDED.checksum
+  AND ${schema}.fixture_records.fixture_key = EXCLUDED.fixture_key;`;
   }
   return "";
 }
@@ -1234,7 +1496,8 @@ INSERT INTO knowledge_base_spaces (
 SELECT md5(${sqlLiteral(`${plan.seedId}:knowledge-space:`)} || roots.workspace_id::text)::uuid,
        roots.workspace_id,
        'Capacity Knowledge Space',
-       'cap-${createHash("sha256").update(plan.seedId).digest("hex").slice(0, 10)}-' || roots.workspace_ordinal,
+       'cap-${createHash("sha256").update(plan.seedId).digest("hex").slice(0, 10)}-'
+         || ${workspaceContractOrdinalExpression(plan, "roots.workspace_id")}::text,
        'Named capacity fixture knowledge space',
        'book',
        NULL,
@@ -1259,7 +1522,55 @@ ON CONFLICT (id) DO UPDATE SET
   home_item_id = EXCLUDED.home_item_id,
   owner_id = EXCLUDED.owner_id,
   updated_by = EXCLUDED.updated_by,
-  updated_at = EXCLUDED.updated_at;`;
+  updated_at = EXCLUDED.updated_at;
+
+WITH owned_spaces AS (
+  SELECT ${workspaceContractOrdinalExpression(plan, "spaces.workspace_id")} workspace_ordinal,
+         spaces.workspace_id,
+         spaces.id space_id,
+         spaces.root_item_id
+  FROM (
+    SELECT DISTINCT ON (workspace_id)
+           workspace_id,
+           record_id root_item_id,
+           ordinal workspace_ordinal
+    FROM ${schema}.fixture_records
+    WHERE seed_id = ${sqlLiteral(plan.seedId)}
+      AND checksum = ${sqlLiteral(plan.checksum)}
+      AND domain = 'knowledge-item'
+    ORDER BY workspace_id, ordinal
+  ) roots
+  JOIN knowledge_base_spaces spaces
+    ON spaces.id = md5(
+      ${sqlLiteral(`${plan.seedId}:knowledge-space:`)} || roots.workspace_id::text
+    )::uuid
+)
+INSERT INTO ${schema}.fixture_records (
+  seed_id, checksum, workspace_id, domain, ordinal, record_id, fixture_key, payload
+)
+SELECT ${sqlLiteral(plan.seedId)},
+       ${sqlLiteral(plan.checksum)},
+       owned_spaces.workspace_id,
+       'support-knowledge-space',
+       owned_spaces.workspace_ordinal,
+       owned_spaces.space_id,
+       ${sqlLiteral(`${plan.fixtureName}:support-knowledge-space:`)}
+         || owned_spaces.workspace_ordinal::text,
+       jsonb_build_object(
+         'fixture', ${sqlLiteral(plan.fixtureName)},
+         'domain', 'support-knowledge-space',
+         'spaceId', owned_spaces.space_id,
+         'rootItemId', owned_spaces.root_item_id
+       )
+FROM owned_spaces
+ON CONFLICT (seed_id, domain, ordinal) DO UPDATE SET
+  checksum = EXCLUDED.checksum,
+  workspace_id = EXCLUDED.workspace_id,
+  record_id = EXCLUDED.record_id,
+  fixture_key = EXCLUDED.fixture_key,
+  payload = EXCLUDED.payload
+WHERE ${schema}.fixture_records.checksum = EXCLUDED.checksum
+  AND ${schema}.fixture_records.fixture_key = EXCLUDED.fixture_key;`;
   }
   if (phase.domain === "im-message") {
     return `WITH fixture_conversations AS (
@@ -1413,6 +1724,38 @@ WHERE seed_id = ${sqlLiteral(plan.seedId)}
   return `${sections.join("\n")}\n`;
 }
 
+function supportRolePermissionExpectedCountSql(plan) {
+  return `(
+      SELECT count(*)::bigint
+      FROM (VALUES ${roleIdsValues(plan)}) AS role_seed(workspace_ordinal, role_name, role_id)
+      JOIN permissions ON (
+        role_seed.role_name IN ('owner', 'admin')
+        OR (
+          role_seed.role_name = 'editor'
+          AND permissions.code IN (
+            'project.create', 'project.manage', 'issue.create', 'issue.update',
+            'doc.create', 'doc.update', 'base.create', 'base.update'
+          )
+        )
+        OR (
+          role_seed.role_name = 'viewer'
+          AND permissions.code IN ('org.view', 'usergroup.view', 'role.view')
+        )
+      )
+      WHERE role_seed.role_name <> 'disabled'
+    )`;
+}
+
+function supportExpectedRowsSql(plan) {
+  return [
+    `('support-role', ${plan.workspaceIds.length * 5}::bigint)`,
+    `('support-role-permission', ${supportRolePermissionExpectedCountSql(plan)})`,
+    `('support-conversation', ${countFor(plan, "project")}::bigint)`,
+    `('support-conversation-member', ${countFor(plan, "project") * 2}::bigint)`,
+    `('support-knowledge-space', ${plan.workspaceIds.length}::bigint)`
+  ];
+}
+
 export function generateVerifySql(plan) {
   const validation = validateSeedPlan(plan);
   if (!validation.ok) {
@@ -1420,8 +1763,10 @@ export function generateVerifySql(plan) {
   }
   const schema = plan.fixtureSchema;
   const credentialSource = plan.credentialSource;
-  const expectedRows = plan.phases.map((phase) => `(${sqlLiteral(phase.domain)}, ${phase.count}::bigint)`).join(",\n    ");
-  const rolePrefix = fixtureRolePrefix(plan);
+  const expectedRows = [
+    ...plan.phases.map((phase) => `(${sqlLiteral(phase.domain)}, ${phase.count}::bigint)`),
+    ...supportExpectedRowsSql(plan)
+  ].join(",\n    ");
   return `-- Verify exact registry and business-table counts, checksums, and workspace relationships.
 \\set ON_ERROR_STOP on
 WITH expected(domain, expected_count) AS (
@@ -1436,10 +1781,12 @@ registry_actual AS (
   GROUP BY domain
 ),
 registry_count_mismatches AS (
-  SELECT e.domain, e.expected_count, coalesce(a.actual_count, 0) AS actual_count
+  SELECT coalesce(e.domain, a.domain) domain,
+         coalesce(e.expected_count, 0) expected_count,
+         coalesce(a.actual_count, 0) AS actual_count
   FROM expected e
-  LEFT JOIN registry_actual a USING (domain)
-  WHERE e.expected_count <> coalesce(a.actual_count, 0)
+  FULL JOIN registry_actual a USING (domain)
+  WHERE coalesce(e.expected_count, 0) <> coalesce(a.actual_count, 0)
 ),
 business_actual AS (
   SELECT 'workspace'::text domain, count(*)::bigint actual_count
@@ -1480,12 +1827,40 @@ business_actual AS (
   UNION ALL
   SELECT 'collaboration-room', count(*) FROM knowledge_content_collaboration_states target JOIN ${schema}.fixture_records fixture ON fixture.record_id = target.id
   WHERE fixture.seed_id = ${sqlLiteral(plan.seedId)} AND fixture.checksum = ${sqlLiteral(plan.checksum)} AND fixture.domain = 'collaboration-room'
+  UNION ALL
+  SELECT 'support-role', count(*) FROM roles target JOIN ${schema}.fixture_records fixture ON fixture.record_id = target.id
+  WHERE fixture.seed_id = ${sqlLiteral(plan.seedId)} AND fixture.checksum = ${sqlLiteral(plan.checksum)} AND fixture.domain = 'support-role'
+  UNION ALL
+  SELECT 'support-role-permission', count(*)
+  FROM role_permissions target
+  JOIN ${schema}.fixture_records fixture
+    ON target.role_id = (fixture.payload ->> 'roleId')::uuid
+   AND target.permission_id = (fixture.payload ->> 'permissionId')::uuid
+  WHERE fixture.seed_id = ${sqlLiteral(plan.seedId)} AND fixture.checksum = ${sqlLiteral(plan.checksum)}
+    AND fixture.domain = 'support-role-permission'
+  UNION ALL
+  SELECT 'support-conversation', count(*) FROM conversations target
+  JOIN ${schema}.fixture_records fixture ON fixture.record_id = target.id
+  WHERE fixture.seed_id = ${sqlLiteral(plan.seedId)} AND fixture.checksum = ${sqlLiteral(plan.checksum)}
+    AND fixture.domain = 'support-conversation'
+  UNION ALL
+  SELECT 'support-conversation-member', count(*) FROM conversation_members target
+  JOIN ${schema}.fixture_records fixture ON fixture.record_id = target.id
+  WHERE fixture.seed_id = ${sqlLiteral(plan.seedId)} AND fixture.checksum = ${sqlLiteral(plan.checksum)}
+    AND fixture.domain = 'support-conversation-member'
+  UNION ALL
+  SELECT 'support-knowledge-space', count(*) FROM knowledge_base_spaces target
+  JOIN ${schema}.fixture_records fixture ON fixture.record_id = target.id
+  WHERE fixture.seed_id = ${sqlLiteral(plan.seedId)} AND fixture.checksum = ${sqlLiteral(plan.checksum)}
+    AND fixture.domain = 'support-knowledge-space'
 ),
 count_mismatches AS (
-  SELECT e.domain, e.expected_count, coalesce(a.actual_count, 0) actual_count
+  SELECT coalesce(e.domain, a.domain) domain,
+         coalesce(e.expected_count, 0) expected_count,
+         coalesce(a.actual_count, 0) actual_count
   FROM expected e
-  LEFT JOIN business_actual a USING (domain)
-  WHERE e.expected_count <> coalesce(a.actual_count, 0)
+  FULL JOIN business_actual a USING (domain)
+  WHERE coalesce(e.expected_count, 0) <> coalesce(a.actual_count, 0)
 ),
 relationship_leaks AS (
   SELECT 'registry.workspace' leak
@@ -1604,31 +1979,52 @@ relationship_leaks AS (
   JOIN ${schema}.fixture_records r ON r.record_id = c.id
   WHERE r.seed_id = ${sqlLiteral(plan.seedId)} AND r.checksum = ${sqlLiteral(plan.checksum)}
     AND (c.workspace_id <> r.workspace_id OR i.workspace_id <> c.workspace_id)
+  UNION ALL
+  SELECT 'support-role.relations' FROM roles role
+  JOIN ${schema}.fixture_records r ON r.record_id = role.id
+  WHERE r.seed_id = ${sqlLiteral(plan.seedId)} AND r.checksum = ${sqlLiteral(plan.checksum)}
+    AND r.domain = 'support-role'
+    AND role.workspace_id <> r.workspace_id
+  UNION ALL
+  SELECT 'support-role-permission.relations' FROM role_permissions role_permission
+  JOIN roles role ON role.id = role_permission.role_id
+  JOIN ${schema}.fixture_records r
+    ON role_permission.role_id = (r.payload ->> 'roleId')::uuid
+   AND role_permission.permission_id = (r.payload ->> 'permissionId')::uuid
+  WHERE r.seed_id = ${sqlLiteral(plan.seedId)} AND r.checksum = ${sqlLiteral(plan.checksum)}
+    AND r.domain = 'support-role-permission'
+    AND role.workspace_id <> r.workspace_id
+  UNION ALL
+  SELECT 'support-conversation.relations' FROM conversations conversation
+  JOIN projects project ON project.id = conversation.project_id
+  JOIN ${schema}.fixture_records r ON r.record_id = conversation.id
+  WHERE r.seed_id = ${sqlLiteral(plan.seedId)} AND r.checksum = ${sqlLiteral(plan.checksum)}
+    AND r.domain = 'support-conversation'
+    AND (conversation.workspace_id <> r.workspace_id OR project.workspace_id <> r.workspace_id)
+  UNION ALL
+  SELECT 'support-conversation-member.relations' FROM conversation_members member
+  JOIN conversations conversation ON conversation.id = member.conversation_id
+  JOIN users fixture_user ON fixture_user.id = member.user_id
+  JOIN ${schema}.fixture_records r ON r.record_id = member.id
+  WHERE r.seed_id = ${sqlLiteral(plan.seedId)} AND r.checksum = ${sqlLiteral(plan.checksum)}
+    AND r.domain = 'support-conversation-member'
+    AND (
+      member.workspace_id <> r.workspace_id
+      OR conversation.workspace_id <> r.workspace_id
+      OR fixture_user.workspace_id <> r.workspace_id
+    )
+  UNION ALL
+  SELECT 'support-knowledge-space.relations' FROM knowledge_base_spaces space
+  JOIN knowledge_base_items root ON root.id = space.root_item_id
+  JOIN ${schema}.fixture_records r ON r.record_id = space.id
+  WHERE r.seed_id = ${sqlLiteral(plan.seedId)} AND r.checksum = ${sqlLiteral(plan.checksum)}
+    AND r.domain = 'support-knowledge-space'
+    AND (space.workspace_id <> r.workspace_id OR root.workspace_id <> r.workspace_id)
 ),
 support_mismatches AS (
-  SELECT 'knowledge_base_spaces' support, ${plan.workspaceIds.length}::bigint expected_count, count(*)::bigint actual_count
-  FROM knowledge_base_spaces s
-  JOIN ${schema}.fixture_records r ON r.record_id = s.root_item_id
-  WHERE r.seed_id = ${sqlLiteral(plan.seedId)} AND r.checksum = ${sqlLiteral(plan.checksum)} AND r.domain = 'knowledge-item'
-  HAVING count(*) <> ${plan.workspaceIds.length}
-  UNION ALL
-  SELECT 'roles', ${(plan.workspaceIds.length * 5)}::bigint, count(*)::bigint
-  FROM roles
-  WHERE code LIKE ${sqlLiteral(`${rolePrefix}%`)}
-  HAVING count(*) <> ${plan.workspaceIds.length * 5}
-  UNION ALL
-  SELECT 'conversations', ${countFor(plan, "project")}::bigint, count(*)::bigint
-  FROM conversations c
-  JOIN ${schema}.fixture_records p ON p.record_id = c.project_id
-  WHERE p.seed_id = ${sqlLiteral(plan.seedId)} AND p.checksum = ${sqlLiteral(plan.checksum)} AND p.domain = 'project'
-  HAVING count(*) <> ${countFor(plan, "project")}
-  UNION ALL
-  SELECT 'conversation_members', ${(countFor(plan, "project") * 2)}::bigint, count(*)::bigint
-  FROM conversation_members cm
-  JOIN conversations c ON c.id = cm.conversation_id
-  JOIN ${schema}.fixture_records p ON p.record_id = c.project_id
-  WHERE p.seed_id = ${sqlLiteral(plan.seedId)} AND p.checksum = ${sqlLiteral(plan.checksum)} AND p.domain = 'project'
-  HAVING count(*) <> ${countFor(plan, "project") * 2}
+  SELECT domain support, expected_count, actual_count
+  FROM count_mismatches
+  WHERE domain LIKE 'support-%'
 ),
 fixture_usernames AS (
   SELECT u.username
@@ -1714,50 +2110,41 @@ SELECT json_build_object(
 `;
 }
 
-function deterministicResidueCount(plan, table, column, domain, count = countFor(plan, domain)) {
-  return `(SELECT count(*)
-    FROM ${table} target
-    JOIN generate_series(1, ${count}) AS fixture(ordinal)
-      ON target.${column} = ${recordIdExpression(plan, domain, "fixture.ordinal")})`;
-}
-
 function businessResidueExpression(plan) {
   const workspaceIds = plan.workspaceIds
     .map((workspace) => `${sqlLiteral(workspace.id)}::uuid`)
     .join(", ");
   const roleIds = roleIdsValues(plan);
-  const projectCount = countFor(plan, "project");
-  const conversationId = `md5(${sqlLiteral(`${plan.seedId}:conversation:`)} || fixture.ordinal::text)::uuid`;
+  const workspaceScopedTables = [
+    "users",
+    "user_roles",
+    "roles",
+    "resource_permissions",
+    "role_assignments",
+    "projects",
+    "issues",
+    "knowledge_base_items",
+    "knowledge_base_spaces",
+    "knowledge_content_blocks",
+    "knowledge_content_collaboration_tickets",
+    "knowledge_content_collaboration_updates",
+    "knowledge_content_collaboration_states",
+    "notifications",
+    "conversations",
+    "conversation_members",
+    "messages",
+    "files",
+    "domain_events",
+    "audit_logs"
+  ];
   return [
     `(SELECT count(*) FROM workspaces WHERE id IN (${workspaceIds}))`,
-    deterministicResidueCount(plan, "users", "id", "member"),
-    deterministicResidueCount(plan, "resource_permissions", "id", "permission"),
-    deterministicResidueCount(plan, "role_assignments", "id", "permission"),
-    `(SELECT count(*) FROM roles WHERE id IN (
-      SELECT role_id FROM (VALUES ${roleIds}) AS fixture_roles(workspace_ordinal, role_name, role_id)
-    ))`,
+    ...workspaceScopedTables.map(
+      (table) => `(SELECT count(*) FROM ${table} WHERE workspace_id IN (${workspaceIds}))`
+    ),
     `(SELECT count(*) FROM role_permissions WHERE role_id IN (
       SELECT role_id FROM (VALUES ${roleIds}) AS fixture_roles(workspace_ordinal, role_name, role_id)
-    ))`,
-    deterministicResidueCount(plan, "projects", "id", "project"),
-    deterministicResidueCount(plan, "issues", "id", "issue"),
-    deterministicResidueCount(plan, "knowledge_base_items", "id", "knowledge-item"),
-    deterministicResidueCount(plan, "knowledge_base_spaces", "root_item_id", "knowledge-item"),
-    deterministicResidueCount(plan, "knowledge_content_blocks", "id", "knowledge-block"),
-    deterministicResidueCount(plan, "knowledge_content_collaboration_tickets", "item_id", "knowledge-item"),
-    deterministicResidueCount(plan, "knowledge_content_collaboration_updates", "item_id", "knowledge-item"),
-    deterministicResidueCount(plan, "knowledge_content_collaboration_states", "id", "collaboration-room"),
-    deterministicResidueCount(plan, "notifications", "id", "notification"),
-    deterministicResidueCount(plan, "messages", "id", "im-message"),
-    deterministicResidueCount(plan, "files", "id", "file"),
-    `(SELECT count(*)
-      FROM conversations target
-      JOIN generate_series(1, ${projectCount}) AS fixture(ordinal)
-        ON target.id = ${conversationId})`,
-    `(SELECT count(*)
-      FROM conversation_members target
-      JOIN generate_series(1, ${projectCount}) AS fixture(ordinal)
-        ON target.conversation_id = ${conversationId})`
+    ))`
   ].join("\n    + ");
 }
 
@@ -1779,6 +2166,7 @@ export function generateCleanCheckSql(plan) {
   'fixtureName', ${sqlLiteral(plan.fixtureName)},
   'ok', fixture_runs = 0
     AND fixture_phases = 0
+    AND fixture_cleanup = 0
     AND fixture_records = 0
     AND fixture_workspaces = 0
     AND conflicting_runs = 0
@@ -1786,6 +2174,7 @@ export function generateCleanCheckSql(plan) {
   'fixtureRegistryExists', ${fixtureCounts},
   'fixtureRuns', fixture_runs,
   'fixturePhases', fixture_phases,
+  'fixtureCleanupProgress', fixture_cleanup,
   'fixtureRecords', fixture_records,
   'fixtureWorkspaces', fixture_workspaces,
   'conflictingRuns', conflicting_runs,
@@ -1796,6 +2185,16 @@ FROM clean_counts;`;
 \\set ON_ERROR_STOP on
 SELECT to_regclass(${sqlLiteral(`${schema}.fixture_runs`)}) IS NOT NULL AS fixture_registry_exists
 \\gset
+SELECT to_regclass(${sqlLiteral(`${schema}.fixture_cleanup_progress`)}) IS NOT NULL AS fixture_cleanup_registry_exists
+\\gset
+\\if :fixture_cleanup_registry_exists
+SELECT count(*) AS fixture_cleanup_rows
+FROM ${schema}.fixture_cleanup_progress
+WHERE seed_id = ${sqlLiteral(plan.seedId)}
+\\gset
+\\else
+\\set fixture_cleanup_rows 0
+\\endif
 \\if :fixture_registry_exists
 WITH clean_counts AS (
   SELECT
@@ -1804,6 +2203,7 @@ WITH clean_counts AS (
          OR fixture_name = ${sqlLiteral(plan.fixtureName)}) AS fixture_runs,
     (SELECT count(*) FROM ${schema}.fixture_phase_progress
       WHERE seed_id = ${sqlLiteral(plan.seedId)}) AS fixture_phases,
+    :fixture_cleanup_rows::bigint AS fixture_cleanup,
     (SELECT count(*) FROM ${schema}.fixture_records
       WHERE seed_id = ${sqlLiteral(plan.seedId)}) AS fixture_records,
     (SELECT count(*) FROM workspaces
@@ -1826,6 +2226,7 @@ WITH clean_counts AS (
   SELECT
     0::bigint AS fixture_runs,
     0::bigint AS fixture_phases,
+    :fixture_cleanup_rows::bigint AS fixture_cleanup,
     0::bigint AS fixture_records,
     (SELECT count(*) FROM workspaces
       WHERE id IN (${workspaceIds})) AS fixture_workspaces,
@@ -1837,20 +2238,499 @@ ${jsonResult("false")}
 `;
 }
 
+function workspaceContractValues(plan) {
+  return plan.workspaceIds
+    .map((workspace) => `(${workspace.ordinal}, ${sqlLiteral(workspace.id)}::uuid)`)
+    .join(",\n    ");
+}
+
+function primaryOwnershipExpectedSql(plan, domain, start, end) {
+  const phase = plan.phases.find((candidate) => candidate.domain === domain);
+  const fixturePrefix = `${plan.fixtureName}:${domain}:`;
+  return `SELECT ${workspaceUuidExpression(plan, domain, "g")} workspace_id,
+       ${sqlLiteral(domain)}::text domain,
+       g::bigint ordinal,
+       ${recordIdExpression(plan, domain, "g")} record_id,
+       ${sqlLiteral(fixturePrefix)} || g::text fixture_key,
+       jsonb_build_object(
+         'fixture', ${sqlLiteral(plan.fixtureName)},
+         'domain', ${sqlLiteral(domain)},
+         'ordinal', g,
+         'payloadBytes', ${phase.payloadBytes},
+         'temperature', CASE WHEN mod(g - 1, 10) = 0 THEN 'hot'
+           WHEN mod(g - 1, 10) < 4 THEN 'warm' ELSE 'cold' END${domainPayloadSql(plan, domain)}
+       ) payload
+FROM generate_series(${start}, ${end}) AS generated(g)`;
+}
+
+function supportOwnershipExpectedSql(plan, domain, start, end) {
+  const projectCount = countFor(plan, "project");
+  if (domain === "support-role") {
+    return `SELECT workspace_contract.workspace_id,
+       'support-role'::text domain,
+       role_seed.support_ordinal::bigint ordinal,
+       role_seed.role_id record_id,
+       ${sqlLiteral(`${plan.fixtureName}:support-role:`)}
+         || role_seed.workspace_ordinal::text || ':' || role_seed.role_name fixture_key,
+       jsonb_build_object(
+         'fixture', ${sqlLiteral(plan.fixtureName)},
+         'domain', 'support-role',
+         'roleId', role_seed.role_id,
+         'roleName', role_seed.role_name
+       ) payload
+FROM (
+  SELECT fixture_roles.*,
+         (fixture_roles.workspace_ordinal - 1) * 5
+           + CASE fixture_roles.role_name
+               WHEN 'owner' THEN 1 WHEN 'admin' THEN 2 WHEN 'editor' THEN 3
+               WHEN 'viewer' THEN 4 ELSE 5
+             END support_ordinal
+  FROM (VALUES ${roleIdsValues(plan)})
+    AS fixture_roles(workspace_ordinal, role_name, role_id)
+) role_seed
+JOIN (VALUES ${workspaceContractValues(plan)})
+  AS workspace_contract(workspace_ordinal, workspace_id)
+  USING (workspace_ordinal)
+WHERE role_seed.support_ordinal BETWEEN ${start} AND ${end}`;
+  }
+  if (domain === "support-role-permission") {
+    return `SELECT expected_permissions.workspace_id,
+       'support-role-permission'::text domain,
+       expected_permissions.support_ordinal::bigint ordinal,
+       md5(
+         ${sqlLiteral(`${plan.seedId}:support-role-permission:`)}
+         || expected_permissions.role_id::text || ':'
+         || expected_permissions.permission_id::text
+       )::uuid record_id,
+       ${sqlLiteral(`${plan.fixtureName}:support-role-permission:`)}
+         || expected_permissions.role_id::text || ':'
+         || expected_permissions.permission_id::text fixture_key,
+       jsonb_build_object(
+         'fixture', ${sqlLiteral(plan.fixtureName)},
+         'domain', 'support-role-permission',
+         'roleId', expected_permissions.role_id,
+         'permissionId', expected_permissions.permission_id
+       ) payload
+FROM (
+  SELECT workspace_contract.workspace_id,
+         role_seed.role_id,
+         permissions.id permission_id,
+         row_number() OVER (ORDER BY role_seed.role_id, permissions.id) support_ordinal
+  FROM (VALUES ${roleIdsValues(plan)})
+    AS role_seed(workspace_ordinal, role_name, role_id)
+  JOIN (VALUES ${workspaceContractValues(plan)})
+    AS workspace_contract(workspace_ordinal, workspace_id)
+    USING (workspace_ordinal)
+  JOIN permissions ON (
+    role_seed.role_name IN ('owner', 'admin')
+    OR (
+      role_seed.role_name = 'editor'
+      AND permissions.code IN (
+        'project.create', 'project.manage', 'issue.create', 'issue.update',
+        'doc.create', 'doc.update', 'base.create', 'base.update'
+      )
+    )
+    OR (
+      role_seed.role_name = 'viewer'
+      AND permissions.code IN ('org.view', 'usergroup.view', 'role.view')
+    )
+  )
+  WHERE role_seed.role_name <> 'disabled'
+) expected_permissions`;
+  }
+  if (domain === "support-conversation") {
+    return `SELECT ${workspaceUuidExpression(plan, "project", "g")} workspace_id,
+       'support-conversation'::text domain,
+       g::bigint ordinal,
+       md5(${sqlLiteral(`${plan.seedId}:conversation:`)} || g::text)::uuid record_id,
+       ${sqlLiteral(`${plan.fixtureName}:support-conversation:`)} || g::text fixture_key,
+       jsonb_build_object(
+         'fixture', ${sqlLiteral(plan.fixtureName)},
+         'domain', 'support-conversation',
+         'conversationId',
+           md5(${sqlLiteral(`${plan.seedId}:conversation:`)} || g::text)::uuid
+       ) payload
+FROM generate_series(${start}, ${end}) AS generated(g)`;
+  }
+  if (domain === "support-conversation-member") {
+    const projectOrdinal = `(1 + floor((g - 1) / 2.0))::bigint`;
+    const memberOffset = `mod(g - 1, 2)::bigint`;
+    return `SELECT ${workspaceUuidExpression(plan, "project", projectOrdinal)} workspace_id,
+       'support-conversation-member'::text domain,
+       g::bigint ordinal,
+       md5(
+         ${sqlLiteral(`${plan.seedId}:conversation-member:`)}
+         || ${projectOrdinal}::text || ':' || ${memberOffset}::text
+       )::uuid record_id,
+       ${sqlLiteral(`${plan.fixtureName}:support-conversation-member:`)}
+         || ${projectOrdinal}::text || ':' || ${memberOffset}::text fixture_key,
+       jsonb_build_object(
+         'fixture', ${sqlLiteral(plan.fixtureName)},
+         'domain', 'support-conversation-member',
+         'conversationMemberId', md5(
+           ${sqlLiteral(`${plan.seedId}:conversation-member:`)}
+           || ${projectOrdinal}::text || ':' || ${memberOffset}::text
+         )::uuid,
+         'conversationId',
+           md5(${sqlLiteral(`${plan.seedId}:conversation:`)}
+             || ${projectOrdinal}::text)::uuid
+       ) payload
+FROM generate_series(${start}, ${end}) AS generated(g)
+WHERE ${projectOrdinal} BETWEEN 1 AND ${projectCount}`;
+  }
+  if (domain === "support-knowledge-space") {
+    const rows = plan.workspaceIds.map((workspace) => {
+      const rootOrdinal = firstFixtureOrdinalForWorkspace(
+        plan,
+        "knowledge-item",
+        workspace.ordinal
+      );
+      const rootId = postgresMd5Uuid(`${plan.seedId}:knowledge-item:${rootOrdinal}`);
+      const spaceId = postgresMd5Uuid(`${plan.seedId}:knowledge-space:${workspace.id}`);
+      return `(
+        ${sqlLiteral(workspace.id)}::uuid,
+        'support-knowledge-space'::text,
+        ${workspace.ordinal}::bigint,
+        ${sqlLiteral(spaceId)}::uuid,
+        ${sqlLiteral(`${plan.fixtureName}:support-knowledge-space:${workspace.ordinal}`)},
+        jsonb_build_object(
+          'fixture', ${sqlLiteral(plan.fixtureName)},
+          'domain', 'support-knowledge-space',
+          'spaceId', ${sqlLiteral(spaceId)}::uuid,
+          'rootItemId', ${sqlLiteral(rootId)}::uuid
+        )
+      )`;
+    }).join(",\n      ");
+    return `SELECT expected.*
+FROM (VALUES
+      ${rows}
+) AS expected(workspace_id, domain, ordinal, record_id, fixture_key, payload)
+WHERE expected.ordinal BETWEEN ${start} AND ${end}`;
+  }
+  throw new Error(`unsupported support ownership domain: ${domain}`);
+}
+
+function ownershipExpectedSql(plan, domain, start, end) {
+  return requiredDomains.includes(domain)
+    ? primaryOwnershipExpectedSql(plan, domain, start, end)
+    : supportOwnershipExpectedSql(plan, domain, start, end);
+}
+
+function ownershipIdentityGuardSql(plan, domain, start, end) {
+  const schema = plan.fixtureSchema;
+  const range = domain === "support-role-permission"
+    ? ""
+    : `\n    AND owned.ordinal BETWEEN ${start} AND ${end}`;
+  return `DO $capacity_fixture_ownership_identity_guard$
+BEGIN
+  IF EXISTS (
+    WITH expected AS (
+      ${ownershipExpectedSql(plan, domain, start, end)}
+    ),
+    actual AS (
+      SELECT owned.workspace_id,
+             owned.domain,
+             owned.ordinal,
+             owned.record_id,
+             owned.fixture_key,
+             owned.payload
+      FROM ${schema}.fixture_records owned
+      WHERE owned.seed_id = ${sqlLiteral(plan.seedId)}
+        AND owned.checksum = ${sqlLiteral(plan.checksum)}
+        AND owned.domain = ${sqlLiteral(domain)}${range}
+    )
+    SELECT 1
+    FROM expected
+    FULL JOIN actual USING (domain, ordinal)
+    WHERE expected.ordinal IS NULL
+       OR actual.ordinal IS NULL
+       OR actual.workspace_id IS DISTINCT FROM expected.workspace_id
+       OR actual.record_id IS DISTINCT FROM expected.record_id
+       OR actual.fixture_key IS DISTINCT FROM expected.fixture_key
+       OR actual.payload IS DISTINCT FROM expected.payload
+  ) THEN
+    RAISE EXCEPTION 'capacity fixture ownership identity mismatch for domain ${domain}';
+  END IF;
+END
+$capacity_fixture_ownership_identity_guard$;`;
+}
+
+function cleanupSpecs(plan) {
+  const phase = (domain) => plan.phases.find((candidate) => candidate.domain === domain);
+  const project = phase("project");
+  return [
+    { domain: "collaboration-room", ...phase("collaboration-room") },
+    { domain: "im-message", ...phase("im-message") },
+    {
+      domain: "support-conversation-member",
+      count: project.count * 2,
+      batchSize: Math.max(1, project.batchSize * 2)
+    },
+    { domain: "support-conversation", count: project.count, batchSize: project.batchSize },
+    { domain: "notification", ...phase("notification") },
+    { domain: "permission", ...phase("permission") },
+    { domain: "support-role-permission", dynamic: true },
+    {
+      domain: "support-role",
+      count: plan.workspaceIds.length * 5,
+      batchSize: plan.workspaceIds.length * 5
+    },
+    { domain: "knowledge-block", ...phase("knowledge-block") },
+    {
+      domain: "support-knowledge-space",
+      count: plan.workspaceIds.length,
+      batchSize: plan.workspaceIds.length
+    },
+    { domain: "knowledge-item", ...phase("knowledge-item"), reverse: true },
+    { domain: "issue", ...phase("issue") },
+    { domain: "project", ...project },
+    { domain: "file", ...phase("file") },
+    { domain: "member", ...phase("member") },
+    { domain: "workspace", ...phase("workspace") }
+  ];
+}
+
+function ownedChunkPredicate(plan, domain, start, end, alias = "owned") {
+  return `${alias}.seed_id = ${sqlLiteral(plan.seedId)}
+    AND ${alias}.checksum = ${sqlLiteral(plan.checksum)}
+    AND ${alias}.domain = ${sqlLiteral(domain)}
+    AND ${alias}.ordinal BETWEEN ${start} AND ${end}`;
+}
+
+function cleanupChunkStatements(plan, domain, start, end) {
+  const schema = plan.fixtureSchema;
+  const owned = ownedChunkPredicate(plan, domain, start, end);
+  const deleteById = (table) => `DELETE FROM ${table} target
+USING ${schema}.fixture_records owned
+WHERE target.id = owned.record_id
+  AND ${owned};`;
+  switch (domain) {
+    case "collaboration-room":
+      return deleteById("knowledge_content_collaboration_states");
+    case "im-message":
+      return `UPDATE conversations target
+SET last_message_id = NULL,
+    last_message_at = NULL
+FROM ${schema}.fixture_records conversation_owner,
+     ${schema}.fixture_records message_owner
+WHERE target.id = conversation_owner.record_id
+  AND conversation_owner.seed_id = ${sqlLiteral(plan.seedId)}
+  AND conversation_owner.checksum = ${sqlLiteral(plan.checksum)}
+  AND conversation_owner.domain = 'support-conversation'
+  AND target.last_message_id = message_owner.record_id
+  AND ${ownedChunkPredicate(plan, domain, start, end, "message_owner")};
+${deleteById("messages")}`;
+    case "support-conversation-member":
+      return deleteById("conversation_members");
+    case "support-conversation":
+      return deleteById("conversations");
+    case "notification":
+      return deleteById("notifications");
+    case "permission":
+      return `${deleteById("resource_permissions")}
+${deleteById("role_assignments")}`;
+    case "support-role-permission":
+      return `DELETE FROM role_permissions target
+USING ${schema}.fixture_records owned
+WHERE target.role_id = (owned.payload ->> 'roleId')::uuid
+  AND target.permission_id = (owned.payload ->> 'permissionId')::uuid
+  AND owned.seed_id = ${sqlLiteral(plan.seedId)}
+  AND owned.checksum = ${sqlLiteral(plan.checksum)}
+  AND owned.domain = 'support-role-permission';`;
+    case "support-role":
+      return deleteById("roles");
+    case "knowledge-block":
+      return deleteById("knowledge_content_blocks");
+    case "support-knowledge-space":
+      return deleteById("knowledge_base_spaces");
+    case "knowledge-item":
+      return deleteById("knowledge_base_items");
+    case "issue":
+      return deleteById("issues");
+    case "project":
+      return deleteById("projects");
+    case "file":
+      return deleteById("files");
+    case "member":
+      return deleteById("users");
+    case "workspace":
+      return deleteById("workspaces");
+    default:
+      throw new Error(`unsupported cleanup domain: ${domain}`);
+  }
+}
+
+function cleanupChunkSql(plan, spec, start, end, completed) {
+  const schema = plan.fixtureSchema;
+  return `-- cleanup ${spec.domain} chunk ${start}-${end}
+SELECT (
+  status = 'deleted' OR completed_ordinal >= ${completed}
+) AS capacity_skip_cleanup_chunk
+FROM ${schema}.fixture_cleanup_progress
+WHERE seed_id = ${sqlLiteral(plan.seedId)}
+  AND checksum = ${sqlLiteral(plan.checksum)}
+  AND domain = ${sqlLiteral(spec.domain)}
+\\gset
+\\if :capacity_skip_cleanup_chunk
+\\echo 'skip committed cleanup ${spec.domain} chunk ${start}-${end}'
+\\else
+BEGIN;
+SET LOCAL lock_timeout = '5s';
+SET LOCAL statement_timeout = '120s';
+UPDATE ${schema}.fixture_cleanup_progress
+SET status = 'deleting', updated_at = clock_timestamp()
+WHERE seed_id = ${sqlLiteral(plan.seedId)}
+  AND checksum = ${sqlLiteral(plan.checksum)}
+  AND domain = ${sqlLiteral(spec.domain)};
+
+${ownershipIdentityGuardSql(plan, spec.domain, start, end)}
+
+${cleanupChunkStatements(plan, spec.domain, start, end)}
+
+DELETE FROM ${schema}.fixture_records owned
+WHERE ${ownedChunkPredicate(plan, spec.domain, start, end)};
+
+UPDATE ${schema}.fixture_cleanup_progress
+SET completed_ordinal = ${completed},
+    status = CASE WHEN ${completed} = expected_count THEN 'deleted' ELSE 'deleting' END,
+    updated_at = clock_timestamp()
+WHERE seed_id = ${sqlLiteral(plan.seedId)}
+  AND checksum = ${sqlLiteral(plan.checksum)}
+  AND domain = ${sqlLiteral(spec.domain)}
+  AND completed_ordinal < ${completed};
+COMMIT;
+\\endif
+`;
+}
+
+function dynamicCleanupSql(plan, spec) {
+  const schema = plan.fixtureSchema;
+  return `-- cleanup ${spec.domain} in its own bounded support transaction
+SELECT (status = 'deleted') AS capacity_skip_cleanup_chunk
+FROM ${schema}.fixture_cleanup_progress
+WHERE seed_id = ${sqlLiteral(plan.seedId)}
+  AND checksum = ${sqlLiteral(plan.checksum)}
+  AND domain = ${sqlLiteral(spec.domain)}
+\\gset
+\\if :capacity_skip_cleanup_chunk
+\\echo 'skip committed cleanup ${spec.domain}'
+\\else
+BEGIN;
+SET LOCAL lock_timeout = '5s';
+SET LOCAL statement_timeout = '120s';
+UPDATE ${schema}.fixture_cleanup_progress
+SET status = 'deleting', updated_at = clock_timestamp()
+WHERE seed_id = ${sqlLiteral(plan.seedId)}
+  AND checksum = ${sqlLiteral(plan.checksum)}
+  AND domain = ${sqlLiteral(spec.domain)};
+
+${ownershipIdentityGuardSql(plan, spec.domain, 0, 0)}
+
+${cleanupChunkStatements(plan, spec.domain, 0, 0)}
+
+DELETE FROM ${schema}.fixture_records
+WHERE seed_id = ${sqlLiteral(plan.seedId)}
+  AND checksum = ${sqlLiteral(plan.checksum)}
+  AND domain = ${sqlLiteral(spec.domain)};
+
+UPDATE ${schema}.fixture_cleanup_progress
+SET completed_ordinal = expected_count,
+    status = 'deleted',
+    updated_at = clock_timestamp()
+WHERE seed_id = ${sqlLiteral(plan.seedId)}
+  AND checksum = ${sqlLiteral(plan.checksum)}
+  AND domain = ${sqlLiteral(spec.domain)};
+COMMIT;
+\\endif
+`;
+}
+
 export function generateCleanupSql(plan) {
   const validation = validateSeedPlan(plan);
   if (!validation.ok) {
     throw new Error(`invalid seed plan: ${validation.errors.join("; ")}`);
   }
-  const schema = plan.fixtureSchema;
-  const roleIds = roleIdsValues(plan);
-  const workspaceIds = plan.workspaceIds
-    .map((workspace) => `${sqlLiteral(workspace.id)}::uuid`)
-    .join(", ");
-  const businessResidue = businessResidueExpression(plan);
-  return `-- Cleanup is restricted to rows owned by the exact named seed id and checksum.
+  {
+    const schema = plan.fixtureSchema;
+    const specs = cleanupSpecs(plan);
+    const workspaceIds = plan.workspaceIds
+      .map((workspace) => `${sqlLiteral(workspace.id)}::uuid`)
+      .join(", ");
+    const expectedRows = specs.map((spec) => spec.dynamic
+      ? `(${sqlLiteral(spec.domain)}, ${supportRolePermissionExpectedCountSql(plan)})`
+      : `(${sqlLiteral(spec.domain)}, ${spec.count}::bigint)`).join(",\n    ");
+    const sections = [`-- Cleanup is checksum guarded, directly owned, chunk committed, and resumable.
 \\set ON_ERROR_STOP on
+SET lock_timeout = '5s';
+SET statement_timeout = '120s';
+CREATE TABLE IF NOT EXISTS ${schema}.fixture_cleanup_progress (
+  seed_id text NOT NULL,
+  checksum char(64) NOT NULL,
+  domain text NOT NULL,
+  expected_count bigint NOT NULL,
+  completed_ordinal bigint NOT NULL DEFAULT 0,
+  status text NOT NULL CHECK (status IN ('pending', 'deleting', 'deleted')),
+  updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+  PRIMARY KEY (seed_id, domain),
+  CONSTRAINT fixture_cleanup_progress_domain_chk
+    CHECK (domain IN (${cleanupDomains.map(sqlLiteral).join(", ")})),
+  CONSTRAINT fixture_cleanup_progress_range_chk
+    CHECK (
+      expected_count >= 0
+      AND completed_ordinal >= 0
+      AND completed_ordinal <= expected_count
+    ),
+  CONSTRAINT fixture_cleanup_progress_status_chk
+    CHECK (
+      (status = 'pending' AND completed_ordinal = 0 AND expected_count > 0)
+      OR (status = 'deleting' AND completed_ordinal < expected_count)
+      OR (status = 'deleted' AND completed_ordinal = expected_count)
+    )
+);
+
+DO $capacity_fixture_cleanup_schema_guard$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = ${sqlLiteral(`${schema}.fixture_cleanup_progress`)}::regclass
+      AND conname = 'fixture_cleanup_progress_domain_chk'
+  ) THEN
+    ALTER TABLE ${schema}.fixture_cleanup_progress
+      ADD CONSTRAINT fixture_cleanup_progress_domain_chk
+      CHECK (domain IN (${cleanupDomains.map(sqlLiteral).join(", ")}));
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = ${sqlLiteral(`${schema}.fixture_cleanup_progress`)}::regclass
+      AND conname = 'fixture_cleanup_progress_range_chk'
+  ) THEN
+    ALTER TABLE ${schema}.fixture_cleanup_progress
+      ADD CONSTRAINT fixture_cleanup_progress_range_chk
+      CHECK (
+        expected_count >= 0
+        AND completed_ordinal >= 0
+        AND completed_ordinal <= expected_count
+      );
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = ${sqlLiteral(`${schema}.fixture_cleanup_progress`)}::regclass
+      AND conname = 'fixture_cleanup_progress_status_chk'
+  ) THEN
+    ALTER TABLE ${schema}.fixture_cleanup_progress
+      ADD CONSTRAINT fixture_cleanup_progress_status_chk
+      CHECK (
+        (status = 'pending' AND completed_ordinal = 0 AND expected_count > 0)
+        OR (status = 'deleting' AND completed_ordinal < expected_count)
+        OR (status = 'deleted' AND completed_ordinal = expected_count)
+      );
+  END IF;
+END
+$capacity_fixture_cleanup_schema_guard$;
+
 BEGIN;
+SET LOCAL lock_timeout = '5s';
+SET LOCAL statement_timeout = '120s';
 DO $capacity_fixture_cleanup_guard$
 BEGIN
   IF NOT EXISTS (
@@ -1864,120 +2744,184 @@ BEGIN
 END
 $capacity_fixture_cleanup_guard$;
 
-DELETE FROM knowledge_content_collaboration_tickets
-WHERE item_id IN (
-  SELECT record_id FROM ${schema}.fixture_records
-  WHERE seed_id = ${sqlLiteral(plan.seedId)} AND checksum = ${sqlLiteral(plan.checksum)} AND domain = 'knowledge-item'
-);
-DELETE FROM knowledge_content_collaboration_updates
-WHERE item_id IN (
-  SELECT record_id FROM ${schema}.fixture_records
-  WHERE seed_id = ${sqlLiteral(plan.seedId)} AND checksum = ${sqlLiteral(plan.checksum)} AND domain = 'knowledge-item'
-);
-DELETE FROM knowledge_content_collaboration_states
-WHERE id IN (
-  SELECT record_id FROM ${schema}.fixture_records
-  WHERE seed_id = ${sqlLiteral(plan.seedId)} AND checksum = ${sqlLiteral(plan.checksum)} AND domain = 'collaboration-room'
-);
+DO $capacity_fixture_cleanup_ownership_guard$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM ${schema}.fixture_cleanup_progress
+    WHERE seed_id = ${sqlLiteral(plan.seedId)}
+  ) AND EXISTS (
+    WITH expected(domain, expected_count) AS (
+      VALUES
+        ${expectedRows}
+    ),
+    actual AS (
+      SELECT domain, count(*)::bigint actual_count
+      FROM ${schema}.fixture_records
+      WHERE seed_id = ${sqlLiteral(plan.seedId)}
+        AND checksum = ${sqlLiteral(plan.checksum)}
+      GROUP BY domain
+    )
+    SELECT 1
+    FROM expected
+    FULL JOIN actual USING (domain)
+    WHERE expected.domain IS NULL
+       OR actual.domain IS NULL
+       OR expected.expected_count <> actual.actual_count
+  ) THEN
+    RAISE EXCEPTION 'fixture ownership registry domain contract is incomplete or contains unexpected domains';
+  END IF;
+END
+$capacity_fixture_cleanup_ownership_guard$;
 
-UPDATE conversations
-SET last_message_id = NULL, last_message_at = NULL
-WHERE project_id IN (
-  SELECT record_id FROM ${schema}.fixture_records
-  WHERE seed_id = ${sqlLiteral(plan.seedId)} AND checksum = ${sqlLiteral(plan.checksum)} AND domain = 'project'
-);
-DELETE FROM messages
-WHERE id IN (
-  SELECT record_id FROM ${schema}.fixture_records
-  WHERE seed_id = ${sqlLiteral(plan.seedId)} AND checksum = ${sqlLiteral(plan.checksum)} AND domain = 'im-message'
-);
-DELETE FROM conversation_members
-WHERE conversation_id IN (
-  SELECT id FROM conversations
-  WHERE project_id IN (
-    SELECT record_id FROM ${schema}.fixture_records
-    WHERE seed_id = ${sqlLiteral(plan.seedId)} AND checksum = ${sqlLiteral(plan.checksum)} AND domain = 'project'
-  )
-);
-DELETE FROM conversations
-WHERE project_id IN (
-  SELECT record_id FROM ${schema}.fixture_records
-  WHERE seed_id = ${sqlLiteral(plan.seedId)} AND checksum = ${sqlLiteral(plan.checksum)} AND domain = 'project'
-);
-
-DELETE FROM notifications
-WHERE id IN (
-  SELECT record_id FROM ${schema}.fixture_records
-  WHERE seed_id = ${sqlLiteral(plan.seedId)} AND checksum = ${sqlLiteral(plan.checksum)} AND domain = 'notification'
-);
-DELETE FROM resource_permissions
-WHERE id IN (
-  SELECT record_id FROM ${schema}.fixture_records
-  WHERE seed_id = ${sqlLiteral(plan.seedId)} AND checksum = ${sqlLiteral(plan.checksum)} AND domain = 'permission'
-);
-DELETE FROM role_assignments
-WHERE id IN (
-  SELECT record_id FROM ${schema}.fixture_records
-  WHERE seed_id = ${sqlLiteral(plan.seedId)} AND checksum = ${sqlLiteral(plan.checksum)} AND domain = 'permission'
-);
-WITH fixture_roles(workspace_ordinal, role_name, role_id) AS (
-  VALUES
-    ${roleIds}
+INSERT INTO ${schema}.fixture_cleanup_progress (
+  seed_id, checksum, domain, expected_count, completed_ordinal, status
 )
-DELETE FROM role_permissions
-WHERE role_id IN (SELECT role_id FROM fixture_roles);
-WITH fixture_roles(workspace_ordinal, role_name, role_id) AS (
-  VALUES
-    ${roleIds}
-)
-DELETE FROM roles
-WHERE id IN (SELECT role_id FROM fixture_roles);
+SELECT ${sqlLiteral(plan.seedId)},
+       ${sqlLiteral(plan.checksum)},
+       expected.domain,
+       expected.expected_count,
+       0,
+       CASE WHEN expected.expected_count = 0 THEN 'deleted' ELSE 'pending' END
+FROM (VALUES
+    ${expectedRows}
+) AS expected(domain, expected_count)
+ON CONFLICT (seed_id, domain) DO NOTHING;
 
-DELETE FROM knowledge_content_blocks
-WHERE id IN (
-  SELECT record_id FROM ${schema}.fixture_records
-  WHERE seed_id = ${sqlLiteral(plan.seedId)} AND checksum = ${sqlLiteral(plan.checksum)} AND domain = 'knowledge-block'
-);
-DELETE FROM knowledge_base_spaces
-WHERE root_item_id IN (
-  SELECT record_id FROM ${schema}.fixture_records
-  WHERE seed_id = ${sqlLiteral(plan.seedId)} AND checksum = ${sqlLiteral(plan.checksum)} AND domain = 'knowledge-item'
-);
-DELETE FROM knowledge_base_items
-WHERE id IN (
-  SELECT record_id FROM ${schema}.fixture_records
-  WHERE seed_id = ${sqlLiteral(plan.seedId)} AND checksum = ${sqlLiteral(plan.checksum)} AND domain = 'knowledge-item'
-);
+DO $capacity_fixture_cleanup_progress_guard$
+BEGIN
+  IF EXISTS (
+    WITH expected(domain, expected_count) AS (
+      VALUES
+        ${expectedRows}
+    ),
+    actual AS (
+      SELECT domain, checksum, expected_count, completed_ordinal, status
+      FROM ${schema}.fixture_cleanup_progress
+      WHERE seed_id = ${sqlLiteral(plan.seedId)}
+    )
+    SELECT 1
+    FROM expected
+    FULL JOIN actual USING (domain)
+    WHERE expected.domain IS NULL
+       OR actual.domain IS NULL
+       OR actual.checksum <> ${sqlLiteral(plan.checksum)}
+       OR actual.expected_count <> expected.expected_count
+       OR actual.completed_ordinal < 0
+       OR actual.completed_ordinal > actual.expected_count
+       OR (
+         actual.status = 'pending'
+         AND (actual.completed_ordinal <> 0 OR actual.expected_count = 0)
+       )
+       OR (
+         actual.status = 'deleting'
+         AND actual.completed_ordinal >= actual.expected_count
+       )
+       OR (
+         actual.status = 'deleted'
+         AND actual.completed_ordinal <> actual.expected_count
+       )
+  ) THEN
+    RAISE EXCEPTION 'cleanup progress does not match the exact domain and expected-count contract';
+  END IF;
 
-DELETE FROM issues
-WHERE id IN (
-  SELECT record_id FROM ${schema}.fixture_records
-  WHERE seed_id = ${sqlLiteral(plan.seedId)} AND checksum = ${sqlLiteral(plan.checksum)} AND domain = 'issue'
-);
-DELETE FROM projects
-WHERE id IN (
-  SELECT record_id FROM ${schema}.fixture_records
-  WHERE seed_id = ${sqlLiteral(plan.seedId)} AND checksum = ${sqlLiteral(plan.checksum)} AND domain = 'project'
-);
-DELETE FROM files
-WHERE id IN (
-  SELECT record_id FROM ${schema}.fixture_records
-  WHERE seed_id = ${sqlLiteral(plan.seedId)} AND checksum = ${sqlLiteral(plan.checksum)} AND domain = 'file'
-);
-DELETE FROM users
-WHERE id IN (
-  SELECT record_id FROM ${schema}.fixture_records
-  WHERE seed_id = ${sqlLiteral(plan.seedId)} AND checksum = ${sqlLiteral(plan.checksum)} AND domain = 'member'
-);
-DELETE FROM workspaces
-WHERE id IN (
-  SELECT record_id FROM ${schema}.fixture_records
-  WHERE seed_id = ${sqlLiteral(plan.seedId)} AND checksum = ${sqlLiteral(plan.checksum)} AND domain = 'workspace'
-);
+  IF EXISTS (
+    SELECT 1
+    FROM ${schema}.fixture_cleanup_progress progress
+    WHERE progress.seed_id = ${sqlLiteral(plan.seedId)}
+      AND (
+        progress.expected_count - progress.completed_ordinal <> (
+          SELECT count(*)
+          FROM ${schema}.fixture_records owned
+          WHERE owned.seed_id = progress.seed_id
+            AND owned.checksum = progress.checksum
+            AND owned.domain = progress.domain
+        )
+        OR EXISTS (
+          SELECT 1
+          FROM ${schema}.fixture_records owned
+          WHERE owned.seed_id = progress.seed_id
+            AND owned.domain = progress.domain
+            AND (
+              owned.checksum <> progress.checksum
+              OR owned.ordinal < 1
+              OR owned.ordinal > progress.expected_count
+              OR (
+                progress.domain = 'knowledge-item'
+                AND owned.ordinal > progress.expected_count - progress.completed_ordinal
+              )
+              OR (
+                progress.domain <> 'knowledge-item'
+                AND owned.ordinal <= progress.completed_ordinal
+              )
+            )
+        )
+      )
+  ) THEN
+    RAISE EXCEPTION 'cleanup progress does not match the exact remaining ownership ordinal set';
+  END IF;
 
-DELETE FROM ${schema}.fixture_records
+  IF EXISTS (
+    WITH expected(domain) AS (
+      VALUES ${cleanupDomains.map((domain) => `(${sqlLiteral(domain)})`).join(", ")}
+    )
+    SELECT 1
+    FROM ${schema}.fixture_records owned
+    LEFT JOIN expected USING (domain)
+    WHERE owned.seed_id = ${sqlLiteral(plan.seedId)}
+      AND (
+        expected.domain IS NULL
+        OR owned.checksum <> ${sqlLiteral(plan.checksum)}
+      )
+  ) THEN
+    RAISE EXCEPTION 'fixture ownership contains an unexpected domain or checksum';
+  END IF;
+END
+$capacity_fixture_cleanup_progress_guard$;
+COMMIT;
+`];
+
+    for (const spec of specs) {
+      if (spec.dynamic) {
+        sections.push(dynamicCleanupSql(plan, spec));
+        continue;
+      }
+      let completed = 0;
+      for (let offset = 0; offset < spec.count; offset += spec.batchSize) {
+        const size = Math.min(spec.batchSize, spec.count - offset);
+        const start = spec.reverse ? spec.count - offset - size + 1 : offset + 1;
+        const end = spec.reverse ? spec.count - offset : offset + size;
+        completed += size;
+        sections.push(cleanupChunkSql(plan, spec, start, end, completed));
+      }
+    }
+
+    sections.push(`SELECT count(*) = ${specs.length} AS capacity_cleanup_complete
+FROM ${schema}.fixture_cleanup_progress
 WHERE seed_id = ${sqlLiteral(plan.seedId)}
-  AND checksum = ${sqlLiteral(plan.checksum)};
+  AND checksum = ${sqlLiteral(plan.checksum)}
+  AND status = 'deleted'
+  AND completed_ordinal = expected_count
+\\gset
+\\if :capacity_cleanup_complete
+BEGIN;
+SET LOCAL lock_timeout = '5s';
+SET LOCAL statement_timeout = '120s';
+DO $capacity_fixture_cleanup_residue_guard$
+BEGIN
+  IF (
+    SELECT count(*)
+    FROM ${schema}.fixture_records
+    WHERE seed_id = ${sqlLiteral(plan.seedId)}
+  ) <> 0 THEN
+    RAISE EXCEPTION 'capacity fixture registry residue remains; cleanup anchors were retained';
+  END IF;
+  IF (${businessResidueExpression(plan)}) <> 0 THEN
+    RAISE EXCEPTION 'capacity fixture business residue remains; derived rows are check-only and cleanup anchors were retained';
+  END IF;
+END
+$capacity_fixture_cleanup_residue_guard$;
+
 DELETE FROM ${schema}.fixture_phase_progress
 WHERE seed_id = ${sqlLiteral(plan.seedId)}
   AND checksum = ${sqlLiteral(plan.checksum)};
@@ -1985,7 +2929,17 @@ DELETE FROM ${schema}.fixture_runs
 WHERE seed_id = ${sqlLiteral(plan.seedId)}
   AND checksum = ${sqlLiteral(plan.checksum)}
   AND fixture_name = ${sqlLiteral(plan.fixtureName)};
+DELETE FROM ${schema}.fixture_cleanup_progress
+WHERE seed_id = ${sqlLiteral(plan.seedId)}
+  AND checksum = ${sqlLiteral(plan.checksum)};
 COMMIT;
+\\else
+DO $capacity_fixture_cleanup_incomplete$
+BEGIN
+  RAISE EXCEPTION 'capacity fixture cleanup is incomplete';
+END
+$capacity_fixture_cleanup_incomplete$;
+\\endif
 
 WITH cleanup_counts AS (
   SELECT
@@ -1995,12 +2949,15 @@ WITH cleanup_counts AS (
     (SELECT count(*) FROM ${schema}.fixture_phase_progress
       WHERE seed_id = ${sqlLiteral(plan.seedId)}
         AND checksum = ${sqlLiteral(plan.checksum)}) AS fixture_phases,
+    (SELECT count(*) FROM ${schema}.fixture_cleanup_progress
+      WHERE seed_id = ${sqlLiteral(plan.seedId)}
+        AND checksum = ${sqlLiteral(plan.checksum)}) AS fixture_cleanup,
     (SELECT count(*) FROM ${schema}.fixture_records
       WHERE seed_id = ${sqlLiteral(plan.seedId)}
         AND checksum = ${sqlLiteral(plan.checksum)}) AS fixture_records,
     (SELECT count(*) FROM workspaces
       WHERE id IN (${workspaceIds})) AS fixture_workspaces,
-    (${businessResidue}) AS business_records
+    (${businessResidueExpression(plan)}) AS business_records
 )
 SELECT json_build_object(
   'schemaVersion', 'colla.capacity-seed-cleanup/v1',
@@ -2010,17 +2967,21 @@ SELECT json_build_object(
   'fixtureName', ${sqlLiteral(plan.fixtureName)},
   'ok', fixture_runs = 0
     AND fixture_phases = 0
+    AND fixture_cleanup = 0
     AND fixture_records = 0
     AND fixture_workspaces = 0
     AND business_records = 0,
   'fixtureRuns', fixture_runs,
   'fixturePhases', fixture_phases,
+  'fixtureCleanupProgress', fixture_cleanup,
   'fixtureRecords', fixture_records,
   'fixtureWorkspaces', fixture_workspaces,
   'businessRecords', business_records
 )::text
 FROM cleanup_counts;
-`;
+`);
+    return `${sections.join("\n")}\n`;
+  }
 }
 
 async function writeText(file, content) {
@@ -2097,5 +3058,16 @@ export async function cleanCheckSeed(plan, options = {}) {
 }
 
 export async function cleanupSeed(plan, options = {}) {
-  return executeSeedCommand(plan, generateCleanupSql(plan), options);
+  const result = await executeSeedCommand(plan, generateCleanupSql(plan), options);
+  if (!result.executed) {
+    return result;
+  }
+  const lines = result.stdout.split(/\r?\n/).filter(Boolean);
+  let cleanup;
+  try {
+    cleanup = JSON.parse(lines.at(-1));
+  } catch {
+    throw new Error("psql cleanup did not return the expected JSON result");
+  }
+  return { ...result, cleanup, ok: cleanup.ok === true };
 }

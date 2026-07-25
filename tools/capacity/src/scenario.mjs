@@ -12,6 +12,7 @@ import { runWebSocketScenario } from './load/websocket.mjs'
 import { runWorkerScenario } from './load/worker.mjs'
 import { quantile, stableStringify } from './load/common.mjs'
 import { redactSecrets } from './preflight.mjs'
+import { validateCapacityRunManifest } from './provenance.mjs'
 
 export const SCENARIO_SCHEMA_VERSION = 'colla.capacity-scenario/v1'
 
@@ -106,13 +107,27 @@ export async function runCapacityScenario(config, options = {}) {
   if (typeof options.evidenceDirectory !== 'string' || options.evidenceDirectory.length === 0) {
     throw new Error('options.evidenceDirectory is required')
   }
-  if (config.evidence?.requireProvenance === true
-    && (
-      options.manifest?.status !== 'Pass'
-      || options.manifest?.blocked === true
-      || options.manifestVerified !== true
-    )) {
-    throw new Error('scenario requires a passing immutable provenance manifest')
+  let provenanceBinding = { required: false }
+  let provenanceAttachments = {}
+  if (config.evidence?.requireProvenance === true) {
+    const provenanceValidation = validateCapacityRunManifest(options.manifest, {
+      evidenceFiles: options.provenanceEvidenceFiles,
+      requireEvidenceFiles: true,
+      expectedRunId: options.expectedSeedRunId,
+      expectedSourceCommit: options.expectedSourceCommit,
+      expectedStackInstanceNonce: options.expectedStackInstanceNonce,
+    })
+    if (!provenanceValidation.ok) {
+      throw new Error(
+        `scenario requires a passing immutable provenance manifest: ${provenanceValidation.errors.join('; ')}`,
+      )
+    }
+    const protectedEvidence = createProtectedProvenanceEvidence(
+      options.manifest,
+      options.provenanceEvidenceFiles,
+    )
+    provenanceBinding = protectedEvidence.binding
+    provenanceAttachments = protectedEvidence.attachments
   }
 
   const clock = options.clock ?? Date.now
@@ -271,6 +286,14 @@ export async function runCapacityScenario(config, options = {}) {
   raw.push(lifecycle('run.finished', clock(), { status, conclusion, abortReason }))
 
   const redactedErrors = redactSecrets(evidenceErrors)
+  const scenarioManifest = createManifest(config, options, {
+    runId,
+    startedAt,
+    finishedAt,
+    enabledLoaders,
+    metricSnapshots,
+    provenanceBinding,
+  })
   const bundleInput = {
     run: {
       schemaVersion: 'colla.capacity-scenario-run/v1',
@@ -281,14 +304,9 @@ export async function runCapacityScenario(config, options = {}) {
       startedAt,
       finishedAt,
       abortReason,
+      provenanceBindingDigest: provenanceBinding.identityDigest ?? null,
     },
-    manifest: createManifest(config, options, {
-      runId,
-      startedAt,
-      finishedAt,
-      enabledLoaders,
-      metricSnapshots,
-    }),
+    manifest: scenarioManifest,
     threshold: {
       schemaVersion: 'colla.capacity-scenario-thresholds/v1',
       configured: redactSecrets(config.thresholds ?? {}),
@@ -306,10 +324,15 @@ export async function runCapacityScenario(config, options = {}) {
       durationMs: Math.max(0, clock() - startedTick),
     },
     errors: redactedErrors,
+    attachments: provenanceAttachments,
   }
 
   const bundle = await createEvidenceBundle(options.evidenceDirectory, bundleInput)
-  const verification = await verifyEvidenceBundle(options.evidenceDirectory)
+  const verification = await verifyEvidenceBundle(options.evidenceDirectory, {
+    expectedSeedRunId: options.expectedSeedRunId,
+    expectedSourceCommit: options.expectedSourceCommit,
+    expectedStackInstanceNonce: options.expectedStackInstanceNonce,
+  })
   if (!verification.ok) {
     throw new Error(`created evidence bundle failed verification: ${verification.errors.join('; ')}`)
   }
@@ -856,7 +879,7 @@ function createManifest(config, options, context) {
     name,
     digest(stableStringify(redactSecrets(options.loaderOptions?.[name] ?? {}))),
   ]))
-  return redactSecrets({
+  return {
     schemaVersion: 'colla.capacity-scenario-manifest/v1',
     runId: context.runId,
     scenario: {
@@ -879,8 +902,45 @@ function createManifest(config, options, context) {
     metricSnapshotCount: context.metricSnapshots.length,
     startedAt: context.startedAt,
     finishedAt: context.finishedAt,
+    provenanceBinding: context.provenanceBinding,
     provenance: options.manifest ?? {},
-  })
+  }
+}
+
+function createProtectedProvenanceEvidence(manifest, evidenceFiles = {}) {
+  const checkpoints = {}
+  const attachments = {}
+  for (const [name, check] of Object.entries(manifest.seedExecution.checks).sort(([left], [right]) =>
+    left.localeCompare(right))) {
+    const bundlePath = `provenance/checkpoints/${name}.json`
+    const raw = evidenceFiles[check.path]
+    if (raw === undefined) {
+      throw new Error(`scenario provenance checkpoint is missing: ${name}`)
+    }
+    checkpoints[name] = {
+      sourcePath: check.path,
+      bundlePath,
+      sha256: check.sha256,
+    }
+    attachments[bundlePath] = raw
+  }
+  const identity = {
+    seedRunId: manifest.seedExecution.runId,
+    sourceCommit: manifest.sourceCommit,
+    stackInstanceNonce: manifest.stack.instanceNonce,
+    provenanceFingerprint: manifest.provenanceFingerprint,
+    seedExecutionFingerprint: manifest.seedExecution.seedExecutionFingerprint,
+  }
+  return {
+    binding: {
+      schemaVersion: 'colla.capacity-scenario-provenance-binding/v1',
+      required: true,
+      ...identity,
+      identityDigest: digest(stableStringify(identity)),
+      checkpoints,
+    },
+    attachments,
+  }
 }
 
 function metricSourceDescriptors(config = {}) {

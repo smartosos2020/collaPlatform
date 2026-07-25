@@ -42,6 +42,7 @@ function plan(overrides = {}) {
       POSTGRES_USER: 'colla',
       POSTGRES_DB: 'colla_platform',
       SOURCE_COMMIT: 'a'.repeat(40),
+      CAPACITY_STACK_INSTANCE_NONCE: 'n'.repeat(32),
     },
     composePrefix,
     stackFile,
@@ -73,6 +74,9 @@ test('M1 run plan covers seed, preflight, provenance, runner, and evidence verif
     serialized,
     /--manifest \/evidence\/runs\/s05-m1-entrypoint-test\/run-manifest\.json/,
   )
+  assert.match(serialized, /--expected-seed-run-id s05-m1-entrypoint-test/)
+  assert.match(serialized, new RegExp(`--expected-source-commit ${'a'.repeat(40)}`))
+  assert.match(serialized, new RegExp(`--expected-stack-instance-nonce ${'n'.repeat(32)}`))
   assert.match(
     serialized,
     /evidence verify --directory .*s05-m1-entrypoint-test.*scenario/,
@@ -129,6 +133,7 @@ test('run plan fails closed for unsafe projects, missing confirmation, reason, a
         POSTGRES_USER: 'colla',
         POSTGRES_DB: 'colla_platform',
         SOURCE_COMMIT: 'a'.repeat(40),
+        CAPACITY_STACK_INSTANCE_NONCE: 'n'.repeat(32),
       },
     }),
     /requires COMPOSE_PROJECT_NAME=colla-s05-capacity/,
@@ -140,6 +145,7 @@ test('run plan fails closed for unsafe projects, missing confirmation, reason, a
         POSTGRES_USER: 'colla',
         POSTGRES_DB: 'colla_platform',
         SOURCE_COMMIT: 'a'.repeat(40),
+        CAPACITY_STACK_INSTANCE_NONCE: 'n'.repeat(32),
       },
     }),
     /requires COMPOSE_PROJECT_NAME=colla-s05-capacity/,
@@ -147,6 +153,29 @@ test('run plan fails closed for unsafe projects, missing confirmation, reason, a
   assert.throws(() => plan({ confirmed: false }), /requires --confirm/)
   assert.throws(() => plan({ reason: 'too short' }), /specific --reason/)
   assert.throws(() => plan({ runId: '../collaplatform' }), /run --run-id must match/)
+  assert.throws(
+    () => plan({
+      environment: {
+        COMPOSE_PROJECT_NAME: 'colla-s05-capacity',
+        POSTGRES_USER: 'colla',
+        POSTGRES_DB: 'colla_platform',
+        SOURCE_COMMIT: 'a'.repeat(40),
+      },
+    }),
+    /requires a valid CAPACITY_STACK_INSTANCE_NONCE/,
+  )
+  assert.throws(
+    () => plan({
+      environment: {
+        COMPOSE_PROJECT_NAME: 'colla-s05-capacity',
+        POSTGRES_USER: 'colla',
+        POSTGRES_DB: 'colla_platform',
+        SOURCE_COMMIT: 'a'.repeat(40),
+        CAPACITY_STACK_INSTANCE_NONCE: 'too-short',
+      },
+    }),
+    /requires a valid CAPACITY_STACK_INSTANCE_NONCE/,
+  )
 })
 
 test('captured step validation requires healthy services and passing seed results', () => {
@@ -250,6 +279,24 @@ test('capacity runner has an explicit image and repository-root build context', 
   )
   assert.match(dockerfile, /ARG SOURCE_COMMIT=unknown/)
   assert.match(dockerfile, /LABEL org\.opencontainers\.image\.revision=\$SOURCE_COMMIT/)
+
+  const environmentExample = readFileSync(
+    path.join(repositoryRoot, 'deploy', 'capacity', 'capacity.env.example'),
+    'utf8',
+  )
+  assert.match(
+    environmentExample,
+    /^CAPACITY_STACK_INSTANCE_NONCE=replace-with-capacity-stack-instance-nonce$/m,
+  )
+  const stackEntrypoint = readFileSync(stackFile, 'utf8')
+  assert.match(
+    stackEntrypoint,
+    /\['replace-with-capacity-stack-instance-nonce', secret\(32\)\]/,
+  )
+  assert.match(
+    stackEntrypoint,
+    /stackInstanceNonce: environment\.CAPACITY_STACK_INSTANCE_NONCE/,
+  )
 })
 
 test('seed-cycle evidence is checksum-bound to passing immutable provenance', () => {
@@ -278,6 +325,7 @@ test('seed-cycle evidence is checksum-bound to passing immutable provenance', ()
     topology: { digest: 'c'.repeat(64) },
     seedPlan: { ...seedIdentity, fingerprint: 'd'.repeat(64) },
     compose: { sha256: 'e'.repeat(64) },
+    stack: { instanceNonce: 'n'.repeat(32) },
     images: [{
       name: 'api-a',
       id: `sha256:${'1'.repeat(64)}`,
