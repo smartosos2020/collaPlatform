@@ -39,7 +39,7 @@ class WorkItemTypeModelsTests {
         assertFalse(WorkItemTypeStatus.retired.canTransitionTo(WorkItemTypeStatus.active));
         assertTrue(WorkItemTypeVersionStatus.published.immutable());
         assertTrue(WorkItemTypeVersionStatus.superseded.immutable());
-        assertFalse(WorkItemTypeVersionStatus.draft.immutable());
+        assertCode("INVALID_VERSION_STATUS", () -> WorkItemTypeVersionStatus.parse("draft"));
     }
 
     @Test

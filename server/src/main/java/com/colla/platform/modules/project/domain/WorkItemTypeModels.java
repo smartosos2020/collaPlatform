@@ -40,7 +40,6 @@ public final class WorkItemTypeModels {
     }
 
     public enum WorkItemTypeVersionStatus {
-        draft,
         published,
         superseded;
 
