@@ -61,6 +61,11 @@ test('checked-in M1 runtime resolves only environment credentials and materializ
     result.loaders.worker.runtimeValues.probeRunIds.warmup,
     result.loaders.worker.runtimeValues.probeRunIds.measured,
   )
+  assert.equal(result.loaders.websocket.triggerAggregateLanes, 4)
+  assert.equal(
+    result.loaders.websocket.targets.trigger.body.aggregateKey,
+    'websocket-lane-{{triggerLane}}',
+  )
   const workerProducers = result.loaders.worker.targets.producers
   assert.equal(workerProducers.length, 4)
   assert.equal(new Set(workerProducers.map((producer) => producer.name)).size, 4)

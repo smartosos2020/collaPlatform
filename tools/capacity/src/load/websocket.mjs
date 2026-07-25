@@ -35,6 +35,10 @@ export async function runWebSocketScenario(options = {}) {
   const gaps = new Map()
   const convergenceChecks = new Set()
   const strictLedger = Boolean(targets.trigger)
+  const triggerAggregateLanes = positiveInteger(
+    options.triggerAggregateLanes ?? targets.trigger?.aggregateLanes,
+    1,
+  )
   const templateContext = createTemplateContext(options)
   const metrics = {
     attemptedConnections: connectionCount,
@@ -50,6 +54,7 @@ export async function runWebSocketScenario(options = {}) {
     triggerRequests: 0,
     triggerRatePerSecond: 0,
     achievedTriggerRatePerSecond: 0,
+    triggerAggregateLanes,
     expectedEvents: 0,
     expectedSequences: 0,
     missingEvents: 0,
@@ -444,6 +449,7 @@ export async function runWebSocketScenario(options = {}) {
       iteration,
       index: iteration,
       triggerIndex: iteration,
+      triggerLane: (iteration % triggerAggregateLanes) + 1,
       requestId: options.requestId ?? templateContext.requestId,
       token: options.token,
       clock,

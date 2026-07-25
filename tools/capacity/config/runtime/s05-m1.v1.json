@@ -117,6 +117,7 @@
       "reconnectSettleMs": 1000,
       "triggerRatePerSecond": 1,
       "triggerConcurrency": 2,
+      "triggerAggregateLanes": 4,
       "requireReady": true,
       "tokenInQuery": true,
       "targets": {
@@ -128,7 +129,7 @@
             "X-Colla-Capacity-SecretEnv": "COLLA_CAPACITY_PROBE_SECRET"
           },
           "body": {
-            "aggregateKey": "websocket",
+            "aggregateKey": "websocket-lane-{{triggerLane}}",
             "requestKey": "websocket-{{triggerIndex}}"
           },
           "requiredPaths": [

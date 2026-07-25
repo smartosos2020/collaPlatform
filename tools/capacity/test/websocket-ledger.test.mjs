@@ -33,6 +33,45 @@ test('WebSocket loader paces sustained triggers and proves ledger fanout', async
   assert.ok(result.metrics.achievedTriggerRatePerSecond >= 3.9)
 })
 
+test('WebSocket loader distributes trigger templates across deterministic aggregate lanes', async () => {
+  const harness = createHarness()
+  const result = await runWebSocketScenario({
+    wsUrl: 'ws://gateway.test/ws/events',
+    apiBaseUrl: 'https://api.test',
+    connections: 1,
+    iterations: 6,
+    triggerAggregateLanes: 4,
+    settleMs: 1,
+    reconnects: 0,
+    socketFactory: harness.socketFactory,
+    fetch: harness.fetch,
+    targets: {
+      ...targets({ expectedFanout: 1 }),
+      trigger: {
+        ...targets({ expectedFanout: 1 }).trigger,
+        body: {
+          iteration: '{{iteration}}',
+          aggregateKey: 'websocket-lane-{{triggerLane}}',
+        },
+      },
+    },
+  })
+
+  assert.equal(result.ok, true, JSON.stringify(result.errors))
+  assert.equal(result.metrics.triggerAggregateLanes, 4)
+  assert.deepEqual(
+    harness.triggerBodies.map((body) => body.aggregateKey),
+    [
+      'websocket-lane-1',
+      'websocket-lane-2',
+      'websocket-lane-3',
+      'websocket-lane-4',
+      'websocket-lane-1',
+      'websocket-lane-2',
+    ],
+  )
+})
+
 test('WebSocket loader drains delayed expected fanout within the bounded settle window', async () => {
   const harness = createHarness({ delaySequence: 2, delayMs: 20 })
   const result = await runWebSocketScenario({
@@ -337,6 +376,7 @@ function createHarness(options = {}) {
   const sockets = []
   const durable = new Map()
   const calibratedIds = new Set()
+  const triggerBodies = []
   let triggerCalls = 0
   const socketFactory = ({ index }) => {
     const socket = new FakeSocket(index, options)
@@ -348,7 +388,9 @@ function createHarness(options = {}) {
     if (parsed.pathname === '/api/trigger') {
       triggerCalls += 1
       if (options.pendingTrigger) return rejectOnAbort(init.signal)
-      const iteration = JSON.parse(init.body).iteration
+      const triggerBody = JSON.parse(init.body)
+      triggerBodies.push(triggerBody)
+      const iteration = Number(triggerBody.iteration)
       const sequence = iteration + 1
       const descriptor = expectedEvent(sequence)
       durable.set(descriptor.businessObjectId, descriptor)
@@ -394,6 +436,7 @@ function createHarness(options = {}) {
     sockets,
     durable,
     calibratedIds,
+    triggerBodies,
     socketFactory,
     fetch,
     get triggerCalls() {
