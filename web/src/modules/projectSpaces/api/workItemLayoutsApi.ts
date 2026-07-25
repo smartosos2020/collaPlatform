@@ -1,6 +1,14 @@
 import { apiGet, apiPost, apiPut } from '../../../shared/api/httpClient'
 
-import type { JsonObject, WorkItemFieldConfig, WorkItemFieldType } from './workItemFieldsApi'
+import type {
+  JsonObject,
+  WorkItemFieldCollection,
+  WorkItemFieldConfig,
+  WorkItemFieldOption,
+  WorkItemFieldType,
+  WorkItemFieldTypeCatalog,
+} from './workItemFieldsApi'
+import type { ConfiguredWorkItemType } from './workItemTypesApi'
 
 export type WorkItemLayoutKind = 'create' | 'detail'
 export type WorkItemLayoutNodeType = 'section' | 'tab' | 'column' | 'field' | 'summary'
@@ -114,6 +122,7 @@ export type WorkItemLayoutProjectionField = {
   config: WorkItemFieldConfig
   status: string
   system: boolean
+  options: Array<WorkItemFieldOption>
 }
 
 export type WorkItemLayoutProjection = {
@@ -135,6 +144,16 @@ export type WorkItemLayoutProjection = {
   accessProjection: Record<string, WorkItemFieldAccessProjection>
   diagnostics: WorkItemLayoutDiagnostic[]
   availableActions: string[]
+}
+
+export type WorkItemLayoutWorkbench = {
+  type: ConfiguredWorkItemType
+  fields: WorkItemFieldCollection
+  fieldTypes: WorkItemFieldTypeCatalog
+  layouts: Record<WorkItemLayoutKind, {
+    configuration: WorkItemLayout
+    runtimeProjection: WorkItemLayoutProjection
+  } | null>
 }
 
 export type WorkItemLayoutSyntheticPreviewRequest = {
@@ -159,6 +178,14 @@ export const workItemLayoutKeys = {
   all: ['workspace', 'project-spaces', 'work-item-layouts'] as const,
   detail: (spaceId: string, typeId: string, layoutKind: WorkItemLayoutKind) =>
     [...workItemLayoutKeys.all, spaceId, typeId, layoutKind] as const,
+  workbench: (spaceId: string, typeId: string) =>
+    [...workItemLayoutKeys.all, spaceId, typeId, 'workbench'] as const,
+}
+
+export function getWorkItemLayoutWorkbench(spaceId: string, typeId: string) {
+  return apiGet<WorkItemLayoutWorkbench>(
+    `/project-spaces/${spaceId}/configuration/types/${typeId}/layout-workbench`,
+  )
 }
 
 export function getWorkItemLayout(spaceId: string, typeId: string, layoutKind: WorkItemLayoutKind) {
@@ -210,6 +237,18 @@ export function getWorkItemLayoutProjection(
 ) {
   return apiGet<WorkItemLayoutProjection>(
     `/project-spaces/${spaceId}/types/${typeId}/layouts/${layoutKind}/projection`,
+  )
+}
+
+export function sampleWorkItemLayout(
+  spaceId: string,
+  typeId: string,
+  layoutKind: WorkItemLayoutKind,
+  fieldValues: JsonObject,
+) {
+  return apiPost<WorkItemLayoutProjection>(
+    `/project-spaces/${spaceId}/types/${typeId}/layouts/${layoutKind}/sample`,
+    { fieldValues },
   )
 }
 

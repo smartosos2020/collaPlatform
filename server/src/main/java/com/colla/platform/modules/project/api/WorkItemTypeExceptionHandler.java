@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
     WorkItemTypeConfigurationController.class,
     WorkItemFieldConfigurationController.class,
     WorkItemLayoutConfigurationController.class,
+    WorkItemLayoutWorkbenchController.class,
     WorkItemLayoutAccessController.class,
     UserWorkItemTypeController.class,
     AdminProjectSpaceController.class

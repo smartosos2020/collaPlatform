@@ -47,8 +47,8 @@ S05 不创建规范 WorkItem 实例、字段值或 legacy 迁移，不修改已�
 | --- | --- | --- | --- | --- |
 | PROJECT-PLATFORM-S05-M1 | 布局与字段访问配置持久化、领域和 API 合同 | S04 归档；Program revision 17 | `docs/90-reports/project-platform-s05-m1-execution-report.md` | Done |
 | PROJECT-PLATFORM-S05-M2 | 布局图编辑、条件显示和共享渲染器 | M1 | `docs/90-reports/project-platform-s05-m2-execution-report.md` | Done |
-| PROJECT-PLATFORM-S05-M3 | 服务端字段访问策略与最小披露 | M1-M2 | `docs/90-reports/project-platform-s05-m3-execution-report.md` | Pending |
-| PROJECT-PLATFORM-S05-M4 | 配置预览、用户形态、可访问性与规模收口 | M1-M3 | `docs/90-reports/project-platform-s05-m4-execution-report.md` | Pending |
+| PROJECT-PLATFORM-S05-M3 | 服务端字段访问策略与最小披露 | M1-M2 | `docs/90-reports/project-platform-s05-m3-execution-report.md` | Done |
+| PROJECT-PLATFORM-S05-M4 | 配置预览、用户形态、可访问性与规模收口 | M1-M3 | `docs/90-reports/project-platform-s05-m4-execution-report.md` | Done |
 | PROJECT-PLATFORM-S05-M5 | Stage 评审、route-final 与 S06 准入 | M1-M4 | `docs/90-reports/project-platform-s05-m5-execution-report.md` | Pending |
 
 ## 5. 详细任务
@@ -106,18 +106,18 @@ S05 不创建规范 WorkItem 实例、字段值或 legacy 迁移，不修改已�
 
 | 任务 | 内容 | 验收标准 | 状态 |
 | --- | --- | --- | --- |
-| PROJECT-PLATFORM-S05-M4-T01 | 建立布局配置集合读模型，组合类型、字段、布局、策略、诊断和 availableActions | 一次读取可稳定驱动编辑与预览；数据来源、版本、hash 和 synthetic 标识清楚，无 N+1 | Pending |
-| PROJECT-PLATFORM-S05-M4-T02 | 完成管理员 create/detail 双模式预览和角色/状态上下文切换 | 预览与保存配置使用同一渲染器；上下文切换不写事实；当前角色、条件和字段状态可解释 | Pending |
-| PROJECT-PLATFORM-S05-M4-T03 | 建立用户侧只读布局样本入口与未来 S07 运行时组件边界 | 用户入口只展示有权类型和 synthetic preview，不提供伪创建/伪保存；组件 API 可由 S07 传入真实实例值 | Pending |
-| PROJECT-PLATFORM-S05-M4-T04 | 完成文本、富文本、数字、布尔、单/多选、人员、日期、区间、URL、附件、引用和 computed 控件映射 | 每种 S04 字段类型有明确编辑/只读/不支持状态；引用和附件不提前创建正式对象或上传事实 | Pending |
-| PROJECT-PLATFORM-S05-M4-T05 | 完成条件变化、隐藏字段清值策略和错误摘要的预览行为 | 条件切换结果确定；隐藏不等于删除；潜在清值需显式提示且预览不修改持久配置或样本 | Pending |
-| PROJECT-PLATFORM-S05-M4-T06 | 完成失效字段、非法布局、未知控件和过期版本的可操作诊断 UI | 管理员可定位并修复具体节点；普通用户只见最小安全提示；系统不自动删除或重绑 | Pending |
-| PROJECT-PLATFORM-S05-M4-T07 | 完成键盘导航、焦点管理、标签关联、错误朗读和对比度 | 编辑器和预览核心路径无需鼠标可操作；无焦点陷阱、无重复标签、状态变化可被辅助技术感知 | Pending |
-| PROJECT-PLATFORM-S05-M4-T08 | 完成 1366/1440 桌面和窄屏响应式、内部滚动与文本溢出 | 页面主体不横向崩坏；配置面板按最小宽度重排；滚动发生在内容块且高度足够时不显示无效滚动条 | Pending |
-| PROJECT-PLATFORM-S05-M4-T09 | 完成加载、空状态、保存中、冲突、离线/重试和错误恢复 | 状态不引发布局跳动或丢失选择；重复提交受幂等保护；冲突可比较最新版本后重新应用 | Pending |
-| PROJECT-PLATFORM-S05-M4-T10 | 执行 120 字段、2400 选项、深层分组和复杂条件的配置/渲染预算 | 列表、读取、编辑、策略求值和预览达到冻结预算；慢点有可复算数据，不冒充 S05 平台容量承诺 | Pending |
-| PROJECT-PLATFORM-S05-M4-T11 | 执行 owner/admin/member/guest/non-member/enterprise admin 真实隔离浏览器矩阵 | 配置、预览、只读样本、最小披露、停用/退役字段和直接 URL/API 负例均使用真实后端与隔离数据 | Pending |
-| PROJECT-PLATFORM-S05-M4-T12 | 完成前端 lint/build、目标后端、可访问性、响应式、证据闭包和 M4 checkpoint | 自动与真实浏览器证据 fresh 可追溯；无 mock 冒充真实闭环；执行报告无验收阻断项 | Pending |
+| PROJECT-PLATFORM-S05-M4-T01 | 建立布局配置集合读模型，组合类型、字段、布局、策略、诊断和 availableActions | 一次读取可稳定驱动编辑与预览；数据来源、版本、hash 和 synthetic 标识清楚，无 N+1 | Done |
+| PROJECT-PLATFORM-S05-M4-T02 | 完成管理员 create/detail 双模式预览和角色/状态上下文切换 | 预览与保存配置使用同一渲染器；上下文切换不写事实；当前角色、条件和字段状态可解释 | Done |
+| PROJECT-PLATFORM-S05-M4-T03 | 建立用户侧只读布局样本入口与未来 S07 运行时组件边界 | 用户入口只展示有权类型和 synthetic preview，不提供伪创建/伪保存；组件 API 可由 S07 传入真实实例值 | Done |
+| PROJECT-PLATFORM-S05-M4-T04 | 完成文本、富文本、数字、布尔、单/多选、人员、日期、区间、URL、附件、引用和 computed 控件映射 | 每种 S04 字段类型有明确编辑/只读/不支持状态；引用和附件不提前创建正式对象或上传事实 | Done |
+| PROJECT-PLATFORM-S05-M4-T05 | 完成条件变化、隐藏字段清值策略和错误摘要的预览行为 | 条件切换结果确定；隐藏不等于删除；潜在清值需显式提示且预览不修改持久配置或样本 | Done |
+| PROJECT-PLATFORM-S05-M4-T06 | 完成失效字段、非法布局、未知控件和过期版本的可操作诊断 UI | 管理员可定位并修复具体节点；普通用户只见最小安全提示；系统不自动删除或重绑 | Done |
+| PROJECT-PLATFORM-S05-M4-T07 | 完成键盘导航、焦点管理、标签关联、错误朗读和对比度 | 编辑器和预览核心路径无需鼠标可操作；无焦点陷阱、无重复标签、状态变化可被辅助技术感知 | Done |
+| PROJECT-PLATFORM-S05-M4-T08 | 完成 1366/1440 桌面和窄屏响应式、内部滚动与文本溢出 | 页面主体不横向崩坏；配置面板按最小宽度重排；滚动发生在内容块且高度足够时不显示无效滚动条 | Done |
+| PROJECT-PLATFORM-S05-M4-T09 | 完成加载、空状态、保存中、冲突、离线/重试和错误恢复 | 状态不引发布局跳动或丢失选择；重复提交受幂等保护；冲突可比较最新版本后重新应用 | Done |
+| PROJECT-PLATFORM-S05-M4-T10 | 执行 120 字段、2400 选项、深层分组和复杂条件的配置/渲染预算 | 列表、读取、编辑、策略求值和预览达到冻结预算；慢点有可复算数据，不冒充 S05 平台容量承诺 | Done |
+| PROJECT-PLATFORM-S05-M4-T11 | 执行 owner/admin/member/guest/non-member/enterprise admin 真实隔离浏览器矩阵 | 配置、预览、只读样本、最小披露、停用/退役字段和直接 URL/API 负例均使用真实后端与隔离数据 | Done |
+| PROJECT-PLATFORM-S05-M4-T12 | 完成前端 lint/build、目标后端、可访问性、响应式、证据闭包和 M4 checkpoint | 自动与真实浏览器证据 fresh 可追溯；无 mock 冒充真实闭环；执行报告无验收阻断项 | Done |
 
 ### PROJECT-PLATFORM-S05-M5 Stage 评审、route-final 与 S06 准入
 

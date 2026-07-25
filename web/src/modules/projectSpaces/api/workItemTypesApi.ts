@@ -39,6 +39,7 @@ export type WorkItemTypeConfiguration = {
 }
 
 export type ActiveWorkItemTypeSummary = {
+  id: string
   typeKey: string
   name: string
   icon?: string | null

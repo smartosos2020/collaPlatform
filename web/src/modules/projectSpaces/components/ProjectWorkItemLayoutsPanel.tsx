@@ -34,15 +34,11 @@ import { useMemo, useState } from 'react'
 import { ApiRequestError } from '../../../shared/api/httpClient'
 import type { UserProjectSpace } from '../api/projectSpacesApi'
 import {
-  listConfiguredWorkItemFields,
-  listWorkItemFieldTypes,
-  workItemFieldKeys,
   type ConfiguredWorkItemField,
 } from '../api/workItemFieldsApi'
 import {
   commandWorkItemLayoutNode,
-  getWorkItemLayoutProjection,
-  getWorkItemLayout,
+  getWorkItemLayoutWorkbench,
   previewWorkItemLayout,
   saveWorkItemLayoutPolicies,
   saveWorkItemLayout,
@@ -56,7 +52,6 @@ import {
   type WorkItemLayoutNodeCommand,
   type WorkItemLayoutNodeType,
 } from '../api/workItemLayoutsApi'
-import { getConfiguredWorkItemType, workItemTypeKeys } from '../api/workItemTypesApi'
 import { WorkItemLayoutRenderer } from './WorkItemLayoutRenderer'
 
 export function ProjectWorkItemLayoutsPanel({
@@ -85,38 +80,31 @@ export function ProjectWorkItemLayoutsPanel({
   const [previewTypeStatus, setPreviewTypeStatus] = useState<'active' | 'disabled' | 'retired'>('active')
   const [previewFieldStatus, setPreviewFieldStatus] = useState<'active' | 'disabled' | 'retired'>('active')
   const [previewValues, setPreviewValues] = useState('{}')
-  const typeQuery = useQuery({
-    queryKey: workItemTypeKeys.detail(space.id, typeId),
-    queryFn: () => getConfiguredWorkItemType(space.id, typeId),
-  })
-  const fieldsQuery = useQuery({
-    queryKey: workItemFieldKeys.configuration(space.id, typeId, 'active'),
-    queryFn: () => listConfiguredWorkItemFields(space.id, typeId, 'active'),
-  })
-  const catalogQuery = useQuery({
-    queryKey: workItemFieldKeys.catalog(space.id),
-    queryFn: () => listWorkItemFieldTypes(space.id),
-  })
-  const layoutQuery = useQuery({
-    queryKey: workItemLayoutKeys.detail(space.id, typeId, kind),
-    queryFn: () => getWorkItemLayout(space.id, typeId, kind),
+  const workbenchQuery = useQuery({
+    queryKey: workItemLayoutKeys.workbench(space.id, typeId),
+    queryFn: () => getWorkItemLayoutWorkbench(space.id, typeId),
     retry: false,
+    refetchOnWindowFocus: false,
   })
-  const layout = layoutQuery.data
-  const runtimeProjectionQuery = useQuery({
-    queryKey: [...workItemLayoutKeys.detail(space.id, typeId, kind), 'runtime-projection'],
-    queryFn: () => getWorkItemLayoutProjection(space.id, typeId, kind),
-    enabled: Boolean(layout),
-    retry: false,
-  })
+  const fields = useMemo(
+    () => workbenchQuery.data?.fields.items ?? [],
+    [workbenchQuery.data?.fields.items],
+  )
+  const fieldTypes = useMemo(
+    () => workbenchQuery.data?.fieldTypes.items ?? [],
+    [workbenchQuery.data?.fieldTypes.items],
+  )
+  const selectedLayout = workbenchQuery.data?.layouts[kind]
+  const layout = selectedLayout?.configuration
+  const runtimeProjection = selectedLayout?.runtimeProjection
   const effectiveSelectedId = layout?.nodes.some((item) => item.id === selectedId)
     ? selectedId
     : layout?.nodes[0]?.id
   const selected = layout?.nodes.find((node) => node.id === effectiveSelectedId)
   const layoutFields = useMemo(() => {
     const used = new Set(layout?.nodes.map((node) => node.fieldId).filter(Boolean))
-    return (fieldsQuery.data?.items ?? []).filter((field) => used.has(field.id))
-  }, [fieldsQuery.data?.items, layout?.nodes])
+    return fields.filter((field) => used.has(field.id))
+  }, [fields, layout?.nodes])
   const layoutPolicyKey = layout ? `${layout.id}:${layout.aggregateVersion}:${layout.configHash}` : ''
   const baselinePolicyDrafts = useMemo(
     () => policyDraftMap(layoutFields, layout?.policies ?? []),
@@ -135,17 +123,14 @@ export function ProjectWorkItemLayoutsPanel({
     : undefined
 
   const refresh = async () => {
-    await queryClient.invalidateQueries({ queryKey: workItemLayoutKeys.detail(space.id, typeId, kind) })
-    await queryClient.invalidateQueries({
-      queryKey: [...workItemLayoutKeys.detail(space.id, typeId, kind), 'runtime-projection'],
-    })
+    await queryClient.invalidateQueries({ queryKey: workItemLayoutKeys.workbench(space.id, typeId) })
   }
 
   const saveMutation = useMutation({
     mutationFn: (request: Parameters<typeof saveWorkItemLayout>[3]) =>
       saveWorkItemLayout(space.id, typeId, kind, request),
     onSuccess: async (saved) => {
-      queryClient.setQueryData(workItemLayoutKeys.detail(space.id, typeId, kind), saved)
+      await refresh()
       setSelectedId(saved.nodes[0]?.id)
       message.success(`${kind === 'create' ? '新建页' : '详情页'}布局已创建`)
     },
@@ -155,12 +140,14 @@ export function ProjectWorkItemLayoutsPanel({
   const commandMutation = useMutation({
     mutationFn: (command: WorkItemLayoutNodeCommand) =>
       commandWorkItemLayoutNode(space.id, typeId, kind, command),
-    onSuccess: (saved) => {
-      queryClient.setQueryData(workItemLayoutKeys.detail(space.id, typeId, kind), saved)
+    onSuccess: async () => {
+      await refresh()
       setPendingCommand(undefined)
     },
     onError: (error, command) => {
-      setPendingCommand(command)
+      if (isVersionConflict(error)) {
+        setPendingCommand(command)
+      }
       message.error(layoutError(error, '布局命令执行失败'))
     },
   })
@@ -173,11 +160,9 @@ export function ProjectWorkItemLayoutsPanel({
         aggregateVersion: layout.aggregateVersion,
       })
     },
-    onSuccess: async (saved) => {
-      queryClient.setQueryData(workItemLayoutKeys.detail(space.id, typeId, kind), saved)
-      await queryClient.invalidateQueries({
-        queryKey: [...workItemLayoutKeys.detail(space.id, typeId, kind), 'runtime-projection'],
-      })
+    onSuccess: async () => {
+      setPolicyState({ layoutKey: '', drafts: {}, dirty: false })
+      await refresh()
       message.success('字段访问策略已保存')
     },
     onError: (error) => message.error(layoutError(error, '字段访问策略保存失败')),
@@ -207,7 +192,6 @@ export function ProjectWorkItemLayoutsPanel({
   }
 
   const initialize = () => {
-    const fields = fieldsQuery.data?.items ?? []
     const sectionId = crypto.randomUUID()
     const nodes: WorkItemLayoutNode[] = [
       node(sectionId, null, `${kind}_main`, 'section', 0, { title: kind === 'create' ? '新建工作项' : '工作项详情' }),
@@ -285,10 +269,41 @@ export function ProjectWorkItemLayoutsPanel({
 
   const retryPending = async () => {
     if (!pendingCommand) return
-    const refreshed = await layoutQuery.refetch()
-    if (refreshed.data) {
-      commandMutation.mutate({ ...pendingCommand, aggregateVersion: refreshed.data.aggregateVersion })
+    const refreshed = await workbenchQuery.refetch()
+    const latest = refreshed.data?.layouts[kind]?.configuration
+    if (latest) {
+      if (pendingCommand.nodeId
+          && !latest.nodes.some((item) => item.id === pendingCommand.nodeId)) {
+        message.error('目标节点已被删除，无法重新应用该操作')
+        return
+      }
+      Modal.confirm({
+        title: '在最新布局上重新应用操作？',
+        content: `已读取 v${latest.aggregateVersion}（${latest.configHash.slice(0, 8)}）。确认后仅重新提交当前“${pendingCommand.operation}”操作。`,
+        okText: '重新应用',
+        onOk: () => commandMutation.mutate({
+          ...pendingCommand,
+          aggregateVersion: latest.aggregateVersion,
+        }),
+      })
     }
+  }
+
+  const requestRefresh = () => {
+    if (!policyDirty) {
+      void refresh()
+      return
+    }
+    Modal.confirm({
+      title: '放弃尚未保存的策略修改？',
+      content: '刷新将读取服务端最新策略，当前本地策略草稿不会被提交。',
+      okText: '放弃并刷新',
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        setPolicyState({ layoutKey: '', drafts: {}, dirty: false })
+        await refresh()
+      },
+    })
   }
 
   const updatePolicyDraft = (
@@ -333,9 +348,14 @@ export function ProjectWorkItemLayoutsPanel({
     previewMutation.mutate(parsed.value)
   }
 
-  const loading = typeQuery.isLoading || fieldsQuery.isLoading || catalogQuery.isLoading || layoutQuery.isLoading
-  const missing = layoutQuery.error instanceof ApiRequestError && layoutQuery.error.status === 404
-  const renderedProjection = previewMutation.data ?? runtimeProjectionQuery.data
+  const loading = workbenchQuery.isLoading
+  const missing = !loading && !workbenchQuery.isError && selectedLayout == null
+  const renderedProjection = previewMutation.data ?? runtimeProjection
+  const parsedPreview = parsePreviewValues(previewValues)
+  const projectedFieldKeys = new Set(renderedProjection?.fields.map((field) => field.fieldKey) ?? [])
+  const hiddenSampleKeys = parsedPreview.ok
+    ? Object.keys(parsedPreview.value).filter((key) => !projectedFieldKeys.has(key))
+    : []
 
   return (
     <section
@@ -344,6 +364,7 @@ export function ProjectWorkItemLayoutsPanel({
       data-testid="work-item-layouts-panel"
       tabIndex={0}
       onKeyDown={(event) => {
+        if (isEditableTarget(event.target)) return
         if (event.altKey && event.key === 'ArrowUp') { event.preventDefault(); moveSelected(-1) }
         if (event.altKey && event.key === 'ArrowDown') { event.preventDefault(); moveSelected(1) }
         if (event.key === 'Delete' && selected) { event.preventDefault(); removeSelected() }
@@ -354,7 +375,7 @@ export function ProjectWorkItemLayoutsPanel({
           <Button type="text" icon={<ArrowLeftOutlined />} onClick={onBack}>返回类型</Button>
           <Typography.Title level={4}>页面布局</Typography.Title>
           <Typography.Text type="secondary">
-            {typeQuery.data ? `${typeQuery.data.name} · ${typeQuery.data.typeKey}` : '正在读取工作项类型'}
+            {workbenchQuery.data ? `${workbenchQuery.data.type.name} · ${workbenchQuery.data.type.typeKey}` : '正在读取工作项类型'}
           </Typography.Text>
         </div>
         <Space wrap>
@@ -369,7 +390,7 @@ export function ProjectWorkItemLayoutsPanel({
             }}
             options={[{ label: '新建页', value: 'create' }, { label: '详情页', value: 'detail' }]}
           />
-          <Button icon={<ReloadOutlined />} onClick={() => void refresh()}>刷新</Button>
+          <Button icon={<ReloadOutlined />} onClick={requestRefresh}>刷新</Button>
         </Space>
       </header>
 
@@ -387,7 +408,37 @@ export function ProjectWorkItemLayoutsPanel({
           showIcon
           type="warning"
           message={`${layout.diagnostics.length} 项布局诊断`}
-          description={layout.diagnostics.map((diagnostic) => `${diagnostic.nodeKey ?? '布局'}：${diagnostic.code}`).join('；')}
+          description={(
+            <div className="work-item-layout-diagnostics" aria-live="polite">
+              {layout.diagnostics.map((diagnostic) => (
+                <div key={`${diagnostic.code}:${diagnostic.nodeKey ?? diagnostic.fieldKey ?? 'layout'}`}>
+                  <span>
+                    <strong>{diagnostic.nodeKey ?? diagnostic.fieldKey ?? '布局'}</strong>
+                    {diagnostic.message || diagnostic.code}
+                  </span>
+                  {diagnostic.nodeKey ? (
+                    <Button
+                      size="small"
+                      onClick={() => setSelectedId(layout.nodes.find((node) =>
+                        node.nodeKey === diagnostic.nodeKey
+                        || (diagnostic.fieldKey && node.fieldKey === diagnostic.fieldKey))?.id)}
+                    >
+                      定位节点
+                    </Button>
+                  ) : diagnostic.fieldKey ? (
+                    <Button
+                      size="small"
+                      onClick={() => setSelectedId(
+                        layout.nodes.find((node) => node.fieldKey === diagnostic.fieldKey)?.id,
+                      )}
+                    >
+                      定位字段
+                    </Button>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          )}
         />
       ) : null}
       {loading ? <Card><Skeleton active /></Card> : null}
@@ -400,8 +451,14 @@ export function ProjectWorkItemLayoutsPanel({
           </Empty>
         </Card>
       ) : null}
-      {layoutQuery.isError && !missing ? (
-        <Alert type="error" showIcon message="页面布局加载失败" description={layoutError(layoutQuery.error, '请稍后重试')} />
+      {workbenchQuery.isError ? (
+        <Alert
+          type="error"
+          showIcon
+          message="页面布局加载失败"
+          description={layoutError(workbenchQuery.error, '请稍后重试')}
+          action={<Button onClick={() => void workbenchQuery.refetch()}>重试</Button>}
+        />
       ) : null}
 
       {layout ? (
@@ -421,7 +478,7 @@ export function ProjectWorkItemLayoutsPanel({
               </div>
               <Typography.Text type="secondary">字段</Typography.Text>
               <div className="work-item-layout-field-palette">
-                {fieldsQuery.data?.items.map((field) => {
+                {fields.map((field) => {
                   const used = layout.nodes.some((item) => item.fieldId === field.id)
                   return (
                     <Button key={field.id} disabled={used} onClick={() => addField(field)}>
@@ -453,8 +510,8 @@ export function ProjectWorkItemLayoutsPanel({
                 <NodeProperties
                   key={`${selected.id}:${layout.aggregateVersion}`}
                   node={selected}
-                  fields={fieldsQuery.data?.items ?? []}
-                  operators={catalogQuery.data?.items ?? []}
+                  fields={fields}
+                  operators={fieldTypes}
                   busy={commandMutation.isPending}
                   onSave={(changed) => runCommand({
                     operation: 'update',
@@ -579,15 +636,20 @@ export function ProjectWorkItemLayoutsPanel({
                   description="请先保存当前策略草稿，再验证新的访问结果。"
                 />
               ) : null}
-              {runtimeProjectionQuery.isError && !previewMutation.data ? (
-                <Alert type="warning" showIcon message="当前身份投影不可用" />
-              ) : null}
               {renderedProjection?.diagnostics.length ? (
                 <Alert
                   type="warning"
                   showIcon
                   message={`${renderedProjection.diagnostics.length} 项安全诊断`}
                   description={renderedProjection.diagnostics.map((item) => item.code).join('；')}
+                />
+              ) : null}
+              {hiddenSampleKeys.length > 0 ? (
+                <Alert
+                  type="warning"
+                  showIcon
+                  message={`${hiddenSampleKeys.length} 个样本字段当前不可见`}
+                  description="预览保留输入值，不会清空、删除或持久化；请确认条件或访问策略后再决定正式提交行为。"
                 />
               ) : null}
               <div
@@ -599,6 +661,7 @@ export function ProjectWorkItemLayoutsPanel({
                     layout={renderedProjection}
                     fields={renderedProjection.fields}
                     accessProjection={renderedProjection.accessProjection}
+                    values={parsedPreview.ok ? parsedPreview.value : {}}
                   />
                 ) : <Empty description="正在读取服务端访问投影" />}
               </div>
@@ -1214,6 +1277,18 @@ function roleLabel(role: WorkItemFieldAccessRole) {
     non_member: '非成员',
     enterprise_admin: '企业管理员',
   } as const)[role]
+}
+
+function isEditableTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) return false
+  return target.isContentEditable
+    || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)
+    || Boolean(target.closest('[contenteditable="true"], .ant-select, .ant-picker'))
+}
+
+function isVersionConflict(error: unknown) {
+  return error instanceof ApiRequestError
+    && ['version_conflict', 'layout_version_conflict'].includes(error.code ?? '')
 }
 
 function modeLabel(mode: WorkItemFieldAccessMode) {

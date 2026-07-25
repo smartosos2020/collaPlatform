@@ -45,6 +45,7 @@ import {
 import { ProjectSpaceMembersPanel } from '../components/ProjectSpaceMembersPanel'
 import { ProjectWorkItemFieldsPanel } from '../components/ProjectWorkItemFieldsPanel'
 import { ProjectWorkItemLayoutsPanel } from '../components/ProjectWorkItemLayoutsPanel'
+import { ProjectWorkItemLayoutSample } from '../components/ProjectWorkItemLayoutSample'
 import { ProjectWorkItemTypesPanel } from '../components/ProjectWorkItemTypesPanel'
 import { listActiveWorkItemTypes, workItemTypeKeys } from '../api/workItemTypesApi'
 import { errorMessage, formatTime, roleLabel, statusLabel, visibilityLabel } from '../projectSpaceView'
@@ -57,7 +58,7 @@ type CreateSpaceForm = {
 }
 
 type SettingsForm = Pick<CreateSpaceForm, 'name' | 'description' | 'visibility'>
-type SpaceView = 'overview' | 'members' | 'settings' | 'types' | 'fields' | 'layouts'
+type SpaceView = 'overview' | 'members' | 'settings' | 'types' | 'fields' | 'layouts' | 'sample'
 
 const recentStorageKey = 'colla.project-spaces.recent'
 
@@ -316,6 +317,9 @@ function ProjectSpaceShell({
           onBack={() => onSelectType(selectedTypeId)}
         />
       ) : null}
+      {view === 'sample' && selectedTypeId ? (
+        <ProjectWorkItemLayoutSample space={space} typeId={selectedTypeId} />
+      ) : null}
       {view === 'members' && canManage ? <ProjectSpaceMembersPanel space={space} /> : null}
       {view === 'settings' && canManage ? <ProjectSpaceSettingsPanel space={space} /> : null}
       {view !== 'overview' && !canManage ? <Alert type="error" showIcon message="无权访问空间设置" description="成员执行视角不展示成员治理和空间配置。" /> : null}
@@ -324,6 +328,7 @@ function ProjectSpaceShell({
 }
 
 function ProjectSpaceOverview({ space }: { space: UserProjectSpace }) {
+  const navigate = useNavigate()
   const typesQuery = useQuery({
     queryKey: workItemTypeKeys.active(space.id),
     queryFn: () => listActiveWorkItemTypes(space.id),
@@ -340,10 +345,16 @@ function ProjectSpaceOverview({ space }: { space: UserProjectSpace }) {
         ) : null}
         <div className="project-space-active-type-list" aria-label="可用工作项类型">
           {typesQuery.data?.map((type) => (
-            <div className="project-space-active-type" key={type.typeKey}>
+            <button
+              type="button"
+              className="project-space-active-type"
+              key={type.id}
+              onClick={() => navigate(`/project-spaces/${space.id}/types/${type.id}/sample`)}
+            >
               <span className="work-item-type-glyph" aria-hidden="true">{(type.icon?.trim() || type.name.slice(0, 1)).slice(0, 2)}</span>
               <span><strong>{type.name}</strong><small>{type.typeKey}</small></span>
-            </div>
+              <EyeOutlined aria-hidden="true" />
+            </button>
           ))}
         </div>
       </Card>
@@ -451,6 +462,7 @@ function resolveSpaceView(pathname: string): SpaceView {
   if (pathname.endsWith('/settings')) return 'settings'
   if (/\/types\/[^/]+\/fields(?:\/[^/]+)?$/.test(pathname)) return 'fields'
   if (/\/types\/[^/]+\/layouts$/.test(pathname)) return 'layouts'
+  if (/\/types\/[^/]+\/sample$/.test(pathname)) return 'sample'
   if (/\/types(?:\/[^/]+)?$/.test(pathname)) return 'types'
   return 'overview'
 }

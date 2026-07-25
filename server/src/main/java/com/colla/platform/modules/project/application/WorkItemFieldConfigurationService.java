@@ -300,6 +300,15 @@ public class WorkItemFieldConfigurationService {
     }
 
     private Configuration configuration(Context context, List<FieldDefinition> fields) {
+        Map<UUID, List<FieldOption>> optionsByField = optionRepository.listByType(
+            context.type().workspaceId(),
+            context.space().id(),
+            context.type().id()
+        ).stream().collect(java.util.stream.Collectors.groupingBy(
+            FieldOption::fieldDefinitionId,
+            LinkedHashMap::new,
+            java.util.stream.Collectors.toList()
+        ));
         return new Configuration(
             context.space().id(),
             context.type().id(),
@@ -307,14 +316,26 @@ public class WorkItemFieldConfigurationService {
             actionPolicy.collectionActions(
                 context.space().currentUserRole(), context.space().status(), context.type().status()
             ),
-            fields.stream().map(field -> configured(context, field)).toList()
+            fields.stream().map(field -> configured(
+                context,
+                field,
+                optionsByField.getOrDefault(field.id(), List.of())
+            )).toList()
         );
     }
 
     private ConfiguredField configured(Context context, FieldDefinition field) {
-        return new ConfiguredField(field, optionRepository.listByField(
+        return configured(context, field, optionRepository.listByField(
             field.workspaceId(), field.spaceId(), field.typeDefinitionId(), field.id()
-        ), actionPolicy.fieldActions(
+        ));
+    }
+
+    private ConfiguredField configured(
+        Context context,
+        FieldDefinition field,
+        List<FieldOption> options
+    ) {
+        return new ConfiguredField(field, List.copyOf(options), actionPolicy.fieldActions(
             context.space().currentUserRole(), context.space().status(), context.type().status(), field
         ));
     }

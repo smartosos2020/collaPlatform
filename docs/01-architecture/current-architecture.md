@@ -304,6 +304,10 @@ PROJECT-PLATFORM-S01 于 2026-07-18 完成项目模块当前事实审计、目�
 - S05-M3 已实现 schema v1 字段访问策略、确定性求值器和脱敏布局投影。owner/admin/member、guest、non-member、enterprise admin 的服务端上限分别为 write、read、hidden 三层；disabled/archived/retired 资源继续收窄，企业管理员不自动获得空间内容访问。
 - 正式读取 API `/api/project-spaces/{spaceId}/types/{typeId}/layouts/{layoutKind}/projection` 只返回可见节点、安全字段 DTO、逐字段决策与脱敏诊断；hidden 字段身份和原策略不出服务边界。策略专用写和 synthetic preview 继续位于 configuration API，复用版本、幂等和审计，预览严格无持久化副作用。
 - `WorkItemLayoutRenderer` 现在只消费服务端访问投影；hidden 不渲染、read 禁用控件、required 显示必填，缺失投影按 hidden 失败关闭。管理 UI 支持六身份规则、危险收窄确认、角色/资源状态/字段样本预览，保留已有条件规则。
+- S05-M4 增加 `GET /api/project-spaces/{spaceId}/configuration/types/{typeId}/layout-workbench` 配置集合读模型，在同一 repeatable-read 快照中组合类型、字段目录、create/detail 布局与服务端访问投影；字段选项按类型批量读取，避免按字段 N+1。配置与投影版本/hash 不一致时返回可重试冲突，不拼接混合快照。
+- 用户侧 `POST /api/project-spaces/{spaceId}/types/{typeId}/layouts/{layoutKind}/sample` 只向有效空间成员返回当前身份的 synthetic 只读样本；member/guest 不获得配置读权限，non-member 与仅企业管理员仍按 not-found 最小披露。用户投影的选项 DTO 只包含 key、名称、颜色、排序和状态，诊断不返回管理细节。
+- 管理预览和用户样本复用 `WorkItemLayoutRenderer`。当前 S04 注册的 11 类字段均有显式编辑/只读映射；rich-text presentation 复用 text 的多行模式，附件和工作项引用只呈现规范占位而不创建上传或实例事实。interval/computed 尚未进入 S04 注册表，遇到未知类型时失败关闭并显示安全的不支持状态。
+- 布局配置基线在真实 PostgreSQL 中覆盖 120 字段与 2400 选项，集合读模型预算为 3 秒；冻结布局图最多 120 节点，因此合法最大渲染图为 1 个根 section 加 119 个字段节点。该结论只覆盖配置读取与合成渲染，不代表真实 WorkItem、动态值查询或平台容量。
 - 当前仍没有 `project_work_items` 表、工作项实例 API、动态字段值、流程或完整草稿发布流水线。S04 字段和 S05 布局/策略仍是独立待发布配置图，不改写 S03 published v1；S06 承接新配置版本发布，S07 承接显式绑定 `type_version_id` 的统一实例。
 - S04 的规模事实仅覆盖字段配置目录：真实 PostgreSQL 中 120 个字段、2400 个选项的 API 查询预算为 3 秒，并校验复合索引计划。10 万工作项、动态字段过滤和并发查询尚无运行时承载，归入 S07/S13，不作为当前性能事实。
 - 成员治理以 `project_spaces` 行级悲观锁串行化同空间变更；成员唯一约束、活动角色唯一索引和邀请 pending 唯一索引承担最终数据库防线。直接加入、角色变化、移除、owner 转移和邀请状态变化均支持重复请求收敛。

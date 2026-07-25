@@ -8,6 +8,8 @@ import java.util.UUID;
 public interface WorkItemFieldOptionRepository {
     List<FieldOption> listByField(UUID workspaceId, UUID spaceId, UUID typeId, UUID fieldId);
 
+    List<FieldOption> listByType(UUID workspaceId, UUID spaceId, UUID typeId);
+
     void insert(
         UUID id,
         UUID workspaceId,

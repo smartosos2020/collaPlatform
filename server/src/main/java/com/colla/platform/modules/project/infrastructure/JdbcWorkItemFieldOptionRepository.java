@@ -39,6 +39,20 @@ public class JdbcWorkItemFieldOptionRepository implements WorkItemFieldOptionRep
     }
 
     @Override
+    public List<FieldOption> listByType(UUID workspaceId, UUID spaceId, UUID typeId) {
+        return jdbcTemplate.query(
+            SELECT + """
+                 where workspace_id = ? and space_id = ? and type_definition_id = ?
+                 order by field_definition_id, sort_order, option_key, id
+                """,
+            this::map,
+            workspaceId,
+            spaceId,
+            typeId
+        );
+    }
+
+    @Override
     public void insert(
         UUID id,
         UUID workspaceId,

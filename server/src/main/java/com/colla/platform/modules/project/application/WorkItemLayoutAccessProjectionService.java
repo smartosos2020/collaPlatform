@@ -16,6 +16,8 @@ import com.colla.platform.modules.project.domain.WorkItemTypeModels.WorkItemType
 import com.colla.platform.modules.project.domain.WorkItemTypeModels.WorkItemTypeException;
 import com.colla.platform.modules.project.infrastructure.ProjectSpaceRepository;
 import com.colla.platform.modules.project.infrastructure.WorkItemFieldRepository;
+import com.colla.platform.modules.project.infrastructure.WorkItemFieldOptionRepository;
+import com.colla.platform.modules.project.domain.WorkItemFieldOptionModels.FieldOption;
 import com.colla.platform.modules.project.infrastructure.WorkItemLayoutRepository;
 import com.colla.platform.shared.auth.CurrentUser;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -33,6 +35,7 @@ import org.springframework.stereotype.Service;
 public class WorkItemLayoutAccessProjectionService {
     private final WorkItemLayoutRepository layoutRepository;
     private final WorkItemFieldRepository fieldRepository;
+    private final WorkItemFieldOptionRepository optionRepository;
     private final ProjectSpaceRepository spaceRepository;
     private final AuthenticationQuery authenticationQuery;
     private final WorkItemTypeDefinitionService typeService;
@@ -45,6 +48,7 @@ public class WorkItemLayoutAccessProjectionService {
     public WorkItemLayoutAccessProjectionService(
         WorkItemLayoutRepository layoutRepository,
         WorkItemFieldRepository fieldRepository,
+        WorkItemFieldOptionRepository optionRepository,
         ProjectSpaceRepository spaceRepository,
         AuthenticationQuery authenticationQuery,
         WorkItemTypeDefinitionService typeService,
@@ -56,6 +60,7 @@ public class WorkItemLayoutAccessProjectionService {
     ) {
         this.layoutRepository = layoutRepository;
         this.fieldRepository = fieldRepository;
+        this.optionRepository = optionRepository;
         this.spaceRepository = spaceRepository;
         this.authenticationQuery = authenticationQuery;
         this.typeService = typeService;
@@ -109,6 +114,29 @@ public class WorkItemLayoutAccessProjectionService {
         );
     }
 
+    public LayoutAccessProjection sample(
+        CurrentUser user,
+        UUID spaceId,
+        UUID typeId,
+        String layoutKind,
+        Map<String, JsonNode> fieldValues
+    ) {
+        Context context = requireContext(user, spaceId, typeId);
+        return project(
+            user,
+            context,
+            LayoutKind.parse(layoutKind).name(),
+            new SyntheticContext(
+                context.space().currentUserRole(),
+                context.space().status(),
+                context.type().status(),
+                fieldValues,
+                Map.of()
+            ),
+            true
+        );
+    }
+
     private LayoutAccessProjection project(
         CurrentUser user,
         Context actual,
@@ -127,6 +155,13 @@ public class WorkItemLayoutAccessProjectionService {
         validateSampleKeys(fields, requested);
         Map<UUID, FieldDefinition> fieldsById = new LinkedHashMap<>();
         fields.forEach(field -> fieldsById.put(field.id(), field));
+        Map<UUID, List<FieldOption>> optionsByField = optionRepository.listByType(
+            user.workspaceId(), actual.space().id(), actual.type().id()
+        ).stream().collect(java.util.stream.Collectors.groupingBy(
+            FieldOption::fieldDefinitionId,
+            LinkedHashMap::new,
+            java.util.stream.Collectors.toList()
+        ));
         Map<UUID, FieldAccessPolicy> policiesByField = new LinkedHashMap<>();
         policies.forEach(policy -> policiesByField.put(policy.fieldId(), policy));
         Map<String, FieldAccessDecision> decisions = new LinkedHashMap<>();
@@ -180,7 +215,16 @@ public class WorkItemLayoutAccessProjectionService {
                 field.fieldType(),
                 field.config(),
                 requested.fieldStatuses().getOrDefault(field.fieldKey(), field.status()),
-                field.system()
+                field.system(),
+                optionsByField.getOrDefault(field.id(), List.of()).stream()
+                    .map(option -> new ProjectedOption(
+                        option.optionKey(),
+                        option.name(),
+                        option.color(),
+                        option.sortOrder(),
+                        option.status()
+                    ))
+                    .toList()
             ))
             .toList();
         Map<String, FieldAccessDecision> projectedDecisions = new LinkedHashMap<>();
@@ -195,6 +239,9 @@ public class WorkItemLayoutAccessProjectionService {
             .filter(diagnostic -> diagnostic.fieldKey() == null
                 || projectedFieldKeys.contains(diagnostic.fieldKey()))
             .toList();
+        if (!actionPolicy.isManager(actual.space().currentUserRole())) {
+            diagnostics = List.of();
+        }
         return new LayoutAccessProjection(
             definition.id(),
             definition.spaceId(),
@@ -394,7 +441,17 @@ public class WorkItemLayoutAccessProjectionService {
         String fieldType,
         JsonNode config,
         String status,
-        boolean system
+        boolean system,
+        List<ProjectedOption> options
+    ) {
+    }
+
+    public record ProjectedOption(
+        String optionKey,
+        String name,
+        String color,
+        int sortOrder,
+        String status
     ) {
     }
 

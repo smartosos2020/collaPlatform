@@ -79,7 +79,7 @@ public class WorkItemTypeConfigurationService {
             return List.of();
         }
         return definitionService.list(user.workspaceId(), spaceId, "active").stream()
-            .map(type -> new UserTypeSummary(type.typeKey(), type.name(), type.icon(), type.sortOrder()))
+            .map(type -> new UserTypeSummary(type.id(), type.typeKey(), type.name(), type.icon(), type.sortOrder()))
             .toList();
     }
 

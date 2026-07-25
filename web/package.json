@@ -30,6 +30,7 @@
     "@tiptap/react": "^3.26.1",
     "@tiptap/starter-kit": "^3.26.1",
     "antd": "^6.4.4",
+    "dayjs": "^1.11.21",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-router-dom": "^7.17.0",

@@ -5606,6 +5606,29 @@ body {
   gap: 12px;
 }
 
+.work-item-layout-diagnostics {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.work-item-layout-diagnostics > div,
+.work-item-layout-diagnostics > div > span {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.work-item-layout-diagnostics > div {
+  justify-content: space-between;
+}
+
+.work-item-layout-diagnostics > div > span {
+  overflow-wrap: anywhere;
+}
+
 .work-item-layout-preview-group {
   min-width: 0;
   border: 1px solid #e5e7eb;
@@ -5643,11 +5666,55 @@ body {
   gap: 6px;
 }
 
+.work-item-layout-preview-field > label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #334155;
+  cursor: default;
+  font-weight: 600;
+}
+
+.work-item-layout-preview-field > .ant-typography {
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .work-item-layout-preview-field fieldset {
   min-width: 0;
   margin: 0;
   padding: 0;
   border: 0;
+}
+
+.work-item-layout-read-values {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-height: 28px;
+}
+
+.work-item-layout-sample > .ant-card > .ant-card-body {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.work-item-layout-sample-context,
+.work-item-layout-sample-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.work-item-layout-sample-actions {
+  justify-content: flex-end;
+  border-top: 1px solid #eef1f6;
+  padding-top: 12px;
 }
 
 .work-item-layout-condition-heading,
@@ -5797,10 +5864,22 @@ body {
   border-radius: 8px;
   padding: 10px;
   background: #fbfcff;
+  color: #111827;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
 }
 
-.project-space-active-type > span:last-child {
+.project-space-active-type:hover,
+.project-space-active-type:focus-visible {
+  border-color: #8b5cf6;
+  background: #f7f5ff;
+  outline: none;
+}
+
+.project-space-active-type > span:nth-child(2) {
   display: flex;
+  flex: 1;
   min-width: 0;
   flex-direction: column;
 }

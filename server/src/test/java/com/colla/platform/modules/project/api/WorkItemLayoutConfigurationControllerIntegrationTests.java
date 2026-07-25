@@ -3,6 +3,7 @@ package com.colla.platform.modules.project.api;
 import static org.hamcrest.Matchers.hasItem;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTimeout;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -10,8 +11,17 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.colla.platform.modules.project.application.WorkItemFieldDefinitionService;
+import com.colla.platform.modules.project.domain.WorkItemFieldModels.CreateFieldDefinition;
+import com.colla.platform.modules.project.domain.WorkItemFieldModels.FieldDefinition;
+import com.colla.platform.modules.project.domain.WorkItemFieldOptionModels.ConfigureFieldOption;
+import com.colla.platform.modules.project.infrastructure.WorkItemFieldOptionRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -34,6 +44,180 @@ class WorkItemLayoutConfigurationControllerIntegrationTests {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private WorkItemFieldDefinitionService definitionService;
+
+    @Autowired
+    private WorkItemFieldOptionRepository optionRepository;
+
+    @Test
+    void workbenchAndUserSampleExposeOneSafeReadModelWithoutPersistence() throws Exception {
+        TestUser root = root("wil-workbench-root");
+        TestUser owner = member(root.token(), "wilworkbench");
+        UUID spaceId = createSpace(owner.token(), "wil-workbench");
+        JsonNode type = createType(owner.token(), spaceId, "workbench");
+        UUID typeId = UUID.fromString(type.get("id").asText());
+        JsonNode field = createField(owner.token(), spaceId, typeId, "title");
+        UUID sectionId = UUID.randomUUID();
+        String requestId = "wil-workbench-layout-" + suffix();
+        save(
+            owner.token(),
+            spaceId,
+            typeId,
+            "create",
+            requestId,
+            layoutBody(
+                sectionId,
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                field,
+                0,
+                "write"
+            )
+        );
+
+        mockMvc.perform(get(
+                "/api/project-spaces/" + spaceId + "/configuration/types/" + typeId
+                    + "/layout-workbench"
+            )
+                .header("Authorization", bearer(owner.token())))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.type.id").value(typeId.toString()))
+            .andExpect(jsonPath("$.fields.items.length()").value(1))
+            .andExpect(jsonPath("$.fieldTypes.items.length()").value(11))
+            .andExpect(jsonPath("$.layouts.create.configuration.layoutKind").value("create"))
+            .andExpect(jsonPath("$.layouts.create.runtimeProjection.synthetic").value(false))
+            .andExpect(jsonPath("$.layouts.create.runtimeProjection.fields[0].fieldKey").value("title"))
+            .andExpect(jsonPath("$.layouts.detail").doesNotExist());
+
+        int commandsBefore = count("project_work_item_layout_commands", spaceId);
+        MvcResult sampleResult = mockMvc.perform(post(
+                "/api/project-spaces/" + spaceId + "/types/" + typeId
+                    + "/layouts/create/sample"
+            )
+                .header("Authorization", bearer(owner.token()))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"fieldValues\":{\"title\":\"sample only\"}}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.synthetic").value(true))
+            .andExpect(jsonPath("$.context.mode").value("synthetic"))
+            .andExpect(jsonPath("$.availableActions").isEmpty())
+            .andExpect(jsonPath("$.fields[0].fieldKey").value("title"))
+            .andReturn();
+        assertFalse(sampleResult.getResponse().getContentAsString().contains("\"workspaceId\""));
+        assertFalse(sampleResult.getResponse().getContentAsString().contains("\"createdBy\""));
+        assertEquals(commandsBefore, count("project_work_item_layout_commands", spaceId));
+
+        mockMvc.perform(post(
+                "/api/project-spaces/" + spaceId + "/types/" + typeId
+                    + "/layouts/create/sample"
+            )
+                .header("Authorization", bearer(root.token()))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"fieldValues\":{}}"))
+            .andExpect(status().isNotFound())
+            .andExpect(jsonPath("$.error.code").value("not_found_or_hidden"));
+    }
+
+    @Test
+    void workbenchReadsMaximumLegalLayoutAndFullFieldCatalogWithinBudget() throws Exception {
+        TestUser root = root("wil-budget-root");
+        TestUser owner = member(root.token(), "wilbudget");
+        UUID spaceId = createSpace(owner.token(), "wil-budget");
+        UUID typeId = UUID.fromString(createType(owner.token(), spaceId, "large_layout").get("id").asText());
+        List<FieldDefinition> fields = new ArrayList<>();
+        for (int fieldIndex = 0; fieldIndex < 120; fieldIndex++) {
+            FieldDefinition field = definitionService.create(new CreateFieldDefinition(
+                owner.workspaceId(),
+                spaceId,
+                typeId,
+                owner.id(),
+                "select_" + fieldIndex,
+                "Synthetic select " + fieldIndex,
+                "Workbench performance fixture",
+                "single_select",
+                objectMapper.createObjectNode(),
+                fieldIndex * 10,
+                false
+            ));
+            fields.add(field);
+            for (int optionIndex = 0; optionIndex < 20; optionIndex++) {
+                optionRepository.insert(
+                    UUID.randomUUID(),
+                    owner.workspaceId(),
+                    spaceId,
+                    typeId,
+                    field.id(),
+                    new ConfigureFieldOption(
+                        "option_" + optionIndex,
+                        "Option " + optionIndex,
+                        "#2563EB",
+                        optionIndex * 10,
+                        "active"
+                    ),
+                    owner.id()
+                );
+            }
+        }
+
+        ObjectNode layout = objectMapper.createObjectNode();
+        ArrayNode nodes = layout.putArray("nodes");
+        UUID sectionId = UUID.randomUUID();
+        nodes.addObject()
+            .put("id", sectionId.toString())
+            .putNull("parentId")
+            .put("nodeKey", "main")
+            .put("nodeType", "section")
+            .putNull("fieldId")
+            .putNull("fieldKey")
+            .put("sortOrder", 0)
+            .set("config", objectMapper.createObjectNode().put("title", "Large layout"));
+        ((ObjectNode) nodes.get(0)).set(
+            "visibilityCondition",
+            objectMapper.createObjectNode().put("schemaVersion", 1)
+        );
+        // The frozen graph budget is 120 nodes, so one root section plus 119 fields
+        // is the largest legal rendered layout over the 120-field configuration catalog.
+        for (int index = 0; index < fields.size() - 1; index++) {
+            FieldDefinition field = fields.get(index);
+            ObjectNode node = nodes.addObject();
+            node.put("id", UUID.randomUUID().toString())
+                .put("parentId", sectionId.toString())
+                .put("nodeKey", "field_" + index)
+                .put("nodeType", "field")
+                .put("fieldId", field.id().toString())
+                .put("fieldKey", field.fieldKey())
+                .put("sortOrder", index);
+            node.set("config", objectMapper.createObjectNode());
+            node.set(
+                "visibilityCondition",
+                objectMapper.createObjectNode().put("schemaVersion", 1)
+            );
+        }
+        layout.putArray("policies");
+        layout.put("aggregateVersion", 0);
+        mockMvc.perform(put(layoutPath(spaceId, typeId, "create"))
+                .header("Authorization", bearer(owner.token()))
+                .header("X-Colla-Request-Id", "wil-budget-layout-" + suffix())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(layout)))
+            .andExpect(status().isOk());
+
+        assertTimeout(Duration.ofSeconds(3), () ->
+            mockMvc.perform(get(
+                    "/api/project-spaces/" + spaceId + "/configuration/types/" + typeId
+                        + "/layout-workbench"
+                )
+                    .header("Authorization", bearer(owner.token())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.fields.items.length()").value(120))
+                .andExpect(jsonPath("$.fields.items[0].options.length()").value(20))
+                .andExpect(jsonPath("$.layouts.create.runtimeProjection.fields.length()").value(119))
+                .andExpect(jsonPath("$.layouts.create.runtimeProjection.fields[0].options.length()").value(20))
+                .andReturn()
+        );
+    }
 
     @Test
     void ownerSavesReplaysAndReadsLayoutWithStableDiagnosticsAndSideEffects() throws Exception {
@@ -487,6 +671,12 @@ class WorkItemLayoutConfigurationControllerIntegrationTests {
         ));
         assertTrue(openApi.path("paths").has(
             "/api/project-spaces/{spaceId}/types/{typeId}/layouts/{layoutKind}/projection"
+        ));
+        assertTrue(openApi.path("paths").has(
+            "/api/project-spaces/{spaceId}/types/{typeId}/layouts/{layoutKind}/sample"
+        ));
+        assertTrue(openApi.path("paths").has(
+            "/api/project-spaces/{spaceId}/configuration/types/{typeId}/layout-workbench"
         ));
         assertFalse(openApi.path("paths").has("/api/work-items"));
         assertEquals(0, jdbcTemplate.queryForObject(

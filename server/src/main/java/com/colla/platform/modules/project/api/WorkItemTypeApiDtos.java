@@ -40,7 +40,9 @@ final class WorkItemTypeApiDtos {
     }
 
     static UserWorkItemTypeSummary userSummary(UserTypeSummary summary) {
-        return new UserWorkItemTypeSummary(summary.typeKey(), summary.name(), summary.icon(), summary.sortOrder());
+        return new UserWorkItemTypeSummary(
+            summary.id(), summary.typeKey(), summary.name(), summary.icon(), summary.sortOrder()
+        );
     }
 
     static AdminWorkItemTypeCounts governanceCounts(GovernanceTypeCounts counts) {
@@ -79,7 +81,7 @@ final class WorkItemTypeApiDtos {
     record WorkItemTypeVersionView(UUID id, int number, String status, String configHash, JsonNode config) {
     }
 
-    record UserWorkItemTypeSummary(String typeKey, String name, String icon, int sortOrder) {
+    record UserWorkItemTypeSummary(UUID id, String typeKey, String name, String icon, int sortOrder) {
     }
 
     record AdminWorkItemTypeCounts(int total, int active, int disabled, int retired) {
