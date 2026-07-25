@@ -182,6 +182,10 @@ export function validateTopology(topology, contract) {
           addError(errors, `topology.roles.${roleName}.runtime.shmSizeMiB`, "must not reserve more than 25% of container memory", runtime.shmSizeMiB);
         }
       }
+      if (roleName === "load-source"
+        && (!Number.isInteger(runtime.dockerSocketGid) || runtime.dockerSocketGid < 0)) {
+        addError(errors, `topology.roles.${roleName}.runtime.dockerSocketGid`, "must be a non-negative integer", runtime.dockerSocketGid);
+      }
     }
 
     for (const dependency of dependencies) {

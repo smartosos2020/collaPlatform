@@ -45,6 +45,17 @@ test('checked-in versioned scenario configs satisfy the scenario contract', asyn
   }
 })
 
+test('M1 gateway metrics observe the event-gateway consume path', async () => {
+  const configDirectory = fileURLToPath(new URL('../config/scenarios/', import.meta.url))
+  const config = await loadScenarioConfig(path.join(configDirectory, 's05-m1-unified.v1.json'))
+  const gateways = config.metrics.prometheus.filter((source) => source.id.startsWith('gateway-'))
+  assert.equal(gateways.length, 2)
+  for (const source of gateways) {
+    assert.ok(source.metricNames.includes('colla_realtime_redis_consume_total'))
+    assert.ok(!source.metricNames.includes('colla_realtime_redis_publish_total'))
+  }
+})
+
 test('formal scenarios reject execution before warmup without passing provenance', async () => {
   await assert.rejects(
     runCapacityScenario({

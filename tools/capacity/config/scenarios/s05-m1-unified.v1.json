@@ -132,7 +132,7 @@
         "metricNames": [
           "colla_realtime_websocket_connections",
           "colla_realtime_websocket_session_queues",
-          "colla_realtime_redis_publish_total",
+          "colla_realtime_redis_consume_total",
           "jvm_memory_used_bytes",
           "process_cpu_usage"
         ],
@@ -149,7 +149,7 @@
         "metricNames": [
           "colla_realtime_websocket_connections",
           "colla_realtime_websocket_session_queues",
-          "colla_realtime_redis_publish_total",
+          "colla_realtime_redis_consume_total",
           "jvm_memory_used_bytes",
           "process_cpu_usage"
         ],

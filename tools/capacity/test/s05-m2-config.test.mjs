@@ -110,6 +110,11 @@ test('S05 M2 metric sources are required, protected through headerEnv and scoped
       }, `${file}:${source.id}`)
       assert.equal(Object.hasOwn(source, 'headers'), false, `${file}:${source.id}`)
     }
+    for (const source of (config.metrics.prometheus ?? [])
+      .filter((entry) => entry.id.startsWith('gateway-'))) {
+      assert.ok(source.metricNames.includes('colla_realtime_redis_consume_total'), `${file}:${source.id}`)
+      assert.ok(!source.metricNames.includes('colla_realtime_redis_publish_total'), `${file}:${source.id}`)
+    }
 
     assert.equal(config.metrics.docker.enabled, true, file)
     assert.equal(config.metrics.docker.required, true, file)

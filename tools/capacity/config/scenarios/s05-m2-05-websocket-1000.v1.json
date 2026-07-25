@@ -73,14 +73,14 @@
         "id": "gateway-a",
         "endpointEnv": "COLLA_CAPACITY_GATEWAY_A_METRICS_URL",
         "required": true,
-        "metricNames": ["colla_realtime_websocket_connections", "colla_realtime_websocket_session_queues", "colla_realtime_redis_publish_total", "jvm_gc_pause_seconds_count", "jvm_memory_used_bytes", "process_cpu_usage"],
+        "metricNames": ["colla_realtime_websocket_connections", "colla_realtime_websocket_session_queues", "colla_realtime_redis_consume_total", "jvm_gc_pause_seconds_count", "jvm_memory_used_bytes", "process_cpu_usage"],
         "labelAllowlist": ["runtime_role", "instance_id", "outcome"]
       },
       {
         "id": "gateway-b",
         "endpointEnv": "COLLA_CAPACITY_GATEWAY_B_METRICS_URL",
         "required": true,
-        "metricNames": ["colla_realtime_websocket_connections", "colla_realtime_websocket_session_queues", "colla_realtime_redis_publish_total", "jvm_gc_pause_seconds_count", "jvm_memory_used_bytes", "process_cpu_usage"],
+        "metricNames": ["colla_realtime_websocket_connections", "colla_realtime_websocket_session_queues", "colla_realtime_redis_consume_total", "jvm_gc_pause_seconds_count", "jvm_memory_used_bytes", "process_cpu_usage"],
         "labelAllowlist": ["runtime_role", "instance_id", "outcome"]
       }
     ],

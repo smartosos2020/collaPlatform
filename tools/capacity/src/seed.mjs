@@ -394,6 +394,8 @@ CREATE TABLE IF NOT EXISTS ${schema}.fixture_records (
 );
 CREATE INDEX IF NOT EXISTS fixture_records_workspace_domain_idx
   ON ${schema}.fixture_records (seed_id, workspace_id, domain);
+CREATE INDEX IF NOT EXISTS fixture_records_seed_domain_record_idx
+  ON ${schema}.fixture_records (seed_id, checksum, domain, record_id);
 CREATE TABLE IF NOT EXISTS ${schema}.fixture_phase_progress (
   seed_id text NOT NULL,
   checksum char(64) NOT NULL,

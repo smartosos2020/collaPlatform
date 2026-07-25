@@ -82,6 +82,21 @@ test("topology requires bounded PostgreSQL shared memory", async () => {
   assert.match(excessiveResult.errors.map((error) => error.message).join("\n"), /25%/);
 });
 
+test("topology requires a non-negative load-source Docker socket GID", async () => {
+  const { contract, topology } = await loadCapacityConfig();
+  const missing = structuredClone(topology);
+  delete missing.roles["load-source"].runtime.dockerSocketGid;
+  const missingResult = validateTopology(missing, contract);
+  assert.equal(missingResult.ok, false);
+  assert.match(missingResult.errors.map((error) => error.path).join("\n"), /dockerSocketGid/);
+
+  const negative = structuredClone(topology);
+  negative.roles["load-source"].runtime.dockerSocketGid = -1;
+  const negativeResult = validateTopology(negative, contract);
+  assert.equal(negativeResult.ok, false);
+  assert.match(negativeResult.errors.map((error) => error.message).join("\n"), /non-negative integer/);
+});
+
 test("seed plan is deterministic and SQL is idempotent, resumable, isolated, and named", async () => {
   const { seed } = await loadCapacityConfig();
   const first = createSeedPlan("s05-c1-core", seed);

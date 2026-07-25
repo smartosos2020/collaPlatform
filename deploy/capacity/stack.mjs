@@ -396,6 +396,12 @@ function validateRuntime(roleName, serviceName, runtime, service, errors) {
     for (const parameter of required) {
       if (!options.includes(parameter)) errors.push(`${serviceName} NODE_OPTIONS misses ${parameter}`)
     }
+    if (roleName === 'load-source') {
+      const supplementalGroups = (service.group_add ?? []).map(Number)
+      if (!supplementalGroups.includes(runtime.dockerSocketGid)) {
+        errors.push(`${serviceName} supplemental groups miss Docker socket GID ${runtime.dockerSocketGid}`)
+      }
+    }
   } else if (roleName === 'postgresql') {
     const command = (service.command ?? []).join(' ')
     for (const parameter of runtime.parameters) {

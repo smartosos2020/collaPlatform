@@ -69,6 +69,10 @@ test("apply SQL materializes registry records into every required business table
     assert.match(applySql, new RegExp(`INSERT INTO ${table}\\b`, "i"), table);
   }
   assert.match(applySql, /fixture_phase_progress/);
+  assert.match(
+    applySql,
+    /fixture_records_seed_domain_record_idx[\s\S]*seed_id, checksum, domain, record_id/
+  );
   assert.match(applySql, /requires exactly one active initialized credential source/);
   assert.match(applySql, /WHERE username = 'admin'/);
   assert.doesNotMatch(applySql, /ORDER BY \(username = 'admin'\)/);

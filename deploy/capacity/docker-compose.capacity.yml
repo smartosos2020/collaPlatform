@@ -147,6 +147,8 @@ services:
   capacity-runner:
     profiles: [capacity]
     image: ${CAPACITY_RUNNER_IMAGE:-colla-s05-capacity-capacity-runner}
+    group_add:
+      - "${CAPACITY_DOCKER_SOCKET_GID:-0}"
     build:
       context: ..
       dockerfile: tools/capacity/Dockerfile
