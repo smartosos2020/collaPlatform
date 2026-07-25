@@ -70,7 +70,23 @@ test('core closure acceptance requires isolated real E2E evidence', () => {
   const root = fixture()
   const report = join(root, 'docs/90-reports/test-m1-execution-report.md')
   writeFileSync(report, readFileSync(report, 'utf8').replace('Render dashboard', 'Update user permission'))
-  assert.throws(() => assertWorkCycleDocuments(root, true), /requires e2e-real-isolated/)
+  assert.throws(() => assertWorkCycleDocuments(root, true), /requires e2e-real-isolated or system-real-isolated/)
+})
+
+test('core service closure accepts a real isolated system flow without browser evidence', () => {
+  const root = fixture('| TEST-M1-T01 | system-real-isolated | not-required | isolated | No | Exercise the real isolated API and durable ledger |')
+  const report = join(root, 'docs/90-reports/test-m1-execution-report.md')
+  writeFileSync(report, readFileSync(report, 'utf8')
+    .replace('Render dashboard', 'Update user permission')
+    .replace('unit test passed', 'real isolated API and durable ledger passed'))
+  assert.doesNotThrow(() => assertWorkCycleDocuments(root, true))
+})
+
+test('system real isolated evidence rejects mock or non-isolated contracts', () => {
+  assert.throws(
+    () => assertWorkCycleDocuments(fixture('| TEST-M1-T01 | system-real-isolated | not-required | not-required | No | Exercise the real service flow |'), true),
+    /system-real-isolated requires/,
+  )
 })
 
 test('remaining acceptance gaps block a Done task', () => {

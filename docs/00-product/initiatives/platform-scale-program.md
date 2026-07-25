@@ -1,11 +1,11 @@
 ---
 title: 平台模块化与运行扩展长期专项规划
-status: active
+status: paused
 program: PLATFORM-SCALE
-revision: 9
+revision: 10
 updated_at: 2026-07-25
 planning_mode: rolling
-current_stage: PLATFORM-SCALE-S05
+current_stage: none
 activation_after: PROJECT-PLATFORM-S04
 initiative_index_doc: docs/00-product/initiatives/README.md
 target_architecture_doc: docs/01-architecture/platform-scale-target-architecture.md
@@ -16,9 +16,9 @@ source_baseline: docs/90-reports/platform-scale-readiness-baseline-2026-07-24.md
 
 ## 1. 文档定位
 
-本文是已激活的 `PLATFORM-SCALE` 长期专项，不是可直接执行的第二份路线。当前唯一 Active Program 是 `PLATFORM-SCALE`，当前唯一执行任务仍只存在于 `docs/02-roadmap/current-roadmap.md`。
+本文是已暂停的 `PLATFORM-SCALE` 长期专项，不是可直接执行的第二份路线。S01-S04 已完成，S05-M1 已交付固定环境、确定性种子、四类加载器和证据合同；S05-M2 至 M5 保持 Deferred，暂停期间没有可执行 Task。
 
-本文维护专项目标、Stage 顺序、依赖、退出条件和规划变更，不包含可执行 Task 或 Task 状态。`PROJECT-PLATFORM` 已在 S04 完成后暂停于 S05 之前；任何恢复、重排或继续平台化的决定都必须先更新专项索引和变更记录。
+本文维护专项目标、Stage 顺序、依赖、退出条件和规划变更，不包含可执行 Task 或 Task 状态。`PROJECT-PLATFORM-S05` 已基于 S01-S04 平台底座恢复；PLATFORM-SCALE 的恢复、重排或继续压测必须先更新专项索引和变更记录。
 
 ## 2. 激活背景
 
@@ -46,8 +46,9 @@ S04 的功能验收和 route-final 证据完整，不需要重开；新增耦合
 - S04 已按原路线独立完成并归档。
 - `PROJECT-PLATFORM` 已暂停在 S05 之前，S01-S04 历史结论保持不变。
 - S01-S03 的阶段检查均选择继续平台专项；S04 已完成实现与真实多节点故障矩阵，最终 `route-final` 是本路线最后一道门。
-- S04 收口决策为：通过最终门禁并归档当前路线后，优先激活 `PLATFORM-SCALE-S05`，建立固定环境的容量、长稳、恢复和运维承诺；`PROJECT-PLATFORM-S05` 继续暂停。
-- 只有 S05 发布可解释的容量边界、复核历史边界例外并完成专项 Go/No-Go 后，才重新评估恢复 `PROJECT-PLATFORM-S05`。
+- S05-M1 已建立可重复容量环境、种子、HTTP/Worker/普通 WS/Yjs 加载器和不可变证据合同。
+- 用户明确将真实目标容量、长稳、综合故障恢复、发布扩缩容和最终 Go/No-Go 延后到核心业务、接口、数据模型与负载模型稳定之后；M2-M5 不得标记 Completed。
+- S01-S04 的平台门禁与运行隔离已经足以约束恢复后的 `PROJECT-PLATFORM-S05`；恢复业务开发不等于发布容量或基础设施 HA 承诺。
 - 暂停任一 Program 时必须在专项索引中保留剩余承诺和恢复入口。
 - 两个 Program 不得同时标记 Active；并行 worktree 不能绕过单 Active 规划合同。
 
@@ -59,7 +60,7 @@ S04 的功能验收和 route-final 证据完整，不需要重开；新增耦合
 | PLATFORM-SCALE-S02 | API 运行角色隔离与双实例基线 | S01 | Completed | API 无 Worker/旧协同定时任务、双实例 upstream、会话和幂等复验 |
 | PLATFORM-SCALE-S03 | 异步 Worker 独立运行和可靠消费 | S01-S02 | Completed | lease、handler、dead letter、replay、指标和多 Worker 接管 |
 | PLATFORM-SCALE-S04 | 通用实时事件网关与知识协同收口 | S02-S03 | Completed | Redis fanout、多 Gateway、重连校准、Spring 旧知识协同退出 |
-| PLATFORM-SCALE-S05 | 容量、故障、恢复和运维收口 | S02-S04 | Active | 固定容量环境、负载/长稳/故障证据和 Go/No-Go |
+| PLATFORM-SCALE-S05 | 容量、故障、恢复和运维收口 | S02-S04 | Paused | M1 底座完成；M2-M5 待稳定负载模型与隔离容量环境后恢复 |
 
 Stage 数量不是固定承诺。S04 合入后的新事实可以拆分、合并或重排未来 Stage，但必须保留变更记录，不能压缩真实复杂度。
 
@@ -183,11 +184,11 @@ S01 已按干净主干事实拆为 5 个 Milestone。Task 只存在于当前 `cu
 
 ## 11. 当前结论
 
-`PLATFORM-SCALE-S01` 至 `S04` 已完成并归档，`PLATFORM-SCALE-S05` 是唯一 Active Stage。S03 已交付可靠多 Worker，S04 已交付双 Gateway、双 collaboration、客户端事实校准和旧 Spring 知识协同退出；既有性能数据只证明对应 Stage 的功能与恢复门槛，不构成生产容量承诺。
+`PLATFORM-SCALE-S01` 至 `S04` 已完成并归档，`PLATFORM-SCALE-S05-M1` 已完成后暂停归档，当前没有 Active Stage。S03 已交付可靠多 Worker，S04 已交付双 Gateway、双 collaboration、客户端事实校准和旧 Spring 知识协同退出；既有性能数据和 M1 短时加载只证明底座与失败识别，不构成生产容量承诺。
 
 S04 的 5 个 Milestone、54 个 Task 已完成。M1-M4 交付通用 realtime envelope 与双 Gateway Redis fanout、IM/通知/项目/权限信号迁移、客户端 sequence/重连/REST 校准和 Spring 旧知识协同退出；M5 完成 migration、双 Gateway、Redis、资源边界和双 collaboration/PostgreSQL 故障矩阵及最终 `route-final`。
 
-S05 当前路线把固定环境与种子、HTTP/Worker/Gateway/协同混合负载、60 分钟目标负载、8 小时 soak、具名故障恢复、发布/扩缩/回退手册、历史边界例外复核和专项 Go/No-Go 分开验收。`PROJECT-PLATFORM` 继续 Paused；只有 S05 发布可解释的容量边界并完成最终评审后，才基于当时事实决定是否恢复 `PROJECT-PLATFORM-S05`。
+S05 的暂停归档保留 M2-M5 的目标容量、60 分钟目标负载、8 小时 soak、具名故障恢复、发布/扩缩/回退手册、历史边界例外复核和专项 Go/No-Go 承诺。恢复前必须重新冻结当时代码、镜像、负载模型、C1/SLO 和隔离环境。`PROJECT-PLATFORM-S05` 已作为唯一活动业务 Stage 恢复，但不得把平台专项未完成事项描述为已通过。
 
 ## 12. 变更记录
 
@@ -202,3 +203,4 @@ S05 当前路线把固定环境与种子、HTTP/Worker/Gateway/协同混合负�
 | 7 | 2026-07-24 | 归档 S03 完成路线并激活 S04 通用实时事件网关与知识协同收口 | S03 route-final、双 Worker 故障恢复和可靠 signal 合同已通过；单 Gateway、本地 session、客户端校准缺口和旧 Spring 协同链路成为下一阻断风险 | S04 成为唯一活动 Stage；路线包含 5 个 Milestone、54 个 Task，S05 保持 Planned，PROJECT-PLATFORM 继续暂停 |
 | 8 | 2026-07-24 | 完成 S04 多节点实时与知识协同实现、真实故障矩阵、统一运行手册和 route-final，输出 S05/PROJECT Go/No-Go | 应用层双 Gateway/双 collaboration 已可替换和恢复，但当前数据只证明功能门槛；PostgreSQL、Redis、MinIO 仍是单点，尚无生产容量和长稳承诺 | S04 Completed 等待归档；归档后建议激活 PLATFORM-SCALE-S05；PROJECT-PLATFORM 继续暂停 |
 | 9 | 2026-07-25 | 归档 S04 完成路线并激活 S05 容量、故障、恢复和运维收口 | S04 route-final 与多节点故障证据已通过；下一步必须在固定环境发布可重复容量与长稳边界，不能继续用功能测试数据代替容量承诺 | S05 成为唯一 Active Stage；当前路线包含 5 个 Milestone、59 个 Task；PROJECT-PLATFORM 继续暂停至 S05 Go/No-Go |
+| 10 | 2026-07-25 | S05-M1 完成固定环境、确定性种子、四类加载器和证据合同后暂停专项；M2-M5 保持 Deferred，并恢复 PROJECT-PLATFORM-S05 | 本地资源和持续变化的核心业务/接口/数据模型不足以形成可信目标容量与长稳结论；继续压测会制造过期承诺，而 S01-S04 平台底座已足以约束业务迭代 | PLATFORM-SCALE current_stage 置 none；暂停路线归档；PROJECT-PLATFORM-S05 成为唯一活动路线；容量、长稳、故障和最终 Go/No-Go 未完成 |

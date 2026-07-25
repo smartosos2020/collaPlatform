@@ -1,5 +1,8 @@
 #!/usr/bin/env node
+import { resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { parseCliArgs, optionBoolean, optionString } from './lib/args.js'
+import { commandHelp } from './help.js'
 import { repositoryRoot } from './lib/paths.js'
 import { auditSnapshot } from './audit/snapshot.js'
 import { assertArchitectureExpectations, generateArchitectureInventory } from './architecture/inventory.js'
@@ -37,9 +40,13 @@ function optionNumber(options: ReturnType<typeof parseCliArgs>['options'], name:
   const value = Number(optionString(options, name, String(fallback))); if (!Number.isFinite(value)) throw new Error(`--${name} must be numeric`); return value
 }
 
-async function main(): Promise<void> {
-  const { positionals, options } = parseCliArgs(process.argv.slice(2))
+export async function runCli(argv = process.argv.slice(2)): Promise<void> {
+  const { positionals, options } = parseCliArgs(argv)
   const command = positionals.join(' ')
+  if (optionBoolean(options, 'help')) {
+    console.log(commandHelp(command))
+    return
+  }
   if (command === 'audit snapshot') {
     const profile = optionString(options, 'profile', 'full') as 'light' | 'full'
     console.log(`Audit snapshot: ${auditSnapshot(repositoryRoot, optionString(options, 'label', 'manual'), profile)}`)
@@ -182,7 +189,9 @@ async function main(): Promise<void> {
   throw new Error(`Unknown workbench command: ${command || '(none)'}`)
 }
 
-main().catch((error: unknown) => {
-  console.error(error instanceof Error ? error.message : String(error))
-  process.exitCode = 1
-})
+if (resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url)) {
+  runCli().catch((error: unknown) => {
+    console.error(error instanceof Error ? error.message : String(error))
+    process.exitCode = 1
+  })
+}

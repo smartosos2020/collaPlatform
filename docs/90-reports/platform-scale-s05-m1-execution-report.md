@@ -11,13 +11,13 @@ PLATFORM-SCALE-S05-M1-T01 到 PLATFORM-SCALE-S05-M1-T12
 | PLATFORM-SCALE-S05-M1-T03 | integration | not-required | not-required | No | 在具名宿主机执行 preflight，生成 CPU、内存、磁盘、Docker、时钟、依赖和提交 manifest，漂移会被拒绝 |
 | PLATFORM-SCALE-S05-M1-T04 | integration | not-required | not-required | No | 容量 Compose 配置解析、资源公式和连接预算通过合同验证，非法预算在启动前失败 |
 | PLATFORM-SCALE-S05-M1-T05 | static | not-required | not-required | No | 版本化 seed schema 覆盖成员、权限、项目、知识、通知、IM、文件和协同分布并固定校验和 |
-| PLATFORM-SCALE-S05-M1-T06 | integration | not-required | not-required | No | 对真实 disposable stack 连续完成两次干净 seed apply/verify/reapply/cleanup，标识与校验和一致且只清理具名夹具 |
-| PLATFORM-SCALE-S05-M1-T07 | integration | not-required | not-required | No | 容器化 HTTP loader 对真实登录、查询、命令、幂等和 MinIO 上传执行语义与权限断言 |
-| PLATFORM-SCALE-S05-M1-T08 | integration | not-required | not-required | No | 普通 WebSocket loader 建立真实连接并验证 fanout、sequence、duplicate、gap、重连和 REST ledger 收敛 |
-| PLATFORM-SCALE-S05-M1-T09 | integration | not-required | not-required | No | Hocuspocus/Yjs loader 以多房间多客户端跨两个 collaboration 节点编辑、断线重连并 durable reload |
-| PLATFORM-SCALE-S05-M1-T10 | integration | not-required | not-required | No | Worker loader 通过具名 capacity probe 生成持续与突发事件并核对 backlog、接管、顺序、重复副作用和 dead letter |
-| PLATFORM-SCALE-S05-M1-T11 | integration | not-required | not-required | No | 统一场景同时运行四类 loader，保留 manifest、阈值、原始时序、摘要、校验和与中止原因 |
-| PLATFORM-SCALE-S05-M1-T12 | integration | not-required | not-required | No | 从干净环境复验 seed 隔离、loader 失败识别、安全扫描、证据校验、checkpoint 和 M1 收口 |
+| PLATFORM-SCALE-S05-M1-T06 | system-real-isolated | not-required | isolated | No | 对真实 disposable stack 连续完成两次干净 seed apply/verify/reapply/cleanup，标识与校验和一致且只清理具名夹具 |
+| PLATFORM-SCALE-S05-M1-T07 | system-real-isolated | not-required | isolated | No | 容器化 HTTP loader 对真实登录、查询、命令、幂等和 MinIO 上传执行语义与权限断言 |
+| PLATFORM-SCALE-S05-M1-T08 | system-real-isolated | not-required | isolated | No | 普通 WebSocket loader 建立真实连接并验证 fanout、sequence、duplicate、gap、重连和 REST ledger 收敛 |
+| PLATFORM-SCALE-S05-M1-T09 | system-real-isolated | not-required | isolated | No | Hocuspocus/Yjs loader 以多房间多客户端跨两个 collaboration 节点编辑、断线重连并 durable reload |
+| PLATFORM-SCALE-S05-M1-T10 | system-real-isolated | not-required | isolated | No | Worker loader 通过具名 capacity probe 生成持续与突发事件并核对 backlog、接管、顺序、重复副作用和 dead letter |
+| PLATFORM-SCALE-S05-M1-T11 | system-real-isolated | not-required | isolated | No | 统一场景同时运行四类 loader，保留 manifest、阈值、原始时序、摘要、校验和与中止原因 |
+| PLATFORM-SCALE-S05-M1-T12 | system-real-isolated | not-required | isolated | No | 从干净环境复验 seed 隔离、loader 失败识别、安全扫描、证据校验、checkpoint 和 M1 收口 |
 
 ## Completed Items
 - Completed T01-T12 against isolated Compose project `colla-s05-capacity`.

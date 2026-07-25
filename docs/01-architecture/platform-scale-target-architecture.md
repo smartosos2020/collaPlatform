@@ -2,7 +2,7 @@
 title: 模块化单体与独立运行组件目标架构
 status: target
 program: PLATFORM-SCALE
-program_revision: 9
+program_revision: 10
 updated_at: 2026-07-25
 source_baseline: docs/90-reports/platform-scale-readiness-baseline-2026-07-24.md
 ---
@@ -11,7 +11,7 @@ source_baseline: docs/90-reports/platform-scale-readiness-baseline-2026-07-24.md
 
 ## 1. 文档定位
 
-本文是已激活的 `PLATFORM-SCALE` 正式目标架构，约束已完成的 S01-S04 和当前执行的 S05。它描述目标和演进边界，不代表尚未完成的容量能力已经实现；当前事实仍以 `docs/01-architecture/current-architecture.md` 为准。
+本文是已暂停的 `PLATFORM-SCALE` 正式目标架构，约束已完成的 S01-S04、已完成的 S05-M1 底座和仍 Deferred 的 S05-M2 至 M5。它描述目标和演进边界，不代表尚未完成的容量能力已经实现；当前事实仍以 `docs/01-architecture/current-architecture.md` 为准。
 
 源基线已在干净主干 `134c370` 复验：当前为 15 个后端模块、233 个 Java 文件、204 条跨模块 import、47 条 foreign infrastructure import、58 个依赖方向，11 个核心模块仍处于同一强连通分量。S04 相对 `ee8fb68` 新增 18 个 Java 文件、10 条跨模块 import 和 6 条 foreign infrastructure import，但没有新增依赖方向；前端仍为 16 个 feature、64 条跨 feature import 和 `knowledgeBases <-> search` 循环。
 
@@ -571,7 +571,13 @@ S05 在 S04 完成路线归档后按 Go 决策激活。revision 9 保留 S01-S04
 11. 93 条历史跨 owner 只读例外以当前扫描事实重新核对；已消失的例外删除，仍存在的逐项保留 owner、理由、精确路径/方向、风险和新的退出决定，禁止整批自动续期。
 12. S05 最终只发布对冻结环境有效的容量包络和运维承诺，同时列出剩余单点、未覆盖工作负载和置信度。专项 Go/No-Go 再决定恢复 PROJECT-PLATFORM、增加新的平台 Stage 或停止扩容承诺。
 
-## 21. 修订记录
+## 21. S05-M1 完成后的暂停点
+
+S05-M1 已交付固定环境清单、确定性数据种子、HTTP/普通 WebSocket/Hocuspocus-Yjs/Worker 加载器、统一场景和不可变证据合同。该结果证明容量验证平台可重复运行和识别失败，不证明候选 C1、60 分钟目标负载、8 小时 soak、综合故障恢复、发布扩缩容或基础设施 HA。
+
+S05-M2 至 M5 暂停，恢复前必须重新冻结当时代码、镜像、核心接口、数据模型、代表性负载、C1/SLO、RTO/RPO、宿主资源和隔离环境。暂停期间 `PROJECT-PLATFORM-S05` 可以在既有模块边界、table owner、双 API/Worker/Gateway/collaboration 合同下恢复，但不得扩大 foreign write、project/shared P0 或把未完成容量事项写成已承诺能力。
+
+## 22. 修订记录
 
 | Revision | 日期 | 变更 | 依据 |
 | --- | --- | --- | --- |
@@ -584,3 +590,4 @@ S05 在 S04 完成路线归档后按 Go 决策激活。revision 9 保留 S01-S04
 | 7 | 2026-07-24 | 归档 S03 并激活 S04，冻结 realtime envelope、Redis fanout、双 Gateway、客户端重连校准和旧 Spring 知识协同退出合同 | S03 已提供可靠 signal 生产与多 Worker 基线；当前单 Gateway、本地 session 和双知识协议仍阻断应用层水平扩展 |
 | 8 | 2026-07-24 | 记录 S04 双 Gateway、双 collaboration、客户端校准、旧协议退出和故障恢复事实，冻结 S05 准入边界 | S04 多节点证据证明应用层功能和恢复，但 PostgreSQL/Redis/MinIO 仍是单点，尚无固定容量与长稳承诺 |
 | 9 | 2026-07-25 | 归档 S04 并激活 S05，冻结容量环境、负载器、混合场景、长稳、故障、运维、例外复核和容量承诺边界 | S04 功能与恢复门槛已经通过；S05 必须用固定输入和 fresh 长稳证据建立实际容量包络，并明确单点与非承诺范围 |
+| 10 | 2026-07-25 | 记录 S05-M1 容量验证底座完成并暂停 M2-M5，允许 PROJECT-PLATFORM-S05 在平台门禁下恢复 | 业务和负载模型仍在演进，本地环境不适合发布真实目标容量与长稳承诺；保留 Deferred 合同比制造短期数字更可靠 |

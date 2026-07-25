@@ -1,184 +1,157 @@
 ---
-title: PLATFORM-SCALE-S05 容量、故障、恢复和运维收口当前执行路线
+title: PROJECT-PLATFORM-S05 表单、详情页布局和字段访问当前执行路线
 status: active
-route: PLATFORM-SCALE-S05
-program: PLATFORM-SCALE
-program_doc: docs/00-product/initiatives/platform-scale-program.md
-program_revision: 9
-stage: PLATFORM-SCALE-S05
-stage_final_milestone: PLATFORM-SCALE-S05-M5
+route: PROJECT-PLATFORM-S05
+program: PROJECT-PLATFORM
+program_doc: docs/00-product/initiatives/project-platform-program.md
+program_revision: 17
+stage: PROJECT-PLATFORM-S05
+stage_final_milestone: PROJECT-PLATFORM-S05-M5
 last_code_check: 2026-07-25
 source_rule: 本文件是唯一执行路线入口；长期专项只提供 Stage 索引，不直接执行。
 ---
 
-# PLATFORM-SCALE-S05 容量、故障、恢复和运维收口
+# PROJECT-PLATFORM-S05 表单、详情页布局和字段访问
 
 ## 1. Stage 目标
 
-在 S01-S04 已完成模块边界门禁、双 API、可靠多 Worker、双 Event Gateway、双 collaboration 和客户端事实校准的基础上，为当前单企业部署形态建立可重复、可解释且不夸大的容量与运维承诺。
+在 S03 工作项类型定义和 S04 动态字段目录基础上，交付新建表单与详情页的独立布局图、稳定布局节点、条件显示、字段访问策略、空间配置编辑器和可复用渲染器。所有配置继续属于待发布配置图，复用 S04 的字段定义、永久 key、规范 hash、aggregate version、幂等、审计、复合隔离和最小披露合同。
 
-S05 分阶段交付固定容量环境、确定性数据种子、锁定版本的 HTTP/WebSocket/Yjs/Worker 负载器、单域和混合目标负载、60 分钟目标负载、8 小时低强度 soak、具名节点与依赖故障恢复、发布/扩缩/回退/诊断手册、历史边界例外到期复核，以及专项最终 Go/No-Go。容量结论只对明确记录的硬件、容器、数据和拓扑有效；S05 不把 PostgreSQL、Redis 或 MinIO 单点描述为高可用，也不以调整门槛掩盖未达到的候选目标。当前只完成 M1 容量验证底座；M2-M5 在核心功能、接口、数据模型和负载模型稳定前暂停。
+S05 不创建规范 WorkItem 实例、字段值或 legacy 迁移，不修改已发布 v1，不切换 current version，也不实现 S06 的 draft/publish/diff/rollback/template 流水线。管理员预览和用户侧只读样本只能使用合成上下文，不得冒充正式工作项运行闭环。
 
-## 2. 固定输入与当前缺口
+## 2. 固定输入与当前事实
 
-- 上一 Stage：`PLATFORM-SCALE-S04` 已完成并归档为 `docs/99-archive/superseded-roadmaps/platform-scale-s04-roadmap-completed-2026-07-25.md`。
-- 活动专项：`docs/00-product/initiatives/platform-scale-program.md` revision 9。
-- 目标架构：`docs/01-architecture/platform-scale-target-architecture.md` revision 9，重点执行容量验收草案、S05 激活合同、观测与运维边界。
-- 运行基线：同一 Server artifact 已支持独立 `api`、`worker`、`event-gateway`、`maintenance` 角色；生产模板已有双 API、双 Worker、双 Gateway 和双 collaboration。
-- 事实边界：PostgreSQL 是业务、outbox、delivery、realtime signal 与知识 durable state 的事实源；Redis 是跨节点瞬时 fanout，MinIO 是文件对象存储。
-- 当前证据边界：S02-S04 的性能数字只证明对应功能和恢复门槛，尚未绑定固定硬件、完整混合负载、60 分钟目标持续负载或 8 小时 soak。
-- 候选 C1：2,000 注册成员、500 在线成员、150 HTTP RPS、1,000 普通 WS、100 协同客户端、25 协同房间、30 events/s 持续与 150 events/s 五分钟突发；M1 必须复核后才能冻结为目标。
-- 数据候选：1,000,000 工作项、100,000 知识节点、1,000,000 知识块；必须通过可重复 manifest 和清理合同建立，不能依赖手工脏数据。
-- 候选服务门槛：HTTP read P95 300 ms、write P95 500 ms、非预期 5xx 低于 0.5%、fanout/协同 P95 1 s、重连校准 10 s、outbox oldest age P95 5 s；未达到时发布实际边界和瓶颈。
-- 基础设施边界：PostgreSQL、Redis、MinIO 当前仍是单点故障域；S05 验证中断与恢复，不把集群 HA 作为已实现能力。
-- 边界基线：project/shared P0 与 foreign write 保持 0；历史批准的跨 owner read 以当前扫描重新核对，禁止整批自动续期。
-- 决策边界：S05 最终决定恢复 `PROJECT-PLATFORM-S05`、新增平台修复 Stage 或停止扩容承诺；当前路线不提前实现项目布局能力。
+- 上一业务 Stage：`PROJECT-PLATFORM-S04` 已完成并归档，交付 V064/V065 字段定义与选项、字段类型注册、结构化规则、复杂引用、空间配置 UI 和 120 字段/2400 选项目录预算。
+- 平台底座：`PLATFORM-SCALE-S01-S04` 已交付模块边界、table owner、独立 API/Worker/Gateway、可靠事件消费、双 Gateway/双 collaboration 和客户端事实校准；`PLATFORM-SCALE-S05-M1` 已完成容量验证工具后暂停。
+- 当前 schema：项目空间、成员、类型定义、不可变首发骨架版本、字段定义、字段选项和命令回执已存在；布局、布局节点和字段访问策略表尚不存在。
+- 当前前端：空间配置页已有类型和字段配置入口；尚无布局编辑器、访问策略编辑器或共享表单渲染器。
+- 目标架构：执行 `docs/01-architecture/project-platform-target-architecture.md` 第 21、22 节；布局只引用 `fieldId + fieldKey`，不复制字段事实。
+- 边界基线：project/shared P0、foreign write 和新增未批准跨 owner 访问保持 0；S05 不能恢复其他模块私有 infrastructure 依赖。
+- 容量边界：本 Stage 只验证配置目录、渲染和策略求值预算，不发布生产容量、60 分钟/8 小时长稳或基础设施 HA 结论。
 
 ## 3. 执行规则
 
 1. 每轮只推进一个 Milestone；每个 Task 必须有唯一 Verification Contract、Acceptance Evidence 和执行报告行。
-2. 所有容量证据绑定提交、镜像、依赖版本、宿主机、容器限制、服务副本、运行参数、数据 manifest 和脚本校验和。
-3. 候选 C1 不是预设通过结论。M1 可以基于资源和安全边界冻结目标、分级目标或明确降级，但不能在测试失败后静默改门槛。
-4. 数据种子必须确定、幂等、跨 workspace 隔离、可清理且有规模/分布/校验和；禁止把共享开发库或人工数据作为正式容量输入。
-5. 单域负载用于定位瓶颈，容量承诺必须来自 HTTP、Worker、普通 WS 和知识协同同时运行的混合场景。
-6. 报告必须同时记录延迟分位数、错误率、吞吐、队列、backlog/oldest age、dead letter、连接/收敛、CPU、内存、GC、线程、连接池和依赖资源；平均值不能替代尾延迟。
-7. 60 分钟目标负载和 8 小时 soak 必须保留完整时间序列、资源斜率、错误样本及前后数据一致性；进程存活不等于通过。
-8. 故障注入必须具名、可重复并记录开始/恢复时间。恢复结论同时检查 RTO、事实缺口、重复副作用、授权隔离和资源泄漏。
-9. PostgreSQL、Redis、MinIO 单点必须进入非承诺清单和恢复手册；不得用应用双节点证据推导基础设施高可用。
-10. 发布、扩缩、降容和回退使用不可变 artifact、兼容 schema、连接预算和 draining；不得依赖手工改表、数据库回滚或恢复旧 Spring 协同。
-11. M1-M4 使用影响范围验证；M5 执行完整后端、迁移、前端、collaboration、工作台、安全、容量证据完整性和 `route-final`。
+2. 布局图分 `create` 与 `detail` 两类，节点使用永久 ID 和稳定 key；重排、改名或移动不得改变节点身份。
+3. field control 只保存同 workspace/space/type 的 `fieldId + fieldKey`；字段名称、类型、选项和规则始终从 S04 字段目录读取。
+4. section、tab、column、field、summary 是 S05 可执行控件；relation 控件只冻结可扩展 schema，不提前实现 S10 关系运行能力。
+5. 条件显示只控制渲染；`read/write/required/hidden` 必须由服务端策略求值，客户端隐藏不能授予权限。
+6. 所有写命令必须具备复合隔离、aggregate version、request id、规范 request hash、幂等回放、审计/outbox 和并发冲突。
+7. 缺失、停用、retired、跨类型或 key 不一致字段必须产生可操作诊断，禁止静默删除、自动重绑或泄露不可见字段。
+8. 预览上下文必须显式标记 synthetic，不写业务表、不创建平台对象、不触发正式通知/搜索/实时副作用。
+9. M1-M4 使用影响范围验证；M5 执行后端、V001 至最新迁移、前端、collaboration、工作台、安全、真实隔离浏览器和 `route-final`。
 
 ## 4. Milestone 总览
 
 | Milestone | 目标 | 依赖 | 执行报告 | 状态 |
 | --- | --- | --- | --- | --- |
-| PLATFORM-SCALE-S05-M1 | 固定容量环境、数据种子、负载器与证据合同 | S04 归档与 revision 9 | `docs/90-reports/platform-scale-s05-m1-execution-report.md` | Completed |
-| PLATFORM-SCALE-S05-M2 | HTTP、Worker、普通 WS 与知识协同目标负载 | M1；需满足恢复前置条件 | 恢复执行时创建 | Deferred |
-| PLATFORM-SCALE-S05-M3 | 60 分钟目标负载、8 小时 soak 与故障恢复 | M1-M2；需满足恢复前置条件 | 恢复执行时创建 | Deferred |
-| PLATFORM-SCALE-S05-M4 | 发布、扩缩、降容、回退与诊断运行闭环 | M1-M3；需满足恢复前置条件 | 恢复执行时创建 | Deferred |
-| PLATFORM-SCALE-S05-M5 | 容量基线、边界例外复核与专项 Go/No-Go | M1-M4；需满足恢复前置条件 | 恢复执行时创建 | Deferred |
-
-`Deferred` 不是完成态。M2-M5 在恢复决定生效前不得启动工作循环，也不得生成伪执行报告或以 M1 短时场景替代目标容量、长稳、故障恢复和最终 Go/No-Go 证据。
+| PROJECT-PLATFORM-S05-M1 | 布局与字段访问配置持久化、领域和 API 合同 | S04 归档；Program revision 17 | `docs/90-reports/project-platform-s05-m1-execution-report.md` | Pending |
+| PROJECT-PLATFORM-S05-M2 | 布局图编辑、条件显示和共享渲染器 | M1 | `docs/90-reports/project-platform-s05-m2-execution-report.md` | Pending |
+| PROJECT-PLATFORM-S05-M3 | 服务端字段访问策略与最小披露 | M1-M2 | `docs/90-reports/project-platform-s05-m3-execution-report.md` | Pending |
+| PROJECT-PLATFORM-S05-M4 | 配置预览、用户形态、可访问性与规模收口 | M1-M3 | `docs/90-reports/project-platform-s05-m4-execution-report.md` | Pending |
+| PROJECT-PLATFORM-S05-M5 | Stage 评审、route-final 与 S06 准入 | M1-M4 | `docs/90-reports/project-platform-s05-m5-execution-report.md` | Pending |
 
 ## 5. 详细任务
 
-### PLATFORM-SCALE-S05-M1 固定容量环境、数据种子、负载器与证据合同
+### PROJECT-PLATFORM-S05-M1 布局与字段访问配置持久化、领域和 API 合同
 
 | 任务 | 内容 | 验收标准 | 状态 |
 | --- | --- | --- | --- |
-| PLATFORM-SCALE-S05-M1-T01 | 复核当前 Compose、镜像、运行角色、资源限制、连接预算、指标、种子和压测入口 | 每个服务、副本、端口、依赖、资源、连接、观测入口、现有脚本与容量缺口均可定位 | Done |
-| PLATFORM-SCALE-S05-M1-T02 | 冻结容量等级、C1 目标、服务指标、非目标和结论用语 | 候选值逐项确认或有依据调整；通过、未通过、部分通过和不可承诺语义唯一 | Done |
-| PLATFORM-SCALE-S05-M1-T03 | 冻结宿主机、OS、Docker、CPU/内存/磁盘/网络、时钟和依赖版本清单 | 一条 preflight 命令生成机器可读 manifest；关键输入漂移会阻止结果并入同一基线 | Done |
-| PLATFORM-SCALE-S05-M1-T04 | 冻结 API/Worker/Gateway/collaboration 副本、容器限制、JVM/Node 参数和连接预算 | 拓扑与资源公式可重复；总 PostgreSQL/Redis/MinIO 连接不越预算；非法配置启动前失败 | Done |
-| PLATFORM-SCALE-S05-M1-T05 | 设计成员、权限、项目、知识、通知、IM、文件和协同的确定性数据分布 | 规模、倾斜、关系、workspace 数、热点/冷点、正文大小和权限组合有版本化 schema | Done |
-| PLATFORM-SCALE-S05-M1-T06 | 实现幂等数据种子、校验、续跑和清理工具 | 相同 seed 产生相同标识与校验和；失败可续跑；只清理具名夹具；跨 workspace 无污染 | Done |
-| PLATFORM-SCALE-S05-M1-T07 | 建立固定版本、容器化的 HTTP read/write 负载器 | 登录、查询、命令、幂等和上传场景参数化；响应语义与权限同时校验，不只统计状态码 | Done |
-| PLATFORM-SCALE-S05-M1-T08 | 建立普通 WebSocket 连接、fanout、重连和校准负载器 | 可控制连接/用户/节点/消息率；验证 sequence、重复、gap 和 REST 收敛并输出分位数 | Done |
-| PLATFORM-SCALE-S05-M1-T09 | 建立 Hocuspocus/Yjs 多房间、多客户端和编辑分布负载器 | 真实协议客户端可跨两个节点编辑、断开、重连并校验最终文档状态和收敛延迟 | Done |
-| PLATFORM-SCALE-S05-M1-T10 | 建立 Worker 持续/突发生产、backlog、接管和结果校验负载器 | 可按 event/Handler/aggregate 生成具名负载；检测丢失、重复副作用、顺序和 dead letter | Done |
-| PLATFORM-SCALE-S05-M1-T11 | 建立统一场景清单、预热/持续/中止规则、指标采集和证据包格式 | 每次运行产生版本、manifest、阈值、原始时序、摘要和校验和；中止原因不会被记为通过 | Done |
-| PLATFORM-SCALE-S05-M1-T12 | 完成环境可重复性、种子隔离、负载器自检、安全和 M1 收口 | 两次干净初始化结果一致；负载器失败可被测试识别；目标门禁和 checkpoint 通过 | Done |
+| PROJECT-PLATFORM-S05-M1-T01 | 审计 S03/S04 类型、字段、命令回执、授权、API、UI、测试和 V001-V069 schema 事实 | 所有可复用合同、缺口、owner、跨模块依赖和禁止提前实现项可定位到代码、表与测试 | Pending |
+| PROJECT-PLATFORM-S05-M1-T02 | 冻结 create/detail 布局图、节点类型、永久标识、访问策略和诊断领域合同 | 节点身份、父子关系、顺序、字段引用、条件、策略优先级和错误语义无歧义并同步目标架构 | Pending |
+| PROJECT-PLATFORM-S05-M1-T03 | 设计并落地布局、布局节点、字段访问策略和命令回执 Flyway schema | 表由 project owner 唯一拥有；复合 workspace/space/type 外键、唯一键、检查约束、索引和不可变身份完整 | Pending |
+| PROJECT-PLATFORM-S05-M1-T04 | 实现布局图、节点、条件、字段访问策略和诊断领域模型 | 模型不复制字段权威事实；create/detail 独立；未知节点/条件/策略版本明确拒绝 | Pending |
+| PROJECT-PLATFORM-S05-M1-T05 | 实现 Repository 与规范查询、保存、重排和状态读取 | 图读取顺序稳定且无 N+1；所有读写带 workspace/space/type 边界；不存在跨 owner 私表访问 | Pending |
+| PROJECT-PLATFORM-S05-M1-T06 | 实现布局图规范序列化、hash、结构校验和限制预算 | 相同语义产生相同 hash；循环、孤儿、重复 key、非法深度/列数/节点数和不兼容控件自动拒绝 | Pending |
+| PROJECT-PLATFORM-S05-M1-T07 | 实现 fieldId + fieldKey 同域引用校验与失效诊断 | 跨 workspace/space/type、key 不一致、disabled/retired/缺失字段均拒绝或返回明确诊断，绝不静默重绑 | Pending |
+| PROJECT-PLATFORM-S05-M1-T08 | 实现布局配置动作策略与空间角色授权 | owner/admin 可配置，member/guest/non-member/enterprise admin 按合同最小披露；最后 owner 与空间状态约束不回归 | Pending |
+| PROJECT-PLATFORM-S05-M1-T09 | 实现 aggregate version、request id、幂等回放、并发冲突、审计和 outbox | 同请求同结果、异载荷冲突、旧版本拒绝；审计不泄露隐藏字段配置，事件 envelope 符合公共合同 | Pending |
+| PROJECT-PLATFORM-S05-M1-T10 | 实现空间配置布局/策略 DTO、Controller、异常映射和 availableActions | API 路径、入出参、错误码、最小披露和动作投影稳定；无权用户不能通过 ID 枚举配置 | Pending |
+| PROJECT-PLATFORM-S05-M1-T11 | 完成空库/升级迁移、Repository、服务、API、授权、并发和隔离验证及 M1 checkpoint | V001 至最新和 V065 升级均可重复；目标测试、架构边界、工作台与执行报告通过 | Pending |
 
-### PLATFORM-SCALE-S05-M2 HTTP、Worker、普通 WS 与知识协同目标负载
-
-| 任务 | 内容 | 验收标准 | 状态 |
-| --- | --- | --- | --- |
-| PLATFORM-SCALE-S05-M2-T01 | 执行空闲、预热和稳定基线并校准观测开销 | 空闲资源、启动时间、预热收敛和指标抓取成本明确；测试前无历史 backlog 或残留连接 | Deferred |
-| PLATFORM-SCALE-S05-M2-T02 | 执行混合 HTTP read 目标负载 | 150 RPS 候选下 read P50/P95/P99、错误、数据库与缓存指标完整；结果按端点和权限态可解释 | Deferred |
-| PLATFORM-SCALE-S05-M2-T03 | 执行 HTTP write、幂等命令和文件元数据/对象混合负载 | write P95、冲突、outbox/audit、重复请求和 MinIO 结果一致；无部分业务事实 | Deferred |
-| PLATFORM-SCALE-S05-M2-T04 | 执行 Worker 30 events/s 持续与 150 events/s 五分钟突发 | backlog、oldest age、吞吐、lease、retry、dead letter 和恢复时间达到冻结门槛或暴露实际拐点 | Deferred |
-| PLATFORM-SCALE-S05-M2-T05 | 执行 1,000 普通 WS 连接、定向/workspace fanout 和重连负载 | fanout P95、连接成功率、队列和校准完整；无跨租户、重复投递或无界慢连接 | Deferred |
-| PLATFORM-SCALE-S05-M2-T06 | 执行 100 协同客户端、至少 25 房间和跨节点编辑负载 | update 收敛 P95、持久化、room/connection/queue 指标完整；最终内容一致且无丢块 | Deferred |
-| PLATFORM-SCALE-S05-M2-T07 | 执行 HTTP、Worker、Gateway 和 collaboration 同时运行的 C1 混合负载 | 各域同时达到冻结流量；共享依赖竞争可见；单域通过不能掩盖混合场景失败 | Deferred |
-| PLATFORM-SCALE-S05-M2-T08 | 复验百万级工作项、知识节点/块规模下的分页、搜索、权限和索引路径 | 关键查询计划、尾延迟、索引命中和内存稳定；无全表回退、越权召回或无界响应 | Deferred |
-| PLATFORM-SCALE-S05-M2-T09 | 在目标负载下执行跨 workspace、停用成员、撤权和资源删除隔离校验 | 错误授权为零；缓存和实时提示最终按当前事实收敛；敏感标题/正文不进入负载日志 | Deferred |
-| PLATFORM-SCALE-S05-M2-T10 | 执行阶梯增压、饱和与安全降载，定位每个角色和共享依赖的拐点 | 饱和前后吞吐/尾延迟/错误/队列曲线完整；保护机制生效且不会级联耗尽依赖 | Deferred |
-| PLATFORM-SCALE-S05-M2-T11 | 只通过版本化配置完成有预算的调优和对照复验 | 每项调优有假设、前后指标和资源代价；不删除安全校验、不扩大未审连接预算、不覆盖失败原始证据 | Deferred |
-| PLATFORM-SCALE-S05-M2-T12 | 发布目标负载结果、实际容量包络、瓶颈和 M2 收口结论 | 原始证据可复算；候选目标逐项有 Pass/Fail/Bounded 结论；目标门禁和 checkpoint 通过 | Deferred |
-
-### PLATFORM-SCALE-S05-M3 60 分钟目标负载、8 小时 soak 与故障恢复
+### PROJECT-PLATFORM-S05-M2 布局图编辑、条件显示和共享渲染器
 
 | 任务 | 内容 | 验收标准 | 状态 |
 | --- | --- | --- | --- |
-| PLATFORM-SCALE-S05-M3-T01 | 冻结长稳场景、故障时间线、RTO/RPO、允许失败和数据一致性清单 | 每个故障的触发、持续、恢复、观测和阻断条件唯一；禁止临场改变成功口径 | Deferred |
-| PLATFORM-SCALE-S05-M3-T02 | 执行一轮 60 分钟目标混合负载 | 全时段阈值、资源斜率、错误样本、GC/线程/连接和前后事实校验完整，无隐藏重启或手工清障 | Deferred |
-| PLATFORM-SCALE-S05-M3-T03 | 执行一轮 8 小时低强度 soak | 内存、连接、线程、room/session、队列、backlog 和存储增长有界；结束后数据与权限一致 | Deferred |
-| PLATFORM-SCALE-S05-M3-T04 | 在负载中分别执行 API 优雅退出、强制退出和恢复 | 新请求继续；只允许定义的在途失败；幂等结果、登录状态和上传事实无节点依赖 | Deferred |
-| PLATFORM-SCALE-S05-M3-T05 | 在 processing 与突发积压中执行 Worker 崩溃、lease 接管和恢复 | 旧 fencing 写入被拒绝；冻结 RTO 内接管；无丢失、双副作用或永久 processing | Deferred |
-| PLATFORM-SCALE-S05-M3-T06 | 在连接和 fanout 负载中执行 Gateway 节点退出、重连和恢复 | 客户端切换节点并校准；无永久未读/消息/项目/权限缺口；恢复后无重复订阅 | Deferred |
-| PLATFORM-SCALE-S05-M3-T07 | 中断并恢复 Redis，覆盖 Gateway 与 collaboration 跨节点路径 | durable 写入按合同继续或明确降级；恢复后订阅、awareness 和校准收敛，无伪造补发 | Deferred |
-| PLATFORM-SCALE-S05-M3-T08 | 在多房间编辑中执行 collaboration 节点退出、重建和 durable reload | 内容最终一致；awareness 允许短暂丢失；pending update、snapshot 和 room 资源恢复有界 | Deferred |
-| PLATFORM-SCALE-S05-M3-T09 | 中断并恢复 PostgreSQL，覆盖 API、Worker、Gateway 和 collaboration | readiness 正确降级；无部分提交；有界宽限/队列不越预算；恢复后 durable facts 一致 | Deferred |
-| PLATFORM-SCALE-S05-M3-T10 | 中断并恢复 MinIO，覆盖上传、完成、下载和非文件业务 | 文件操作明确失败或续跑；无孤立已完成对象；非文件能力按合同继续且恢复后可校验 | Deferred |
-| PLATFORM-SCALE-S05-M3-T11 | 重复关键故障并汇总 RTO/RPO、方差、永久缺口、重复副作用和资源泄漏 | 至少三次关键恢复结果可比较；异常轮次不删除；实际置信度与剩余单点明确 | Deferred |
-| PLATFORM-SCALE-S05-M3-T12 | 完成长稳证据完整性、安全、数据清理和 M3 收口 | 原始时序、日志、manifest 与摘要校验和一致；夹具可清理；目标门禁和 checkpoint 通过 | Deferred |
+| PROJECT-PLATFORM-S05-M2-T01 | 实现 create/detail 布局配置聚合读取与独立保存服务 | 两类图可分别创建、读取和更新，共享同一字段目录但互不覆盖；响应包含 hash、版本和诊断 | Pending |
+| PROJECT-PLATFORM-S05-M2-T02 | 实现 section、tab、column、field 和 summary 节点命令 | 每类节点的父级、子级、数量、配置和可移动范围受 schema 校验；永久 ID/key 在编辑中不变 | Pending |
+| PROJECT-PLATFORM-S05-M2-T03 | 实现节点新增、复制、移动、重排、配置更新和删除的原子图命令 | 任一失败不产生半图；删除含引用节点需显式确认；并发冲突返回最新版本而非覆盖 | Pending |
+| PROJECT-PLATFORM-S05-M2-T04 | 冻结并实现版本化条件显示 DSL 与安全求值器 | 支持明确的字段/上下文比较和 all/any/not 组合；无任意代码执行、隐式网络/数据库查询或类型猜测 | Pending |
+| PROJECT-PLATFORM-S05-M2-T05 | 实现条件引用闭包、循环/不可见依赖和失效字段诊断 | 条件只引用允许上下文与同类型字段；循环、隐藏依赖、退役字段和类型不兼容可定位到具体节点 | Pending |
+| PROJECT-PLATFORM-S05-M2-T06 | 建立前端布局/策略 API client、query keys、类型与错误映射 | 与后端 DTO 一致；缓存按 workspace/space/type/layoutKind 隔离；冲突和最小披露错误可区分 | Pending |
+| PROJECT-PLATFORM-S05-M2-T07 | 在空间配置入口增加“页面布局”导航、create/detail 分段和状态摘要 | 入口只对有配置权限角色显示；返回类型/字段列表保留选择；无权身份不出现伪可用按钮 | Pending |
+| PROJECT-PLATFORM-S05-M2-T08 | 实现紧凑的布局树/画布、控件面板和属性面板 | section/tab/column/field/summary 层级清楚，选中与拖放稳定，长名称和 1366px 桌面不挤压 | Pending |
+| PROJECT-PLATFORM-S05-M2-T09 | 实现节点添加、复制、移动、删除、键盘操作和并发冲突恢复 | UI 命令与原子后端命令一致；失败保留本地意图并可刷新重试，不以重载掩盖数据覆盖 | Pending |
+| PROJECT-PLATFORM-S05-M2-T10 | 实现条件编辑器、字段选择、类型化操作符和即时诊断 | 只展示合法字段/操作符；错误定位到条件分支；条件关闭不会修改服务端访问策略 | Pending |
+| PROJECT-PLATFORM-S05-M2-T11 | 建立共享表单渲染器和字段控件注册边界 | 渲染器消费布局 + 字段目录 + 访问投影，不复制类型逻辑；未知控件显示安全诊断而非崩溃 | Pending |
+| PROJECT-PLATFORM-S05-M2-T12 | 完成图命令、条件 DSL、编辑器、渲染器和 create/detail 隔离验证及 M2 checkpoint | 单元/集成、前端 lint/build 和真实隔离管理员配置浏览器流程通过；执行报告无阻断 Gap | Pending |
 
-### PLATFORM-SCALE-S05-M4 发布、扩缩、降容、回退与诊断运行闭环
-
-| 任务 | 内容 | 验收标准 | 状态 |
-| --- | --- | --- | --- |
-| PLATFORM-SCALE-S05-M4-T01 | 复核现有发布、备份恢复、Worker、Gateway、collaboration 和故障 runbook | 所有命令、权限、前置条件、危险操作、过期内容和手工私表步骤可定位 | Deferred |
-| PLATFORM-SCALE-S05-M4-T02 | 冻结不可变 artifact、镜像摘要、配置/密钥、schema 和版本兼容矩阵 | 每个角色使用同一受审版本；配置漂移可检测；密钥不进入镜像、日志或证据包 | Deferred |
-| PLATFORM-SCALE-S05-M4-T03 | 建立发布 preflight、Maintenance migration、兼容检查和中止合同 | 依赖/容量/备份/schema 不满足时在流量切换前失败；API/Worker/Gateway 不并发执行 Flyway | Deferred |
-| PLATFORM-SCALE-S05-M4-T04 | 实现并演练 Web、API、Worker、Gateway、collaboration 与 Nginx 滚动发布顺序 | 逐角色 readiness/draining 生效；用户事实连续；失败步骤有明确停止点和回退入口 | Deferred |
-| PLATFORM-SCALE-S05-M4-T05 | 实现并演练 API/Worker/Gateway/collaboration 扩容 | 扩容前连接与资源预算通过；新节点完成就绪再接流量；容量变化与指标可验证 | Deferred |
-| PLATFORM-SCALE-S05-M4-T06 | 实现并演练各角色降容、draining 和单节点回退 | 停止 claim/接流量/接连接顺序正确；无未归属 delivery、僵尸 session 或未持久化 update | Deferred |
-| PLATFORM-SCALE-S05-M4-T07 | 实现并演练应用版本回退与前后向兼容 | 不回滚已应用 schema；旧版本只在兼容窗口内恢复；不恢复旧 Spring 知识协议或本地事实 | Deferred |
-| PLATFORM-SCALE-S05-M4-T08 | 复验备份、独立恢复、对象一致性和恢复后的容量前置条件 | PostgreSQL/MinIO/配置恢复点一致；恢复环境通过完整性检查后才允许重新承载目标流量 | Deferred |
-| PLATFORM-SCALE-S05-M4-T09 | 将容量结果转化为 dashboard、告警、降级和升级阈值 | 告警绑定实际基线与持续窗口；覆盖尾延迟、错误、资源、backlog、连接、收敛和依赖状态 | Deferred |
-| PLATFORM-SCALE-S05-M4-T10 | 建立按 correlation/instance/role 的诊断入口和安全操作者流程 | 无需读私表即可定位；危险命令要求确认、理由、权限和审计；证据不泄露租户数据 | Deferred |
-| PLATFORM-SCALE-S05-M4-T11 | 完成发布、扩缩、降容、回退、恢复与告警综合 rehearsal 和 M4 收口 | 新操作者可按文档完成具名场景；自动断言识别失败；目标门禁和 checkpoint 通过 | Deferred |
-
-### PLATFORM-SCALE-S05-M5 容量基线、边界例外复核与专项 Go/No-Go
+### PROJECT-PLATFORM-S05-M3 服务端字段访问策略与最小披露
 
 | 任务 | 内容 | 验收标准 | 状态 |
 | --- | --- | --- | --- |
-| PLATFORM-SCALE-S05-M5-T01 | 复核 M1-M4 的 47 项实现任务与 M5 的 12 项收口合同 | 路线共 59 项均有唯一可重复证据；无静默跳过、过期长稳结果或越界项目功能实现 | Deferred |
-| PLATFORM-SCALE-S05-M5-T02 | 复验提交、镜像、环境、资源、拓扑、种子和负载脚本 provenance | 所有发布结论能还原到不可变输入；漂移结果被隔离，不混入最终容量基线 | Deferred |
-| PLATFORM-SCALE-S05-M5-T03 | 执行最终短时混合置信复验并核对 M2/M3 原始长稳证据 | 关键指标与已发布区间一致；长稳时序和校验和完整；异常或方差扩大触发阻断评审 | Deferred |
-| PLATFORM-SCALE-S05-M5-T04 | 抽样重放节点/依赖故障、回退和独立恢复路径 | RTO/RPO、事实一致性、无重复副作用和操作者步骤与 M3/M4 结论一致 | Deferred |
-| PLATFORM-SCALE-S05-M5-T05 | 执行完整后端、V001 至最新迁移、前端、collaboration、工作台和安全回归 | 全部门禁使用 fresh 证据通过；失败、跳过、豁免或生成物污染形成阻断决定 | Deferred |
-| PLATFORM-SCALE-S05-M5-T06 | 发布带适用条件、分位数、置信度和实际拐点的容量基线 | 支持负载、环境、数据、SLO、资源、扩容公式和不支持场景清晰；不只给单一最大数字 | Deferred |
-| PLATFORM-SCALE-S05-M5-T07 | 发布 PostgreSQL、Redis、MinIO 单点及其他非承诺清单 | 每个单点有影响、检测、恢复、RPO/RTO 证据和升级入口；应用双节点不被表述为基础设施 HA | Deferred |
-| PLATFORM-SCALE-S05-M5-T08 | 重新生成跨模块/表 owner 边界清单并删除已失效例外 | 当前计数、精确路径/SQL、owner、方向和风险可重复；不存在的例外从 baseline 移除 | Deferred |
-| PLATFORM-SCALE-S05-M5-T09 | 对仍存在的跨 owner read 逐项修复或重新批准 | 每项有业务原因、精确范围、责任 owner、风险和新的退出决定；foreign write 和新增未批例外为 0 | Deferred |
-| PLATFORM-SCALE-S05-M5-T10 | 完成 PLATFORM-SCALE 专项和 PROJECT-PLATFORM 恢复 Go/No-Go | 明确恢复 PROJECT-PLATFORM-S05、增加平台修复 Stage 或暂停；依据、阻断和下一入口可执行 | Deferred |
-| PLATFORM-SCALE-S05-M5-T11 | 更新 Program、目标架构、当前架构、产品范围、专项索引和路线状态 | revision 与事实一致；S05 完成时 current_stage 暂置 none；不得在同一路线提前激活下一 Program/Stage | Deferred |
-| PLATFORM-SCALE-S05-M5-T12 | 完成 S05 报告、影响审计、证据归档和路线级 `route-final` | 59 项逐 Task 闭环；容量/长稳/故障/运维/边界证据 fresh 且可追溯；最终门禁通过 | Deferred |
+| PROJECT-PLATFORM-S05-M3-T01 | 冻结字段 `read/write/required/hidden` 策略语义、优先级和求值上下文 | deny/hidden 优先级、required 与 write 关系、默认策略、空间角色和合成状态上下文无冲突 | Pending |
+| PROJECT-PLATFORM-S05-M3-T02 | 实现版本化字段访问策略 schema、规范化和静态校验 | 策略只能引用允许角色、上下文和同类型字段；未知版本、空授权、冲突规则和越权默认值被拒绝 | Pending |
+| PROJECT-PLATFORM-S05-M3-T03 | 实现服务端访问策略求值器和可解释决策链 | 相同输入确定输出；每个结果可解释规则来源；hidden 不返回字段标题、配置、选项或条件值 | Pending |
+| PROJECT-PLATFORM-S05-M3-T04 | 将空间成员资格、空间角色、空间/类型/字段状态接入求值上下文 | owner/admin/member/guest/non-member/enterprise admin 六身份结果符合分层权限，企业管理员不自动获得内容访问 | Pending |
+| PROJECT-PLATFORM-S05-M3-T05 | 实现布局读取过滤与诊断脱敏 | 不可读字段节点从有效图移除或变为安全占位且结构仍合法；诊断不泄露隐藏字段身份 | Pending |
+| PROJECT-PLATFORM-S05-M3-T06 | 实现字段策略配置 API、availableActions 和伪造写入服务端拒绝 | 无权角色即使直接调用 API、篡改 fieldId/role/condition 或省略 UI 限制也被一致拒绝并审计 | Pending |
+| PROJECT-PLATFORM-S05-M3-T07 | 实现 synthetic preview context API 与严格非持久化边界 | 预览可切换合法角色/状态/字段样本；请求不写业务表、不创建实例、不触发正式 outbox/通知/搜索 | Pending |
+| PROJECT-PLATFORM-S05-M3-T08 | 实现前端字段访问策略编辑器和规则冲突提示 | 策略控件按权限启用；read/write/required/hidden 关系清楚；危险收窄需确认且不暴露不可见角色数据 | Pending |
+| PROJECT-PLATFORM-S05-M3-T09 | 将访问投影接入共享渲染器的隐藏、只读、可写和必填状态 | UI 只消费服务端决策，不自行扩权；禁用控件、必填标识、错误摘要和提交候选保持一致 | Pending |
+| PROJECT-PLATFORM-S05-M3-T10 | 覆盖六身份、空间状态、字段状态、条件组合、最小披露和直接 API 负向测试 | 权限矩阵正反例完整；跨 workspace/space/type、停用成员和企业管理员越权均为零泄露 | Pending |
+| PROJECT-PLATFORM-S05-M3-T11 | 完成策略性能、规范 hash、并发、幂等、安全扫描和 M3 checkpoint | 120 字段策略求值在冻结预算内且结果确定；目标后端、前端和真实隔离浏览器权限流程通过 | Pending |
 
-## 6. 暂停决定与恢复条件
+### PROJECT-PLATFORM-S05-M4 配置预览、用户形态、可访问性与规模收口
 
-### 6.1 当前决定
+| 任务 | 内容 | 验收标准 | 状态 |
+| --- | --- | --- | --- |
+| PROJECT-PLATFORM-S05-M4-T01 | 建立布局配置集合读模型，组合类型、字段、布局、策略、诊断和 availableActions | 一次读取可稳定驱动编辑与预览；数据来源、版本、hash 和 synthetic 标识清楚，无 N+1 | Pending |
+| PROJECT-PLATFORM-S05-M4-T02 | 完成管理员 create/detail 双模式预览和角色/状态上下文切换 | 预览与保存配置使用同一渲染器；上下文切换不写事实；当前角色、条件和字段状态可解释 | Pending |
+| PROJECT-PLATFORM-S05-M4-T03 | 建立用户侧只读布局样本入口与未来 S07 运行时组件边界 | 用户入口只展示有权类型和 synthetic preview，不提供伪创建/伪保存；组件 API 可由 S07 传入真实实例值 | Pending |
+| PROJECT-PLATFORM-S05-M4-T04 | 完成文本、富文本、数字、布尔、单/多选、人员、日期、区间、URL、附件、引用和 computed 控件映射 | 每种 S04 字段类型有明确编辑/只读/不支持状态；引用和附件不提前创建正式对象或上传事实 | Pending |
+| PROJECT-PLATFORM-S05-M4-T05 | 完成条件变化、隐藏字段清值策略和错误摘要的预览行为 | 条件切换结果确定；隐藏不等于删除；潜在清值需显式提示且预览不修改持久配置或样本 | Pending |
+| PROJECT-PLATFORM-S05-M4-T06 | 完成失效字段、非法布局、未知控件和过期版本的可操作诊断 UI | 管理员可定位并修复具体节点；普通用户只见最小安全提示；系统不自动删除或重绑 | Pending |
+| PROJECT-PLATFORM-S05-M4-T07 | 完成键盘导航、焦点管理、标签关联、错误朗读和对比度 | 编辑器和预览核心路径无需鼠标可操作；无焦点陷阱、无重复标签、状态变化可被辅助技术感知 | Pending |
+| PROJECT-PLATFORM-S05-M4-T08 | 完成 1366/1440 桌面和窄屏响应式、内部滚动与文本溢出 | 页面主体不横向崩坏；配置面板按最小宽度重排；滚动发生在内容块且高度足够时不显示无效滚动条 | Pending |
+| PROJECT-PLATFORM-S05-M4-T09 | 完成加载、空状态、保存中、冲突、离线/重试和错误恢复 | 状态不引发布局跳动或丢失选择；重复提交受幂等保护；冲突可比较最新版本后重新应用 | Pending |
+| PROJECT-PLATFORM-S05-M4-T10 | 执行 120 字段、2400 选项、深层分组和复杂条件的配置/渲染预算 | 列表、读取、编辑、策略求值和预览达到冻结预算；慢点有可复算数据，不冒充 S05 平台容量承诺 | Pending |
+| PROJECT-PLATFORM-S05-M4-T11 | 执行 owner/admin/member/guest/non-member/enterprise admin 真实隔离浏览器矩阵 | 配置、预览、只读样本、最小披露、停用/退役字段和直接 URL/API 负例均使用真实后端与隔离数据 | Pending |
+| PROJECT-PLATFORM-S05-M4-T12 | 完成前端 lint/build、目标后端、可访问性、响应式、证据闭包和 M4 checkpoint | 自动与真实浏览器证据 fresh 可追溯；无 mock 冒充真实闭环；执行报告无验收阻断项 | Pending |
 
-- `PLATFORM-SCALE-S05-M1` 已完成容量环境、确定性种子、HTTP/WebSocket/Yjs/Worker 负载器和不可变证据合同。
-- `PLATFORM-SCALE-S05-M2` 至 `PLATFORM-SCALE-S05-M5` 状态为 `Deferred`，不是 `Completed`，也不是可直接执行的 `Pending`。
-- 暂停原因是系统核心功能、接口、数据模型和真实负载模型仍在持续演进；当前本地 Docker 资源适合验证底座和失败识别，不适合发布真实目标容量、60 分钟/8 小时长稳、故障恢复或最终 Go/No-Go 承诺。
-- 暂停期间不执行 60 分钟目标负载、8 小时 soak、目标容量压测、故障恢复综合演练和最终 `route-final`。
+### PROJECT-PLATFORM-S05-M5 Stage 评审、route-final 与 S06 准入
 
-### 6.2 恢复前置条件
+| 任务 | 内容 | 验收标准 | 状态 |
+| --- | --- | --- | --- |
+| PROJECT-PLATFORM-S05-M5-T01 | 逐项复核 M1-M4 的 46 项实现任务、Verification Contract、Acceptance Evidence 和 Gap | 每项任务状态与代码、测试、浏览器、迁移和报告一致；无跳项、占位、Deferred 冒充 Done 或陈旧证据 | Pending |
+| PROJECT-PLATFORM-S05-M5-T02 | 复验 V001 至最新空库迁移、V065 升级、约束、索引和回滚边界 | 迁移可重复；layout/policy 表 owner 与复合隔离正确；legacy 表、published v1 和既有字段 hash 不被改写 | Pending |
+| PROJECT-PLATFORM-S05-M5-T03 | 复验永久节点身份、规范 hash、幂等、并发冲突、图原子性和失效引用 | 重排/复制/删除/冲突/重放/字段退役均有确定结果；无半图、静默重绑或历史身份复用 | Pending |
+| PROJECT-PLATFORM-S05-M5-T04 | 复验六身份字段访问、最小披露、synthetic preview 和伪造请求负例 | hidden/read/write/required 与服务端决策一致；企业管理员、非成员、跨空间请求和日志均零泄露 | Pending |
+| PROJECT-PLATFORM-S05-M5-T05 | 复验 create/detail 编辑、共享渲染、可访问性、响应式和 120 字段配置预算 | 管理员配置和用户只读样本闭环通过；性能结论限定配置范围，不描述真实 WorkItem 或平台容量 | Pending |
+| PROJECT-PLATFORM-S05-M5-T06 | 运行架构 inventory/boundaries/contracts 并核对 project/shared 与 table owner | project/shared P0、foreign write、新增未批准跨 owner read 和 shared reverse import 为 0；历史基线不扩散 | Pending |
+| PROJECT-PLATFORM-S05-M5-T07 | 执行完整后端测试、V001 至最新 Flyway、前端 lint/build、collaboration、工作台和安全门禁 | 全部使用 fresh 日志通过；失败、跳过、豁免、生成物污染或 mock 证据形成阻断决定 | Pending |
+| PROJECT-PLATFORM-S05-M5-T08 | 更新当前架构、产品范围、技术选择、模块合同、Program、目标架构和专项索引 | 文档只声明已实现布局/访问事实；PLATFORM-SCALE Deferred、S06/S07 未实现和非容量承诺保持清楚 | Pending |
+| PROJECT-PLATFORM-S05-M5-T09 | 冻结 S06 draft/publish/version/template 准入包和 S07 渲染器承接合同 | S06 输入包含字段/布局/策略规范快照与 hash；S07 只注入实例值和上下文，不复制策略或字段模型 | Pending |
+| PROJECT-PLATFORM-S05-M5-T10 | 完成 PROJECT-PLATFORM-S05 Go/No-Go 和下一 Stage 决策 | 明确 Go S06、Reopen S05 或新增修复 Stage；依据、阻断、迁移和第一入口可直接执行，不在本路线提前激活 | Pending |
+| PROJECT-PLATFORM-S05-M5-T11 | 完成 Stage 报告、影响审计、真实隔离浏览器复验和路线级 `route-final` | 57 项逐 Task 闭环；当前路线标记 completed、Program revision 递增且 current_stage 置 none；最终门禁通过 | Pending |
 
-1. 核心功能、关键接口、主要数据模型和代表性负载模型达到可冻结状态。
-2. 产品与工程负责人明确作出 S05 恢复决定，并把待执行任务从 `Deferred` 改回 `Pending`。
-3. 重新确认 C1、SLO、故障时间线、RTO/RPO、允许失败和非承诺范围，禁止沿用已失真的候选值。
-4. 提供资源稳定且足以承载目标负载与长稳测试的隔离环境，以及可代表真实协作方式的参与者或流量模型。
-5. 在执行 M2 前，以届时代码、镜像和环境重新运行 M1 preflight、种子双周期、四类加载器和证据校验；历史 M1 结果只证明本轮底座，不自动证明未来环境。
+## 6. Stage 全局验收标准
 
-## 7. Stage 全局验收标准
+- create/detail 布局图独立配置，节点具有永久 ID/key、确定顺序和合法父子结构；相同语义产生相同规范 hash。
+- 布局字段节点只保存 `fieldId + fieldKey`，字段事实由 S04 目录读取；跨域、key 不一致和失效引用不会静默重绑。
+- section/tab/column/field/summary、条件显示、编辑器和共享渲染器可用；relation 只保留未来扩展边界，不冒充 S10。
+- 条件显示不授予权限；服务端对每个字段计算 `read/write/required/hidden` 并提供最小披露的解释链。
+- owner/admin/member/guest/non-member/enterprise admin 六身份、空间/类型/字段状态和直接 API 负例均有自动与真实隔离证据。
+- 所有写命令具备复合隔离、aggregate version、request id、规范 hash、幂等、原子图、审计/outbox 和并发保护。
+- synthetic preview 不写业务表、不创建 WorkItem/平台对象、不触发正式通知、搜索或实时副作用。
+- 管理员配置与用户只读样本复用同一渲染器；未来 S07 通过稳定组件合同注入真实实例值。
+- 1366/1440 桌面、窄屏、键盘和辅助技术路径可用；文本、面板、菜单、滚动和错误状态不越界或遮挡。
+- 120 字段/2400 选项的配置与渲染预算有可复算证据；不把本 Stage 结果描述为生产容量或长稳承诺。
+- V001 至最新空库和 V065 升级迁移可重复；published v1、legacy project/issue 和既有字段身份/hash 不被改写。
+- project/shared P0、foreign write、新增未批准跨 owner read 和 shared reverse import 为 0。
+- S05 不创建 `project_work_items`、字段值或 legacy 迁移，不实现 S06 发布流水线，也不把预览称为真实实例。
+- M5 完成完整后端、迁移、前端、collaboration、工作台、安全、真实隔离浏览器和 `route-final`，并输出唯一下一入口。
 
-- 容量基线绑定不可变代码、镜像、宿主机、容器限制、服务副本、运行参数、依赖版本、数据 manifest 和负载脚本。
-- 数据种子确定、幂等、隔离、可清理并覆盖现实规模与分布；共享开发数据不进入正式结论。
-- HTTP、Worker、普通 WS 和知识协同负载器固定版本、可自动断言业务语义，失败不会只被记录为性能样本。
-- C1 候选逐项有 Pass、Fail 或 Bounded 结论；未达到目标时发布实际拐点和瓶颈，不回写历史门槛制造通过。
-- 混合负载同时覆盖 read/write、异步消费、实时 fanout 和协同编辑，并保持 workspace、权限、幂等、顺序和敏感字段边界。
-- 指标覆盖 P50/P95/P99、错误率、吞吐、backlog/oldest age、dead letter、fanout/协同收敛、CPU、内存、线程、GC、连接池和依赖资源。
-- 恢复 M2-M5 后，至少一轮 60 分钟目标混合负载和一轮 8 小时低强度 soak 有完整原始时序、资源斜率、错误样本和前后数据校验；暂停期间不得以 M1 短时场景替代。
-- API、Worker、Gateway、collaboration、Redis、PostgreSQL 和 MinIO 故障有具名自动证据；RTO、事实缺口、重复副作用和恢复后泄漏明确。
-- 发布、扩容、降容、回退、备份恢复和诊断无需访问业务私表；危险操作受权限、确认、理由和审计约束。
-- PostgreSQL、Redis、MinIO 单点和未验证负载进入非承诺清单，不冒充集群高可用或无限水平扩展。
-- 历史跨 owner read 例外按当前事实逐项删除、修复或重新批准；project/shared P0 与 foreign write 保持 0。
-- M5 恢复并执行时，完成后端、迁移、前端、collaboration、工作台、安全、容量证据完整性和 `route-final`。
-- 最终 Go/No-Go 明确唯一下一入口；当前路线完成和归档前不激活新的 Program 或 Stage。
+## 7. 当前执行入口
 
-## 8. 当前执行入口
-
-`PLATFORM-SCALE-S05-M1-T01` 至 `PLATFORM-SCALE-S05-M1-T12` 已完成。当前没有可执行任务；M2-M5 保持 `Deferred`，只有满足第 6.2 节并完成显式恢复后才能重新进入工作循环。M1 通过不代表候选 C1 已达到，不代表 PostgreSQL、Redis、MinIO 已具备高可用，也不代表 `PROJECT-PLATFORM-S05` 已恢复。
+从 `PROJECT-PLATFORM-S05-M1-T01` 开始。每次只启动一个 Milestone 的完整任务范围；前一 Milestone 未 finish 前不启动后一 Milestone。M5 完成和当前路线归档前不得激活 S06。

@@ -18,6 +18,20 @@ export interface PlanningContract {
   milestones: Set<string>
 }
 
+const completedTaskStatuses = new Set(['done', 'completed'])
+const suspendedTaskStatuses = new Set(['deferred', 'paused', 'blocked'])
+const allowedTaskStatuses = new Set([
+  'pending',
+  'in-progress',
+  'reopened',
+  ...completedTaskStatuses,
+  ...suspendedTaskStatuses,
+])
+
+function normalizedTaskStatus(value: string): string {
+  return value.trim().toLowerCase().replace(/[\s_]+/g, '-')
+}
+
 function frontMatter(content: string, label: string): Map<string, string> {
   const match = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(content)
   if (!match) throw new Error(`${label} must start with YAML front matter`)
@@ -161,13 +175,16 @@ export function loadActivePlanningContract(root: string): PlanningContract {
     if (!taskMatch) continue
     if (taskRows.has(cells[0])) throw new Error(`${roadmapPath} contains duplicate task ${cells[0]}`)
     if (!cells[0].startsWith(`${stage}-`)) throw new Error(`${roadmapPath} contains a task outside ${stage}: ${cells[0]}`)
-    taskRows.set(cells[0], cells.at(-1) ?? '')
+    const taskStatus = cells.at(-1) ?? ''
+    const normalizedStatus = normalizedTaskStatus(taskStatus)
+    if (!allowedTaskStatuses.has(normalizedStatus)) throw new Error(`${roadmapPath} task ${cells[0]} has unsupported status '${taskStatus || '(empty)'}'`)
+    taskRows.set(cells[0], taskStatus)
     milestones.add(taskMatch[1])
   }
   if (!taskRows.size) throw new Error(`${roadmapPath} must contain tasks for ${stage}`)
   if (!milestones.has(stageFinalMilestone)) throw new Error(`${roadmapPath} does not contain the final milestone ${stageFinalMilestone}`)
   if (roadmapStatus === 'completed') {
-    const incomplete = [...taskRows].filter(([, status]) => !['done', 'completed'].includes(status.toLowerCase())).map(([task, status]) => `${task}=${status || '(empty)'}`)
+    const incomplete = [...taskRows].filter(([, status]) => !completedTaskStatuses.has(normalizedTaskStatus(status))).map(([task, status]) => `${task}=${status || '(empty)'}`)
     if (incomplete.length) throw new Error(`${roadmapPath} cannot be completed while tasks remain incomplete: ${incomplete.join(', ')}`)
   }
 
@@ -196,7 +213,9 @@ export function assertTaskScopeInPlanning(contract: PlanningContract, milestone:
   for (const task of tasks) {
     const status = contract.taskRows.get(task)
     if (status === undefined) throw new Error(`${task} is not declared in ${contract.roadmapPath}`)
-    if (['done', 'completed'].includes(status.toLowerCase())) throw new Error(`${task} is already ${status}; reopen it before starting another work cycle`)
+    const normalizedStatus = normalizedTaskStatus(status)
+    if (completedTaskStatuses.has(normalizedStatus)) throw new Error(`${task} is already ${status}; reopen it before starting another work cycle`)
+    if (suspendedTaskStatuses.has(normalizedStatus)) throw new Error(`${task} is ${status}; change it to Pending or Reopened before starting a work cycle`)
   }
 }
 

@@ -66,7 +66,7 @@ export interface QualityGateEvidence {
 export const dockerDependencyArgs = ['compose', 'up', '-d', '--wait', '--wait-timeout', '120', 'postgres', 'redis', 'minio'] as const
 
 interface VerificationContract {
-  level: 'static' | 'unit' | 'integration' | 'e2e-real' | 'e2e-real-isolated'
+  level: 'static' | 'unit' | 'integration' | 'system-real-isolated' | 'e2e-real' | 'e2e-real-isolated'
   browserKind: 'real' | 'mock' | 'not-required'
   environment: 'isolated' | 'shared-readonly' | 'mock' | 'not-required'
   mockAllowed: 'yes' | 'no'
@@ -109,13 +109,14 @@ function parseVerificationContracts(report: string, tasks: string[]): Map<string
     const browserKind = cells[2].toLowerCase() as VerificationContract['browserKind']
     const environment = cells[3].toLowerCase() as VerificationContract['environment']
     const mockAllowed = cells[4].toLowerCase() as VerificationContract['mockAllowed']
-    if (!['static', 'unit', 'integration', 'e2e-real', 'e2e-real-isolated'].includes(level)) throw new Error(`${task} has an invalid verification level: ${cells[1]}`)
+    if (!['static', 'unit', 'integration', 'system-real-isolated', 'e2e-real', 'e2e-real-isolated'].includes(level)) throw new Error(`${task} has an invalid verification level: ${cells[1]}`)
     if (!['real', 'mock', 'not-required'].includes(browserKind)) throw new Error(`${task} has an invalid browser evidence kind: ${cells[2]}`)
     if (!['isolated', 'shared-readonly', 'mock', 'not-required'].includes(environment)) throw new Error(`${task} has an invalid verification environment: ${cells[3]}`)
     if (!['yes', 'no'].includes(mockAllowed)) throw new Error(`${task} mock browser allowed must be Yes or No`)
     if (browserKind === 'real' && (!['isolated', 'shared-readonly'].includes(environment) || mockAllowed !== 'no')) throw new Error(`${task} real browser evidence requires isolated/shared-readonly environment and Mock browser allowed = No`)
     if (browserKind === 'mock' && (environment !== 'mock' || mockAllowed !== 'yes')) throw new Error(`${task} mock browser evidence requires Environment = mock and Mock browser allowed = Yes`)
-    if (browserKind === 'not-required' && environment !== 'not-required') throw new Error(`${task} not-required browser evidence requires Environment = not-required`)
+    if (browserKind === 'not-required' && environment !== 'not-required' && level !== 'system-real-isolated') throw new Error(`${task} not-required browser evidence requires Environment = not-required`)
+    if (level === 'system-real-isolated' && (browserKind !== 'not-required' || environment !== 'isolated' || mockAllowed !== 'no')) throw new Error(`${task} system-real-isolated requires a real isolated service flow, no browser evidence, and no mock`)
     if (level === 'e2e-real' && (browserKind !== 'real' || mockAllowed !== 'no')) throw new Error(`${task} e2e-real requires real browser evidence and no mock`)
     if (level === 'e2e-real-isolated' && (browserKind !== 'real' || environment !== 'isolated' || mockAllowed !== 'no')) throw new Error(`${task} e2e-real-isolated requires real browser evidence in an isolated environment and no mock`)
     contracts.set(task, { level, browserKind, environment, mockAllowed, realFlow: cells[5] })
@@ -229,7 +230,7 @@ export function assertWorkCycleDocuments(root: string, strict: boolean, freshLog
     if (acceptance[0][5] !== 'Done') throw new Error(`${task} cannot finish because Acceptance Evidence status is '${acceptance[0][5]}'`)
     if (contractV2) {
       const contract = contracts.get(task)!
-      if (isCoreClosure(acceptance[0][1]) && contract.level !== 'e2e-real-isolated') throw new Error(`${task} acceptance criterion describes a core closure and requires e2e-real-isolated evidence`)
+      if (isCoreClosure(acceptance[0][1]) && !['e2e-real-isolated', 'system-real-isolated'].includes(contract.level)) throw new Error(`${task} acceptance criterion describes a core closure and requires e2e-real-isolated or system-real-isolated evidence`)
       if (contract.browserKind === 'real' && !/\breal\b/i.test(acceptance[0][4])) throw new Error(`${task} Browser evidence must explicitly state real`)
       if (contract.browserKind === 'mock' && !/\bmock\b/i.test(acceptance[0][4])) throw new Error(`${task} Browser evidence must explicitly state mock`)
     }

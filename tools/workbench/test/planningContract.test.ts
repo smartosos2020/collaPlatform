@@ -66,6 +66,21 @@ test('rejects task ranges that are absent or already complete', () => {
   assert.throws(() => assertTaskScopeInPlanning(contract, 'TEST-S01-M1', ['TEST-S01-M1-T01']), /already Done/)
 })
 
+test('requires suspended tasks to be explicitly reopened', () => {
+  for (const taskStatus of ['Deferred', 'Paused', 'Blocked']) {
+    const contract = loadActivePlanningContract(fixture({ taskStatus }))
+    assert.throws(
+      () => assertTaskScopeInPlanning(contract, 'TEST-S01-M1', ['TEST-S01-M1-T01']),
+      new RegExp(`is ${taskStatus}; change it to Pending or Reopened`),
+    )
+  }
+  assert.doesNotThrow(() => assertTaskScopeInPlanning(loadActivePlanningContract(fixture({ taskStatus: 'Reopened' })), 'TEST-S01-M1', ['TEST-S01-M1-T01']))
+})
+
+test('rejects unsupported task status spellings', () => {
+  assert.throws(() => loadActivePlanningContract(fixture({ taskStatus: 'Maybe later' })), /unsupported status/)
+})
+
 test('requires target architecture revision parity and retained paused Programs', () => {
   assert.throws(() => loadActivePlanningContract(fixture({ targetRevision: 2 })), /Target architecture revision mismatch/)
   assert.throws(() => loadActivePlanningContract(fixture({ dropPausedProgram: true })), /retain paused Program KB-PRODUCT/)

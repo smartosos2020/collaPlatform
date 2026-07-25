@@ -2,12 +2,12 @@
 title: 项目协作平台目标架构
 status: target
 program: PROJECT-PLATFORM
-program_revision: 14
+program_revision: 17
 domain_contract_version: 1
 domain_contract_status: frozen-s01-m3
 migration_contract_version: 1
-stage_review_status: paused-before-s05-for-platform-scale
-updated_at: 2026-07-24
+stage_review_status: active-s05-after-platform-foundation
+updated_at: 2026-07-25
 ---
 
 # 项目协作平台目标架构
@@ -694,15 +694,25 @@ S04 评审结论为 **Go S05，S06 保持依赖准入**。S04 已交付字段定
 - S05/S06 必须复用 S04 的复合隔离约束、规范 hash、`availableActions` 和最小披露错误，不得建立第二套字段模型。
 - 100,000 工作项动态查询、投影 rebuild、并发过滤和 p95 <= 200ms 由 S07/S13 验收，不得在 S04/S05/S06 报告中冒充已完成能力。
 
-## 22. S04 归档后的平台化暂停点
+## 22. 平台底座完成后的 S05 恢复合同
 
-S04 已完成并归档，S05 准入合同继续有效，但 PROJECT-PLATFORM 暂停在 S05 之前。暂停不代表撤销 Go S05，而是先由 `PLATFORM-SCALE-S01/S02` 建立模块边界门禁、公共合同和 API 运行隔离，避免布局、发布和规范 WorkItem 继续依赖其他模块私有 infrastructure。
+S04 已完成并归档，S05 准入合同继续有效。暂停期间 PLATFORM-SCALE-S01-S04 已交付模块边界与 table owner 门禁、公共合同、独立 API/Worker/Event Gateway 运行角色、可靠多 Worker、双 Gateway/双 collaboration 和客户端事实校准；S05-M1 另行交付容量验证环境、确定性种子和真实协议加载器。PROJECT-PLATFORM-S05 因此恢复，但必须继续满足：
 
-恢复 PROJECT-PLATFORM-S05 前必须重新确认：
-
-- project 访问 identity、file、platform、event、audit 和 IM 时只依赖显式 contract，不新增 foreign infrastructure import。
-- table owner 和例外清单能阻止 S05/S06 直接读写其他 owner 私表。
+- project 访问 identity、file、platform、event、audit 和 IM 时只依赖显式 contract，不新增 foreign infrastructure import 或 foreign write。
+- layout 与 field access 表由 project owner 独占；跨 owner read 只能使用已有精确例外，不能整批续期。
 - API 角色不混合运行 Worker、旧知识协同定时任务或通用 WebSocket session。
-- PLATFORM-SCALE-S02 的 Go/No-Go 明确选择恢复 S05，而不是继续 S03 或补充平台化阻断项。
+- S05 只保存待发布布局图和访问策略，复用 S04 字段定义、永久 key、规范 hash、aggregate version、幂等、审计和最小披露合同。
+- S05 不创建 `project_work_items` 或字段值，不修改 published v1，不切换 current version，不实现 S06 的 draft/publish/diff/rollback/template 流水线。
+- PLATFORM-SCALE-S05-M2 至 M5 仍 Deferred；业务路线中的性能测试只验证配置目录和渲染预算，不冒充生产容量、长稳、故障恢复或基础设施 HA。
 
-暂停期间不得另建 S05 当前路线、不得修改 S04 已发布结论，也不得用平台化任务提前实现布局或发布能力。
+### 22.1 S05 执行拆分
+
+1. M1：布局与访问策略 schema、永久标识、规范序列化、同域引用、并发/幂等和 API 合同。
+2. M2：section/tab/column/field/summary 控件、条件显示、独立 create/detail 图、配置编辑与可复用渲染器。
+3. M3：服务端 `read/write/required/hidden` 访问策略、空间角色/上下文条件、最小披露和伪造请求拒绝。
+4. M4：管理员预览、用户侧只读形态、诊断、可访问性、响应式、配置规模和真实隔离浏览器闭环。
+5. M5：迁移、隔离、安全、并发、规范 hash、边界、全量回归、目标架构同步和 S06 Go/No-Go。
+
+### 22.2 恢复时仍未实现的能力
+
+S05 的表单和详情页是“配置与渲染合同”，不是已经可创建真实 WorkItem 的运行页面。真实实例创建、字段值持久化和 legacy 迁移属于 S07；已发布不可变配置版本和发布切换属于 S06。预览必须明确使用合成上下文或配置样本，不能把合成记录写入业务表或表述为正式实例。

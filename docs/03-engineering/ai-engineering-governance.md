@@ -250,7 +250,7 @@ updated_at: YYYY-MM-DD
 
 执行报告还必须提供 `Verification Contract`，当前范围内每个任务一行：
 
-- `Required verification level`：只能是 `static`、`unit`、`integration`、`e2e-real` 或 `e2e-real-isolated`。
+- `Required verification level`：只能是 `static`、`unit`、`integration`、`system-real-isolated`、`e2e-real` 或 `e2e-real-isolated`。`system-real-isolated` 专用于不经过浏览器、但会调用真实 API/协议/Worker/数据库并使用隔离环境的服务级闭环。
 - `Browser evidence kind`：只能是 `real`、`mock` 或 `not-required`，必须与实际运行命令一致。
 - `Environment`：只能是 `isolated`、`shared-readonly`、`mock` 或 `not-required`。
 - `Mock browser allowed`：只能是 `Yes` 或 `No`。
@@ -270,7 +270,9 @@ finish 的严格门禁必须：
 
 `mock` 浏览器测试可以验证页面状态、异常分支和视觉交互，但不能证明真实接口、认证、权限或数据闭环。执行报告和质量门禁必须明确区分 `mock` 与 `real`，不得把 mock 测试称为 E2E 或作为真实闭环完成证据。
 
-下列任务默认使用 `e2e-real-isolated`：登录/认证、权限、创建或修改资源、删除/启用/停用、密码与安全策略、会话/设备、资源交接、导出和审计。该证据必须使用真实登录态、真实后端 API、隔离数据库或具名隔离数据与清理策略；不得通过响应拦截类 mock（`page.route`、`context.route`、`route.fulfill`、`route.abort`）或伪造 token/API 响应替代。通过真实 API 登录获得真实 token 后再注入浏览器上下文是合法真实证据；该模式只允许存在于 `web/e2e/support/api.ts` 的会话安装辅助中。工作台使用 TypeScript AST 扫描静态导入、动态导入、CommonJS 引用、重导出、路径别名及仓库内完整本地依赖闭包，隐藏在辅助文件中的 mock 同样会被拒绝。
+登录/认证、权限、创建或修改资源、删除/启用/停用、密码与安全策略、会话/设备、资源交接、导出和审计属于核心闭环。用户可见流程默认使用 `e2e-real-isolated`；纯 API、WebSocket、Yjs、Worker、迁移或数据库闭环可以使用 `system-real-isolated`。两者都必须连接真实服务、使用隔离数据库或具名隔离数据与清理策略，并禁止 mock。`system-real-isolated` 的 Contract 固定为 `Browser evidence kind = not-required`、`Environment = isolated`、`Mock browser allowed = No`，执行报告仍需列出真实命令、数据边界和持久事实断言。
+
+浏览器真实证据不得通过响应拦截类 mock（`page.route`、`context.route`、`route.fulfill`、`route.abort`）或伪造 token/API 响应替代。通过真实 API 登录获得真实 token 后再注入浏览器上下文是合法真实证据；该模式只允许存在于 `web/e2e/support/api.ts` 的会话安装辅助中。工作台使用 TypeScript AST 扫描静态导入、动态导入、CommonJS 引用、重导出、路径别名及仓库内完整本地依赖闭包，隐藏在辅助文件中的 mock 同样会被拒绝。
 
 `finish` 的 `--browser-spec` 必须同时传入：
 
@@ -303,7 +305,7 @@ Program -> Stage -> Milestone -> Task
 - `docs/02-roadmap/current-roadmap.md` 仍是唯一执行入口，每次只承载一个 Stage，可包含该 Stage 内多个 Milestone。
 - 当前路线 front matter 必须声明 `program`、`program_doc`、`program_revision`、`stage` 和 `stage_final_milestone`；`route` 必须等于 `stage`。
 - Program 文档必须存在且修订号一致，目标架构的 `program_revision` 必须与当前路线和 Program 一致；专项索引中恰好一个 Active Program，Stage 总览中恰好一个 `Active`，并与当前路线和 `current_stage` 一致。
-- Task 使用 `{PROGRAM}-SXX-MX-TYY`，必须在当前路线表格中恰好出现一次；`work:start` 拒绝未声明、跨 Stage 或已经 Done 的 Task，补验前必须先标记 `Reopened`。
+- Task 使用 `{PROGRAM}-SXX-MX-TYY`，必须在当前路线表格中恰好出现一次。合法状态为 `Pending`、`In Progress`、`Reopened`、`Done`、`Completed`、`Deferred`、`Paused`、`Blocked`；`work:start` 拒绝未声明、跨 Stage、已经完成或处于 `Deferred/Paused/Blocked` 的 Task。暂停任务恢复前必须由规划决策显式改为 `Pending` 或 `Reopened`，不能用命令行直接绕过。
 - 当前 Stage 执行中原则上冻结。范围内澄清可更新当前路线；目标、依赖或远期规划变化必须更新 Program revision 和变更记录，并同步当前路线引用。
 - Stage 最终 Milestone 使用 `route-final`，并把专项索引、Program 和目标架构纳入必更合同。收口时路线全部 Task 必须 Done，Program/目标架构 revision 必须同步递增，当前 Stage 必须完成，Program 和专项索引的当前 Stage 必须暂置为 `none`；任一条件不满足时不能 finish。
 - Stage 完成后先归档当前路线，再激活下一 Stage 并生成新的 `current-roadmap.md`。已完成 Stage 的历史结论不直接改写；缺陷进入 `Reopened` 或新的修复 Stage。
@@ -647,7 +649,7 @@ AI 可以长时间推进，但必须遵守以下节奏：
 - 架构边界符合文档。
 - 数据库迁移可执行。
 - 执行报告存在该任务唯一的六列 `Acceptance Evidence` 记录，验收标准、实现证据、自动化证据和浏览器证据/不适用理由均具体且可复核。
-- 执行报告存在该任务唯一的 `Verification Contract` 记录；核心闭环标记为 `e2e-real-isolated`，mock 证据不会被当作真实 E2E。
+- 执行报告存在该任务唯一的 `Verification Contract` 记录；用户可见核心闭环标记为 `e2e-real-isolated`，无浏览器的真实服务闭环标记为 `system-real-isolated`，mock 证据不会被当作真实 E2E。
 - 后端验证符合当前阶段要求：中间 checkpoint 至少编译通过，里程碑 stage finish 必须跑相关目标集成测试，路线图最终 finish 跑完整 `mvn test`。
 - 受影响前端的 lint/build 通过；路线最终 finish 执行完整前端 lint/build。
 - 安全扫描无阻断问题。
@@ -677,6 +679,8 @@ AI 可以长时间推进，但必须遵守以下节奏：
 | `pnpm work:test` | 工作台单元与契约测试 |
 
 旧 Windows 实现只保留在显式归档目录作为回溯证据，不属于稳定工具清单。完整质量门禁会递归拒绝任何非归档 Windows 脚本，也会拒绝活动入口重新调用平台专用命令。
+
+所有活动命令支持无副作用 `--help`。例如 `pnpm work:checkpoint -- --help` 只打印帮助并返回，不读取或改写工作循环上下文、不运行质量门禁，也不产生报告。
 
 ```shell
 pnpm work:plan-check
