@@ -11,6 +11,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import org.flywaydb.core.Flyway;
+import org.flywaydb.core.api.MigrationInfo;
 import org.junit.jupiter.api.Test;
 import org.testcontainers.containers.PostgreSQLContainer;
 
@@ -23,10 +24,11 @@ class DomainEventMigrationRehearsalIntegrationTests {
         try (PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16")) {
             postgres.start();
             Flyway flyway = flyway(postgres);
+            int latestVersion = latestMigrationVersion(flyway);
             assertThat(flyway.migrate().migrationsExecuted).isGreaterThan(0);
 
             try (Connection connection = connection(postgres)) {
-                assertThat(appliedVersion(connection)).isEqualTo(73);
+                assertThat(appliedVersion(connection)).isEqualTo(latestVersion);
                 assertThat(count(connection, "select count(*) from pg_indexes where indexname = 'idx_event_handler_deliveries_claim'"))
                     .isEqualTo(1);
                 assertThat(count(connection, "select count(*) from pg_indexes where indexname = 'idx_realtime_signals_pending'"))
@@ -101,11 +103,19 @@ class DomainEventMigrationRehearsalIntegrationTests {
                     assertThat(result.getObject("correlation_id", UUID.class)).isEqualTo(eventId);
                     assertThat(result.getObject("occurred_at")).isNotNull();
                 }
-                assertThat(appliedVersion(connection)).isEqualTo(73);
+                int latestVersion = latestMigrationVersion(flyway(postgres));
+                assertThat(appliedVersion(connection)).isEqualTo(latestVersion);
                 assertThat(count(
                     connection,
-                    "select count(*) from flyway_schema_history where success = true and version in ('067', '068', '069', '070', '071', '072', '073')"
-                )).isEqualTo(7);
+                    """
+                        select count(*)
+                          from generate_series(67, %d) expected(version)
+                          left join flyway_schema_history history
+                            on history.success = true
+                           and history.version::integer = expected.version
+                         where history.version is null
+                        """.formatted(latestVersion)
+                )).isZero();
             }
         }
     }
@@ -120,6 +130,17 @@ class DomainEventMigrationRehearsalIntegrationTests {
             .dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
             .locations(MIGRATIONS)
             .load();
+    }
+
+    private static int latestMigrationVersion(Flyway flyway) {
+        int latest = 0;
+        for (MigrationInfo migration : flyway.info().all()) {
+            if (migration.getVersion() != null) {
+                latest = Math.max(latest, Integer.parseInt(migration.getVersion().getVersion()));
+            }
+        }
+        assertThat(latest).isPositive();
+        return latest;
     }
 
     private static Connection connection(PostgreSQLContainer<?> postgres) throws Exception {
