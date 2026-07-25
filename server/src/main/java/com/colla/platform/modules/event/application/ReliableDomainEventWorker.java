@@ -118,23 +118,20 @@ public class ReliableDomainEventWorker implements SmartLifecycle {
     }
 
     private void submit(ThreadPoolExecutor current, EventDelivery delivery) {
+        DeliveryTask task = new DeliveryTask(delivery);
         try {
-            current.execute(new DeliveryTask(delivery));
+            task.startHeartbeat();
+            current.execute(task);
             counter("colla.event.worker.claimed", delivery.handlerKey()).increment();
         } catch (RejectedExecutionException exception) {
+            task.cancelHeartbeat();
             coordinator.release(delivery, Instant.now(), "Worker queue rejected claimed delivery");
             counter("colla.event.worker.rejected", delivery.handlerKey()).increment();
         }
     }
 
-    private void execute(EventDelivery delivery) {
+    private void execute(EventDelivery delivery, ScheduledFuture<?> heartbeat) {
         Timer.Sample sample = Timer.start(meterRegistry);
-        ScheduledFuture<?> heartbeat = heartbeatExecutor.scheduleAtFixedRate(
-            () -> coordinator.heartbeat(delivery, Instant.now()),
-            properties.getHeartbeatInterval().toMillis(),
-            properties.getHeartbeatInterval().toMillis(),
-            TimeUnit.MILLISECONDS
-        );
         String outcome = "completed";
         try {
             DomainEventHandler handler;
@@ -250,6 +247,7 @@ public class ReliableDomainEventWorker implements SmartLifecycle {
                 List<Runnable> queued = new ArrayList<>(executor.shutdownNow());
                 for (Runnable runnable : queued) {
                     if (runnable instanceof DeliveryTask task) {
+                        task.cancelHeartbeat();
                         coordinator.release(task.delivery, Instant.now(), "Worker shutdown released queued delivery");
                     }
                 }
@@ -297,7 +295,20 @@ public class ReliableDomainEventWorker implements SmartLifecycle {
 
     private final class DeliveryTask implements Runnable {
         private final EventDelivery delivery;
+        private volatile ScheduledFuture<?> heartbeat;
         private DeliveryTask(EventDelivery delivery) { this.delivery = delivery; }
-        @Override public void run() { execute(delivery); }
+        private void startHeartbeat() {
+            heartbeat = heartbeatExecutor.scheduleAtFixedRate(
+                () -> coordinator.heartbeat(delivery, Instant.now()),
+                properties.getHeartbeatInterval().toMillis(),
+                properties.getHeartbeatInterval().toMillis(),
+                TimeUnit.MILLISECONDS
+            );
+        }
+        private void cancelHeartbeat() {
+            ScheduledFuture<?> current = heartbeat;
+            if (current != null) current.cancel(false);
+        }
+        @Override public void run() { execute(delivery, heartbeat); }
     }
 }

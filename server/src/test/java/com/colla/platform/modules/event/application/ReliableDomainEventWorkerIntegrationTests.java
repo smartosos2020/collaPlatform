@@ -119,6 +119,37 @@ class ReliableDomainEventWorkerIntegrationTests {
     }
 
     @Test
+    void queuedDeliveriesKeepTheirLeaseUntilExecutionStarts() throws Exception {
+        Duration originalLease = deliveryProperties.getLeaseDuration();
+        try {
+            deliveryProperties.setLeaseDuration(Duration.ofSeconds(1));
+            append("queued-lease-active");
+            append("queued-lease-waiting");
+            handler.block();
+            DomainEventWorkerProperties properties = properties(1, 1, 2);
+            properties.setHeartbeatInterval(Duration.ofMillis(200));
+            workerA = worker("worker-a", properties);
+            workerA.start();
+
+            workerA.pollOnce();
+            assertThat(handler.started.await(3, TimeUnit.SECONDS)).isTrue();
+            awaitProcessing(2);
+            Thread.sleep(1_300);
+
+            assertThat(coordinator.recoverExpired(Instant.now())).isZero();
+            handler.release();
+            awaitProcessed(2);
+            assertThat(jdbcTemplate.queryForObject(
+                "select max(attempt_count) from domain_event_handler_deliveries",
+                Integer.class
+            )).isEqualTo(1);
+        } finally {
+            deliveryProperties.setLeaseDuration(originalLease);
+            handler.release();
+        }
+    }
+
+    @Test
     void stoppedWorkerDoesNotClaimNewDeliveries() {
         workerA = worker("worker-a", properties(1, 0, 1));
         workerA.start();

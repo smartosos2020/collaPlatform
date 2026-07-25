@@ -811,8 +811,9 @@ function applyEdit(document, room, marker, context) {
 
 function snapshotDocument(document, room) {
   if (typeof room.snapshot === 'function') return room.snapshot(document)
+  if (typeof document.getText === 'function') return document.getText(room.field).toString()
   if (typeof document.toJSON === 'function') return document.toJSON()
-  return document.getText(room.field).toString()
+  return undefined
 }
 
 function waitForSync(provider, timeoutMs, clock, requireNewEvent = false, signal) {

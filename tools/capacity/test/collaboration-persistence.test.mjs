@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
 import test from 'node:test'
+import * as Y from 'yjs'
 
 import { runCollaborationScenario } from '../src/load/collaboration.mjs'
 
@@ -70,6 +71,32 @@ test('in-memory convergence cannot pass when a fresh observer cannot reload dura
   assert.equal(result.metrics.durableReloadFailures, 1)
   assert.ok(result.errors.some((error) => error.code === 'durable_reload_failure'))
   assert.ok(network.observerConnections.every((entry) => entry.wasRoomEmpty))
+})
+
+test('durable reload materializes a Y.Text field before comparing a binary snapshot', async () => {
+  const network = new BinarySnapshotCollaborationNetwork()
+  const result = await runCollaborationScenario({
+    collaborationUrl: 'ws://collaboration.test',
+    rooms: [{ name: 'binary-room', clients: 1, editsPerClient: 1 }],
+    reconnectsPerRoom: 0,
+    requireDurableReload: true,
+    requireCrossNode: false,
+    syncTimeoutMs: 100,
+    convergenceTimeoutMs: 100,
+    reloadTimeoutMs: 100,
+    pollIntervalMs: 1,
+    dependencies: {
+      Provider: class {},
+      Y,
+      WebSocket: class {},
+    },
+    providerFactory: (configuration, context) => network.provider(configuration, context),
+  })
+
+  assert.equal(result.ok, true, JSON.stringify(result.errors))
+  assert.equal(result.metrics.durableReloads, 1)
+  assert.equal(result.metrics.durableReloadFailures, 0)
+  assert.equal(network.observerLoadedBeforeFieldAccess, true)
 })
 
 test('initial connections, reconnects and durable observers each receive a fresh one-time ticket', async () => {
@@ -327,6 +354,49 @@ class VolatileCollaborationNetwork extends DurableCollaborationNetwork {
       const room = this.rooms.get(configuration.name)
       if (room?.documents.size === 0) room.durable = ''
     }
+    return provider
+  }
+}
+
+class BinarySnapshotCollaborationNetwork {
+  durable = undefined
+  documents = new Set()
+  observerLoadedBeforeFieldAccess = false
+
+  provider(configuration, context) {
+    const provider = new EventEmitter()
+    const document = configuration.document
+    const onUpdate = () => {
+      this.durable = Y.encodeStateAsUpdate(document)
+      for (const peer of this.documents) {
+        if (peer !== document) Y.applyUpdate(peer, this.durable)
+      }
+    }
+    provider.synced = false
+    provider.destroyed = false
+    provider.connect = () => queueMicrotask(() => {
+      if (provider.destroyed) return
+      if (this.durable) {
+        Y.applyUpdate(document, this.durable)
+        if (context.observer) {
+          this.observerLoadedBeforeFieldAccess = document.toJSON().content === undefined
+        }
+      }
+      document.on('update', onUpdate)
+      this.documents.add(document)
+      provider.synced = true
+      provider.emit('synced', { state: true })
+    })
+    provider.disconnect = () => {
+      provider.synced = false
+    }
+    provider.destroy = () => {
+      if (provider.destroyed) return
+      provider.destroyed = true
+      document.off('update', onUpdate)
+      this.documents.delete(document)
+    }
+    provider.connect()
     return provider
   }
 }
