@@ -1,0 +1,122 @@
+{
+  "schemaVersion": "colla.capacity-scenario/v1",
+  "id": "s05-m2-09-stair-saturation-downshift",
+  "revision": 1,
+  "description": "Frozen stair, saturation and safe-downshift orchestration contract for PLATFORM-SCALE-S05-M2-T10.",
+  "evidence": { "requireProvenance": true },
+  "contract": {
+    "milestoneTask": "PLATFORM-SCALE-S05-M2-T10",
+    "c1ContractId": "C1",
+    "phaseRunnerRequired": true,
+    "phases": [
+      { "name": "stair-050", "durationMs": 300000, "httpRps": 50, "commitment": "Bounded" },
+      { "name": "stair-100", "durationMs": 300000, "httpRps": 100, "commitment": "Bounded" },
+      { "name": "c1-150", "durationMs": 300000, "httpRps": 150, "commitment": "Pass-or-Fail" },
+      { "name": "saturation-200", "durationMs": 300000, "httpRps": 200, "commitment": "Not-Committed" },
+      { "name": "saturation-250", "durationMs": 300000, "httpRps": 250, "commitment": "Not-Committed" },
+      { "name": "downshift-075", "durationMs": 300000, "httpRps": 75, "commitment": "Bounded" }
+    ],
+    "breakpointSignals": [
+      "throughput-flattens",
+      "tail-latency-rises",
+      "error-rate-rises",
+      "queue-or-connection-pool-saturates",
+      "resource-protection-activates"
+    ],
+    "requiredAssertions": [
+      "no-cascading-dependency-exhaustion",
+      "protection-mechanisms-observable",
+      "downshift-recovers-without-manual-clearing",
+      "every-phase-keeps-original-evidence"
+    ],
+    "acceptance": [
+      { "id": "http-read-p95", "metric": "http.read.latency.p95_ms", "operator": "lte", "value": 300, "unit": "ms", "appliesAtHttpRps": 150 },
+      { "id": "http-write-p95", "metric": "http.write.latency.p95_ms", "operator": "lte", "value": 500, "unit": "ms", "appliesAtHttpRps": 150 },
+      { "id": "unexpected-5xx-rate", "metric": "http.unexpected_5xx.rate", "operator": "lt", "value": 0.005, "unit": "ratio", "appliesAtHttpRps": 150 }
+    ],
+    "conclusionPolicy": {
+      "allowed": ["Pass", "Fail", "Bounded", "Not-Committed"],
+      "aborted": "Fail",
+      "incompleteEvidence": "Not-Committed",
+      "targetMiss": "Fail",
+      "lowerEnvelope": "Bounded",
+      "phasePlanIgnored": "Not-Committed"
+    }
+  },
+  "execution": {
+    "mode": "serial",
+    "warmup": { "enabled": true, "required": true, "mode": "serial", "durationMs": 300000 },
+    "durationMs": 1800000,
+    "abort": {
+      "maxDurationMs": 2340000,
+      "stopOnLoaderFailure": true,
+      "maxErrorCount": 0,
+      "maxErrorRate": 0,
+      "maxCollectorFailures": 0
+    }
+  },
+  "loaders": {
+    "http": {
+      "enabled": true,
+      "options": {
+        "targetRps": 250,
+        "concurrency": 300,
+        "phaseWeights": { "read": 0.8, "write": 0.2 }
+      },
+      "warmupOptions": {
+        "targetRps": 25,
+        "concurrency": 50,
+        "phaseWeights": { "read": 0.8, "write": 0.2 }
+      }
+    },
+    "websocket": { "enabled": false },
+    "collaboration": { "enabled": false },
+    "worker": { "enabled": false }
+  },
+  "metrics": {
+    "intervalMs": 5000,
+    "prometheus": [
+      {
+        "id": "api-a",
+        "endpointEnv": "COLLA_CAPACITY_API_A_METRICS_URL",
+        "required": true,
+        "metricNames": ["http_server_requests_seconds_count", "http_server_requests_seconds_sum", "hikaricp_connections_active", "hikaricp_connections_pending", "jvm_gc_pause_seconds_count", "jvm_memory_used_bytes", "process_cpu_usage"],
+        "labelAllowlist": ["runtime_role", "instance_id", "method", "status"]
+      },
+      {
+        "id": "api-b",
+        "endpointEnv": "COLLA_CAPACITY_API_B_METRICS_URL",
+        "required": true,
+        "metricNames": ["http_server_requests_seconds_count", "http_server_requests_seconds_sum", "hikaricp_connections_active", "hikaricp_connections_pending", "jvm_gc_pause_seconds_count", "jvm_memory_used_bytes", "process_cpu_usage"],
+        "labelAllowlist": ["runtime_role", "instance_id", "method", "status"]
+      }
+    ],
+    "docker": {
+      "id": "capacity-stack",
+      "enabled": true,
+      "required": true,
+      "containers": [
+        "colla-s05-capacity-postgres-1",
+        "colla-s05-capacity-redis-1",
+        "colla-s05-capacity-minio-1",
+        "colla-s05-capacity-api-a-1",
+        "colla-s05-capacity-api-b-1",
+        "colla-s05-capacity-worker-a-1",
+        "colla-s05-capacity-worker-b-1",
+        "colla-s05-capacity-event-gateway-a-1",
+        "colla-s05-capacity-event-gateway-b-1",
+        "colla-s05-capacity-collaboration-a-1",
+        "colla-s05-capacity-collaboration-b-1",
+        "colla-s05-capacity-web-1",
+        "colla-s05-capacity-nginx-1"
+      ]
+    }
+  },
+  "thresholds": {
+    "maxErrorRate": 0,
+    "minSamples": 270000,
+    "loaders": {
+      "http": { "required": true, "maxErrorRate": 0, "minSamples": 270000 }
+    }
+  }
+}

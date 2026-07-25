@@ -1,0 +1,155 @@
+{
+  "schemaVersion": "colla.capacity-scenario/v1",
+  "id": "s05-m2-01-idle-warmup",
+  "revision": 1,
+  "description": "Frozen idle observation, warmup and stable-baseline contract for PLATFORM-SCALE-S05-M2-T01.",
+  "evidence": { "requireProvenance": true },
+  "contract": {
+    "milestoneTask": "PLATFORM-SCALE-S05-M2-T01",
+    "c1ContractId": "C1",
+    "commitment": "Not-Committed",
+    "phases": [
+      { "name": "idle", "durationMs": 300000, "load": "none" },
+      { "name": "warmup", "durationMs": 300000, "httpRps": 10 },
+      { "name": "stable", "durationMs": 300000, "httpRps": 10 }
+    ],
+    "preconditions": {
+      "workerBacklog": 0,
+      "ordinaryWebSockets": 0,
+      "collaborationConnections": 0,
+      "requiredHealthyReplicas": 13
+    },
+    "conclusionPolicy": {
+      "allowed": ["Pass", "Fail", "Bounded", "Not-Committed"],
+      "aborted": "Fail",
+      "incompleteEvidence": "Not-Committed",
+      "targetMiss": "Fail",
+      "lowerEnvelope": "Bounded"
+    }
+  },
+  "execution": {
+    "mode": "serial",
+    "warmup": {
+      "enabled": true,
+      "required": true,
+      "mode": "serial",
+      "durationMs": 300000
+    },
+    "durationMs": 300000,
+    "abort": {
+      "maxDurationMs": 960000,
+      "stopOnLoaderFailure": true,
+      "maxErrorCount": 0,
+      "maxErrorRate": 0,
+      "maxCollectorFailures": 0
+    }
+  },
+  "loaders": {
+    "http": {
+      "enabled": true,
+      "options": {
+        "targetRps": 10,
+        "concurrency": 20,
+        "phaseWeights": { "read": 1, "write": 0 }
+      },
+      "warmupOptions": {
+        "targetRps": 10,
+        "concurrency": 20,
+        "phaseWeights": { "read": 1, "write": 0 }
+      }
+    },
+    "websocket": { "enabled": false },
+    "collaboration": { "enabled": false },
+    "worker": { "enabled": false }
+  },
+  "metrics": {
+    "intervalMs": 15000,
+    "prometheus": [
+      {
+        "id": "api-a",
+        "endpointEnv": "COLLA_CAPACITY_API_A_METRICS_URL",
+        "required": true,
+        "metricNames": ["http_server_requests_seconds_count", "http_server_requests_seconds_sum", "jvm_memory_used_bytes", "process_cpu_usage"],
+        "labelAllowlist": ["runtime_role", "instance_id", "method", "status"]
+      },
+      {
+        "id": "api-b",
+        "endpointEnv": "COLLA_CAPACITY_API_B_METRICS_URL",
+        "required": true,
+        "metricNames": ["http_server_requests_seconds_count", "http_server_requests_seconds_sum", "jvm_memory_used_bytes", "process_cpu_usage"],
+        "labelAllowlist": ["runtime_role", "instance_id", "method", "status"]
+      },
+      {
+        "id": "worker-a",
+        "endpointEnv": "COLLA_CAPACITY_WORKER_A_METRICS_URL",
+        "required": true,
+        "metricNames": ["colla_event_delivery_pending", "colla_event_delivery_oldest_age_seconds", "colla_event_delivery_dead_letter", "jvm_memory_used_bytes", "process_cpu_usage"],
+        "labelAllowlist": ["runtime_role", "instance_id"]
+      },
+      {
+        "id": "worker-b",
+        "endpointEnv": "COLLA_CAPACITY_WORKER_B_METRICS_URL",
+        "required": true,
+        "metricNames": ["colla_event_delivery_pending", "colla_event_delivery_oldest_age_seconds", "colla_event_delivery_dead_letter", "jvm_memory_used_bytes", "process_cpu_usage"],
+        "labelAllowlist": ["runtime_role", "instance_id"]
+      },
+      {
+        "id": "gateway-a",
+        "endpointEnv": "COLLA_CAPACITY_GATEWAY_A_METRICS_URL",
+        "required": true,
+        "metricNames": ["colla_realtime_websocket_connections", "colla_realtime_websocket_session_queues", "colla_realtime_redis_publish_total", "jvm_memory_used_bytes", "process_cpu_usage"],
+        "labelAllowlist": ["runtime_role", "instance_id", "outcome"]
+      },
+      {
+        "id": "gateway-b",
+        "endpointEnv": "COLLA_CAPACITY_GATEWAY_B_METRICS_URL",
+        "required": true,
+        "metricNames": ["colla_realtime_websocket_connections", "colla_realtime_websocket_session_queues", "colla_realtime_redis_publish_total", "jvm_memory_used_bytes", "process_cpu_usage"],
+        "labelAllowlist": ["runtime_role", "instance_id", "outcome"]
+      }
+    ],
+    "json": [
+      {
+        "id": "collaboration-a",
+        "endpointEnv": "COLLA_CAPACITY_COLLABORATION_A_METRICS_URL",
+        "required": true,
+        "headerEnv": { "x-colla-collaboration-secret": "COLLA_COLLABORATION_INTERNAL_SECRET" },
+        "metricNames": ["connections", "documents", "reservedConnections", "durableQueue.updates", "durableQueue.bytes", "durableQueue.retryAttempts", "durableQueue.backpressureRejections", "failures.backend", "failures.redis", "failures.recovery", "failures.store"]
+      },
+      {
+        "id": "collaboration-b",
+        "endpointEnv": "COLLA_CAPACITY_COLLABORATION_B_METRICS_URL",
+        "required": true,
+        "headerEnv": { "x-colla-collaboration-secret": "COLLA_COLLABORATION_INTERNAL_SECRET" },
+        "metricNames": ["connections", "documents", "reservedConnections", "durableQueue.updates", "durableQueue.bytes", "durableQueue.retryAttempts", "durableQueue.backpressureRejections", "failures.backend", "failures.redis", "failures.recovery", "failures.store"]
+      }
+    ],
+    "docker": {
+      "id": "capacity-stack",
+      "enabled": true,
+      "required": true,
+      "containers": [
+        "colla-s05-capacity-postgres-1",
+        "colla-s05-capacity-redis-1",
+        "colla-s05-capacity-minio-1",
+        "colla-s05-capacity-api-a-1",
+        "colla-s05-capacity-api-b-1",
+        "colla-s05-capacity-worker-a-1",
+        "colla-s05-capacity-worker-b-1",
+        "colla-s05-capacity-event-gateway-a-1",
+        "colla-s05-capacity-event-gateway-b-1",
+        "colla-s05-capacity-collaboration-a-1",
+        "colla-s05-capacity-collaboration-b-1",
+        "colla-s05-capacity-web-1",
+        "colla-s05-capacity-nginx-1"
+      ]
+    }
+  },
+  "thresholds": {
+    "maxErrorRate": 0,
+    "minSamples": 3000,
+    "loaders": {
+      "http": { "required": true, "maxErrorRate": 0, "minSamples": 3000 }
+    }
+  }
+}

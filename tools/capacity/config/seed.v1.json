@@ -1,0 +1,110 @@
+{
+  "schemaVersion": "colla.capacity-seed/v1",
+  "revision": 1,
+  "fixtureSchema": "capacity_fixture",
+  "fixedTimestamp": "2026-01-01T00:00:00Z",
+  "credentialSource": {
+    "type": "initialized-user-password-hash",
+    "username": "admin",
+    "requiredStatus": "active",
+    "requiredNotDeleted": true,
+    "outputFingerprint": "md5-of-stored-password-hash"
+  },
+  "workspaceCount": 4,
+  "workspaceWeights": [
+    50,
+    25,
+    15,
+    10
+  ],
+  "domains": [
+    {
+      "name": "workspace",
+      "count": 4,
+      "payloadBytes": 256,
+      "batchSize": 4
+    },
+    {
+      "name": "member",
+      "count": 2000,
+      "payloadBytes": 512,
+      "batchSize": 2000
+    },
+    {
+      "name": "permission",
+      "count": 6000,
+      "payloadBytes": 256,
+      "batchSize": 2000
+    },
+    {
+      "name": "project",
+      "count": 200,
+      "payloadBytes": 512,
+      "batchSize": 200
+    },
+    {
+      "name": "issue",
+      "count": 1000000,
+      "payloadBytes": 1024,
+      "batchSize": 10000
+    },
+    {
+      "name": "knowledge-item",
+      "count": 100000,
+      "payloadBytes": 256,
+      "batchSize": 5000
+    },
+    {
+      "name": "knowledge-block",
+      "count": 1000000,
+      "payloadBytes": 1024,
+      "batchSize": 10000
+    },
+    {
+      "name": "notification",
+      "count": 100000,
+      "payloadBytes": 512,
+      "batchSize": 10000
+    },
+    {
+      "name": "im-message",
+      "count": 200000,
+      "payloadBytes": 512,
+      "batchSize": 10000
+    },
+    {
+      "name": "file",
+      "count": 50000,
+      "payloadBytes": 384,
+      "batchSize": 5000
+    },
+    {
+      "name": "collaboration-room",
+      "count": 25,
+      "payloadBytes": 4096,
+      "batchSize": 25
+    }
+  ],
+  "permissionMix": {
+    "owner": 0.01,
+    "admin": 0.04,
+    "editor": 0.7,
+    "viewer": 0.2,
+    "disabled": 0.05
+  },
+  "temperatureMix": {
+    "hot": 0.1,
+    "warm": 0.3,
+    "cold": 0.6
+  },
+  "relationships": {
+    "permission": "member in the same workspace",
+    "project": "owner member in the same workspace",
+    "issue": "project and assignee member in the same workspace",
+    "knowledge-block": "knowledge item in the same workspace",
+    "notification": "recipient member in the same workspace",
+    "im-message": "sender and recipient members in the same workspace",
+    "file": "owner member in the same workspace",
+    "collaboration-room": "knowledge item in the same workspace"
+  }
+}

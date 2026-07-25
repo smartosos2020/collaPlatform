@@ -1,0 +1,249 @@
+{
+  "schemaVersion": "colla.capacity-runtime/v1",
+  "revision": 1,
+  "fixture": {
+    "seedId": "s05-c1",
+    "workspaceWeights": [50, 25, 15, 10],
+    "users": {
+      "count": 5,
+      "startOrdinal": 1,
+      "activeOnly": true,
+      "workspaceOrdinal": 1
+    },
+    "collaboration": {
+      "workspaceOrdinal": 1,
+      "knowledgeItemOrdinals": [1, 2, 3, 4],
+      "clientsPerRoom": 2
+    }
+  },
+  "bootstrap": {
+    "baseUrlEnv": "COLLA_CAPACITY_BASE_URL",
+    "authentication": {
+      "passwordEnv": "COLLA_CAPACITY_ADMIN_PASSWORD",
+      "concurrency": 5,
+      "applyTo": ["http", "websocket", "worker"]
+    },
+    "collaboration": {
+      "concurrency": 8
+    }
+  },
+  "loaders": {
+    "http": {
+      "apiBaseUrlEnv": "COLLA_CAPACITY_BASE_URL",
+      "concurrency": 4,
+      "targetRps": 4,
+      "phaseWeights": {
+        "read": 0.75,
+        "write": 0.25
+      },
+      "targets": {
+        "read": [
+          {
+            "name": "current-user",
+            "path": "/api/auth/me",
+            "method": "GET",
+            "requiredPaths": ["id", "workspaceId", "username", "displayName", "roles", "permissions"]
+          }
+        ],
+        "write": [
+          {
+            "name": "profile-noop",
+            "path": "/api/auth/me",
+            "method": "PATCH",
+            "body": {
+              "displayName": "Capacity Member {{user.ordinal}}",
+              "email": "{{user.email}}"
+            },
+            "requiredPaths": ["id", "workspaceId", "displayName", "roles", "permissions"]
+          }
+        ],
+        "idempotency": [
+          {
+            "name": "capacity-probe-idempotency",
+            "path": "/api/admin/event-deliveries/capacity-runs/{{options.runtimeValues.probeRunId}}/events",
+            "method": "POST",
+            "headers": {
+              "X-Colla-Capacity-SecretEnv": "COLLA_CAPACITY_PROBE_SECRET"
+            },
+            "body": {
+              "aggregateKey": "http",
+              "requestKey": "http-{{requestId}}"
+            },
+            "requiredPaths": ["eventId", "sideEffectId", "aggregateId", "sequence"]
+          }
+        ],
+        "file": {
+          "prepare": {
+            "name": "file-prepare",
+            "path": "/api/files/upload-url",
+            "method": "POST",
+            "body": {
+              "fileName": "capacity-m1-{{user.ordinal}}.bin",
+              "contentType": "application/octet-stream",
+              "sizeBytes": 16
+            },
+            "requiredPaths": ["uploadId", "uploadUrl", "headers"]
+          },
+          "upload": {
+            "name": "file-upload",
+            "method": "PUT",
+            "auth": false,
+            "content": "capacity-m1-file",
+            "expectedStatus": [200]
+          },
+          "complete": {
+            "name": "file-complete",
+            "path": "/api/files/complete",
+            "method": "POST",
+            "body": {
+              "fileId": "{{file.fileId}}"
+            },
+            "requiredPaths": ["id", "objectKey", "status"],
+            "equals": {
+              "status": "completed"
+            }
+          }
+        }
+      }
+    },
+    "websocket": {
+      "apiBaseUrlEnv": "COLLA_CAPACITY_BASE_URL",
+      "wsUrlEnv": "COLLA_CAPACITY_WS_URL",
+      "connections": 8,
+      "connectConcurrency": 4,
+      "connectTimeoutMs": 10000,
+      "reconnects": 1,
+      "settleMs": 1000,
+      "reconnectSettleMs": 1000,
+      "triggerRatePerSecond": 1,
+      "triggerConcurrency": 2,
+      "requireReady": true,
+      "tokenInQuery": true,
+      "targets": {
+        "trigger": {
+          "name": "capacity-realtime-trigger",
+          "path": "/api/admin/event-deliveries/capacity-runs/{{options.runtimeValues.probeRunId}}/events",
+          "method": "POST",
+          "headers": {
+            "X-Colla-Capacity-SecretEnv": "COLLA_CAPACITY_PROBE_SECRET"
+          },
+          "body": {
+            "aggregateKey": "websocket",
+            "requestKey": "websocket-{{triggerIndex}}"
+          },
+          "requiredPaths": [
+            "eventId",
+            "realtime.eventId",
+            "realtime.workspaceId",
+            "realtime.sequenceScope",
+            "realtime.sequenceKey",
+            "realtime.sequence",
+            "realtime.businessObjectId",
+            "realtime.calibrationPath"
+          ]
+        },
+        "calibration": {
+          "name": "capacity-realtime-calibration",
+          "method": "GET",
+          "requireCapacityReceipt": true,
+          "headers": {
+            "X-Colla-Capacity-SecretEnv": "COLLA_CAPACITY_PROBE_SECRET"
+          },
+          "requiredPaths": ["entries"]
+        },
+        "expectedFanout": 8,
+        "minEvents": 1
+      }
+    },
+    "collaboration": {
+      "collaborationUrlEnv": "COLLA_CAPACITY_COLLABORATION_URL",
+      "collaborationNodes": [
+        {
+          "url": "ws://collaboration-a:1234",
+          "nodeId": "collaboration-a",
+          "identityUrl": "http://collaboration-a:1234/health"
+        },
+        {
+          "url": "ws://collaboration-b:1234",
+          "nodeId": "collaboration-b",
+          "identityUrl": "http://collaboration-b:1234/health"
+        }
+      ],
+      "connectionConcurrency": 8,
+      "editsPerClient": 2,
+      "editsPerSecond": 2,
+      "reconnectsPerRoom": 1,
+      "syncTimeoutMs": 10000,
+      "convergenceTimeoutMs": 2000,
+      "pollIntervalMs": 20,
+      "editSettleMs": 250,
+      "reconnectSettleMs": 1000,
+      "requireDurableReload": true,
+      "requireCrossNode": true
+    },
+    "worker": {
+      "apiBaseUrlEnv": "COLLA_CAPACITY_BASE_URL",
+      "correctnessMode": {
+        "version": 1,
+        "mode": "strict"
+      },
+      "rateMode": "sustained",
+      "sustainedEventsPerSecond": 2,
+      "concurrency": 4,
+      "maxBacklog": 0,
+      "maxOldestAgeSeconds": 5,
+      "maxRetryIncrease": 0,
+      "maxDeadLetterIncrease": 0,
+      "drainTimeoutMs": 60000,
+      "pollIntervalMs": 250,
+      "targets": {
+        "producers": [
+          {
+            "name": "capacity-realtime-worker",
+            "path": "/api/admin/event-deliveries/capacity-runs/{{options.runtimeValues.probeRunId}}/events",
+            "method": "POST",
+            "headers": {
+              "X-Colla-Capacity-SecretEnv": "COLLA_CAPACITY_PROBE_SECRET"
+            },
+            "body": {
+              "aggregateKey": "worker",
+              "requestKey": "worker-{{iteration}}"
+            },
+            "requiredPaths": ["eventId", "sideEffectId", "aggregateId", "sequence"]
+          }
+        ],
+        "diagnostics": {
+          "name": "capacity-worker-summary",
+          "path": "/api/admin/event-deliveries/capacity-runs/{{runtimeValues.probeRunId}}/summary",
+          "method": "GET",
+          "headers": {
+            "X-Colla-Capacity-SecretEnv": "COLLA_CAPACITY_PROBE_SECRET"
+          },
+          "requiredPaths": [
+            "backlog",
+            "pending",
+            "processing",
+            "missing",
+            "retries",
+            "deadLetters",
+            "expiredLeases",
+            "oldestPendingAgeSeconds"
+          ]
+        },
+        "ledger": {
+          "name": "capacity-worker-ledger",
+          "path": "/api/admin/event-deliveries/capacity-runs/{{runtimeValues.probeRunId}}/ledger",
+          "method": "GET",
+          "headers": {
+            "X-Colla-Capacity-SecretEnv": "COLLA_CAPACITY_PROBE_SECRET"
+          },
+          "entriesPath": "entries",
+          "nextCursorPath": "nextCursor",
+          "pageSize": 1000,
+          "maxPages": 100,
+          "requiredPaths": ["entries"]
+        }
+      }
+    }
+  }
+}

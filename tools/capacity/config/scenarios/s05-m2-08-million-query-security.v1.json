@@ -1,0 +1,119 @@
+{
+  "schemaVersion": "colla.capacity-scenario/v1",
+  "id": "s05-m2-08-million-query-security",
+  "revision": 1,
+  "description": "Frozen million-scale query, index and authorization contract for PLATFORM-SCALE-S05-M2-T08 and T09.",
+  "evidence": { "requireProvenance": true },
+  "contract": {
+    "milestoneTask": "PLATFORM-SCALE-S05-M2-T08..PLATFORM-SCALE-S05-M2-T09",
+    "c1ContractId": "C1",
+    "dataset": {
+      "workItems": 1000000,
+      "knowledgeItems": 100000,
+      "knowledgeBlocks": 1000000,
+      "workspaceCount": 4
+    },
+    "targets": {
+      "httpRps": 60,
+      "queryPaths": ["pagination", "search", "permission-filter", "index-lookup"],
+      "securityStates": ["cross-workspace", "disabled-member", "revoked-permission", "deleted-resource"]
+    },
+    "requiredAssertions": [
+      "no-full-table-fallback",
+      "no-unbounded-response",
+      "index-hit-evidence-present",
+      "unauthorized-results-zero",
+      "sensitive-title-and-body-absent-from-load-logs",
+      "cache-and-realtime-state-converge-to-current-fact"
+    ],
+    "acceptance": [
+      { "id": "http-read-p95", "metric": "http.read.latency.p95_ms", "operator": "lte", "value": 300, "unit": "ms" },
+      { "id": "unexpected-5xx-rate", "metric": "http.unexpected_5xx.rate", "operator": "lt", "value": 0.005, "unit": "ratio" },
+      { "id": "authorization-errors", "metric": "security.authorization_error.count", "operator": "eq", "value": 0, "unit": "count" }
+    ],
+    "conclusionPolicy": {
+      "allowed": ["Pass", "Fail", "Bounded", "Not-Committed"],
+      "aborted": "Fail",
+      "incompleteEvidence": "Not-Committed",
+      "targetMiss": "Fail",
+      "lowerEnvelope": "Bounded"
+    }
+  },
+  "execution": {
+    "mode": "serial",
+    "warmup": { "enabled": true, "required": true, "mode": "serial", "durationMs": 300000 },
+    "durationMs": 900000,
+    "abort": {
+      "maxDurationMs": 1440000,
+      "stopOnLoaderFailure": true,
+      "maxErrorCount": 269,
+      "maxErrorRate": 0.004999,
+      "maxCollectorFailures": 0
+    }
+  },
+  "loaders": {
+    "http": {
+      "enabled": true,
+      "options": {
+        "targetRps": 60,
+        "concurrency": 100,
+        "phaseWeights": { "read": 1, "write": 0 }
+      },
+      "warmupOptions": {
+        "targetRps": 15,
+        "concurrency": 25,
+        "phaseWeights": { "read": 1, "write": 0 }
+      }
+    },
+    "websocket": { "enabled": false },
+    "collaboration": { "enabled": false },
+    "worker": { "enabled": false }
+  },
+  "metrics": {
+    "intervalMs": 10000,
+    "prometheus": [
+      {
+        "id": "api-a",
+        "endpointEnv": "COLLA_CAPACITY_API_A_METRICS_URL",
+        "required": true,
+        "metricNames": ["http_server_requests_seconds_count", "http_server_requests_seconds_sum", "hikaricp_connections_active", "hikaricp_connections_pending", "jvm_gc_pause_seconds_count", "jvm_memory_used_bytes", "process_cpu_usage"],
+        "labelAllowlist": ["runtime_role", "instance_id", "method", "status"]
+      },
+      {
+        "id": "api-b",
+        "endpointEnv": "COLLA_CAPACITY_API_B_METRICS_URL",
+        "required": true,
+        "metricNames": ["http_server_requests_seconds_count", "http_server_requests_seconds_sum", "hikaricp_connections_active", "hikaricp_connections_pending", "jvm_gc_pause_seconds_count", "jvm_memory_used_bytes", "process_cpu_usage"],
+        "labelAllowlist": ["runtime_role", "instance_id", "method", "status"]
+      }
+    ],
+    "docker": {
+      "id": "capacity-stack",
+      "enabled": true,
+      "required": true,
+      "containers": [
+        "colla-s05-capacity-postgres-1",
+        "colla-s05-capacity-redis-1",
+        "colla-s05-capacity-minio-1",
+        "colla-s05-capacity-api-a-1",
+        "colla-s05-capacity-api-b-1",
+        "colla-s05-capacity-worker-a-1",
+        "colla-s05-capacity-worker-b-1",
+        "colla-s05-capacity-event-gateway-a-1",
+        "colla-s05-capacity-event-gateway-b-1",
+        "colla-s05-capacity-collaboration-a-1",
+        "colla-s05-capacity-collaboration-b-1",
+        "colla-s05-capacity-web-1",
+        "colla-s05-capacity-nginx-1"
+      ]
+    }
+  },
+  "thresholds": {
+    "maxErrorRate": 0.004999,
+    "maxP95Ms": 300,
+    "minSamples": 54000,
+    "loaders": {
+      "http": { "required": true, "maxErrorRate": 0.004999, "maxP95Ms": 300, "minSamples": 54000 }
+    }
+  }
+}

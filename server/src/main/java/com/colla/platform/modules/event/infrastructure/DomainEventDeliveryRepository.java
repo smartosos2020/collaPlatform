@@ -3,6 +3,9 @@ package com.colla.platform.modules.event.infrastructure;
 import com.colla.platform.modules.event.domain.DomainEventDeliveryModels.DeadLetter;
 import com.colla.platform.modules.event.domain.DomainEventDeliveryModels.DeliveryResult;
 import com.colla.platform.modules.event.domain.DomainEventDeliveryModels.DeliveryBacklogStats;
+import com.colla.platform.modules.event.domain.DomainEventDeliveryModels.CapacityLedgerCursor;
+import com.colla.platform.modules.event.domain.DomainEventDeliveryModels.CapacityLedgerSlice;
+import com.colla.platform.modules.event.domain.DomainEventDeliveryModels.CapacityRunSummary;
 import com.colla.platform.modules.event.domain.DomainEventDeliveryModels.EventDelivery;
 import com.colla.platform.modules.event.domain.DomainEventDeliveryModels.FailureDecision;
 import java.time.Duration;
@@ -36,4 +39,18 @@ public interface DomainEventDeliveryRepository {
     void refreshEventCompletion(UUID eventId, Instant completedAt);
 
     DeliveryBacklogStats stats(Instant now);
+
+    void lockCapacityRun(UUID workspaceId, UUID runId);
+
+    long countCapacityProbeEvents(UUID workspaceId, UUID runId);
+
+    CapacityRunSummary capacityRunSummary(UUID workspaceId, UUID runId, String handlerKey, Instant now);
+
+    CapacityLedgerSlice capacityRunLedger(
+        UUID workspaceId,
+        UUID runId,
+        String handlerKey,
+        CapacityLedgerCursor cursor,
+        int limit
+    );
 }

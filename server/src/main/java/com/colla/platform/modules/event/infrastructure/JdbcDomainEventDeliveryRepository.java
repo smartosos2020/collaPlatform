@@ -1,6 +1,10 @@
 package com.colla.platform.modules.event.infrastructure;
 
 import com.colla.platform.modules.event.domain.DomainEventDeliveryModels.DeadLetter;
+import com.colla.platform.modules.event.domain.DomainEventDeliveryModels.CapacityLedgerEntry;
+import com.colla.platform.modules.event.domain.DomainEventDeliveryModels.CapacityLedgerCursor;
+import com.colla.platform.modules.event.domain.DomainEventDeliveryModels.CapacityLedgerSlice;
+import com.colla.platform.modules.event.domain.DomainEventDeliveryModels.CapacityRunSummary;
 import com.colla.platform.modules.event.domain.DomainEventDeliveryModels.DeliveryResult;
 import com.colla.platform.modules.event.domain.DomainEventDeliveryModels.DeliveryBacklogStats;
 import com.colla.platform.modules.event.domain.DomainEventDeliveryModels.EventDelivery;
@@ -14,6 +18,7 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -186,6 +191,247 @@ public class JdbcDomainEventDeliveryRepository implements DomainEventDeliveryRep
             Timestamp.from(now),
             Timestamp.from(now)
         );
+    }
+
+    @Override
+    public void lockCapacityRun(UUID workspaceId, UUID runId) {
+        jdbcTemplate.queryForObject(
+            "select pg_advisory_xact_lock(hashtextextended(?, 0))",
+            (rs, rowNum) -> 1,
+            workspaceId + ":" + runId
+        );
+    }
+
+    @Override
+    public long countCapacityProbeEvents(UUID workspaceId, UUID runId) {
+        Long count = jdbcTemplate.queryForObject(
+            """
+                select count(*)
+                from domain_events
+                where workspace_id = ?
+                  and correlation_id = ?
+                  and event_type = 'realtime.signal.requested'
+                  and aggregate_type = 'capacity_probe'
+                """,
+            Long.class,
+            workspaceId,
+            runId
+        );
+        return count == null ? 0 : count;
+    }
+
+    @Override
+    public CapacityRunSummary capacityRunSummary(
+        UUID workspaceId,
+        UUID runId,
+        String handlerKey,
+        Instant now
+    ) {
+        return jdbcTemplate.queryForObject(
+            """
+                select count(*) as total,
+                       count(*) filter (
+                           where delivery.id is null
+                              or delivery.status in ('pending', 'processing')
+                              or (
+                                  delivery.status = 'processed'
+                                  and (receipt.id is null or signal.id is null)
+                              )
+                       ) as backlog,
+                       count(*) filter (where delivery.status = 'pending') as pending,
+                       count(*) filter (where delivery.status = 'processing') as processing,
+                       count(*) filter (where delivery.id is null) as missing,
+                       count(*) filter (where delivery.id is null) as missing_delivery,
+                       count(*) filter (
+                           where delivery.status = 'processed' and receipt.id is null
+                       ) as missing_receipt,
+                       count(*) filter (
+                           where delivery.status = 'processed' and signal.id is null
+                       ) as missing_side_effect,
+                       count(*) filter (
+                           where delivery.attempt_count > 1 or delivery.replay_count > 0
+                       ) as retries,
+                       count(*) filter (
+                           where delivery.status in ('dead_letter', 'abandoned')
+                       ) as dead_letters,
+                       count(*) filter (
+                           where delivery.status = 'processing' and delivery.lease_until < ?
+                       ) as expired_leases,
+                       coalesce(greatest(0, extract(epoch from (? - min(event.created_at)
+                           filter (
+                               where delivery.id is null
+                                  or delivery.status in ('pending', 'processing')
+                                  or (
+                                      delivery.status = 'processed'
+                                      and (receipt.id is null or signal.id is null)
+                                  )
+                           )))), 0)::bigint
+                           as oldest_pending_age_seconds
+                from domain_events event
+                left join domain_event_handler_deliveries delivery
+                  on delivery.event_id = event.id
+                 and delivery.handler_key = ?
+                 and delivery.handler_version = 1
+                left join domain_event_handler_receipts receipt
+                  on receipt.delivery_id = delivery.id
+                left join realtime_signals signal
+                  on signal.source_event_id = event.id
+                where event.workspace_id = ?
+                  and event.correlation_id = ?
+                  and event.event_type = 'realtime.signal.requested'
+                  and event.aggregate_type = 'capacity_probe'
+                """,
+            (rs, rowNum) -> new CapacityRunSummary(
+                rs.getLong("total"),
+                rs.getLong("backlog"),
+                rs.getLong("pending"),
+                rs.getLong("processing"),
+                rs.getLong("missing"),
+                rs.getLong("missing_delivery"),
+                rs.getLong("missing_receipt"),
+                rs.getLong("missing_side_effect"),
+                rs.getLong("retries"),
+                rs.getLong("dead_letters"),
+                rs.getLong("expired_leases"),
+                rs.getLong("oldest_pending_age_seconds")
+            ),
+            Timestamp.from(now),
+            Timestamp.from(now),
+            handlerKey,
+            workspaceId,
+            runId
+        );
+    }
+
+    @Override
+    public CapacityLedgerSlice capacityRunLedger(
+        UUID workspaceId,
+        UUID runId,
+        String handlerKey,
+        CapacityLedgerCursor cursor,
+        int limit
+    ) {
+        CapacityLedgerCursor boundary = cursor;
+        if (boundary == null) {
+            CapacityLedgerPosition membershipWatermark = capacityRunMembershipWatermark(workspaceId, runId);
+            if (membershipWatermark == null) {
+                return new CapacityLedgerSlice(List.of(), null);
+            }
+            boundary = new CapacityLedgerCursor(
+                null,
+                null,
+                membershipWatermark.createdAt(),
+                membershipWatermark.eventId()
+            );
+        }
+        String afterClause = boundary.afterCreatedAt() == null
+            ? ""
+            : """
+                  and (
+                      event.created_at > ?
+                      or (event.created_at = ? and event.id > ?)
+                  )
+              """;
+        String sql = """
+            select event.id as event_id,
+                   event.created_at as event_created_at,
+                   event.aggregate_id,
+                   event.aggregate_sequence,
+                   coalesce(delivery.status, 'missing') as delivery_status,
+                   coalesce(delivery.attempt_count, 0) as attempt_count,
+                   coalesce(delivery.replay_count, 0) as replay_count,
+                   receipt.id is not null as receipt_recorded,
+                   signal.id as side_effect_id
+            from domain_events event
+            left join domain_event_handler_deliveries delivery
+              on delivery.event_id = event.id
+             and delivery.handler_key = ?
+             and delivery.handler_version = 1
+            left join domain_event_handler_receipts receipt
+              on receipt.delivery_id = delivery.id
+            left join realtime_signals signal
+              on signal.source_event_id = event.id
+            where event.workspace_id = ?
+              and event.correlation_id = ?
+              and event.event_type = 'realtime.signal.requested'
+              and event.aggregate_type = 'capacity_probe'
+              and (
+                  event.created_at < ?
+                  or (event.created_at = ? and event.id <= ?)
+              )
+            """ + afterClause + """
+            order by event.created_at, event.id
+            limit ?
+            """;
+        List<Object> parameters = new ArrayList<>();
+        parameters.add(handlerKey);
+        parameters.add(workspaceId);
+        parameters.add(runId);
+        parameters.add(Timestamp.from(boundary.membershipWatermarkCreatedAt()));
+        parameters.add(Timestamp.from(boundary.membershipWatermarkCreatedAt()));
+        parameters.add(boundary.membershipWatermarkEventId());
+        if (boundary.afterCreatedAt() != null) {
+            parameters.add(Timestamp.from(boundary.afterCreatedAt()));
+            parameters.add(Timestamp.from(boundary.afterCreatedAt()));
+            parameters.add(boundary.afterEventId());
+        }
+        parameters.add(limit + 1);
+        List<CapacityLedgerRow> fetched = jdbcTemplate.query(
+            sql,
+            (rs, rowNum) -> new CapacityLedgerRow(
+                new CapacityLedgerEntry(
+                    rs.getObject("event_id", UUID.class),
+                    rs.getObject("side_effect_id", UUID.class),
+                    rs.getObject("aggregate_id", UUID.class),
+                    rs.getLong("aggregate_sequence"),
+                    rs.getString("delivery_status"),
+                    rs.getInt("attempt_count"),
+                    rs.getInt("replay_count"),
+                    rs.getBoolean("receipt_recorded")
+                ),
+                rs.getTimestamp("event_created_at").toInstant()
+            ),
+            parameters.toArray()
+        );
+        boolean hasMore = fetched.size() > limit;
+        List<CapacityLedgerRow> selected = hasMore
+            ? new ArrayList<>(fetched.subList(0, limit))
+            : fetched;
+        List<CapacityLedgerEntry> entries = hasMore
+            ? selected.stream().map(CapacityLedgerRow::entry).toList()
+            : fetched.stream().map(CapacityLedgerRow::entry).toList();
+        CapacityLedgerCursor nextCursor = null;
+        if (hasMore) {
+            CapacityLedgerRow last = selected.get(selected.size() - 1);
+            nextCursor = new CapacityLedgerCursor(
+                last.createdAt(),
+                last.entry().eventId(),
+                boundary.membershipWatermarkCreatedAt(),
+                boundary.membershipWatermarkEventId()
+            );
+        }
+        return new CapacityLedgerSlice(entries, nextCursor);
+    }
+
+    private CapacityLedgerPosition capacityRunMembershipWatermark(UUID workspaceId, UUID runId) {
+        return jdbcTemplate.query(
+            """
+                select created_at, id
+                from domain_events
+                where workspace_id = ?
+                  and correlation_id = ?
+                  and event_type = 'realtime.signal.requested'
+                  and aggregate_type = 'capacity_probe'
+                order by created_at desc, id desc
+                limit 1
+                """,
+            (rs, rowNum) -> new CapacityLedgerPosition(
+                rs.getTimestamp("created_at").toInstant(),
+                rs.getObject("id", UUID.class)
+            ),
+            workspaceId,
+            runId
+        ).stream().findFirst().orElse(null);
     }
 
     @Override
@@ -534,5 +780,11 @@ public class JdbcDomainEventDeliveryRepository implements DomainEventDeliveryRep
     }
 
     private record TransitionRow(UUID eventId, String status, int attemptCount) {
+    }
+
+    private record CapacityLedgerPosition(Instant createdAt, UUID eventId) {
+    }
+
+    private record CapacityLedgerRow(CapacityLedgerEntry entry, Instant createdAt) {
     }
 }

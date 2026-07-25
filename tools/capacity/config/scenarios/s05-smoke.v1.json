@@ -1,0 +1,54 @@
+{
+  "schemaVersion": "colla.capacity-scenario/v1",
+  "id": "s05-smoke",
+  "revision": 1,
+  "description": "Short serial smoke scenario for adapter and evidence validation before a measured run.",
+  "execution": {
+    "mode": "serial",
+    "warmup": {
+      "enabled": false,
+      "required": false,
+      "durationMs": 0
+    },
+    "durationMs": 0,
+    "abort": {
+      "maxDurationMs": 120000,
+      "stopOnLoaderFailure": true,
+      "maxErrorCount": 0,
+      "maxErrorRate": 0,
+      "maxCollectorFailures": 0
+    }
+  },
+  "loaders": {
+    "http": {
+      "enabled": true,
+      "options": {}
+    },
+    "websocket": {
+      "enabled": true,
+      "options": {}
+    },
+    "collaboration": {
+      "enabled": true,
+      "options": {}
+    },
+    "worker": {
+      "enabled": true,
+      "options": {}
+    }
+  },
+  "metrics": {
+    "intervalMs": 10000,
+    "prometheus": [],
+    "docker": {
+      "id": "capacity-stack",
+      "enabled": true,
+      "required": true,
+      "containers": []
+    }
+  },
+  "thresholds": {
+    "maxErrorRate": 0,
+    "minSamples": 4
+  }
+}

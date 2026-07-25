@@ -1,0 +1,255 @@
+{
+  "schemaVersion": "colla.capacity-topology/v1",
+  "revision": 1,
+  "contractId": "C1",
+  "host": {
+    "cpuVcpu": 20,
+    "memoryMiB": 32768
+  },
+  "connectionBudgets": {
+    "postgresql": {
+      "limit": 100,
+      "reserve": 20
+    },
+    "redis": {
+      "limit": 200,
+      "reserve": 40
+    },
+    "minio": {
+      "limit": 100,
+      "reserve": 20
+    }
+  },
+  "roles": {
+    "postgresql": {
+      "replicas": 1,
+      "lifecycle": "service",
+      "resources": {
+        "cpu": 3,
+        "memoryMiB": 6144
+      },
+      "runtime": {
+        "kind": "native",
+        "parameters": [
+          "max_connections=100",
+          "shared_buffers=1536MB"
+        ]
+      },
+      "connections": {
+        "postgresql": 0,
+        "redis": 0,
+        "minio": 0
+      }
+    },
+    "redis": {
+      "replicas": 1,
+      "lifecycle": "service",
+      "resources": {
+        "cpu": 1.5,
+        "memoryMiB": 2048
+      },
+      "runtime": {
+        "kind": "native",
+        "parameters": [
+          "appendonly=yes",
+          "maxmemory=1536mb",
+          "maxmemory-policy=noeviction"
+        ]
+      },
+      "connections": {
+        "postgresql": 0,
+        "redis": 0,
+        "minio": 0
+      }
+    },
+    "minio": {
+      "replicas": 1,
+      "lifecycle": "service",
+      "resources": {
+        "cpu": 1.5,
+        "memoryMiB": 3072
+      },
+      "runtime": {
+        "kind": "native",
+        "parameters": [
+          "address=:9000",
+          "console-address=:9001"
+        ]
+      },
+      "connections": {
+        "postgresql": 0,
+        "redis": 0,
+        "minio": 0
+      }
+    },
+    "maintenance": {
+      "replicas": 1,
+      "lifecycle": "oneshot",
+      "resources": {
+        "cpu": 0.5,
+        "memoryMiB": 768
+      },
+      "runtime": {
+        "kind": "jvm",
+        "xmsMiB": 128,
+        "xmxMiB": 512,
+        "parameters": [
+          "-XX:+UseG1GC",
+          "-Djava.security.egd=file:/dev/urandom"
+        ]
+      },
+      "connections": {
+        "postgresql": 4,
+        "redis": 2,
+        "minio": 2
+      }
+    },
+    "api": {
+      "replicas": 2,
+      "lifecycle": "service",
+      "resources": {
+        "cpu": 2,
+        "memoryMiB": 2560
+      },
+      "runtime": {
+        "kind": "jvm",
+        "xmsMiB": 768,
+        "xmxMiB": 1792,
+        "parameters": [
+          "-XX:+UseG1GC",
+          "-XX:MaxGCPauseMillis=200"
+        ]
+      },
+      "connections": {
+        "postgresql": 12,
+        "redis": 4,
+        "minio": 8
+      }
+    },
+    "worker": {
+      "replicas": 2,
+      "lifecycle": "service",
+      "resources": {
+        "cpu": 1,
+        "memoryMiB": 1024
+      },
+      "runtime": {
+        "kind": "jvm",
+        "xmsMiB": 256,
+        "xmxMiB": 704,
+        "parameters": [
+          "-XX:+UseG1GC",
+          "-XX:MaxGCPauseMillis=250",
+          "-Dcolla.worker.concurrency=4"
+        ]
+      },
+      "connections": {
+        "postgresql": 6,
+        "redis": 4,
+        "minio": 4
+      }
+    },
+    "event-gateway": {
+      "replicas": 2,
+      "lifecycle": "service",
+      "resources": {
+        "cpu": 1,
+        "memoryMiB": 1024
+      },
+      "runtime": {
+        "kind": "jvm",
+        "xmsMiB": 256,
+        "xmxMiB": 704,
+        "parameters": [
+          "-XX:+UseG1GC",
+          "-Dcolla.realtime.max-connections=5000"
+        ]
+      },
+      "connections": {
+        "postgresql": 4,
+        "redis": 8,
+        "minio": 0
+      }
+    },
+    "collaboration": {
+      "replicas": 2,
+      "lifecycle": "service",
+      "resources": {
+        "cpu": 1,
+        "memoryMiB": 1024
+      },
+      "runtime": {
+        "kind": "node",
+        "maxOldSpaceMiB": 704,
+        "parameters": [
+          "--enable-source-maps",
+          "--unhandled-rejections=strict"
+        ]
+      },
+      "connections": {
+        "postgresql": 0,
+        "redis": 8,
+        "minio": 0
+      }
+    },
+    "web": {
+      "replicas": 1,
+      "lifecycle": "service",
+      "resources": {
+        "cpu": 0.5,
+        "memoryMiB": 512
+      },
+      "runtime": {
+        "kind": "native",
+        "parameters": [
+          "nginx-worker-processes=auto"
+        ]
+      },
+      "connections": {
+        "postgresql": 0,
+        "redis": 0,
+        "minio": 0
+      }
+    },
+    "edge": {
+      "replicas": 1,
+      "lifecycle": "service",
+      "resources": {
+        "cpu": 0.5,
+        "memoryMiB": 512
+      },
+      "runtime": {
+        "kind": "native",
+        "parameters": [
+          "nginx-worker-connections=4096"
+        ]
+      },
+      "connections": {
+        "postgresql": 0,
+        "redis": 0,
+        "minio": 0
+      }
+    },
+    "load-source": {
+      "replicas": 1,
+      "lifecycle": "scenario",
+      "resources": {
+        "cpu": 2.5,
+        "memoryMiB": 4096
+      },
+      "runtime": {
+        "kind": "node",
+        "maxOldSpaceMiB": 2048,
+        "parameters": [
+          "--enable-source-maps",
+          "--unhandled-rejections=strict"
+        ]
+      },
+      "connections": {
+        "postgresql": 4,
+        "redis": 0,
+        "minio": 4
+      }
+    }
+  }
+}

@@ -1,0 +1,183 @@
+name: ${COMPOSE_PROJECT_NAME:-colla-s05-capacity}
+
+services:
+  postgres:
+    command:
+      - postgres
+      - -c
+      - max_connections=${POSTGRES_MAX_CONNECTIONS:-100}
+      - -c
+      - shared_buffers=1536MB
+      - -c
+      - effective_cache_size=5GB
+      - -c
+      - work_mem=8MB
+      - -c
+      - maintenance_work_mem=256MB
+      - -c
+      - max_wal_size=4GB
+    deploy:
+      resources:
+        limits:
+          cpus: "${POSTGRES_CPU_LIMIT:-3.0}"
+          memory: ${POSTGRES_MEMORY_LIMIT:-6G}
+
+  redis:
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --maxclients
+      - "${REDIS_MAX_CLIENTS:-128}"
+      - --maxmemory
+      - ${REDIS_MAX_MEMORY:-1536mb}
+      - --maxmemory-policy
+      - noeviction
+    deploy:
+      resources:
+        limits:
+          cpus: "${REDIS_CPU_LIMIT:-1.5}"
+          memory: ${REDIS_MEMORY_LIMIT:-2G}
+
+  minio:
+    deploy:
+      resources:
+        limits:
+          cpus: "${MINIO_CPU_LIMIT:-1.5}"
+          memory: ${MINIO_MEMORY_LIMIT:-3G}
+
+  maintenance:
+    environment:
+      JAVA_TOOL_OPTIONS: ${MAINTENANCE_JAVA_TOOL_OPTIONS:--Xms128m -Xmx512m -XX:+UseG1GC -Djava.security.egd=file:/dev/urandom}
+      SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: ${MAINTENANCE_DB_POOL_SIZE:-4}
+      COLLA_POSTGRESQL_CONNECTION_BUDGET: ${COLLA_POSTGRESQL_CONNECTION_BUDGET:-100}
+    deploy:
+      resources:
+        limits:
+          cpus: "${MAINTENANCE_CPU_LIMIT:-0.5}"
+          memory: ${MAINTENANCE_MEMORY_LIMIT:-768M}
+
+  api-a:
+    ports:
+      - "127.0.0.1:${API_A_METRICS_PORT:-19081}:8080"
+    environment:
+      JAVA_TOOL_OPTIONS: ${API_JAVA_TOOL_OPTIONS:--Xms768m -Xmx1792m -XX:+UseG1GC -XX:MaxGCPauseMillis=200}
+      COLLA_POSTGRESQL_CONNECTION_BUDGET: ${COLLA_POSTGRESQL_CONNECTION_BUDGET:-100}
+      COLLA_CAPACITY_PROBE_ENABLED: "true"
+      COLLA_CAPACITY_PROBE_SECRET: ${COLLA_CAPACITY_PROBE_SECRET}
+      COLLA_CAPACITY_PROBE_MAX_EVENTS_PER_RUN: ${CAPACITY_PROBE_MAX_EVENTS_PER_RUN:-100000}
+      COLLA_CAPACITY_PROBE_MAX_PAGE_SIZE: ${CAPACITY_PROBE_MAX_PAGE_SIZE:-1000}
+      COLLA_SECURITY_ACCESS_TOKEN_TTL_MINUTES: ${CAPACITY_ACCESS_TOKEN_TTL_MINUTES:-720}
+      COLLA_KNOWLEDGE_COLLABORATION_TICKET_TTL: ${CAPACITY_COLLABORATION_TICKET_TTL:-12h}
+    deploy:
+      resources:
+        limits:
+          cpus: "${API_CPU_LIMIT:-2.0}"
+          memory: ${API_MEMORY_LIMIT:-2560M}
+
+  api-b:
+    ports:
+      - "127.0.0.1:${API_B_METRICS_PORT:-19082}:8080"
+    environment:
+      JAVA_TOOL_OPTIONS: ${API_JAVA_TOOL_OPTIONS:--Xms768m -Xmx1792m -XX:+UseG1GC -XX:MaxGCPauseMillis=200}
+      COLLA_POSTGRESQL_CONNECTION_BUDGET: ${COLLA_POSTGRESQL_CONNECTION_BUDGET:-100}
+      COLLA_CAPACITY_PROBE_ENABLED: "true"
+      COLLA_CAPACITY_PROBE_SECRET: ${COLLA_CAPACITY_PROBE_SECRET}
+      COLLA_CAPACITY_PROBE_MAX_EVENTS_PER_RUN: ${CAPACITY_PROBE_MAX_EVENTS_PER_RUN:-100000}
+      COLLA_CAPACITY_PROBE_MAX_PAGE_SIZE: ${CAPACITY_PROBE_MAX_PAGE_SIZE:-1000}
+      COLLA_SECURITY_ACCESS_TOKEN_TTL_MINUTES: ${CAPACITY_ACCESS_TOKEN_TTL_MINUTES:-720}
+      COLLA_KNOWLEDGE_COLLABORATION_TICKET_TTL: ${CAPACITY_COLLABORATION_TICKET_TTL:-12h}
+    deploy:
+      resources:
+        limits:
+          cpus: "${API_CPU_LIMIT:-2.0}"
+          memory: ${API_MEMORY_LIMIT:-1536M}
+
+  worker-a:
+    ports:
+      - "127.0.0.1:${WORKER_A_METRICS_PORT:-19083}:8080"
+    environment:
+      JAVA_TOOL_OPTIONS: ${WORKER_JAVA_TOOL_OPTIONS:--Xms256m -Xmx704m -XX:+UseG1GC -XX:MaxGCPauseMillis=250 -Dcolla.worker.concurrency=4}
+
+  worker-b:
+    ports:
+      - "127.0.0.1:${WORKER_B_METRICS_PORT:-19084}:8080"
+    environment:
+      JAVA_TOOL_OPTIONS: ${WORKER_JAVA_TOOL_OPTIONS:--Xms256m -Xmx704m -XX:+UseG1GC -XX:MaxGCPauseMillis=250 -Dcolla.worker.concurrency=4}
+
+  event-gateway-a:
+    ports:
+      - "127.0.0.1:${GATEWAY_A_METRICS_PORT:-19085}:8080"
+    environment:
+      JAVA_TOOL_OPTIONS: ${GATEWAY_JAVA_TOOL_OPTIONS:--Xms256m -Xmx704m -XX:+UseG1GC -Dcolla.realtime.max-connections=5000}
+
+  event-gateway-b:
+    ports:
+      - "127.0.0.1:${GATEWAY_B_METRICS_PORT:-19086}:8080"
+    environment:
+      JAVA_TOOL_OPTIONS: ${GATEWAY_JAVA_TOOL_OPTIONS:--Xms256m -Xmx704m -XX:+UseG1GC -Dcolla.realtime.max-connections=5000}
+
+  collaboration-a:
+    ports:
+      - "127.0.0.1:${COLLABORATION_A_METRICS_PORT:-19101}:1234"
+    environment:
+      NODE_OPTIONS: ${COLLABORATION_NODE_OPTIONS:---max-old-space-size=704 --enable-source-maps --unhandled-rejections=strict}
+
+  collaboration-b:
+    ports:
+      - "127.0.0.1:${COLLABORATION_B_METRICS_PORT:-19102}:1234"
+    environment:
+      NODE_OPTIONS: ${COLLABORATION_NODE_OPTIONS:---max-old-space-size=704 --enable-source-maps --unhandled-rejections=strict}
+
+  web:
+    deploy:
+      resources:
+        limits:
+          cpus: "${WEB_CPU_LIMIT:-0.5}"
+          memory: ${WEB_MEMORY_LIMIT:-512M}
+
+  nginx:
+    deploy:
+      resources:
+        limits:
+          cpus: "${NGINX_CPU_LIMIT:-0.5}"
+          memory: ${NGINX_MEMORY_LIMIT:-512M}
+
+  capacity-runner:
+    profiles: [capacity]
+    image: ${CAPACITY_RUNNER_IMAGE:-colla-s05-capacity-capacity-runner}
+    build:
+      context: ..
+      dockerfile: tools/capacity/Dockerfile
+      args:
+        SOURCE_COMMIT: ${SOURCE_COMMIT:-unknown}
+    environment:
+      COLLA_CAPACITY_BASE_URL: http://nginx
+      COLLA_CAPACITY_API_BASE_URL: http://nginx/api
+      COLLA_CAPACITY_WS_URL: ws://nginx/ws/events
+      COLLA_CAPACITY_COLLABORATION_URL: ws://nginx/collaboration
+      COLLA_CAPACITY_ADMIN_USERNAME: ${INIT_ADMIN_USERNAME}
+      COLLA_CAPACITY_ADMIN_PASSWORD: ${INIT_ADMIN_PASSWORD}
+      COLLA_COLLABORATION_INTERNAL_SECRET: ${COLLA_COLLABORATION_INTERNAL_SECRET}
+      COLLA_CAPACITY_PROBE_SECRET: ${COLLA_CAPACITY_PROBE_SECRET}
+      COLLA_CAPACITY_API_A_METRICS_URL: http://api-a:8080/actuator/prometheus
+      COLLA_CAPACITY_API_B_METRICS_URL: http://api-b:8080/actuator/prometheus
+      COLLA_CAPACITY_WORKER_A_METRICS_URL: http://worker-a:8080/actuator/prometheus
+      COLLA_CAPACITY_WORKER_B_METRICS_URL: http://worker-b:8080/actuator/prometheus
+      COLLA_CAPACITY_GATEWAY_A_METRICS_URL: http://event-gateway-a:8080/actuator/prometheus
+      COLLA_CAPACITY_GATEWAY_B_METRICS_URL: http://event-gateway-b:8080/actuator/prometheus
+      COLLA_CAPACITY_COLLABORATION_A_METRICS_URL: http://collaboration-a:1234/metrics
+      COLLA_CAPACITY_COLLABORATION_B_METRICS_URL: http://collaboration-b:1234/metrics
+      COLLA_CAPACITY_EVIDENCE_DIR: /evidence
+      NODE_OPTIONS: ${CAPACITY_NODE_OPTIONS:---max-old-space-size=2048 --enable-source-maps --unhandled-rejections=strict}
+    volumes:
+      - ${CAPACITY_EVIDENCE_DIR:-../../.local-reports/capacity}:/evidence
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      nginx:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "${CAPACITY_CPU_LIMIT:-2.5}"
+          memory: ${CAPACITY_MEMORY_LIMIT:-4G}

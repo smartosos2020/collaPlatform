@@ -52,6 +52,12 @@
     "web:lint": "pnpm --dir web lint",
     "collaboration:dev": "pnpm --dir collaboration dev",
     "collaboration:start": "pnpm --dir collaboration start",
-    "collaboration:test": "pnpm --dir collaboration test"
+    "collaboration:test": "pnpm --dir collaboration test",
+    "capacity": "node tools/capacity/src/cli.mjs",
+    "capacity:test": "pnpm --dir tools/capacity test",
+    "capacity:contract": "node tools/capacity/src/cli.mjs contract validate",
+    "capacity:preflight": "node tools/capacity/src/cli.mjs preflight capture",
+    "capacity:seed": "node tools/capacity/src/cli.mjs seed",
+    "capacity:stack": "node deploy/capacity/stack.mjs"
   }
 }

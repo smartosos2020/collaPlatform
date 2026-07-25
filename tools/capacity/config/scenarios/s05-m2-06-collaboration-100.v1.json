@@ -1,0 +1,118 @@
+{
+  "schemaVersion": "colla.capacity-scenario/v1",
+  "id": "s05-m2-06-collaboration-100",
+  "revision": 1,
+  "description": "Frozen 100-client, 25-room cross-node collaboration contract for PLATFORM-SCALE-S05-M2-T06.",
+  "evidence": { "requireProvenance": true },
+  "contract": {
+    "milestoneTask": "PLATFORM-SCALE-S05-M2-T06",
+    "c1ContractId": "C1",
+    "targets": {
+      "yjsClients": 100,
+      "yjsRooms": 25,
+      "clientsPerRoom": 4,
+      "editsPerClient": 10,
+      "nodes": 2
+    },
+    "requiredAssertions": [
+      "all-rooms-cross-node",
+      "final-document-content-identical",
+      "no-lost-block",
+      "durable-update-persisted",
+      "room-connection-and-queue-metrics-complete"
+    ],
+    "acceptance": [
+      { "id": "collaboration-convergence-p95", "metric": "yjs.cross_node_convergence.latency.p95_ms", "operator": "lte", "value": 1000, "unit": "ms" }
+    ],
+    "conclusionPolicy": {
+      "allowed": ["Pass", "Fail", "Bounded", "Not-Committed"],
+      "aborted": "Fail",
+      "incompleteEvidence": "Not-Committed",
+      "targetMiss": "Fail",
+      "lowerEnvelope": "Bounded"
+    }
+  },
+  "execution": {
+    "mode": "serial",
+    "warmup": { "enabled": true, "required": true, "mode": "serial", "durationMs": 120000 },
+    "durationMs": 600000,
+    "abort": {
+      "maxDurationMs": 960000,
+      "stopOnLoaderFailure": true,
+      "maxErrorCount": 0,
+      "maxErrorRate": 0,
+      "maxCollectorFailures": 0
+    }
+  },
+  "loaders": {
+    "http": { "enabled": false },
+    "websocket": { "enabled": false },
+    "collaboration": {
+      "enabled": true,
+      "options": {
+        "clientsPerRoom": 4,
+        "editsPerClient": 10,
+        "reconnectsPerRoom": 1,
+        "syncTimeoutMs": 10000,
+        "convergenceTimeoutMs": 1000,
+        "pollIntervalMs": 20,
+        "editSettleMs": 250,
+        "reconnectSettleMs": 1000
+      },
+      "warmupOptions": {
+        "clientsPerRoom": 2,
+        "editsPerClient": 1,
+        "reconnectsPerRoom": 0
+      }
+    },
+    "worker": { "enabled": false }
+  },
+  "metrics": {
+    "intervalMs": 5000,
+    "prometheus": [],
+    "json": [
+      {
+        "id": "collaboration-a",
+        "endpointEnv": "COLLA_CAPACITY_COLLABORATION_A_METRICS_URL",
+        "required": true,
+        "headerEnv": { "x-colla-collaboration-secret": "COLLA_COLLABORATION_INTERNAL_SECRET" },
+        "metricNames": ["connections", "documents", "reservedConnections", "durableQueue.updates", "durableQueue.bytes", "durableQueue.retryAttempts", "durableQueue.backpressureRejections", "failures.backend", "failures.redis", "failures.recovery", "failures.store"]
+      },
+      {
+        "id": "collaboration-b",
+        "endpointEnv": "COLLA_CAPACITY_COLLABORATION_B_METRICS_URL",
+        "required": true,
+        "headerEnv": { "x-colla-collaboration-secret": "COLLA_COLLABORATION_INTERNAL_SECRET" },
+        "metricNames": ["connections", "documents", "reservedConnections", "durableQueue.updates", "durableQueue.bytes", "durableQueue.retryAttempts", "durableQueue.backpressureRejections", "failures.backend", "failures.redis", "failures.recovery", "failures.store"]
+      }
+    ],
+    "docker": {
+      "id": "capacity-stack",
+      "enabled": true,
+      "required": true,
+      "containers": [
+        "colla-s05-capacity-postgres-1",
+        "colla-s05-capacity-redis-1",
+        "colla-s05-capacity-minio-1",
+        "colla-s05-capacity-api-a-1",
+        "colla-s05-capacity-api-b-1",
+        "colla-s05-capacity-worker-a-1",
+        "colla-s05-capacity-worker-b-1",
+        "colla-s05-capacity-event-gateway-a-1",
+        "colla-s05-capacity-event-gateway-b-1",
+        "colla-s05-capacity-collaboration-a-1",
+        "colla-s05-capacity-collaboration-b-1",
+        "colla-s05-capacity-web-1",
+        "colla-s05-capacity-nginx-1"
+      ]
+    }
+  },
+  "thresholds": {
+    "maxErrorRate": 0,
+    "maxP95Ms": 1000,
+    "minSamples": 100,
+    "loaders": {
+      "collaboration": { "required": true, "maxErrorRate": 0, "maxP95Ms": 1000, "minSamples": 100 }
+    }
+  }
+}

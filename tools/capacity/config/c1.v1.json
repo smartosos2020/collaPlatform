@@ -1,0 +1,126 @@
+{
+  "schemaVersion": "colla.capacity-contract/v1",
+  "id": "C1",
+  "revision": 1,
+  "name": "PLATFORM-SCALE-S05 C1",
+  "environment": {
+    "cpuVcpu": 20,
+    "dockerMemoryGiB": 32,
+    "workloadPlacement": "co-located-in-docker",
+    "dedicatedHostRequired": true,
+    "preflightRequirements": {
+      "minimumHostFreeMemoryGiB": 4,
+      "minimumRepositoryDiskFreeGiB": 20,
+      "minimumTempDiskFreeGiB": 4,
+      "minimumDockerDataDiskFreeGiB": 40,
+      "clockSynchronizationRequired": false
+    },
+    "infrastructureFailureDomains": {
+      "postgresql": "single",
+      "redis": "single",
+      "minio": "single"
+    }
+  },
+  "targets": {
+    "registeredMembers": 2000,
+    "onlineMembers": 500,
+    "httpRps": 150,
+    "ordinaryWebSockets": 1000,
+    "yjsClients": 100,
+    "yjsRooms": 25,
+    "workerSustainedEventsPerSecond": 30,
+    "workerBurstEventsPerSecond": 150,
+    "workerBurstSeconds": 300,
+    "workItems": 1000000,
+    "knowledgeItems": 100000,
+    "knowledgeBlocks": 1000000
+  },
+  "thresholds": [
+    {
+      "id": "http-read-p95",
+      "metric": "http.read.latency.p95_ms",
+      "operator": "lte",
+      "value": 300,
+      "unit": "ms"
+    },
+    {
+      "id": "http-write-p95",
+      "metric": "http.write.latency.p95_ms",
+      "operator": "lte",
+      "value": 500,
+      "unit": "ms"
+    },
+    {
+      "id": "unexpected-5xx-rate",
+      "metric": "http.unexpected_5xx.rate",
+      "operator": "lt",
+      "value": 0.005,
+      "unit": "ratio"
+    },
+    {
+      "id": "event-fanout-p95",
+      "metric": "websocket.fanout.latency.p95_ms",
+      "operator": "lte",
+      "value": 1000,
+      "unit": "ms"
+    },
+    {
+      "id": "websocket-reconcile",
+      "metric": "websocket.reconnect_reconcile.max_ms",
+      "operator": "lte",
+      "value": 10000,
+      "unit": "ms"
+    },
+    {
+      "id": "collaboration-convergence-p95",
+      "metric": "yjs.cross_node_convergence.latency.p95_ms",
+      "operator": "lte",
+      "value": 1000,
+      "unit": "ms"
+    },
+    {
+      "id": "outbox-oldest-age-p95",
+      "metric": "worker.outbox_oldest_age.p95_ms",
+      "operator": "lte",
+      "value": 5000,
+      "unit": "ms"
+    },
+    {
+      "id": "dead-letter-count",
+      "metric": "worker.dead_letter.count",
+      "operator": "eq",
+      "value": 0,
+      "unit": "count"
+    }
+  ],
+  "conclusions": {
+    "allowed": [
+      "Pass",
+      "Fail",
+      "Bounded",
+      "Not-Committed"
+    ],
+    "definitions": {
+      "Pass": "All frozen C1 targets and thresholds passed in the mixed scenario on the frozen environment with complete, verified evidence.",
+      "Fail": "At least one frozen target, threshold, correctness assertion, isolation assertion, or evidence integrity check failed.",
+      "Bounded": "A measured lower envelope passed with its actual breakpoint and bottleneck published; C1 itself did not pass.",
+      "Not-Committed": "The capability was not tested under the complete frozen contract or is explicitly outside the commitment boundary."
+    }
+  },
+  "nonCommitments": [
+    "PostgreSQL high availability",
+    "Redis high availability",
+    "MinIO high availability",
+    "capacity outside the frozen C1 topology",
+    "capacity inferred from a single-domain scenario",
+    "capacity from an aborted or unverifiable run"
+  ],
+  "topology": {
+    "schemaVersion": "colla.capacity-topology/v1",
+    "revision": 1
+  },
+  "seed": {
+    "schemaVersion": "colla.capacity-seed/v1",
+    "revision": 1
+  }
+}

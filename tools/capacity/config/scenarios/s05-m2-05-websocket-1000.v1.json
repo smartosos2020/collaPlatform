@@ -1,0 +1,116 @@
+{
+  "schemaVersion": "colla.capacity-scenario/v1",
+  "id": "s05-m2-05-websocket-1000",
+  "revision": 1,
+  "description": "Frozen 1,000 ordinary WebSocket connection and fanout contract for PLATFORM-SCALE-S05-M2-T05.",
+  "evidence": { "requireProvenance": true },
+  "contract": {
+    "milestoneTask": "PLATFORM-SCALE-S05-M2-T05",
+    "c1ContractId": "C1",
+    "targets": {
+      "ordinaryWebSockets": 1000,
+      "onlineMembers": 500,
+      "fanoutModes": ["direct", "workspace"],
+      "reconnectsPerConnection": 1
+    },
+    "requiredAssertions": [
+      "connection-success-rate-complete",
+      "no-cross-workspace-delivery",
+      "no-duplicate-delivery",
+      "no-sequence-gap-after-rest-reconcile",
+      "slow-connection-queues-bounded"
+    ],
+    "acceptance": [
+      { "id": "event-fanout-p95", "metric": "websocket.fanout.latency.p95_ms", "operator": "lte", "value": 1000, "unit": "ms" },
+      { "id": "websocket-reconcile", "metric": "websocket.reconnect_reconcile.max_ms", "operator": "lte", "value": 10000, "unit": "ms" }
+    ],
+    "conclusionPolicy": {
+      "allowed": ["Pass", "Fail", "Bounded", "Not-Committed"],
+      "aborted": "Fail",
+      "incompleteEvidence": "Not-Committed",
+      "targetMiss": "Fail",
+      "lowerEnvelope": "Bounded"
+    }
+  },
+  "execution": {
+    "mode": "serial",
+    "warmup": { "enabled": true, "required": true, "mode": "serial", "durationMs": 120000 },
+    "durationMs": 600000,
+    "abort": {
+      "maxDurationMs": 960000,
+      "stopOnLoaderFailure": true,
+      "maxErrorCount": 0,
+      "maxErrorRate": 0,
+      "maxCollectorFailures": 0
+    }
+  },
+  "loaders": {
+    "http": { "enabled": false },
+    "websocket": {
+      "enabled": true,
+      "options": {
+        "connections": 1000,
+        "connectConcurrency": 100,
+        "connectTimeoutMs": 10000,
+        "reconnects": 1,
+        "reconnectSettleMs": 1000,
+        "requireReady": true,
+        "tokenInQuery": true
+      },
+      "warmupOptions": {
+        "connections": 100,
+        "connectConcurrency": 25,
+        "reconnects": 0
+      }
+    },
+    "collaboration": { "enabled": false },
+    "worker": { "enabled": false }
+  },
+  "metrics": {
+    "intervalMs": 5000,
+    "prometheus": [
+      {
+        "id": "gateway-a",
+        "endpointEnv": "COLLA_CAPACITY_GATEWAY_A_METRICS_URL",
+        "required": true,
+        "metricNames": ["colla_realtime_websocket_connections", "colla_realtime_websocket_session_queues", "colla_realtime_redis_publish_total", "jvm_gc_pause_seconds_count", "jvm_memory_used_bytes", "process_cpu_usage"],
+        "labelAllowlist": ["runtime_role", "instance_id", "outcome"]
+      },
+      {
+        "id": "gateway-b",
+        "endpointEnv": "COLLA_CAPACITY_GATEWAY_B_METRICS_URL",
+        "required": true,
+        "metricNames": ["colla_realtime_websocket_connections", "colla_realtime_websocket_session_queues", "colla_realtime_redis_publish_total", "jvm_gc_pause_seconds_count", "jvm_memory_used_bytes", "process_cpu_usage"],
+        "labelAllowlist": ["runtime_role", "instance_id", "outcome"]
+      }
+    ],
+    "docker": {
+      "id": "capacity-stack",
+      "enabled": true,
+      "required": true,
+      "containers": [
+        "colla-s05-capacity-postgres-1",
+        "colla-s05-capacity-redis-1",
+        "colla-s05-capacity-minio-1",
+        "colla-s05-capacity-api-a-1",
+        "colla-s05-capacity-api-b-1",
+        "colla-s05-capacity-worker-a-1",
+        "colla-s05-capacity-worker-b-1",
+        "colla-s05-capacity-event-gateway-a-1",
+        "colla-s05-capacity-event-gateway-b-1",
+        "colla-s05-capacity-collaboration-a-1",
+        "colla-s05-capacity-collaboration-b-1",
+        "colla-s05-capacity-web-1",
+        "colla-s05-capacity-nginx-1"
+      ]
+    }
+  },
+  "thresholds": {
+    "maxErrorRate": 0,
+    "maxP95Ms": 1000,
+    "minSamples": 1000,
+    "loaders": {
+      "websocket": { "required": true, "maxErrorRate": 0, "maxP95Ms": 1000, "minSamples": 1000 }
+    }
+  }
+}

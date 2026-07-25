@@ -5,6 +5,8 @@
 web/e2e/*.spec.ts	password\s*=\s*['"][^'"]+['"]	Playwright real-flow specs use fixed dummy login credentials for isolated test members; real secrets (token/secret/sk-/keys) stay blocked in these files.
 server/src/test/**/*.java	credential-assignment	Backend integration tests use fixed dummy credentials; production source and configuration remain scanned.
 tools/workbench/test/sensitiveScan.test.ts	credential-assignment	Scanner regression tests contain synthetic credential samples required to prove format coverage.
+tools/capacity/test/bootstrap.test.mjs	credential-assignment	Capacity bootstrap regression tests use synthetic runtime values to prove errors and evidence never disclose credentials.
+tools/capacity/test/template.test.mjs	credential-assignment	Capacity template regression tests use a synthetic context value to prove fail-closed errors never disclose credentials.
 server/src/main/resources/application.yml	credential-assignment	The default profile contains documented local-only development credentials; application-prod.yml is separately guarded and has no defaults.
 docs/99-archive/old-drafts/phase1-technical-design.md	credential-assignment	Archived phase-one design contains a synthetic password example and is not an active configuration.
 scripts/archive/windows-powershell/activity-platform-20260718/sensitive-data-scan.ps1	BEGIN RSA PRIVATE KEY	Archived scanner source contains the former detection marker text, not key material.

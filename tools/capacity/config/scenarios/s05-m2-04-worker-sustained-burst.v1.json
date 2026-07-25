@@ -1,0 +1,124 @@
+{
+  "schemaVersion": "colla.capacity-scenario/v1",
+  "id": "s05-m2-04-worker-sustained-burst",
+  "revision": 1,
+  "description": "Frozen Worker sustained and five-minute burst contract for PLATFORM-SCALE-S05-M2-T04.",
+  "evidence": { "requireProvenance": true },
+  "contract": {
+    "milestoneTask": "PLATFORM-SCALE-S05-M2-T04",
+    "c1ContractId": "C1",
+    "targets": {
+      "sustainedEventsPerSecond": 30,
+      "sustainedSeconds": 300,
+      "burstEventsPerSecond": 150,
+      "burstSeconds": 300
+    },
+    "requiredAssertions": [
+      "no-lost-event",
+      "no-duplicate-side-effect",
+      "no-permanent-processing",
+      "lease-and-retry-bounded"
+    ],
+    "acceptance": [
+      { "id": "outbox-oldest-age-p95", "metric": "worker.outbox_oldest_age.p95_ms", "operator": "lte", "value": 5000, "unit": "ms" },
+      { "id": "dead-letter-count", "metric": "worker.dead_letter.count", "operator": "eq", "value": 0, "unit": "count" }
+    ],
+    "conclusionPolicy": {
+      "allowed": ["Pass", "Fail", "Bounded", "Not-Committed"],
+      "aborted": "Fail",
+      "incompleteEvidence": "Not-Committed",
+      "targetMiss": "Fail",
+      "lowerEnvelope": "Bounded"
+    }
+  },
+  "execution": {
+    "mode": "serial",
+    "warmup": { "enabled": true, "required": true, "mode": "serial", "durationMs": 120000 },
+    "durationMs": 300000,
+    "abort": {
+      "maxDurationMs": 960000,
+      "stopOnLoaderFailure": true,
+      "maxErrorCount": 0,
+      "maxErrorRate": 0,
+      "maxCollectorFailures": 0
+    }
+  },
+  "loaders": {
+    "http": { "enabled": false },
+    "websocket": { "enabled": false },
+    "collaboration": { "enabled": false },
+    "worker": {
+      "enabled": true,
+      "options": {
+        "rateMode": "both",
+        "sustainedEventsPerSecond": 30,
+        "burstEventsPerSecond": 150,
+        "burstSeconds": 300,
+        "concurrency": 160,
+        "maxBacklog": 0,
+        "maxOldestAgeSeconds": 5,
+        "maxRetryIncrease": 0,
+        "maxDeadLetterIncrease": 0,
+        "drainTimeoutMs": 300000,
+        "pollIntervalMs": 1000
+      },
+      "warmupOptions": {
+        "rateMode": "sustained",
+        "sustainedEventsPerSecond": 10,
+        "concurrency": 20
+      }
+    }
+  },
+  "metrics": {
+    "intervalMs": 5000,
+    "prometheus": [
+      {
+        "id": "worker-a",
+        "endpointEnv": "COLLA_CAPACITY_WORKER_A_METRICS_URL",
+        "required": true,
+        "metricNames": ["colla_event_delivery_pending", "colla_event_delivery_oldest_age_seconds", "colla_event_delivery_dead_letter", "jvm_gc_pause_seconds_count", "jvm_memory_used_bytes", "process_cpu_usage"],
+        "labelAllowlist": ["runtime_role", "instance_id"]
+      },
+      {
+        "id": "worker-b",
+        "endpointEnv": "COLLA_CAPACITY_WORKER_B_METRICS_URL",
+        "required": true,
+        "metricNames": ["colla_event_delivery_pending", "colla_event_delivery_oldest_age_seconds", "colla_event_delivery_dead_letter", "jvm_gc_pause_seconds_count", "jvm_memory_used_bytes", "process_cpu_usage"],
+        "labelAllowlist": ["runtime_role", "instance_id"]
+      }
+    ],
+    "docker": {
+      "id": "capacity-stack",
+      "enabled": true,
+      "required": true,
+      "containers": [
+        "colla-s05-capacity-postgres-1",
+        "colla-s05-capacity-redis-1",
+        "colla-s05-capacity-minio-1",
+        "colla-s05-capacity-api-a-1",
+        "colla-s05-capacity-api-b-1",
+        "colla-s05-capacity-worker-a-1",
+        "colla-s05-capacity-worker-b-1",
+        "colla-s05-capacity-event-gateway-a-1",
+        "colla-s05-capacity-event-gateway-b-1",
+        "colla-s05-capacity-collaboration-a-1",
+        "colla-s05-capacity-collaboration-b-1",
+        "colla-s05-capacity-web-1",
+        "colla-s05-capacity-nginx-1"
+      ]
+    }
+  },
+  "thresholds": {
+    "maxErrorRate": 0,
+    "minSamples": 54000,
+    "loaders": {
+      "worker": { "required": true, "maxErrorRate": 0, "minSamples": 54000 }
+    },
+    "metrics": [
+      { "id": "worker-a-oldest-age", "source": "worker-a", "metric": "colla_event_delivery_oldest_age_seconds", "aggregate": "max", "operator": "<=", "value": 5 },
+      { "id": "worker-b-oldest-age", "source": "worker-b", "metric": "colla_event_delivery_oldest_age_seconds", "aggregate": "max", "operator": "<=", "value": 5 },
+      { "id": "worker-a-dead-letter", "source": "worker-a", "metric": "colla_event_delivery_dead_letter", "aggregate": "max", "operator": "==", "value": 0 },
+      { "id": "worker-b-dead-letter", "source": "worker-b", "metric": "colla_event_delivery_dead_letter", "aggregate": "max", "operator": "==", "value": 0 }
+    ]
+  }
+}
