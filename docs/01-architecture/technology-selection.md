@@ -1,7 +1,7 @@
 ---
 title: 当前技术选型
 status: active
-last_code_check: 2026-07-24
+last_code_check: 2026-07-26
 ---
 
 # 当前技术选型
@@ -18,7 +18,7 @@ last_code_check: 2026-07-24
 | WebSocket | Spring WebSocket | `spring-boot-starter-websocket`, `/ws/events` |
 | 安全 | Spring Security + JWT | `SecurityConfig`, `JwtTokenService` |
 | 数据库 | PostgreSQL 16 | `docker-compose.yml`, Flyway migrations |
-| 数据库迁移 | Flyway | `server/src/main/resources/db/migration/V001...V072` |
+| 数据库迁移 | Flyway | `server/src/main/resources/db/migration/V001...V078` |
 | Redis | Redis 7 | `docker-compose.yml`, Spring Data Redis, collaboration Redis extension |
 | 对象存储 | MinIO | `docker-compose.yml`, `minio` dependency |
 | OpenAPI | springdoc-openapi | `springdoc-openapi-starter-webmvc-ui` |
@@ -29,6 +29,8 @@ S03 类型配置使用 PostgreSQL 关系约束承载 workspace/space 归属、�
 S04-M4 前端继续使用 React、TypeScript、Ant Design 与 TanStack Query，不引入 schema-form 或重型低代码依赖。字段类型选择器和专属表单按服务端 descriptor/capability 渲染，缓存键显式包含 space/type/field，写操作使用服务端 `availableActions`、乐观版本和失败回滚；Playwright 在真实隔离环境覆盖六类身份和 1366/1440/窄屏。
 
 S04-M5 保持上述选型并完成迁移与规模复核：Flyway 可从 V063 保留 legacy sentinel 数据升级至 V065，重复 migrate 为零变更；字段配置规模使用关系索引和规范 JSONB/hash 承载，120 字段、2400 选项目录预算为 3 秒。S05/S06 继续复用关系 ID、规范 JSON 和不可变版本，不引入按字段动态 DDL；10 万工作项查询只能在 S07 运行时与 S13 查询层具备后再建立生产 SLO。
+
+S05-M1-M4 继续采用“关系身份 + 规范配置图 + SHA-256 hash + 服务端访问投影”。create/detail 布局、节点和字段访问策略存放在类型内部关系表中，条件使用有深度与表达式预算的无副作用 DSL；管理预览和成员样本复用同一 React renderer，并只消费服务端裁剪后的安全 DTO。配置集合读取使用 PostgreSQL `REPEATABLE READ` 与批量选项查询，不引入 schema-form、低代码运行时或按字段动态 DDL。V078 为布局命令回执增加 schema 版本、聚合版本、配置 hash 和不可变响应 JSON，使幂等重放返回原始响应而非聚合最新状态。以上选型仍不建立规范 WorkItem、动态字段值或运行时流程。
 
 ## 前端 Web
 

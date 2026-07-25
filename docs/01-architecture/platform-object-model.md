@@ -1,7 +1,7 @@
 ---
 title: 平台对象模型
 status: active
-last_code_check: 2026-07-24
+last_code_check: 2026-07-26
 ---
 
 # 平台对象模型
@@ -179,6 +179,8 @@ S04-M4 为字段定义增加生产配置入口，但没有改变对象边界。�
 统一 `work_item` 平台对象只能在 S07 规范实例落地后注册；届时实例必须显式绑定不可变 `type_version_id`，resolver 才能基于实例、空间成员和版本事实返回摘要。S04 字段定义和 S06 配置版本不得提前伪造实例对象或复用 legacy `issue` resolver。
 
 S04 Stage 收口后，`FieldDefinition`、`FieldOption`、规则和复杂类型配置的对象归属保持不变：它们都是工作项类型内部的配置图，不具备独立分享、收藏、搜索、关系或平台对象解析能力。S05 的布局只能通过稳定 `fieldId + fieldKey` 引用该图，S06 只能把经校验的图物化进新的不可变类型版本；两者都不能把字段配置提升为独立平台对象。S07 创建规范 WorkItem 后才允许注册 `work_item` resolver。
+
+S05-M1-M4 交付的 `WorkItemLayout`、布局节点、条件规则和字段访问策略同样只是 `WorkItemTypeDefinition` 内部配置，不注册 `work_item_layout`、`work_item_field_policy` 或其他平台 objectType。配置预览和成员样本只能投影 synthetic 值与安全选项摘要，不得生成收藏、最近访问、对象链接或搜索索引事实。当前仍不存在规范 WorkItem；只有 S07 实例落地并显式绑定不可变 `type_version_id` 后，才允许新增 `work_item` resolver。
 
 ## 事项对象摘要
 

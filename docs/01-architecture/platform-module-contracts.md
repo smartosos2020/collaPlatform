@@ -3,7 +3,7 @@ title: 平台模块边界与公共合同 ADR
 status: active
 decision: accepted
 revision: 1
-updated_at: 2026-07-24
+updated_at: 2026-07-26
 ---
 
 # 平台模块边界与公共合同 ADR
@@ -108,7 +108,7 @@ contract 只允许 JDK 类型、同 contract 包类型或另一个经过批准�
 
 ## 6. Table Owner
 
-V001-V069 当前 90 张有效表在 `platform-table-owners.json` 中恰好归属一个 owner。规则如下：
+V001-V078 当前 94 张有效表在 `platform-table-owners.json` 中恰好归属一个 owner。规则如下：
 
 - `foreignWrite = forbidden`：foreign write 没有例外通道。
 - foreign read 必须匹配精确文件、精确表、read 模式和有效退出 Stage。
@@ -228,7 +228,7 @@ M2 不实现 Worker lease、dead-letter、replay、handler registry 或独立进
 `pnpm architecture:contracts` 必须验证：
 
 1. 代码中的 15 个模块与 manifest 完全一致，未知模块失败。
-2. 90 张当前有效表与 owner manifest 完全一致，重复、缺失、未知 owner 或 ownerless 失败。
+2. 94 张当前有效表与 owner manifest 完全一致，重复、缺失、未知 owner 或 ownerless 失败。
 3. 例外没有通配符、foreign write、缺失 owner/Stage/决定或未知模块。
 4. contract Java 源文件不 import provider 私有包。
 5. 本文保留全部必要决策词和非目标。

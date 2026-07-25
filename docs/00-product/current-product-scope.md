@@ -1,14 +1,14 @@
 ---
 title: 当前产品范围
 status: active
-last_code_check: 2026-07-24
+last_code_check: 2026-07-26
 ---
 
 # 当前产品范围
 
 Colla Platform 当前是一个面向研发团队的轻量协同平台。产品形态以 Web 为主，IM 是核心入口，同时已经具备项目、知识库、表格、审批、通知、搜索和管理后台等模块的 MVP 能力。
 
-当前产品开发主线是 `PLATFORM-SCALE` 平台模块化与运行扩展专项。S01-S04 已完成模块边界门禁、四运行角色、双 API、可靠事件、双 Worker、双 Event Gateway、统一客户端重连/REST 校准、唯一 Hocuspocus/Yjs 知识实时协议和双协作节点故障恢复；S04 路线等待归档。归档后建议进入 S05 固定容量、长稳、故障和运维收口；该建议不等于提前激活 S05。`PROJECT-PLATFORM` 已完成 S01-S04，布局、完整配置发布和统一 WorkItem 实例继续属于 S05-S07，并保持暂停至平台 S05 Go/No-Go。知识库 `KB-PRODUCT` 工程候选已收口，但 3-5 名真实参与者试用尚未完成，当前按暂停状态归档并等待团队反馈。
+当前业务开发主线是 `PROJECT-PLATFORM`。S01-S04 已完成项目空间、类型和字段配置底座；S05-M1-M4 已完成 create/detail 布局、条件显示、字段访问策略、六身份脱敏投影、配置工作台和成员样本体验，S05-M5 正在执行最终迁移、回归、文档和准入收口。S05 只交付类型内部的布局与字段访问配置，不创建规范 `WorkItem`、动态字段值或运行时流程；配置发布属于 S06，统一实例属于 S07。`PLATFORM-SCALE` S01-S04 已归档，S05 仅完成 M1 容量环境、确定性种子和加载器底座；M2-M5 的真实容量、长稳、故障恢复、发布扩缩容和 Go/No-Go 压测已明确 Deferred，待核心功能、接口、数据模型和负载模型稳定后恢复。知识库 `KB-PRODUCT` 工程候选已收口，但 3-5 名真实参与者试用尚未完成，当前按暂停状态归档并等待团队反馈。
 
 ## 当前可用入口
 
@@ -19,7 +19,7 @@ Colla Platform 当前是一个面向研发团队的轻量协同平台。产品�
 | 登录 | `/login` | 用户登录，JWT token 写入本地状态 |
 | 工作台 | `/` | 仪表盘、未读消息、未读通知、我的事项、审批待办、最近对象 |
 | IM | `/im` | 单聊、群聊、会话分组、消息发送、编辑、撤回、置顶、表情、已读、成员管理、链接卡片、消息转事项、会话内搜索定位 |
-| 项目空间 | `/project-spaces`, `/project-spaces/:spaceId`, `/project-spaces/:spaceId/members`, `/project-spaces/:spaceId/settings`, `/project-spaces/:spaceId/types/:typeId?`, `/project-spaces/:spaceId/types/:typeId/fields/:fieldId?` | 空间列表和最近入口、创建、协作 Shell、成员与邀请治理、角色调整、Owner 转移、空间设置及停用/恢复/归档；owner/admin 可配置工作项类型和字段，执行侧只展示 active 类型摘要 |
+| 项目空间 | `/project-spaces`, `/project-spaces/:spaceId`, `/project-spaces/:spaceId/members`, `/project-spaces/:spaceId/settings`, `/project-spaces/:spaceId/types/:typeId?`, `/project-spaces/:spaceId/types/:typeId/fields/:fieldId?`, `/project-spaces/:spaceId/types/:typeId/layouts` | 空间列表和最近入口、创建、协作 Shell、成员与邀请治理、角色调整、Owner 转移、空间设置及停用/恢复/归档；owner/admin 可配置工作项类型、字段、create/detail 布局和字段访问策略，成员执行侧只消费当前身份的脱敏布局样本，不创建工作项实例 |
 | Legacy 项目 | `/projects`, `/projects/:projectId`, `/issues/:issueId` | 现有项目、事项、需求/任务/BUG、评论、附件、状态动作、分支原因、统计和 BUG 验证记录；仍是 legacy project/issue 业务写路径 |
 | 知识库 | `/knowledge-bases`, `/knowledge-bases/:spaceId`, `/knowledge-bases/:spaceId/items/:itemId` | 当前唯一知识内容入口；知识库空间列表、创建、设置、停用、恢复、归档；进入空间默认打开首页内容，左侧目录是内容导航，点击内容页直接进入正文，点击目录展示子内容列表和创建入口；折叠区只保留关注、权限和当前节点等轻量空间设置；知识库内容页在空间上下文内承载块编辑、对象嵌入、评论、版本、权限、分享、关系和知识元数据能力 |
 | 表格 | `/bases`, `/bases/:baseId/...` | Base、表、字段、记录、筛选、排序、字段显隐、看板、日历、评论、关联对象、导入导出 |
@@ -67,7 +67,7 @@ UI-SPLIT-M12 冻结“双 UI v1”：当前不拆服务、不拆仓库，但用�
 
 ## 小团队试运行边界
 
-历史 M40 试运行方案已归档，不能再作为当前准入或数据基线。当前代码已演进到 V052 schema、知识库唯一模型和用户端/管理端双 UI，正式试运行前必须重新建立与当前版本匹配的角色剧本、场景数据、初始化流程、回归清单和 Go/No-Go 标准。
+历史 M40 试运行方案已归档，不能再作为当前准入或数据基线。当前代码已演进到 V078 schema、知识库唯一模型和用户端/管理端双 UI，正式试运行前必须重新建立与当前版本匹配的角色剧本、场景数据、初始化流程、回归清单和 Go/No-Go 标准。
 
 当前只保留以下稳定边界：试运行不得使用过时 M31/M40 重置脚本；真实数据与测试数据必须隔离；回退前必须完成备份和恢复演练；部署与协同恢复按 `docs/05-runbooks/admin-operations.md`、`docs/05-runbooks/event-worker-fleet.md` 和 `docs/05-runbooks/platform-scale-s04-realtime.md` 执行。应用层已提供双 API、双 Worker、双 Gateway 和双协作节点恢复，但 PostgreSQL、Redis、MinIO 高可用与生产容量承诺仍不在当前产品化范围内。
 
@@ -103,6 +103,8 @@ UI-SPLIT-M12 冻结“双 UI v1”：当前不拆服务、不拆仓库，但用�
 - S04-M3 在同一版本化配置 envelope 中增加 `typeConfig`，并由服务端目录返回每类复杂字段的 value schema、type-config schema、引用责任和失效引用策略。user 支持成员/部门/用户组候选范围与数量限制；date/datetime 分离日历日期和 UTC instant，限定展示时区、精度、范围及 today/now 相对默认；URL 限定 http/https、长度、规范化且拒绝凭据和控制字符；attachment 限定数量、MIME、大小并复用文件访问事实；work_item_reference 只配置同空间目标类型、数量和 outbound/deferred 能力。
 - S04-M4 已提供 owner/admin 字段配置深链：可按服务端 capability 创建 11 类字段，编辑展示属性，配置稳定选项、类型化默认值、结构化规则及 user/date/datetime/url/attachment/work_item_reference 专属参数，并执行排序、停用/恢复和 retire。目录支持名称/key、状态、字段类型和顺序筛选投影；控件和动作严格由 catalog 与 `availableActions` 驱动，member/guest 不出现配置入口，非成员和仅企业管理员不能通过深链读取私有空间配置。
 - S04-M5 已完成 Stage 复核：V001-V065 空库迁移及 V063 升级回放可重复，升级不改写 legacy project/issue，也不产生工作项实例或字段值；配置规模基线为 120 个字段和 2400 个选项的目录查询不超过 3 秒。10 万工作项动态值查询不属于 S04，待 S07 形成规范实例、S13 形成高级查询后验收。
+- S05-M1-M4 已完成 create/detail 独立布局图、节点编排、条件显示 DSL、字段访问策略和访问投影。owner/admin 可以配置和预览，member/guest 只消费服务端按身份裁剪的只读样本；非成员和仅企业管理员按最小披露返回不可用。布局配置集合读取在同一 repeatable-read 快照内组合类型、字段、选项、布局和投影，120 字段、2400 选项配置基线不超过 3 秒。
+- S05 布局和字段访问仍是类型内部的待发布配置图。它们不创建 `project_work_items`、动态字段值、上传事实、工作项关系或运行时流程，也不改写 S03 published v1。V078 为布局命令增加不可变响应快照，使相同 request ID 精确重放原响应；S05-M5 正在完成最终兼容、回归和准入收口。
 - 复杂字段配置只持久化规范 ID 或标量，不复制用户名称、部门名称、文件元数据、目标类型标题或 URL 凭据作为权限事实。跨 workspace、失效、已删除、不可访问或越界引用统一返回最小披露错误；审计继续只保存配置 hash 和数量摘要。字段定义当前仍是待发布配置图，不会写回 S03 published v1，也没有字段值；发布物化属于 S06，工作项实例和值属于 S07，S07 前 work_item_reference 默认实例数组只能为空。
 - 新空间和 legacy 迁移空间在创建事务内安装 `development-v1` 六类研发预置 `project/requirement/task/bug/iteration/release`；既有 active 空间在启动时逐空间幂等补齐。自定义同 key 不被覆盖并进入明确冲突清单，重复和并发补齐不产生重复系统类型或审计事件。
 - 空间 owner/admin 使用 `/project-spaces/:spaceId/types` 配置类型；member/guest 只在空间执行首页看到 active 类型名称、key、图标和顺序。企业项目治理只读取类型状态计数，不获得空间配置写权限或内容访问权。
@@ -194,7 +196,7 @@ UI-SPLIT-M12 冻结“双 UI v1”：当前不拆服务、不拆仓库，但用�
 | Base 高级能力 | 已支持对象链接字段和视图字段显隐；尚未实现公式、自动化、字段级权限和记录级权限策略 |
 | 通知矩阵 | 已覆盖 IM、项目、知识内容、Base 授权、审批细分和直接权限变更事件，并支持来源偏好与必要通知保护；待 M5-T09/T10 完成集成和端到端验收 |
 | 试运行 | M9 已建立 `SIMULATION-READY` 基线；M10 已由 5 个合成人格完成三轮六模块运行、重试幂等、权限拒绝、服务重启恢复、应用静默备份和独立恢复，结论为 `SYNTHETIC-CONTINUOUS-RUN-PASS`。尚无真实用户满意度、学习成本、自然协作节奏和采用意愿证据，进入真实使用前仍需补人工验证 |
-| 运维交付 | 本地 Docker 依赖、质量门禁、双 API/双 Worker/双 Gateway/双协作节点 Compose、三镜像发布回退、备份恢复脚本、恢复演练和分层运行手册可用；PostgreSQL/Redis/MinIO 高可用、固定容量和长稳承诺仍待 PLATFORM-SCALE-S05 |
+| 运维交付 | 本地 Docker 依赖、质量门禁、双 API/双 Worker/双 Gateway/双协作节点 Compose、三镜像发布回退、备份恢复脚本、恢复演练和分层运行手册可用；PLATFORM-SCALE-S05 仅完成 M1 容量验证底座，PostgreSQL/Redis/MinIO 高可用、固定容量、长稳和正式 Go/No-Go 承诺随 M2-M5 Deferred，待业务模型稳定后恢复 |
 | 双 UI 二期 | 双 UI v1 已冻结；后台风险可按级别、规则、资源和主体筛选并跳转审计/成员上下文，后续补系统设置、安全策略中心、应用市场治理和个人设置 |
 
 ## 参考
