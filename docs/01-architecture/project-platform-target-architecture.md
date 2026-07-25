@@ -713,6 +713,25 @@ S04 已完成并归档，S05 准入合同继续有效。暂停期间 PLATFORM-SC
 4. M4：管理员预览、用户侧只读形态、诊断、可访问性、响应式、配置规模和真实隔离浏览器闭环。
 5. M5：迁移、隔离、安全、并发、规范 hash、边界、全量回归、目标架构同步和 S06 Go/No-Go。
 
-### 22.2 恢复时仍未实现的能力
+### 22.2 M1 已冻结的布局配置合同
+
+- V077 由 project 模块唯一拥有 `project_work_item_layouts`、`project_work_item_layout_nodes`、`project_work_item_field_access_policies` 和 `project_work_item_layout_commands`；全部写路径携带 workspace/space/type 复合边界。
+- create/detail 使用独立聚合和规范 hash。M1 节点类型固定为 `section/tab/column/field/summary`，节点 ID/key 与策略 ID/key 为永久身份；物理删除和身份改写由触发器拒绝。
+- 图限制为 120 节点、4 层深度、每父节点最多 4 列和 120 条策略；父子类型、孤儿、循环、重复 key/字段、顺序冲突以及未知条件/策略 schema 均失败关闭。
+- 字段节点与策略只保存同域 `fieldId + fieldKey`。保存拒绝缺失、key 不一致、disabled/retired 或跨域引用；读取保留原图并投影诊断，不复制或替代字段权威事实。
+- 配置 API 固定为 `GET/PUT /api/project-spaces/{spaceId}/configuration/types/{typeId}/layouts/{layoutKind}`。owner/admin 可读写，member/guest forbidden，non-member/enterprise admin not-found；响应由服务端投影 `availableActions`。
+- 保存使用 aggregate version、request ID、规范载荷 hash、命令回执、同事务审计和 outbox。审计/事件只记录 hash、数量、kind 和版本，不记录策略 JSON。
+- M1 不提供编辑器、共享渲染器、运行时 `read/write/required/hidden` 决策、发布版本或 WorkItem 实例；分别由 M2、M3、S06、S07 承接。
+
+### 22.3 M2 已冻结的布局编辑与条件合同
+
+- create/detail 继续使用独立聚合；前端缓存、路由和命令均携带 space/type/layoutKind，切换布局不会覆盖另一张图。
+- 节点局部操作统一提交到 `POST .../layouts/{layoutKind}/nodes:command`。服务端对候选完整图执行规范化、引用与版本校验后原子持久化；复制含字段子树明确拒绝，避免违反字段在单布局内唯一的规范模型。
+- 条件 DSL schema v1 只允许受控 field/context predicate 与 `all/any/not`，限制深度和表达式数量，不执行代码、不访问网络或数据库。字段依赖必须位于同布局，类型化操作符和值、退役引用和依赖循环失败关闭。
+- 管理 UI 提供控件、布局树、属性与组合条件三类紧凑面板，支持拖放、键盘移动/删除、并发意图保留和刷新重试；空间 member/guest 不显示配置入口。
+- 共享渲染器只消费布局、S04 字段目录和显式访问投影，不复制字段类型事实。hidden/read/write/required 在渲染边界生效，未知字段或控件显示安全诊断；M2 不在客户端计算正式授权。
+- M2 仍是待发布配置与预览，不创建工作项或字段值。服务端访问策略求值、脱敏布局投影和 synthetic preview context 由 M3 承接。
+
+### 22.4 恢复时仍未实现的能力
 
 S05 的表单和详情页是“配置与渲染合同”，不是已经可创建真实 WorkItem 的运行页面。真实实例创建、字段值持久化和 legacy 迁移属于 S07；已发布不可变配置版本和发布切换属于 S06。预览必须明确使用合成上下文或配置样本，不能把合成记录写入业务表或表述为正式实例。

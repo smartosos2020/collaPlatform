@@ -154,6 +154,11 @@ S01-M2 已接受 `platform-module-contracts.md`，并以 `platform-modules.json`
 | V070 | 增加 signal transport delivery、稳定 realtime envelope、发布状态和索引 |
 | V071 | 删除活动旧 Spring 协同 room/presence/update/snapshot 状态，保留 Hocuspocus durable 模型 |
 | V072 | 使 collaboration ticket 单次原子消费，阻止重连复用已使用 ticket |
+| V073 | 为容量验证事件探针运行记录增加查询索引 |
+| V074 | 为知识内容块父节点关系增加索引 |
+| V075 | 为知识库目录父节点外键增加索引 |
+| V076 | 为大规模知识库外键关系补齐索引 |
+| V077 | 建立 workspace/space/type 隔离的 create/detail 布局、节点、字段访问策略和命令回执，包含永久标识、同域字段引用、规范 hash、乐观版本、索引和身份保护触发器 |
 
 数据库规则：
 
@@ -290,7 +295,14 @@ PROJECT-PLATFORM-S01 于 2026-07-18 完成项目模块当前事实审计、目�
 - S04-M4 前端通过 `workItemFieldKeys(spaceId,typeId,fieldId)` 隔离 catalog、列表和详情缓存；`ProjectWorkItemFieldsPanel` 只消费字段配置 DTO、类型目录 capability 与服务端 `availableActions`。路由使用 `/project-spaces/{spaceId}/types/{typeId}/fields/{fieldId?}` 保留空间/type 上下文，创建、编辑、配置、排序和生命周期命令继续落到同一字段聚合 API。筛选和排序是当前已加载字段定义的确定性目录投影，不查询或伪造工作项字段值。
 - 字段配置性能基线使用真实 PostgreSQL/Flyway 合成 120 个字段和 2400 个选项，配置目录 API 预算为 3 秒；查询计划必须保留 workspace/space/type/status 范围并走索引，复合字段索引结构由 schema 集成测试锁定。该基线明确禁止按字段动态 DDL 或动态值表。
 - 复杂引用采用 `unavailable_without_snapshot`：缺失、停用、跨 workspace、跨空间、已删除或无权对象均不披露具体目标。附件继续由 file resolver 判定可用性；工作项引用当前只允许配置同空间目标类型和 outbound/deferred 能力，实例默认值必须为空，S07 前不创建关系、反向引用或 `work_item` resolver。
-- 当前仍没有 `project_work_items` 表、工作项实例 API、动态字段值、布局、流程或完整草稿发布流水线。S04 字段定义是独立待发布配置图，不改写 S03 published v1；S06 承接新配置版本发布，S07 承接显式绑定 `type_version_id` 的统一实例。
+- S05-M1 已建立 `project_work_item_layouts`、`project_work_item_layout_nodes`、`project_work_item_field_access_policies` 与 `project_work_item_layout_commands`。create/detail 各自是独立图；节点永久 ID/key、父子关系、顺序、条件 schema、字段 `fieldId + fieldKey` 引用和策略 schema 均由规范化器及数据库约束共同保护。
+- 布局保存使用完整图替换、aggregate version 和 request ID 命令回执；相同请求重放不重复产生审计/事件，异载荷复用或旧版本写入稳定冲突。审计与 outbox 只包含布局 kind、规范 hash、节点/策略数量和版本，不包含策略原文。
+- 布局配置 API 为 `/api/project-spaces/{spaceId}/configuration/types/{typeId}/layouts/{layoutKind}`，只允许空间 owner/admin 读取和保存。member/guest 返回 forbidden，非成员和仅企业管理员按 not-found 最小披露。读取遇到缺失、key 不一致、disabled/retired 字段时保留原图并返回诊断，绝不静默重绑。
+- S05-M2 在同一配置聚合上增加原子节点命令 API。section/tab/column/field/summary 的新增、复制、移动、重排、更新和确认删除均先构造完整候选图，再统一规范化、引用校验和事务保存；旧 aggregate version 返回冲突，相同 request ID 重放不重复执行。
+- 条件显示 DSL 固定为 schema v1，支持字段或受限上下文 predicate、`all/any/not`、类型化操作符、8 层/64 表达式预算和无副作用内存求值。保存会拒绝非法字段、操作符和值、布局外隐藏依赖与条件循环；条件只影响显示，不授予字段访问。
+- 前端 `/project-spaces/{spaceId}/types/{typeId}/layouts` 只对空间 owner/admin 展示，提供独立 create/detail、控件面板、紧凑布局树、属性/组合条件编辑、拖放/键盘操作、冲突保留重试和共享渲染预览。缓存键包含 space/type/layoutKind；成员身份没有配置入口或伪可用按钮。
+- `WorkItemLayoutRenderer` 是当前配置预览的共享渲染边界，输入为布局、S04 字段目录和显式访问投影；hidden 不渲染、read 只读、required 合并展示，未知字段/控件安全诊断。实际服务端 `read/write/required/hidden` 决策仍属于 S05-M3，M2 预览使用空投影且不从客户端策略推导授权。
+- 当前仍没有 `project_work_items` 表、工作项实例 API、动态字段值、服务端运行时字段访问决策、流程或完整草稿发布流水线。S04 字段和 S05 布局仍是独立待发布配置图，不改写 S03 published v1；S06 承接新配置版本发布，S07 承接显式绑定 `type_version_id` 的统一实例。
 - S04 的规模事实仅覆盖字段配置目录：真实 PostgreSQL 中 120 个字段、2400 个选项的 API 查询预算为 3 秒，并校验复合索引计划。10 万工作项、动态字段过滤和并发查询尚无运行时承载，归入 S07/S13，不作为当前性能事实。
 - 成员治理以 `project_spaces` 行级悲观锁串行化同空间变更；成员唯一约束、活动角色唯一索引和邀请 pending 唯一索引承担最终数据库防线。直接加入、角色变化、移除、owner 转移和邀请状态变化均支持重复请求收敛。
 - 邀请 token 使用 32 字节安全随机输入并只持久化 SHA-256 哈希；API/通知/审计只传 invitation ID。邀请过期使用独立事务持久化，避免业务 409 回滚过期状态。

@@ -45,8 +45,8 @@ S05 不创建规范 WorkItem 实例、字段值或 legacy 迁移，不修改已�
 
 | Milestone | 目标 | 依赖 | 执行报告 | 状态 |
 | --- | --- | --- | --- | --- |
-| PROJECT-PLATFORM-S05-M1 | 布局与字段访问配置持久化、领域和 API 合同 | S04 归档；Program revision 17 | `docs/90-reports/project-platform-s05-m1-execution-report.md` | Pending |
-| PROJECT-PLATFORM-S05-M2 | 布局图编辑、条件显示和共享渲染器 | M1 | `docs/90-reports/project-platform-s05-m2-execution-report.md` | Pending |
+| PROJECT-PLATFORM-S05-M1 | 布局与字段访问配置持久化、领域和 API 合同 | S04 归档；Program revision 17 | `docs/90-reports/project-platform-s05-m1-execution-report.md` | Done |
+| PROJECT-PLATFORM-S05-M2 | 布局图编辑、条件显示和共享渲染器 | M1 | `docs/90-reports/project-platform-s05-m2-execution-report.md` | Done |
 | PROJECT-PLATFORM-S05-M3 | 服务端字段访问策略与最小披露 | M1-M2 | `docs/90-reports/project-platform-s05-m3-execution-report.md` | Pending |
 | PROJECT-PLATFORM-S05-M4 | 配置预览、用户形态、可访问性与规模收口 | M1-M3 | `docs/90-reports/project-platform-s05-m4-execution-report.md` | Pending |
 | PROJECT-PLATFORM-S05-M5 | Stage 评审、route-final 与 S06 准入 | M1-M4 | `docs/90-reports/project-platform-s05-m5-execution-report.md` | Pending |
@@ -57,34 +57,34 @@ S05 不创建规范 WorkItem 实例、字段值或 legacy 迁移，不修改已�
 
 | 任务 | 内容 | 验收标准 | 状态 |
 | --- | --- | --- | --- |
-| PROJECT-PLATFORM-S05-M1-T01 | 审计 S03/S04 类型、字段、命令回执、授权、API、UI、测试和 V001-V069 schema 事实 | 所有可复用合同、缺口、owner、跨模块依赖和禁止提前实现项可定位到代码、表与测试 | Pending |
-| PROJECT-PLATFORM-S05-M1-T02 | 冻结 create/detail 布局图、节点类型、永久标识、访问策略和诊断领域合同 | 节点身份、父子关系、顺序、字段引用、条件、策略优先级和错误语义无歧义并同步目标架构 | Pending |
-| PROJECT-PLATFORM-S05-M1-T03 | 设计并落地布局、布局节点、字段访问策略和命令回执 Flyway schema | 表由 project owner 唯一拥有；复合 workspace/space/type 外键、唯一键、检查约束、索引和不可变身份完整 | Pending |
-| PROJECT-PLATFORM-S05-M1-T04 | 实现布局图、节点、条件、字段访问策略和诊断领域模型 | 模型不复制字段权威事实；create/detail 独立；未知节点/条件/策略版本明确拒绝 | Pending |
-| PROJECT-PLATFORM-S05-M1-T05 | 实现 Repository 与规范查询、保存、重排和状态读取 | 图读取顺序稳定且无 N+1；所有读写带 workspace/space/type 边界；不存在跨 owner 私表访问 | Pending |
-| PROJECT-PLATFORM-S05-M1-T06 | 实现布局图规范序列化、hash、结构校验和限制预算 | 相同语义产生相同 hash；循环、孤儿、重复 key、非法深度/列数/节点数和不兼容控件自动拒绝 | Pending |
-| PROJECT-PLATFORM-S05-M1-T07 | 实现 fieldId + fieldKey 同域引用校验与失效诊断 | 跨 workspace/space/type、key 不一致、disabled/retired/缺失字段均拒绝或返回明确诊断，绝不静默重绑 | Pending |
-| PROJECT-PLATFORM-S05-M1-T08 | 实现布局配置动作策略与空间角色授权 | owner/admin 可配置，member/guest/non-member/enterprise admin 按合同最小披露；最后 owner 与空间状态约束不回归 | Pending |
-| PROJECT-PLATFORM-S05-M1-T09 | 实现 aggregate version、request id、幂等回放、并发冲突、审计和 outbox | 同请求同结果、异载荷冲突、旧版本拒绝；审计不泄露隐藏字段配置，事件 envelope 符合公共合同 | Pending |
-| PROJECT-PLATFORM-S05-M1-T10 | 实现空间配置布局/策略 DTO、Controller、异常映射和 availableActions | API 路径、入出参、错误码、最小披露和动作投影稳定；无权用户不能通过 ID 枚举配置 | Pending |
-| PROJECT-PLATFORM-S05-M1-T11 | 完成空库/升级迁移、Repository、服务、API、授权、并发和隔离验证及 M1 checkpoint | V001 至最新和 V065 升级均可重复；目标测试、架构边界、工作台与执行报告通过 | Pending |
+| PROJECT-PLATFORM-S05-M1-T01 | 审计 S03/S04 类型、字段、命令回执、授权、API、UI、测试和 V001-V076 schema 事实 | 所有可复用合同、缺口、owner、跨模块依赖和禁止提前实现项可定位到代码、表与测试 | Done |
+| PROJECT-PLATFORM-S05-M1-T02 | 冻结 create/detail 布局图、节点类型、永久标识、访问策略和诊断领域合同 | 节点身份、父子关系、顺序、字段引用、条件、策略优先级和错误语义无歧义并同步目标架构 | Done |
+| PROJECT-PLATFORM-S05-M1-T03 | 设计并落地布局、布局节点、字段访问策略和命令回执 Flyway schema | 表由 project owner 唯一拥有；复合 workspace/space/type 外键、唯一键、检查约束、索引和不可变身份完整 | Done |
+| PROJECT-PLATFORM-S05-M1-T04 | 实现布局图、节点、条件、字段访问策略和诊断领域模型 | 模型不复制字段权威事实；create/detail 独立；未知节点/条件/策略版本明确拒绝 | Done |
+| PROJECT-PLATFORM-S05-M1-T05 | 实现 Repository 与规范查询、保存、重排和状态读取 | 图读取顺序稳定且无 N+1；所有读写带 workspace/space/type 边界；不存在跨 owner 私表访问 | Done |
+| PROJECT-PLATFORM-S05-M1-T06 | 实现布局图规范序列化、hash、结构校验和限制预算 | 相同语义产生相同 hash；循环、孤儿、重复 key、非法深度/列数/节点数和不兼容控件自动拒绝 | Done |
+| PROJECT-PLATFORM-S05-M1-T07 | 实现 fieldId + fieldKey 同域引用校验与失效诊断 | 跨 workspace/space/type、key 不一致、disabled/retired/缺失字段均拒绝或返回明确诊断，绝不静默重绑 | Done |
+| PROJECT-PLATFORM-S05-M1-T08 | 实现布局配置动作策略与空间角色授权 | owner/admin 可配置，member/guest/non-member/enterprise admin 按合同最小披露；最后 owner 与空间状态约束不回归 | Done |
+| PROJECT-PLATFORM-S05-M1-T09 | 实现 aggregate version、request id、幂等回放、并发冲突、审计和 outbox | 同请求同结果、异载荷冲突、旧版本拒绝；审计不泄露隐藏字段配置，事件 envelope 符合公共合同 | Done |
+| PROJECT-PLATFORM-S05-M1-T10 | 实现空间配置布局/策略 DTO、Controller、异常映射和 availableActions | API 路径、入出参、错误码、最小披露和动作投影稳定；无权用户不能通过 ID 枚举配置 | Done |
+| PROJECT-PLATFORM-S05-M1-T11 | 完成空库/升级迁移、Repository、服务、API、授权、并发和隔离验证及 M1 checkpoint | V001 至最新和 V076 升级均可重复；目标测试、架构边界、工作台与执行报告通过 | Done |
 
 ### PROJECT-PLATFORM-S05-M2 布局图编辑、条件显示和共享渲染器
 
 | 任务 | 内容 | 验收标准 | 状态 |
 | --- | --- | --- | --- |
-| PROJECT-PLATFORM-S05-M2-T01 | 实现 create/detail 布局配置聚合读取与独立保存服务 | 两类图可分别创建、读取和更新，共享同一字段目录但互不覆盖；响应包含 hash、版本和诊断 | Pending |
-| PROJECT-PLATFORM-S05-M2-T02 | 实现 section、tab、column、field 和 summary 节点命令 | 每类节点的父级、子级、数量、配置和可移动范围受 schema 校验；永久 ID/key 在编辑中不变 | Pending |
-| PROJECT-PLATFORM-S05-M2-T03 | 实现节点新增、复制、移动、重排、配置更新和删除的原子图命令 | 任一失败不产生半图；删除含引用节点需显式确认；并发冲突返回最新版本而非覆盖 | Pending |
-| PROJECT-PLATFORM-S05-M2-T04 | 冻结并实现版本化条件显示 DSL 与安全求值器 | 支持明确的字段/上下文比较和 all/any/not 组合；无任意代码执行、隐式网络/数据库查询或类型猜测 | Pending |
-| PROJECT-PLATFORM-S05-M2-T05 | 实现条件引用闭包、循环/不可见依赖和失效字段诊断 | 条件只引用允许上下文与同类型字段；循环、隐藏依赖、退役字段和类型不兼容可定位到具体节点 | Pending |
-| PROJECT-PLATFORM-S05-M2-T06 | 建立前端布局/策略 API client、query keys、类型与错误映射 | 与后端 DTO 一致；缓存按 workspace/space/type/layoutKind 隔离；冲突和最小披露错误可区分 | Pending |
-| PROJECT-PLATFORM-S05-M2-T07 | 在空间配置入口增加“页面布局”导航、create/detail 分段和状态摘要 | 入口只对有配置权限角色显示；返回类型/字段列表保留选择；无权身份不出现伪可用按钮 | Pending |
-| PROJECT-PLATFORM-S05-M2-T08 | 实现紧凑的布局树/画布、控件面板和属性面板 | section/tab/column/field/summary 层级清楚，选中与拖放稳定，长名称和 1366px 桌面不挤压 | Pending |
-| PROJECT-PLATFORM-S05-M2-T09 | 实现节点添加、复制、移动、删除、键盘操作和并发冲突恢复 | UI 命令与原子后端命令一致；失败保留本地意图并可刷新重试，不以重载掩盖数据覆盖 | Pending |
-| PROJECT-PLATFORM-S05-M2-T10 | 实现条件编辑器、字段选择、类型化操作符和即时诊断 | 只展示合法字段/操作符；错误定位到条件分支；条件关闭不会修改服务端访问策略 | Pending |
-| PROJECT-PLATFORM-S05-M2-T11 | 建立共享表单渲染器和字段控件注册边界 | 渲染器消费布局 + 字段目录 + 访问投影，不复制类型逻辑；未知控件显示安全诊断而非崩溃 | Pending |
-| PROJECT-PLATFORM-S05-M2-T12 | 完成图命令、条件 DSL、编辑器、渲染器和 create/detail 隔离验证及 M2 checkpoint | 单元/集成、前端 lint/build 和真实隔离管理员配置浏览器流程通过；执行报告无阻断 Gap | Pending |
+| PROJECT-PLATFORM-S05-M2-T01 | 实现 create/detail 布局配置聚合读取与独立保存服务 | 两类图可分别创建、读取和更新，共享同一字段目录但互不覆盖；响应包含 hash、版本和诊断 | Done |
+| PROJECT-PLATFORM-S05-M2-T02 | 实现 section、tab、column、field 和 summary 节点命令 | 每类节点的父级、子级、数量、配置和可移动范围受 schema 校验；永久 ID/key 在编辑中不变 | Done |
+| PROJECT-PLATFORM-S05-M2-T03 | 实现节点新增、复制、移动、重排、配置更新和删除的原子图命令 | 任一失败不产生半图；删除含引用节点需显式确认；并发冲突返回最新版本而非覆盖 | Done |
+| PROJECT-PLATFORM-S05-M2-T04 | 冻结并实现版本化条件显示 DSL 与安全求值器 | 支持明确的字段/上下文比较和 all/any/not 组合；无任意代码执行、隐式网络/数据库查询或类型猜测 | Done |
+| PROJECT-PLATFORM-S05-M2-T05 | 实现条件引用闭包、循环/不可见依赖和失效字段诊断 | 条件只引用允许上下文与同类型字段；循环、隐藏依赖、退役字段和类型不兼容可定位到具体节点 | Done |
+| PROJECT-PLATFORM-S05-M2-T06 | 建立前端布局/策略 API client、query keys、类型与错误映射 | 与后端 DTO 一致；缓存按 workspace/space/type/layoutKind 隔离；冲突和最小披露错误可区分 | Done |
+| PROJECT-PLATFORM-S05-M2-T07 | 在空间配置入口增加“页面布局”导航、create/detail 分段和状态摘要 | 入口只对有配置权限角色显示；返回类型/字段列表保留选择；无权身份不出现伪可用按钮 | Done |
+| PROJECT-PLATFORM-S05-M2-T08 | 实现紧凑的布局树/画布、控件面板和属性面板 | section/tab/column/field/summary 层级清楚，选中与拖放稳定，长名称和 1366px 桌面不挤压 | Done |
+| PROJECT-PLATFORM-S05-M2-T09 | 实现节点添加、复制、移动、删除、键盘操作和并发冲突恢复 | UI 命令与原子后端命令一致；失败保留本地意图并可刷新重试，不以重载掩盖数据覆盖 | Done |
+| PROJECT-PLATFORM-S05-M2-T10 | 实现条件编辑器、字段选择、类型化操作符和即时诊断 | 只展示合法字段/操作符；错误定位到条件分支；条件关闭不会修改服务端访问策略 | Done |
+| PROJECT-PLATFORM-S05-M2-T11 | 建立共享表单渲染器和字段控件注册边界 | 渲染器消费布局 + 字段目录 + 访问投影，不复制类型逻辑；未知控件显示安全诊断而非崩溃 | Done |
+| PROJECT-PLATFORM-S05-M2-T12 | 完成图命令、条件 DSL、编辑器、渲染器和 create/detail 隔离验证及 M2 checkpoint | 单元/集成、前端 lint/build 和真实隔离管理员配置浏览器流程通过；执行报告无阻断 Gap | Done |
 
 ### PROJECT-PLATFORM-S05-M3 服务端字段访问策略与最小披露
 

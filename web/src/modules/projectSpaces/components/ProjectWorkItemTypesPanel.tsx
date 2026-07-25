@@ -58,11 +58,13 @@ export function ProjectWorkItemTypesPanel({
   selectedTypeId,
   onSelectType,
   onConfigureFields,
+  onConfigureLayouts,
 }: {
   space: UserProjectSpace
   selectedTypeId?: string
   onSelectType: (typeId: string) => void
   onConfigureFields: (typeId: string) => void
+  onConfigureLayouts: (typeId: string) => void
 }) {
   const { message, modal } = AntdApp.useApp()
   const queryClient = useQueryClient()
@@ -319,7 +321,8 @@ export function ProjectWorkItemTypesPanel({
                   </div>
                 </div>
                 <Space wrap>
-                  <Button type="primary" icon={<SettingOutlined />} onClick={() => onConfigureFields(selected.id)}>配置字段</Button>
+                  <Button icon={<SettingOutlined />} onClick={() => onConfigureFields(selected.id)}>配置字段</Button>
+                  <Button type="primary" onClick={() => onConfigureLayouts(selected.id)}>页面布局</Button>
                   {selected.availableActions.includes('edit') ? <Button icon={<EditOutlined />} onClick={() => openEditor('edit')}>编辑</Button> : null}
                   {selected.availableActions.includes('copy') ? <Button icon={<CopyOutlined />} onClick={() => openEditor('copy')}>复制</Button> : null}
                   {selected.availableActions.includes('restore') ? <Button className="work-item-type-restore" icon={<ReloadOutlined />} onClick={() => confirmTransition('restore')}>恢复</Button> : null}

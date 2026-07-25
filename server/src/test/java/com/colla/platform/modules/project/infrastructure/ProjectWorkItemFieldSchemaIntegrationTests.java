@@ -88,6 +88,110 @@ class ProjectWorkItemFieldSchemaIntegrationTests {
     }
 
     @Test
+    void schemaContainsScopedLayoutGraphPoliciesReceiptsAndNoWorkItemInstances() {
+        assertEquals(4, jdbcTemplate.queryForObject(
+            """
+                select count(*) from information_schema.tables
+                 where table_schema='public'
+                   and table_name in (
+                     'project_work_item_layouts',
+                     'project_work_item_layout_nodes',
+                     'project_work_item_field_access_policies',
+                     'project_work_item_layout_commands'
+                   )
+                """,
+            Integer.class
+        ));
+        assertEquals(4, jdbcTemplate.queryForObject(
+            """
+                select count(*) from information_schema.table_constraints
+                 where table_schema='public'
+                   and constraint_name in (
+                     'fk_project_work_item_layouts_type_scope',
+                     'fk_project_work_item_layout_nodes_layout_scope',
+                     'fk_project_work_item_layout_nodes_field_scope',
+                     'fk_project_work_item_field_policies_layout_scope'
+                   )
+                """,
+            Integer.class
+        ));
+        assertEquals(4, jdbcTemplate.queryForObject(
+            """
+                select count(*) from pg_indexes
+                 where schemaname='public'
+                   and indexname in (
+                     'idx_project_work_item_layouts_type_updated',
+                     'idx_project_work_item_layout_nodes_tree',
+                     'idx_project_work_item_field_policies_type',
+                     'idx_project_work_item_layout_commands_type_created'
+                   )
+                """,
+            Integer.class
+        ));
+        assertEquals(3, jdbcTemplate.queryForObject(
+            """
+                select count(*) from pg_trigger
+                 where not tgisinternal
+                   and tgname in (
+                     'trg_project_work_item_layout_identity',
+                     'trg_project_work_item_layout_node_identity',
+                     'trg_project_work_item_field_policy_identity'
+                   )
+                """,
+            Integer.class
+        ));
+        assertEquals(0, jdbcTemplate.queryForObject(
+            "select count(*) from information_schema.tables where table_schema='public' and table_name='project_work_items'",
+            Integer.class
+        ));
+    }
+
+    @Test
+    void v076UpgradeToV077AddsOnlyTheLayoutConfigurationFoundation() throws Exception {
+        PostgreSQLContainer<?> container = new PostgreSQLContainer<>("postgres:16");
+        container.start();
+        try {
+            Flyway.configure()
+                .dataSource(container.getJdbcUrl(), container.getUsername(), container.getPassword())
+                .target("76")
+                .load()
+                .migrate();
+            Flyway latest = Flyway.configure()
+                .dataSource(container.getJdbcUrl(), container.getUsername(), container.getPassword())
+                .target("77")
+                .load();
+            assertEquals(1, latest.migrate().migrationsExecuted);
+            assertEquals(0, latest.migrate().migrationsExecuted);
+
+            org.postgresql.ds.PGSimpleDataSource dataSource = new org.postgresql.ds.PGSimpleDataSource();
+            dataSource.setURL(container.getJdbcUrl());
+            dataSource.setUser(container.getUsername());
+            dataSource.setPassword(container.getPassword());
+            JdbcTemplate isolated = new JdbcTemplate(dataSource);
+            assertEquals("077", isolated.queryForObject(
+                "select max(version) from flyway_schema_history",
+                String.class
+            ));
+            assertEquals(4, isolated.queryForObject(
+                """
+                    select count(*) from information_schema.tables
+                     where table_schema='public'
+                       and table_name like 'project_work_item_layout%'
+                           or table_schema='public'
+                              and table_name='project_work_item_field_access_policies'
+                    """,
+                Integer.class
+            ));
+            assertEquals(0, isolated.queryForObject(
+                "select count(*) from information_schema.tables where table_schema='public' and table_name='project_work_items'",
+                Integer.class
+            ));
+        } finally {
+            container.stop();
+        }
+    }
+
+    @Test
     void v063UpgradeToV066PreservesLegacyRowsAndAddsOnlyFieldConfigurationSchema() throws Exception {
         PostgreSQLContainer<?> container = new PostgreSQLContainer<>("postgres:16");
         container.start();

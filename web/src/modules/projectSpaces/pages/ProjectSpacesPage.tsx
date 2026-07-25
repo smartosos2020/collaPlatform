@@ -3,6 +3,7 @@ import {
   EyeOutlined,
   LockOutlined,
   InboxOutlined,
+  LayoutOutlined,
   PlusOutlined,
   ProjectOutlined,
   ReloadOutlined,
@@ -43,6 +44,7 @@ import {
 } from '../api/projectSpacesApi'
 import { ProjectSpaceMembersPanel } from '../components/ProjectSpaceMembersPanel'
 import { ProjectWorkItemFieldsPanel } from '../components/ProjectWorkItemFieldsPanel'
+import { ProjectWorkItemLayoutsPanel } from '../components/ProjectWorkItemLayoutsPanel'
 import { ProjectWorkItemTypesPanel } from '../components/ProjectWorkItemTypesPanel'
 import { listActiveWorkItemTypes, workItemTypeKeys } from '../api/workItemTypesApi'
 import { errorMessage, formatTime, roleLabel, statusLabel, visibilityLabel } from '../projectSpaceView'
@@ -55,7 +57,7 @@ type CreateSpaceForm = {
 }
 
 type SettingsForm = Pick<CreateSpaceForm, 'name' | 'description' | 'visibility'>
-type SpaceView = 'overview' | 'members' | 'settings' | 'types' | 'fields'
+type SpaceView = 'overview' | 'members' | 'settings' | 'types' | 'fields' | 'layouts'
 
 const recentStorageKey = 'colla.project-spaces.recent'
 
@@ -174,6 +176,7 @@ export function ProjectSpacesPage() {
             onNavigate={(target) => navigate(`/project-spaces/${spaceQuery.data.id}${target === 'overview' ? '' : `/${target}`}`)}
             onSelectType={(selectedId) => navigate(`/project-spaces/${spaceQuery.data.id}/types/${selectedId}`)}
             onConfigureFields={(selectedId) => navigate(`/project-spaces/${spaceQuery.data.id}/types/${selectedId}/fields`)}
+            onConfigureLayouts={(selectedId) => navigate(`/project-spaces/${spaceQuery.data.id}/types/${selectedId}/layouts`)}
             onSelectField={(selectedTypeId, selectedId) => navigate(
               `/project-spaces/${spaceQuery.data.id}/types/${selectedTypeId}/fields${selectedId ? `/${selectedId}` : ''}`,
             )}
@@ -231,6 +234,7 @@ function ProjectSpaceShell({
   onNavigate,
   onSelectType,
   onConfigureFields,
+  onConfigureLayouts,
   onSelectField,
 }: {
   space: UserProjectSpace
@@ -240,6 +244,7 @@ function ProjectSpaceShell({
   onNavigate: (view: SpaceView) => void
   onSelectType: (typeId: string) => void
   onConfigureFields: (typeId: string) => void
+  onConfigureLayouts: (typeId: string) => void
   onSelectField: (typeId: string, fieldId?: string) => void
 }) {
   const canManage = space.currentUserRole === 'owner' || space.currentUserRole === 'admin'
@@ -280,6 +285,7 @@ function ProjectSpaceShell({
       <nav className="project-space-tabs" aria-label="空间导航">
         <Button aria-label="协作概览" type={view === 'overview' ? 'primary' : 'text'} icon={<AppstoreOutlined />} onClick={() => onNavigate('overview')}>协作概览</Button>
         {canManage ? <Button aria-label="工作项类型" type={view === 'types' || view === 'fields' ? 'primary' : 'text'} icon={<TagsOutlined />} onClick={() => onNavigate('types')}>工作项类型</Button> : null}
+        {canManage ? <Button aria-label="页面布局" type={view === 'layouts' ? 'primary' : 'text'} icon={<LayoutOutlined />} onClick={() => selectedTypeId ? onConfigureLayouts(selectedTypeId) : onNavigate('types')}>页面布局</Button> : null}
         {canManage ? <Button aria-label="成员" type={view === 'members' ? 'primary' : 'text'} icon={<TeamOutlined />} onClick={() => onNavigate('members')}>成员</Button> : null}
         {canManage ? <Button aria-label="空间设置" type={view === 'settings' ? 'primary' : 'text'} icon={<SettingOutlined />} onClick={() => onNavigate('settings')}>空间设置</Button> : null}
       </nav>
@@ -291,6 +297,7 @@ function ProjectSpaceShell({
           selectedTypeId={selectedTypeId}
           onSelectType={onSelectType}
           onConfigureFields={onConfigureFields}
+          onConfigureLayouts={onConfigureLayouts}
         />
       ) : null}
       {view === 'fields' && canManage && selectedTypeId ? (
@@ -300,6 +307,13 @@ function ProjectSpaceShell({
           selectedFieldId={selectedFieldId}
           onBack={() => onSelectType(selectedTypeId)}
           onSelectField={(fieldId) => onSelectField(selectedTypeId, fieldId)}
+        />
+      ) : null}
+      {view === 'layouts' && canManage && selectedTypeId ? (
+        <ProjectWorkItemLayoutsPanel
+          space={space}
+          typeId={selectedTypeId}
+          onBack={() => onSelectType(selectedTypeId)}
         />
       ) : null}
       {view === 'members' && canManage ? <ProjectSpaceMembersPanel space={space} /> : null}
@@ -436,6 +450,7 @@ function resolveSpaceView(pathname: string): SpaceView {
   if (pathname.endsWith('/members')) return 'members'
   if (pathname.endsWith('/settings')) return 'settings'
   if (/\/types\/[^/]+\/fields(?:\/[^/]+)?$/.test(pathname)) return 'fields'
+  if (/\/types\/[^/]+\/layouts$/.test(pathname)) return 'layouts'
   if (/\/types(?:\/[^/]+)?$/.test(pathname)) return 'types'
   return 'overview'
 }

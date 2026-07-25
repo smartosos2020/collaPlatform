@@ -147,6 +147,7 @@ export const router = createBrowserRouter([
           { path: 'project-spaces/:spaceId/types/:typeId', element: routeElement(<ProjectSpacesPage />) },
           { path: 'project-spaces/:spaceId/types/:typeId/fields', element: routeElement(<ProjectSpacesPage />) },
           { path: 'project-spaces/:spaceId/types/:typeId/fields/:fieldId', element: routeElement(<ProjectSpacesPage />) },
+          { path: 'project-spaces/:spaceId/types/:typeId/layouts', element: routeElement(<ProjectSpacesPage />) },
           { path: 'knowledge-bases', element: routeElement(<KnowledgeBasesPage />) },
           { path: 'knowledge-bases/:spaceId', element: routeElement(<KnowledgeBaseSpaceRoute />) },
           { path: 'knowledge-bases/:spaceId/items/:itemId', element: routeElement(<KnowledgeContentPage />) },
