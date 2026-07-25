@@ -117,7 +117,7 @@
   ],
   "topology": {
     "schemaVersion": "colla.capacity-topology/v1",
-    "revision": 1
+    "revision": 2
   },
   "seed": {
     "schemaVersion": "colla.capacity-seed/v1",

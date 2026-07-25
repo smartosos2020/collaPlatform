@@ -174,6 +174,14 @@ export function validateTopology(topology, contract) {
           addError(errors, `topology.roles.${roleName}.runtime.maxOldSpaceMiB`, "must leave at least 25% container memory outside the Node heap", runtime.maxOldSpaceMiB);
         }
       }
+      if (roleName === "postgresql") {
+        if (!positiveNumber(runtime.shmSizeMiB)) {
+          addError(errors, `topology.roles.${roleName}.runtime.shmSizeMiB`, "must be positive", runtime.shmSizeMiB);
+        } else if (positiveNumber(role?.resources?.memoryMiB)
+          && runtime.shmSizeMiB > role.resources.memoryMiB * 0.25) {
+          addError(errors, `topology.roles.${roleName}.runtime.shmSizeMiB`, "must not reserve more than 25% of container memory", runtime.shmSizeMiB);
+        }
+      }
     }
 
     for (const dependency of dependencies) {

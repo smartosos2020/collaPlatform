@@ -401,6 +401,10 @@ function validateRuntime(roleName, serviceName, runtime, service, errors) {
     for (const parameter of runtime.parameters) {
       if (!command.includes(parameter)) errors.push(`${serviceName} command misses ${parameter}`)
     }
+    const shmSizeMiB = Number(service.shm_size) / 1024 / 1024
+    if (shmSizeMiB !== runtime.shmSizeMiB) {
+      errors.push(`${serviceName} shared memory ${shmSizeMiB || 'unset'} MiB != ${runtime.shmSizeMiB} MiB`)
+    }
   } else if (roleName === 'redis') {
     const command = (service.command ?? []).join(' ')
     for (const parameter of runtime.parameters) {

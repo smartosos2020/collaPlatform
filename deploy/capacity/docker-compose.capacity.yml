@@ -2,6 +2,7 @@ name: ${COMPOSE_PROJECT_NAME:-colla-s05-capacity}
 
 services:
   postgres:
+    shm_size: ${POSTGRES_SHM_SIZE:-512M}
     command:
       - postgres
       - -c

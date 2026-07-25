@@ -67,6 +67,21 @@ test("topology rejects aggregate connection budget overflow", async () => {
   assert.match(result.errors.map((error) => error.message).join("\n"), /exceeds allocatable budget/);
 });
 
+test("topology requires bounded PostgreSQL shared memory", async () => {
+  const { contract, topology } = await loadCapacityConfig();
+  const missing = structuredClone(topology);
+  delete missing.roles.postgresql.runtime.shmSizeMiB;
+  const missingResult = validateTopology(missing, contract);
+  assert.equal(missingResult.ok, false);
+  assert.match(missingResult.errors.map((error) => error.path).join("\n"), /shmSizeMiB/);
+
+  const excessive = structuredClone(topology);
+  excessive.roles.postgresql.runtime.shmSizeMiB = 2048;
+  const excessiveResult = validateTopology(excessive, contract);
+  assert.equal(excessiveResult.ok, false);
+  assert.match(excessiveResult.errors.map((error) => error.message).join("\n"), /25%/);
+});
+
 test("seed plan is deterministic and SQL is idempotent, resumable, isolated, and named", async () => {
   const { seed } = await loadCapacityConfig();
   const first = createSeedPlan("s05-c1-core", seed);

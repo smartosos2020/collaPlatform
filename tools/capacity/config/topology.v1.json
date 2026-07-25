@@ -1,6 +1,6 @@
 {
   "schemaVersion": "colla.capacity-topology/v1",
-  "revision": 1,
+  "revision": 2,
   "contractId": "C1",
   "host": {
     "cpuVcpu": 20,
@@ -30,6 +30,7 @@
       },
       "runtime": {
         "kind": "native",
+        "shmSizeMiB": 512,
         "parameters": [
           "max_connections=100",
           "shared_buffers=1536MB"
