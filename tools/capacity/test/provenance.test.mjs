@@ -15,6 +15,13 @@ function seedPlan() {
     schemaVersion: "colla.capacity-seed-plan/v1",
     seedId: "s05-provenance",
     fixtureName: "capacity-s05-provenance",
+    credentialSource: {
+      type: "initialized-user-password-hash",
+      username: "admin",
+      requiredStatus: "active",
+      requiredNotDeleted: true,
+      outputFingerprint: "md5-of-stored-password-hash"
+    },
     expectedRecordCount: 2458229
   };
   return {
@@ -91,6 +98,7 @@ test("clean immutable inputs produce a stable Pass provenance manifest", async (
   assert.match(result.contract.digest, /^[0-9a-f]{64}$/);
   assert.match(result.topology.digest, /^[0-9a-f]{64}$/);
   assert.match(result.compose.sha256, /^[0-9a-f]{64}$/);
+  assert.equal(result.seedPlan.fingerprint, result.seedPlan.checksum);
   assert.deepEqual(result.images.map((image) => image.name), ["api", "collaboration"]);
   assert.ok(result.images.every((image) => image.revision === commit));
   assert.equal(result.generatedAt, generatedAt);

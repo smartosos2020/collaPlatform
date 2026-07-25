@@ -175,7 +175,7 @@ function resolveSeedPlan(seedPlan, blockers) {
     return { seedId: seedId || null, fixtureName: fixtureName || null, checksum: null, fingerprint: null };
   }
   const { checksum: ignored, ...unsigned } = seedPlan;
-  const fingerprint = sha256(stableStringify(redactSecrets(unsigned)));
+  const fingerprint = sha256(stableStringify(unsigned));
   if (checksum !== fingerprint) {
     blockers.push({ code: "SEED_CHECKSUM_MISMATCH", path: "seedPlan.checksum" });
   }
