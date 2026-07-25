@@ -9,7 +9,7 @@ public interface WorkItemLayoutCommandRepository {
 
     Optional<CommandReceipt> find(UUID workspaceId, String requestId);
 
-    void complete(UUID commandId, UUID responseLayoutId);
+    void complete(UUID commandId, CommandResponse response);
 
     record CommandStart(
         UUID id,
@@ -23,6 +23,14 @@ public interface WorkItemLayoutCommandRepository {
     ) {
     }
 
+    record CommandResponse(
+        UUID layoutId,
+        long aggregateVersion,
+        String configHash,
+        String payload
+    ) {
+    }
+
     record CommandReceipt(
         UUID id,
         UUID workspaceId,
@@ -32,7 +40,11 @@ public interface WorkItemLayoutCommandRepository {
         String operation,
         String requestHash,
         String status,
+        Integer responseSchemaVersion,
         UUID responseLayoutId,
+        Long responseAggregateVersion,
+        String responseConfigHash,
+        String responsePayload,
         UUID createdBy,
         Instant createdAt,
         Instant completedAt

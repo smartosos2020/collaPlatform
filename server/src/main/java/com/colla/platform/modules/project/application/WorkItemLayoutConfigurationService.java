@@ -17,11 +17,13 @@ import com.colla.platform.modules.project.domain.WorkItemTypeModels.WorkItemType
 import com.colla.platform.modules.project.infrastructure.ProjectSpaceRepository;
 import com.colla.platform.modules.project.infrastructure.WorkItemLayoutCommandRepository;
 import com.colla.platform.modules.project.infrastructure.WorkItemLayoutCommandRepository.CommandReceipt;
+import com.colla.platform.modules.project.infrastructure.WorkItemLayoutCommandRepository.CommandResponse;
 import com.colla.platform.modules.project.infrastructure.WorkItemLayoutCommandRepository.CommandStart;
 import com.colla.platform.modules.project.infrastructure.WorkItemLayoutRepository;
 import com.colla.platform.modules.project.infrastructure.WorkItemLayoutRepository.LayoutDefinitionInsert;
 import com.colla.platform.shared.auth.CurrentUser;
 import com.colla.platform.shared.request.RequestBoundaryContext;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
@@ -167,7 +169,7 @@ public class WorkItemLayoutConfigurationService {
         Command command
     ) {
         if (command.replay()) {
-            return replay(user, context, spaceId, typeId, command.receipt());
+            return replay(user, spaceId, typeId, command.receipt());
         }
 
         try {
@@ -219,8 +221,17 @@ public class WorkItemLayoutConfigurationService {
                 canonical.policies().size(),
                 command.requestId()
             );
-            commandRepository.complete(command.receipt().id(), layoutId);
-            return aggregate(context, saved);
+            LayoutAggregate response = aggregate(context, saved);
+            commandRepository.complete(
+                command.receipt().id(),
+                new CommandResponse(
+                    saved.id(),
+                    saved.aggregateVersion(),
+                    saved.configHash(),
+                    serializeReceipt(response)
+                )
+            );
+            return response;
         } catch (DataIntegrityViolationException exception) {
             throw failure("INVALID_LAYOUT_GRAPH", "Layout graph violates its persistence contract", exception);
         }
@@ -242,7 +253,7 @@ public class WorkItemLayoutConfigurationService {
         String kind = LayoutKind.parse(layoutKind).name();
         Command lifecycle = beginNodeCommand(user, spaceId, typeId, kind, command, requestId);
         if (lifecycle.replay()) {
-            return replay(user, context, spaceId, typeId, lifecycle.receipt());
+            return replay(user, spaceId, typeId, lifecycle.receipt());
         }
         LayoutDefinition definition = layoutRepository.findByKind(
             user.workspaceId(), spaceId, typeId, kind
@@ -285,18 +296,60 @@ public class WorkItemLayoutConfigurationService {
 
     private LayoutAggregate replay(
         CurrentUser user,
-        Context context,
         UUID spaceId,
         UUID typeId,
         CommandReceipt receipt
     ) {
-        if (receipt.responseLayoutId() == null) {
-            throw failure("LAYOUT_IDEMPOTENCY_CONFLICT", "Completed layout command has no response");
+        if (receipt.responseSchemaVersion() == null) {
+            throw failure(
+                "LAYOUT_IDEMPOTENCY_LEGACY_RECEIPT",
+                "The original response predates immutable layout receipts and cannot be replayed safely"
+            );
         }
-        LayoutDefinition definition = layoutRepository.findById(
-            user.workspaceId(), spaceId, typeId, receipt.responseLayoutId()
-        ).orElseThrow(() -> failure("LAYOUT_NOT_FOUND", "Work item layout is not available"));
-        return aggregate(context, definition);
+        if (receipt.responseSchemaVersion() != 1
+            || receipt.responseLayoutId() == null
+            || receipt.responseAggregateVersion() == null
+            || receipt.responseConfigHash() == null
+            || receipt.responsePayload() == null) {
+            throw failure(
+                "LAYOUT_IDEMPOTENCY_CONFLICT",
+                "Completed layout command has an invalid response receipt"
+            );
+        }
+        LayoutAggregate response = deserializeReceipt(receipt.responsePayload());
+        LayoutDefinition definition = response.definition();
+        if (!definition.id().equals(receipt.responseLayoutId())
+            || definition.aggregateVersion() != receipt.responseAggregateVersion()
+            || !definition.configHash().equals(receipt.responseConfigHash())
+            || !definition.workspaceId().equals(user.workspaceId())
+            || !definition.spaceId().equals(spaceId)
+            || !definition.typeDefinitionId().equals(typeId)) {
+            throw failure(
+                "LAYOUT_IDEMPOTENCY_CONFLICT",
+                "Completed layout command response receipt failed integrity validation"
+            );
+        }
+        return response;
+    }
+
+    private String serializeReceipt(LayoutAggregate response) {
+        try {
+            return objectMapper.writeValueAsString(response);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Work item layout response receipt could not be serialized", exception);
+        }
+    }
+
+    private LayoutAggregate deserializeReceipt(String payload) {
+        try {
+            return objectMapper.readValue(payload, LayoutAggregate.class);
+        } catch (JsonProcessingException exception) {
+            throw failure(
+                "LAYOUT_IDEMPOTENCY_CONFLICT",
+                "Completed layout command response receipt could not be decoded",
+                exception
+            );
+        }
     }
 
     private LayoutAggregate aggregate(Context context, LayoutDefinition definition) {

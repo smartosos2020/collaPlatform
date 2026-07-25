@@ -23,8 +23,8 @@ public class JdbcWorkItemLayoutCommandRepository implements WorkItemLayoutComman
             """
                 insert into project_work_item_layout_commands
                     (id, workspace_id, space_id, type_definition_id, request_id, operation,
-                     request_hash, status, created_by, created_at)
-                values (?, ?, ?, ?, ?, ?, ?, 'pending', ?, now())
+                     request_hash, status, response_schema_version, created_by, created_at)
+                values (?, ?, ?, ?, ?, ?, ?, 'pending', 1, ?, now())
                 on conflict (workspace_id, request_id) do nothing
                 """,
             command.id(),
@@ -44,7 +44,9 @@ public class JdbcWorkItemLayoutCommandRepository implements WorkItemLayoutComman
             return Optional.ofNullable(jdbcTemplate.queryForObject(
                 """
                     select id, workspace_id, space_id, type_definition_id, request_id, operation,
-                           request_hash, status, response_layout_id, created_by, created_at, completed_at
+                           request_hash, status, response_schema_version, response_layout_id,
+                           response_aggregate_version, response_config_hash, response_payload,
+                           created_by, created_at, completed_at
                       from project_work_item_layout_commands
                      where workspace_id = ? and request_id = ?
                     """,
@@ -58,14 +60,26 @@ public class JdbcWorkItemLayoutCommandRepository implements WorkItemLayoutComman
     }
 
     @Override
-    public void complete(UUID commandId, UUID responseLayoutId) {
+    public void complete(UUID commandId, CommandResponse response) {
         int updated = jdbcTemplate.update(
             """
                 update project_work_item_layout_commands
-                   set status = 'completed', response_layout_id = ?, completed_at = now()
-                 where id = ? and status = 'pending'
+                   set status = 'completed',
+                       response_layout_id = ?,
+                       response_aggregate_version = ?,
+                       response_config_hash = ?,
+                       response_payload = ?::jsonb,
+                       completed_at = now()
+                 where id = ?
+                   and status = 'pending'
+                   and response_schema_version = 1
+                   and response_layout_id is null
+                   and response_payload is null
                 """,
-            responseLayoutId,
+            response.layoutId(),
+            response.aggregateVersion(),
+            response.configHash(),
+            response.payload(),
             commandId
         );
         if (updated != 1) {
@@ -84,7 +98,11 @@ public class JdbcWorkItemLayoutCommandRepository implements WorkItemLayoutComman
             resultSet.getString("operation"),
             resultSet.getString("request_hash"),
             resultSet.getString("status"),
+            resultSet.getObject("response_schema_version", Integer.class),
             resultSet.getObject("response_layout_id", UUID.class),
+            resultSet.getObject("response_aggregate_version", Long.class),
+            resultSet.getString("response_config_hash"),
+            resultSet.getString("response_payload"),
             resultSet.getObject("created_by", UUID.class),
             resultSet.getTimestamp("created_at").toInstant(),
             completedAt == null ? null : completedAt.toInstant()
