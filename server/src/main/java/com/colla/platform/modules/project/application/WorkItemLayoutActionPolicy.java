@@ -9,7 +9,7 @@ public class WorkItemLayoutActionPolicy {
         if (!isManager(role) || !"active".equals(spaceStatus) || "retired".equals(typeStatus)) {
             return List.of();
         }
-        return List.of("save");
+        return List.of("save", "save_policies", "synthetic_preview");
     }
 
     public boolean isManager(String role) {

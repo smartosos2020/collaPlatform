@@ -301,8 +301,10 @@ PROJECT-PLATFORM-S01 于 2026-07-18 完成项目模块当前事实审计、目�
 - S05-M2 在同一配置聚合上增加原子节点命令 API。section/tab/column/field/summary 的新增、复制、移动、重排、更新和确认删除均先构造完整候选图，再统一规范化、引用校验和事务保存；旧 aggregate version 返回冲突，相同 request ID 重放不重复执行。
 - 条件显示 DSL 固定为 schema v1，支持字段或受限上下文 predicate、`all/any/not`、类型化操作符、8 层/64 表达式预算和无副作用内存求值。保存会拒绝非法字段、操作符和值、布局外隐藏依赖与条件循环；条件只影响显示，不授予字段访问。
 - 前端 `/project-spaces/{spaceId}/types/{typeId}/layouts` 只对空间 owner/admin 展示，提供独立 create/detail、控件面板、紧凑布局树、属性/组合条件编辑、拖放/键盘操作、冲突保留重试和共享渲染预览。缓存键包含 space/type/layoutKind；成员身份没有配置入口或伪可用按钮。
-- `WorkItemLayoutRenderer` 是当前配置预览的共享渲染边界，输入为布局、S04 字段目录和显式访问投影；hidden 不渲染、read 只读、required 合并展示，未知字段/控件安全诊断。实际服务端 `read/write/required/hidden` 决策仍属于 S05-M3，M2 预览使用空投影且不从客户端策略推导授权。
-- 当前仍没有 `project_work_items` 表、工作项实例 API、动态字段值、服务端运行时字段访问决策、流程或完整草稿发布流水线。S04 字段和 S05 布局仍是独立待发布配置图，不改写 S03 published v1；S06 承接新配置版本发布，S07 承接显式绑定 `type_version_id` 的统一实例。
+- S05-M3 已实现 schema v1 字段访问策略、确定性求值器和脱敏布局投影。owner/admin/member、guest、non-member、enterprise admin 的服务端上限分别为 write、read、hidden 三层；disabled/archived/retired 资源继续收窄，企业管理员不自动获得空间内容访问。
+- 正式读取 API `/api/project-spaces/{spaceId}/types/{typeId}/layouts/{layoutKind}/projection` 只返回可见节点、安全字段 DTO、逐字段决策与脱敏诊断；hidden 字段身份和原策略不出服务边界。策略专用写和 synthetic preview 继续位于 configuration API，复用版本、幂等和审计，预览严格无持久化副作用。
+- `WorkItemLayoutRenderer` 现在只消费服务端访问投影；hidden 不渲染、read 禁用控件、required 显示必填，缺失投影按 hidden 失败关闭。管理 UI 支持六身份规则、危险收窄确认、角色/资源状态/字段样本预览，保留已有条件规则。
+- 当前仍没有 `project_work_items` 表、工作项实例 API、动态字段值、流程或完整草稿发布流水线。S04 字段和 S05 布局/策略仍是独立待发布配置图，不改写 S03 published v1；S06 承接新配置版本发布，S07 承接显式绑定 `type_version_id` 的统一实例。
 - S04 的规模事实仅覆盖字段配置目录：真实 PostgreSQL 中 120 个字段、2400 个选项的 API 查询预算为 3 秒，并校验复合索引计划。10 万工作项、动态字段过滤和并发查询尚无运行时承载，归入 S07/S13，不作为当前性能事实。
 - 成员治理以 `project_spaces` 行级悲观锁串行化同空间变更；成员唯一约束、活动角色唯一索引和邀请 pending 唯一索引承担最终数据库防线。直接加入、角色变化、移除、owner 转移和邀请状态变化均支持重复请求收敛。
 - 邀请 token 使用 32 字节安全随机输入并只持久化 SHA-256 哈希；API/通知/审计只传 invitation ID。邀请过期使用独立事务持久化，避免业务 409 回滚过期状态。

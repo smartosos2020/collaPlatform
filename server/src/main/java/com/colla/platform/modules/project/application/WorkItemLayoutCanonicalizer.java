@@ -32,15 +32,18 @@ public class WorkItemLayoutCanonicalizer {
     private final ObjectMapper objectMapper;
     private final WorkItemTypeConfigCanonicalizer canonicalizer;
     private final WorkItemLayoutConditionDsl conditionDsl;
+    private final WorkItemFieldAccessPolicySchema policySchema;
 
     public WorkItemLayoutCanonicalizer(
         ObjectMapper objectMapper,
         WorkItemTypeConfigCanonicalizer canonicalizer,
-        WorkItemLayoutConditionDsl conditionDsl
+        WorkItemLayoutConditionDsl conditionDsl,
+        WorkItemFieldAccessPolicySchema policySchema
     ) {
         this.objectMapper = objectMapper;
         this.canonicalizer = canonicalizer;
         this.conditionDsl = conditionDsl;
+        this.policySchema = policySchema;
     }
 
     public CanonicalLayout canonicalize(
@@ -200,6 +203,7 @@ public class WorkItemLayoutCanonicalizer {
         }
         Set<UUID> ids = new LinkedHashSet<>();
         Set<String> keys = new LinkedHashSet<>();
+        Set<UUID> fieldIds = new LinkedHashSet<>();
         List<FieldAccessPolicy> result = new ArrayList<>();
         for (FieldAccessPolicy value : values) {
             if (value == null || value.id() == null || value.fieldId() == null) {
@@ -211,12 +215,13 @@ public class WorkItemLayoutCanonicalizer {
             String policyKey = stableKey(
                 value.policyKey(), "INVALID_FIELD_ACCESS_POLICY", "Field access policy key"
             );
-            if (!ids.add(value.id()) || !keys.add(policyKey)) {
-                throw failure("DUPLICATE_FIELD_ACCESS_POLICY", "Field access policy ids and keys must be unique");
+            if (!ids.add(value.id()) || !keys.add(policyKey) || !fieldIds.add(value.fieldId())) {
+                throw failure(
+                    "DUPLICATE_FIELD_ACCESS_POLICY",
+                    "Field access policy ids, keys, and field references must be unique"
+                );
             }
-            JsonNode policy = versionedObject(
-                value.policy(), "INVALID_FIELD_ACCESS_POLICY", "Field access policy"
-            );
+            JsonNode policy = policySchema.canonicalize(value.policy());
             result.add(new FieldAccessPolicy(
                 value.id(), value.fieldId(), fieldKey, policyKey, policy, canonicalizer.hash(policy)
             ));

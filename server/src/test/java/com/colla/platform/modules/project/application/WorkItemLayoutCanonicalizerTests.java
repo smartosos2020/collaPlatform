@@ -15,10 +15,13 @@ class WorkItemLayoutCanonicalizerTests {
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final WorkItemTypeConfigCanonicalizer configCanonicalizer =
         new WorkItemTypeConfigCanonicalizer(objectMapper);
+    private final WorkItemLayoutConditionDsl conditionDsl =
+        new WorkItemLayoutConditionDsl(objectMapper, configCanonicalizer);
     private final WorkItemLayoutCanonicalizer canonicalizer = new WorkItemLayoutCanonicalizer(
         objectMapper,
         configCanonicalizer,
-        new WorkItemLayoutConditionDsl(objectMapper, configCanonicalizer)
+        conditionDsl,
+        new WorkItemFieldAccessPolicySchema(objectMapper, configCanonicalizer, conditionDsl)
     );
 
     @Test
@@ -33,7 +36,7 @@ class WorkItemLayoutCanonicalizerTests {
             fieldId,
             "title",
             "title_access",
-            objectMapper.createObjectNode().put("schemaVersion", 1).put("mode", "editable"),
+            policy("write"),
             ""
         );
 
@@ -121,5 +124,13 @@ class WorkItemLayoutCanonicalizerTests {
             objectMapper.createObjectNode(),
             objectMapper.createObjectNode().put("schemaVersion", 1)
         );
+    }
+
+    private com.fasterxml.jackson.databind.JsonNode policy(String mode) {
+        var result = objectMapper.createObjectNode();
+        result.put("schemaVersion", 1);
+        result.putObject("default").put("mode", mode).put("required", false);
+        result.putArray("rules");
+        return result;
     }
 }

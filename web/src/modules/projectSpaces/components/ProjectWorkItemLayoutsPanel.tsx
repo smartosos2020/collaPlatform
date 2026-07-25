@@ -9,6 +9,7 @@ import {
   FormOutlined,
   PlusOutlined,
   ReloadOutlined,
+  SafetyCertificateOutlined,
   SaveOutlined,
 } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -40,9 +41,16 @@ import {
 } from '../api/workItemFieldsApi'
 import {
   commandWorkItemLayoutNode,
+  getWorkItemLayoutProjection,
   getWorkItemLayout,
+  previewWorkItemLayout,
+  saveWorkItemLayoutPolicies,
   saveWorkItemLayout,
   workItemLayoutKeys,
+  type WorkItemFieldAccessMode,
+  type WorkItemFieldAccessPolicy,
+  type WorkItemFieldAccessPolicyDocument,
+  type WorkItemFieldAccessRole,
   type WorkItemLayoutKind,
   type WorkItemLayoutNode,
   type WorkItemLayoutNodeCommand,
@@ -66,6 +74,17 @@ export function ProjectWorkItemLayoutsPanel({
   const [selectedId, setSelectedId] = useState<string>()
   const [pendingCommand, setPendingCommand] = useState<WorkItemLayoutNodeCommand>()
   const [draggedId, setDraggedId] = useState<string>()
+  const [policyState, setPolicyState] = useState<{
+    layoutKey: string
+    drafts: Record<string, FieldPolicyDraft>
+    dirty: boolean
+  }>({ layoutKey: '', drafts: {}, dirty: false })
+  const [policyFieldId, setPolicyFieldId] = useState<string>()
+  const [previewRole, setPreviewRole] = useState<WorkItemFieldAccessRole>('member')
+  const [previewSpaceStatus, setPreviewSpaceStatus] = useState<'active' | 'disabled' | 'archived'>('active')
+  const [previewTypeStatus, setPreviewTypeStatus] = useState<'active' | 'disabled' | 'retired'>('active')
+  const [previewFieldStatus, setPreviewFieldStatus] = useState<'active' | 'disabled' | 'retired'>('active')
+  const [previewValues, setPreviewValues] = useState('{}')
   const typeQuery = useQuery({
     queryKey: workItemTypeKeys.detail(space.id, typeId),
     queryFn: () => getConfiguredWorkItemType(space.id, typeId),
@@ -84,13 +103,42 @@ export function ProjectWorkItemLayoutsPanel({
     retry: false,
   })
   const layout = layoutQuery.data
+  const runtimeProjectionQuery = useQuery({
+    queryKey: [...workItemLayoutKeys.detail(space.id, typeId, kind), 'runtime-projection'],
+    queryFn: () => getWorkItemLayoutProjection(space.id, typeId, kind),
+    enabled: Boolean(layout),
+    retry: false,
+  })
   const effectiveSelectedId = layout?.nodes.some((item) => item.id === selectedId)
     ? selectedId
     : layout?.nodes[0]?.id
   const selected = layout?.nodes.find((node) => node.id === effectiveSelectedId)
+  const layoutFields = useMemo(() => {
+    const used = new Set(layout?.nodes.map((node) => node.fieldId).filter(Boolean))
+    return (fieldsQuery.data?.items ?? []).filter((field) => used.has(field.id))
+  }, [fieldsQuery.data?.items, layout?.nodes])
+  const layoutPolicyKey = layout ? `${layout.id}:${layout.aggregateVersion}:${layout.configHash}` : ''
+  const baselinePolicyDrafts = useMemo(
+    () => policyDraftMap(layoutFields, layout?.policies ?? []),
+    [layout?.policies, layoutFields],
+  )
+  const effectivePolicyDrafts = policyState.layoutKey === layoutPolicyKey
+    ? policyState.drafts
+    : baselinePolicyDrafts
+  const policyDirty = policyState.layoutKey === layoutPolicyKey && policyState.dirty
+  const effectivePolicyFieldId = layoutFields.some((field) => field.id === policyFieldId)
+    ? policyFieldId
+    : layoutFields[0]?.id
+  const selectedPolicyField = layoutFields.find((field) => field.id === effectivePolicyFieldId)
+  const selectedPolicyDraft = effectivePolicyFieldId
+    ? effectivePolicyDrafts[effectivePolicyFieldId]
+    : undefined
 
   const refresh = async () => {
     await queryClient.invalidateQueries({ queryKey: workItemLayoutKeys.detail(space.id, typeId, kind) })
+    await queryClient.invalidateQueries({
+      queryKey: [...workItemLayoutKeys.detail(space.id, typeId, kind), 'runtime-projection'],
+    })
   }
 
   const saveMutation = useMutation({
@@ -115,6 +163,42 @@ export function ProjectWorkItemLayoutsPanel({
       setPendingCommand(command)
       message.error(layoutError(error, '布局命令执行失败'))
     },
+  })
+
+  const policyMutation = useMutation({
+    mutationFn: (policies: Array<Omit<WorkItemFieldAccessPolicy, 'configHash'>>) => {
+      if (!layout) throw new Error('布局尚未加载')
+      return saveWorkItemLayoutPolicies(space.id, typeId, kind, {
+        policies,
+        aggregateVersion: layout.aggregateVersion,
+      })
+    },
+    onSuccess: async (saved) => {
+      queryClient.setQueryData(workItemLayoutKeys.detail(space.id, typeId, kind), saved)
+      await queryClient.invalidateQueries({
+        queryKey: [...workItemLayoutKeys.detail(space.id, typeId, kind), 'runtime-projection'],
+      })
+      message.success('字段访问策略已保存')
+    },
+    onError: (error) => message.error(layoutError(error, '字段访问策略保存失败')),
+  })
+
+  const previewMutation = useMutation({
+    mutationFn: (fieldValues: Record<string, unknown>) => previewWorkItemLayout(
+      space.id,
+      typeId,
+      kind,
+      {
+        role: previewRole,
+        spaceStatus: previewSpaceStatus,
+        typeStatus: previewTypeStatus,
+        fieldValues,
+        fieldStatuses: selectedPolicyField
+          ? { [selectedPolicyField.fieldKey]: previewFieldStatus }
+          : {},
+      },
+    ),
+    onError: (error) => message.error(layoutError(error, '合成预览失败')),
   })
 
   const runCommand = (command: Omit<WorkItemLayoutNodeCommand, 'aggregateVersion'>) => {
@@ -207,8 +291,51 @@ export function ProjectWorkItemLayoutsPanel({
     }
   }
 
+  const updatePolicyDraft = (
+    fieldId: string,
+    update: (draft: FieldPolicyDraft) => FieldPolicyDraft,
+  ) => {
+    setPolicyState((current) => {
+      const drafts = current.layoutKey === layoutPolicyKey
+        ? current.drafts
+        : baselinePolicyDrafts
+      return {
+        layoutKey: layoutPolicyKey,
+        drafts: { ...drafts, [fieldId]: update(drafts[fieldId]) },
+        dirty: true,
+      }
+    })
+    previewMutation.reset()
+  }
+
+  const savePolicies = () => {
+    if (!layout || !policyDirty) return
+    const policies = layoutFields.map((field) => policyRequest(effectivePolicyDrafts[field.id]))
+    const submit = () => policyMutation.mutate(policies)
+    if (policies.some((policy) => policyIsRestrictive(policy.policy))) {
+      Modal.confirm({
+        title: '确认收窄字段访问权限',
+        content: '只读或隐藏规则会立即影响对应身份，隐藏字段也不会出现在诊断和投影中。',
+        okText: '确认保存',
+        onOk: submit,
+      })
+      return
+    }
+    submit()
+  }
+
+  const runPreview = () => {
+    const parsed = parsePreviewValues(previewValues)
+    if (!parsed.ok) {
+      message.error(parsed.message)
+      return
+    }
+    previewMutation.mutate(parsed.value)
+  }
+
   const loading = typeQuery.isLoading || fieldsQuery.isLoading || catalogQuery.isLoading || layoutQuery.isLoading
   const missing = layoutQuery.error instanceof ApiRequestError && layoutQuery.error.status === 404
+  const renderedProjection = previewMutation.data ?? runtimeProjectionQuery.data
 
   return (
     <section
@@ -238,6 +365,7 @@ export function ProjectWorkItemLayoutsPanel({
               setKind(value as WorkItemLayoutKind)
               setSelectedId(undefined)
               setPendingCommand(undefined)
+              previewMutation.reset()
             }}
             options={[{ label: '新建页', value: 'create' }, { label: '详情页', value: 'detail' }]}
           />
@@ -354,17 +482,128 @@ export function ProjectWorkItemLayoutsPanel({
               </div>
             </Card>
           </div>
-          <Card
-            className="work-item-layout-renderer-card"
-            data-testid="work-item-layout-renderer"
-            title={<Space><EyeOutlined />共享渲染预览</Space>}
-          >
-            <WorkItemLayoutRenderer
-              layout={layout}
-              fields={fieldsQuery.data?.items ?? []}
-              accessProjection={{}}
-            />
-          </Card>
+          <div className="work-item-layout-access-grid">
+            <Card
+              className="work-item-layout-policy-card"
+              data-testid="work-item-layout-policy-editor"
+              title={<Space><SafetyCertificateOutlined />字段访问策略</Space>}
+              extra={(
+                <Button
+                  type="primary"
+                  icon={<SaveOutlined />}
+                  disabled={!policyDirty}
+                  loading={policyMutation.isPending}
+                  onClick={savePolicies}
+                >
+                  保存策略
+                </Button>
+              )}
+            >
+              {layoutFields.length === 0 ? <Empty description="当前布局没有字段" /> : (
+                <div className="work-item-layout-policy-editor">
+                  <Select
+                    aria-label="策略字段"
+                    value={effectivePolicyFieldId}
+                    options={layoutFields.map((field) => ({
+                      label: `${field.name} · ${field.fieldKey}`,
+                      value: field.id,
+                    }))}
+                    onChange={setPolicyFieldId}
+                  />
+                  {selectedPolicyField && selectedPolicyDraft ? (
+                    <FieldPolicyEditor
+                      field={selectedPolicyField}
+                      draft={selectedPolicyDraft}
+                      onChange={(update) => updatePolicyDraft(selectedPolicyField.id, update)}
+                    />
+                  ) : null}
+                </div>
+              )}
+            </Card>
+
+            <Card
+              className="work-item-layout-preview-card"
+              title={<Space><EyeOutlined />服务端访问投影</Space>}
+              extra={renderedProjection ? (
+                <Tag color={renderedProjection.synthetic ? 'purple' : 'blue'}>
+                  {renderedProjection.synthetic ? '合成预览' : '当前身份'}
+                </Tag>
+              ) : null}
+            >
+              <div className="work-item-layout-preview-controls">
+                <Select
+                  aria-label="预览角色"
+                  value={previewRole}
+                  options={ACCESS_ROLES.map((role) => ({ label: roleLabel(role), value: role }))}
+                  onChange={setPreviewRole}
+                />
+                <Select
+                  aria-label="预览空间状态"
+                  value={previewSpaceStatus}
+                  options={['active', 'disabled', 'archived'].map((value) => ({ label: `空间 ${value}`, value }))}
+                  onChange={setPreviewSpaceStatus}
+                />
+                <Select
+                  aria-label="预览类型状态"
+                  value={previewTypeStatus}
+                  options={['active', 'disabled', 'retired'].map((value) => ({ label: `类型 ${value}`, value }))}
+                  onChange={setPreviewTypeStatus}
+                />
+                <Select
+                  aria-label="预览字段状态"
+                  value={previewFieldStatus}
+                  disabled={!selectedPolicyField}
+                  options={['active', 'disabled', 'retired'].map((value) => ({ label: `选中字段 ${value}`, value }))}
+                  onChange={setPreviewFieldStatus}
+                />
+                <Input.TextArea
+                  aria-label="预览字段样本"
+                  value={previewValues}
+                  autoSize={{ minRows: 1, maxRows: 3 }}
+                  placeholder='字段样本 JSON，例如 {"priority":"high"}'
+                  onChange={(event) => setPreviewValues(event.target.value)}
+                />
+                <Button
+                  icon={<EyeOutlined />}
+                  loading={previewMutation.isPending}
+                  onClick={runPreview}
+                >
+                  运行预览
+                </Button>
+              </div>
+              {policyDirty ? (
+                <Alert
+                  type="info"
+                  showIcon
+                  message="合成预览使用已保存策略"
+                  description="请先保存当前策略草稿，再验证新的访问结果。"
+                />
+              ) : null}
+              {runtimeProjectionQuery.isError && !previewMutation.data ? (
+                <Alert type="warning" showIcon message="当前身份投影不可用" />
+              ) : null}
+              {renderedProjection?.diagnostics.length ? (
+                <Alert
+                  type="warning"
+                  showIcon
+                  message={`${renderedProjection.diagnostics.length} 项安全诊断`}
+                  description={renderedProjection.diagnostics.map((item) => item.code).join('；')}
+                />
+              ) : null}
+              <div
+                className="work-item-layout-renderer-card"
+                data-testid="work-item-layout-renderer"
+              >
+                {renderedProjection ? (
+                  <WorkItemLayoutRenderer
+                    layout={renderedProjection}
+                    fields={renderedProjection.fields}
+                    accessProjection={renderedProjection.accessProjection}
+                  />
+                ) : <Empty description="正在读取服务端访问投影" />}
+              </div>
+            </Card>
+          </div>
         </>
       ) : null}
     </section>
@@ -583,6 +822,129 @@ function NodeProperties({
   )
 }
 
+const ACCESS_ROLES: WorkItemFieldAccessRole[] = [
+  'owner',
+  'admin',
+  'member',
+  'guest',
+  'non_member',
+  'enterprise_admin',
+]
+
+type PolicyEffectDraft = {
+  mode: WorkItemFieldAccessMode | 'inherit'
+  required: boolean
+  ruleKey?: string
+}
+
+type FieldPolicyDraft = {
+  id: string
+  fieldId: string
+  fieldKey: string
+  policyKey: string
+  defaultMode: WorkItemFieldAccessMode
+  defaultRequired: boolean
+  roles: Record<WorkItemFieldAccessRole, PolicyEffectDraft>
+  conditionalRules: WorkItemFieldAccessPolicyDocument['rules']
+}
+
+function FieldPolicyEditor({
+  field,
+  draft,
+  onChange,
+}: {
+  field: ConfiguredWorkItemField
+  draft: FieldPolicyDraft
+  onChange: (update: (draft: FieldPolicyDraft) => FieldPolicyDraft) => void
+}) {
+  const setDefaultMode = (mode: WorkItemFieldAccessMode) => onChange((current) => ({
+    ...current,
+    defaultMode: mode,
+    defaultRequired: mode === 'write' ? current.defaultRequired : false,
+  }))
+  const setRole = (
+    role: WorkItemFieldAccessRole,
+    update: Partial<PolicyEffectDraft>,
+  ) => onChange((current) => {
+    const next = { ...current.roles[role], ...update }
+    if (next.mode !== 'write') next.required = false
+    return { ...current, roles: { ...current.roles, [role]: next } }
+  })
+
+  return (
+    <div className="work-item-layout-policy-form">
+      <div className="work-item-layout-policy-field-heading">
+        <div>
+          <Typography.Text strong>{field.name}</Typography.Text>
+          <Typography.Text type="secondary">{field.fieldKey}</Typography.Text>
+        </div>
+        <Tag>{field.fieldType}</Tag>
+      </div>
+      <div className="work-item-layout-policy-default">
+        <label>
+          默认访问
+          <Select
+            aria-label="默认访问模式"
+            value={draft.defaultMode}
+            options={ACCESS_MODES.map((mode) => ({ label: modeLabel(mode), value: mode }))}
+            onChange={setDefaultMode}
+          />
+        </label>
+        <label className="work-item-layout-policy-required">
+          默认必填
+          <Switch
+            checked={draft.defaultRequired}
+            disabled={draft.defaultMode !== 'write'}
+            onChange={(required) => onChange((current) => ({ ...current, defaultRequired: required }))}
+          />
+        </label>
+      </div>
+      <div className="work-item-layout-policy-role-list">
+        {ACCESS_ROLES.map((role) => {
+          const effect = draft.roles[role]
+          return (
+            <div className="work-item-layout-policy-role" key={role}>
+              <span>
+                <strong>{roleLabel(role)}</strong>
+                <small>{role}</small>
+              </span>
+              <Select
+                aria-label={`${roleLabel(role)}访问模式`}
+                value={effect.mode}
+                options={[
+                  { label: '继承默认', value: 'inherit' },
+                  ...ACCESS_MODES.map((mode) => ({ label: modeLabel(mode), value: mode })),
+                ]}
+                onChange={(mode) => setRole(role, { mode: mode as PolicyEffectDraft['mode'] })}
+              />
+              <label>
+                必填
+                <Switch
+                  size="small"
+                  checked={effect.required}
+                  disabled={effect.mode !== 'write'}
+                  onChange={(required) => setRole(role, { required })}
+                />
+              </label>
+            </div>
+          )
+        })}
+      </div>
+      {draft.conditionalRules.length > 0 ? (
+        <Alert
+          type="info"
+          showIcon
+          message={`${draft.conditionalRules.length} 条条件规则将原样保留`}
+          description="当前面板只编辑默认效果与角色覆盖，不会删除已有条件规则。"
+        />
+      ) : null}
+      <Typography.Text type="secondary">
+        每个角色只有一个无条件覆盖入口，界面会阻止冲突规则；hidden 优先于 read，read 优先于 write。
+      </Typography.Text>
+    </div>
+  )
+}
+
 type ConditionDraft = {
   id: string
   fieldKey?: string
@@ -715,6 +1077,147 @@ function typedScalar(fieldType: string, value: string): unknown {
   if (fieldType === 'number') return Number(value)
   if (fieldType === 'boolean') return value === 'true'
   return value
+}
+
+const ACCESS_MODES: WorkItemFieldAccessMode[] = ['write', 'read', 'hidden']
+
+function emptyRoleEffects(): Record<WorkItemFieldAccessRole, PolicyEffectDraft> {
+  return Object.fromEntries(ACCESS_ROLES.map((role) => [
+    role,
+    { mode: 'inherit', required: false },
+  ])) as Record<WorkItemFieldAccessRole, PolicyEffectDraft>
+}
+
+function policyDraftMap(
+  fields: ConfiguredWorkItemField[],
+  policies: WorkItemFieldAccessPolicy[],
+): Record<string, FieldPolicyDraft> {
+  const byField = new Map(policies.map((policy) => [policy.fieldId, policy]))
+  return Object.fromEntries(fields.map((field) => {
+    const stored = byField.get(field.id)
+    const document = policyDocument(stored?.policy)
+    const roles = emptyRoleEffects()
+    const conditionalRules: WorkItemFieldAccessPolicyDocument['rules'] = []
+    document.rules.forEach((rule) => {
+      if (rule.when) {
+        conditionalRules.push(rule)
+        return
+      }
+      rule.roles.forEach((role) => {
+        roles[role] = {
+          mode: rule.mode,
+          required: rule.required,
+          ruleKey: rule.ruleKey,
+        }
+      })
+    })
+    return [field.id, {
+      id: stored?.id ?? crypto.randomUUID(),
+      fieldId: field.id,
+      fieldKey: field.fieldKey,
+      policyKey: stored?.policyKey ?? `${field.fieldKey}_access`,
+      defaultMode: document.default.mode,
+      defaultRequired: document.default.required,
+      roles,
+      conditionalRules,
+    }]
+  }))
+}
+
+function policyDocument(value: unknown): WorkItemFieldAccessPolicyDocument {
+  const candidate = value && typeof value === 'object'
+    ? value as Partial<WorkItemFieldAccessPolicyDocument>
+    : {}
+  const defaultMode = isAccessMode(candidate.default?.mode) ? candidate.default.mode : 'write'
+  const rules = Array.isArray(candidate.rules)
+    ? candidate.rules.filter(isPolicyRule)
+    : []
+  return {
+    schemaVersion: 1,
+    default: {
+      mode: defaultMode,
+      required: defaultMode === 'write' && candidate.default?.required === true,
+    },
+    rules,
+  }
+}
+
+function isPolicyRule(value: unknown): value is WorkItemFieldAccessPolicyDocument['rules'][number] {
+  if (!value || typeof value !== 'object') return false
+  const candidate = value as Partial<WorkItemFieldAccessPolicyDocument['rules'][number]>
+  return typeof candidate.ruleKey === 'string'
+    && Array.isArray(candidate.roles)
+    && candidate.roles.every((role) => ACCESS_ROLES.includes(role))
+    && isAccessMode(candidate.mode)
+    && typeof candidate.required === 'boolean'
+}
+
+function isAccessMode(value: unknown): value is WorkItemFieldAccessMode {
+  return ACCESS_MODES.includes(value as WorkItemFieldAccessMode)
+}
+
+function policyRequest(
+  draft: FieldPolicyDraft,
+): Omit<WorkItemFieldAccessPolicy, 'configHash'> {
+  const roleRules = ACCESS_ROLES.flatMap((role) => {
+    const effect = draft.roles[role]
+    if (effect.mode === 'inherit') return []
+    return [{
+      ruleKey: effect.ruleKey ?? `role_${role}_access`,
+      roles: [role],
+      mode: effect.mode,
+      required: effect.mode === 'write' && effect.required,
+    }]
+  })
+  return {
+    id: draft.id,
+    fieldId: draft.fieldId,
+    fieldKey: draft.fieldKey,
+    policyKey: draft.policyKey,
+    policy: {
+      schemaVersion: 1,
+      default: {
+        mode: draft.defaultMode,
+        required: draft.defaultMode === 'write' && draft.defaultRequired,
+      },
+      rules: [...draft.conditionalRules, ...roleRules],
+    },
+  }
+}
+
+function policyIsRestrictive(value: unknown) {
+  const document = policyDocument(value)
+  return document.default.mode !== 'write'
+    || document.rules.some((rule) => rule.mode !== 'write' || rule.required)
+}
+
+function parsePreviewValues(value: string):
+  | { ok: true; value: Record<string, unknown> }
+  | { ok: false; message: string } {
+  try {
+    const parsed = JSON.parse(value || '{}') as unknown
+    if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') {
+      return { ok: false, message: '字段样本必须是 JSON 对象' }
+    }
+    return { ok: true, value: parsed as Record<string, unknown> }
+  } catch {
+    return { ok: false, message: '字段样本不是有效 JSON' }
+  }
+}
+
+function roleLabel(role: WorkItemFieldAccessRole) {
+  return ({
+    owner: '空间所有者',
+    admin: '空间管理员',
+    member: '成员',
+    guest: '访客',
+    non_member: '非成员',
+    enterprise_admin: '企业管理员',
+  } as const)[role]
+}
+
+function modeLabel(mode: WorkItemFieldAccessMode) {
+  return ({ write: '可写', read: '只读', hidden: '隐藏' } as const)[mode]
 }
 
 function layoutError(error: unknown, fallback: string) {

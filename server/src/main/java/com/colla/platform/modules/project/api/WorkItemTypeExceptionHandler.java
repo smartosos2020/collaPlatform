@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
     WorkItemTypeConfigurationController.class,
     WorkItemFieldConfigurationController.class,
     WorkItemLayoutConfigurationController.class,
+    WorkItemLayoutAccessController.class,
     UserWorkItemTypeController.class,
     AdminProjectSpaceController.class
 })
@@ -91,7 +92,10 @@ public class WorkItemTypeExceptionHandler {
                  "INVALID_LAYOUT_CONDITION_OPERATOR", "INVALID_LAYOUT_CONDITION_VALUE",
                  "LAYOUT_CONDITION_HIDDEN_DEPENDENCY", "LAYOUT_CONDITION_CYCLE",
                  "INVALID_LAYOUT_FIELD_REFERENCE", "INVALID_FIELD_ACCESS_POLICY",
-                 "DUPLICATE_FIELD_ACCESS_POLICY", "LAYOUT_POLICY_LIMIT",
+                 "DUPLICATE_FIELD_ACCESS_POLICY", "DUPLICATE_FIELD_ACCESS_POLICY_RULE",
+                 "CONFLICTING_FIELD_ACCESS_POLICY_RULE", "FIELD_ACCESS_POLICY_LIMIT",
+                 "INVALID_FIELD_ACCESS_POLICY_REFERENCE", "INVALID_FIELD_ACCESS_POLICY_OPERATOR",
+                 "INVALID_FIELD_ACCESS_CONTEXT", "LAYOUT_POLICY_LIMIT",
                  "INVALID_LAYOUT_VERSION", "INVALID_LAYOUT_GRAPH", "INVALID_LAYOUT_COMMAND",
                  "IMMUTABLE_LAYOUT_NODE_IDENTITY", "LAYOUT_COPY_FIELD_DUPLICATE",
                  "INVALID_INPUT" -> HttpStatus.BAD_REQUEST;

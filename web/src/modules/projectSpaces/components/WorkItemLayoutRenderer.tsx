@@ -3,22 +3,30 @@ import type { ReactNode } from 'react'
 
 import type {
   ConfiguredWorkItemField,
+  WorkItemFieldOption,
   WorkItemFieldType,
 } from '../api/workItemFieldsApi'
 import type {
   WorkItemFieldAccessProjection,
-  WorkItemLayout,
   WorkItemLayoutNode,
+  WorkItemLayoutProjectionField,
 } from '../api/workItemLayoutsApi'
 
-type ControlRenderer = (field: ConfiguredWorkItemField) => ReactNode
+type RenderableField = Pick<
+  ConfiguredWorkItemField,
+  'id' | 'fieldKey' | 'name' | 'fieldType' | 'config'
+> & {
+  options?: WorkItemFieldOption[]
+}
+
+type ControlRenderer = (field: RenderableField) => ReactNode
 
 const controls: Partial<Record<WorkItemFieldType, ControlRenderer>> = {
   text: (field) => <Input placeholder={`请输入${field.name}`} />,
   number: (field) => <InputNumber style={{ width: '100%' }} placeholder={`请输入${field.name}`} />,
   boolean: () => <Switch />,
-  single_select: (field) => <Select options={field.options.filter((option) => option.status === 'active').map((option) => ({ label: option.name, value: option.optionKey }))} />,
-  multi_select: (field) => <Select mode="multiple" options={field.options.filter((option) => option.status === 'active').map((option) => ({ label: option.name, value: option.optionKey }))} />,
+  single_select: (field) => <Select options={(field.options ?? []).filter((option) => option.status === 'active').map((option) => ({ label: option.name, value: option.optionKey }))} />,
+  multi_select: (field) => <Select mode="multiple" options={(field.options ?? []).filter((option) => option.status === 'active').map((option) => ({ label: option.name, value: option.optionKey }))} />,
   date: () => <DatePicker style={{ width: '100%' }} />,
   datetime: () => <DatePicker showTime style={{ width: '100%' }} />,
   url: (field) => <Input type="url" placeholder={`请输入${field.name}`} />,
@@ -32,11 +40,11 @@ export function WorkItemLayoutRenderer({
   fields,
   accessProjection,
 }: {
-  layout: WorkItemLayout
-  fields: ConfiguredWorkItemField[]
+  layout: { layoutKind: string; nodes: WorkItemLayoutNode[] }
+  fields: Array<ConfiguredWorkItemField | WorkItemLayoutProjectionField>
   accessProjection: Record<string, WorkItemFieldAccessProjection>
 }) {
-  const fieldById = new Map(fields.map((field) => [field.id, field]))
+  const fieldById = new Map(fields.map((field) => [field.id, field as RenderableField]))
   const children = childMap(layout.nodes)
   const roots = children.get(null) ?? []
 
@@ -63,14 +71,18 @@ function LayoutPreviewNode({
 }: {
   node: WorkItemLayoutNode
   children: Map<string | null, WorkItemLayoutNode[]>
-  fieldById: Map<string, ConfiguredWorkItemField>
+  fieldById: Map<string, RenderableField>
   accessProjection: Record<string, WorkItemFieldAccessProjection>
 }) {
   const nested = children.get(node.id) ?? []
   if (node.nodeType === 'field') {
     const field = node.fieldId ? fieldById.get(node.fieldId) : undefined
     if (!field) return <Alert type="warning" showIcon message={`字段 ${node.fieldKey ?? node.nodeKey} 不可用`} />
-    const projection = accessProjection[field.fieldKey] ?? { mode: 'write' as const, required: false }
+    const projection = accessProjection[field.fieldKey] ?? {
+      mode: 'hidden' as const,
+      required: false,
+      reasonCode: 'missing_server_projection',
+    }
     if (projection.mode === 'hidden') return null
     const renderer = controls[field.fieldType]
     if (!renderer) return <Alert type="warning" showIcon message={`控件 ${field.fieldType} 暂不支持`} />
@@ -78,7 +90,7 @@ function LayoutPreviewNode({
       <div className="work-item-layout-preview-field">
         <span>
           {field.name}
-          {field.config.required || projection.required ? <Tag color="purple">必填</Tag> : null}
+          {projection.required ? <Tag color="purple">必填</Tag> : null}
           {projection.mode === 'read' ? <Tag>只读</Tag> : null}
         </span>
         <fieldset disabled={projection.mode === 'read'} title={projection.reasonCode}>

@@ -26,7 +26,10 @@ export function activePlatformViolations(root: string): string[] {
     const content = readFileSync(join(root, path), 'utf8')
     const lines = content.split(/\r?\n/)
     lines.forEach((line, index) => {
-      if (/\b(?:powershell|pwsh)\b|\.ps1\b/i.test(line)) violations.push(`Windows-only active reference: ${path}:${index + 1}`)
+      const windowsInvocation = path.endsWith('.md')
+        ? /\bpwsh(?:\.exe)?\b|\.ps1\b|\bpowershell(?:\.exe)?\s+(?:-|\/)|`[^`]*\bpowershell\b[^`]*`/i
+        : /\b(?:powershell|pwsh)\b|\.ps1\b/i
+      if (windowsInvocation.test(line)) violations.push(`Windows-only active reference: ${path}:${index + 1}`)
     })
   }
   return violations

@@ -117,6 +117,46 @@ public class WorkItemLayoutConfigurationService {
         );
     }
 
+    @Transactional
+    public LayoutAggregate savePolicies(
+        CurrentUser user,
+        UUID spaceId,
+        UUID typeId,
+        String layoutKind,
+        List<FieldAccessPolicy> policies,
+        long expectedAggregateVersion,
+        String requestId
+    ) {
+        if (expectedAggregateVersion < 0) {
+            throw failure("INVALID_LAYOUT_VERSION", "Layout aggregate version must be non-negative");
+        }
+        Context context = requireContext(user, spaceId, typeId, true);
+        String kind = LayoutKind.parse(layoutKind).name();
+        LayoutDefinition existing = layoutRepository.findByKind(
+            user.workspaceId(), spaceId, typeId, kind
+        ).orElseThrow(() -> failure("LAYOUT_NOT_FOUND", "Work item layout is not available"));
+        CanonicalLayout canonical = canonicalizer.canonicalize(
+            kind,
+            layoutRepository.listNodes(user.workspaceId(), existing.id()),
+            policies
+        );
+        fieldReferenceValidator.validateForSave(
+            user.workspaceId(), spaceId, typeId, canonical.nodes(), canonical.policies()
+        );
+        Command command = beginOperation(
+            user,
+            spaceId,
+            typeId,
+            "policies:replace:" + kind,
+            canonical,
+            expectedAggregateVersion,
+            requestId
+        );
+        return persist(
+            user, context, spaceId, typeId, canonical, expectedAggregateVersion, command
+        );
+    }
+
     private LayoutAggregate persist(
         CurrentUser user,
         Context context,
@@ -318,8 +358,27 @@ public class WorkItemLayoutConfigurationService {
         long expectedAggregateVersion,
         String requestId
     ) {
+        return beginOperation(
+            user,
+            spaceId,
+            typeId,
+            "save:" + layoutKind,
+            canonical,
+            expectedAggregateVersion,
+            requestId
+        );
+    }
+
+    private Command beginOperation(
+        CurrentUser user,
+        UUID spaceId,
+        UUID typeId,
+        String operation,
+        CanonicalLayout canonical,
+        long expectedAggregateVersion,
+        String requestId
+    ) {
         String normalizedRequestId = normalizeRequestId(requestId);
-        String operation = "save:" + layoutKind;
         String requestHash = hashCanonicalizer.hash(objectMapper.valueToTree(Map.of(
             "actorId", user.id().toString(),
             "operation", operation,

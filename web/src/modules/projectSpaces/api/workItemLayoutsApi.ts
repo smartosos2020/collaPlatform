@@ -1,6 +1,6 @@
 import { apiGet, apiPost, apiPut } from '../../../shared/api/httpClient'
 
-import type { JsonObject } from './workItemFieldsApi'
+import type { JsonObject, WorkItemFieldConfig, WorkItemFieldType } from './workItemFieldsApi'
 
 export type WorkItemLayoutKind = 'create' | 'detail'
 export type WorkItemLayoutNodeType = 'section' | 'tab' | 'column' | 'field' | 'summary'
@@ -35,6 +35,38 @@ export type WorkItemFieldAccessProjection = {
   mode: 'hidden' | 'read' | 'write'
   required: boolean
   reasonCode?: string
+  matchedRuleKeys?: string[]
+  explanation?: Array<{
+    source: string
+    mode: 'hidden' | 'read' | 'write'
+    reasonCode: string
+  }>
+}
+
+export type WorkItemFieldAccessMode = WorkItemFieldAccessProjection['mode']
+export type WorkItemFieldAccessRole =
+  | 'owner'
+  | 'admin'
+  | 'member'
+  | 'guest'
+  | 'non_member'
+  | 'enterprise_admin'
+
+export type WorkItemFieldAccessPolicyRule = {
+  ruleKey: string
+  roles: WorkItemFieldAccessRole[]
+  mode: WorkItemFieldAccessMode
+  required: boolean
+  when?: JsonObject
+}
+
+export type WorkItemFieldAccessPolicyDocument = {
+  schemaVersion: 1
+  default: {
+    mode: WorkItemFieldAccessMode
+    required: boolean
+  }
+  rules: WorkItemFieldAccessPolicyRule[]
 }
 
 export type WorkItemLayoutDiagnostic = {
@@ -68,6 +100,51 @@ export type SaveWorkItemLayoutRequest = {
   aggregateVersion: number
 }
 
+export type SaveWorkItemLayoutPoliciesRequest = {
+  policies: Array<Omit<WorkItemFieldAccessPolicy, 'configHash'>>
+  aggregateVersion: number
+}
+
+export type WorkItemLayoutProjectionField = {
+  id: string
+  fieldKey: string
+  name: string
+  description: string
+  fieldType: WorkItemFieldType
+  config: WorkItemFieldConfig
+  status: string
+  system: boolean
+}
+
+export type WorkItemLayoutProjection = {
+  id: string
+  spaceId: string
+  typeDefinitionId: string
+  layoutKind: WorkItemLayoutKind
+  configHash: string
+  aggregateVersion: number
+  synthetic: boolean
+  context: {
+    role: WorkItemFieldAccessRole
+    spaceStatus: 'active' | 'disabled' | 'archived'
+    typeStatus: 'active' | 'disabled' | 'retired'
+    mode: 'runtime' | 'synthetic'
+  }
+  nodes: WorkItemLayoutNode[]
+  fields: WorkItemLayoutProjectionField[]
+  accessProjection: Record<string, WorkItemFieldAccessProjection>
+  diagnostics: WorkItemLayoutDiagnostic[]
+  availableActions: string[]
+}
+
+export type WorkItemLayoutSyntheticPreviewRequest = {
+  role: WorkItemFieldAccessRole
+  spaceStatus: 'active' | 'disabled' | 'archived'
+  typeStatus: 'active' | 'disabled' | 'retired'
+  fieldValues: JsonObject
+  fieldStatuses: Record<string, 'active' | 'disabled' | 'retired'>
+}
+
 export type WorkItemLayoutNodeCommand = {
   operation: 'add' | 'copy' | 'move' | 'reorder' | 'update' | 'delete'
   nodeId?: string
@@ -99,6 +176,40 @@ export function saveWorkItemLayout(
   return apiPut<WorkItemLayout>(
     `/project-spaces/${spaceId}/configuration/types/${typeId}/layouts/${layoutKind}`,
     request,
+  )
+}
+
+export function saveWorkItemLayoutPolicies(
+  spaceId: string,
+  typeId: string,
+  layoutKind: WorkItemLayoutKind,
+  request: SaveWorkItemLayoutPoliciesRequest,
+) {
+  return apiPut<WorkItemLayout>(
+    `/project-spaces/${spaceId}/configuration/types/${typeId}/layouts/${layoutKind}/policies`,
+    request,
+  )
+}
+
+export function previewWorkItemLayout(
+  spaceId: string,
+  typeId: string,
+  layoutKind: WorkItemLayoutKind,
+  request: WorkItemLayoutSyntheticPreviewRequest,
+) {
+  return apiPost<WorkItemLayoutProjection>(
+    `/project-spaces/${spaceId}/configuration/types/${typeId}/layouts/${layoutKind}/preview`,
+    request,
+  )
+}
+
+export function getWorkItemLayoutProjection(
+  spaceId: string,
+  typeId: string,
+  layoutKind: WorkItemLayoutKind,
+) {
+  return apiGet<WorkItemLayoutProjection>(
+    `/project-spaces/${spaceId}/types/${typeId}/layouts/${layoutKind}/projection`,
   )
 }
 

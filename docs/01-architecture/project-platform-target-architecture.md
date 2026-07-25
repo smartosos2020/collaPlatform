@@ -732,6 +732,16 @@ S04 已完成并归档，S05 准入合同继续有效。暂停期间 PLATFORM-SC
 - 共享渲染器只消费布局、S04 字段目录和显式访问投影，不复制字段类型事实。hidden/read/write/required 在渲染边界生效，未知字段或控件显示安全诊断；M2 不在客户端计算正式授权。
 - M2 仍是待发布配置与预览，不创建工作项或字段值。服务端访问策略求值、脱敏布局投影和 synthetic preview context 由 M3 承接。
 
-### 22.4 恢复时仍未实现的能力
+### 22.4 M3 已冻结的字段访问与最小披露合同
+
+- 字段访问策略固定为 schema v1：每字段一个 `default` 与最多 64 条规则，效果仅允许 `hidden/read/write + required`。效果按 `hidden > read > write` 收窄，required 只在最终 write 时成立；规则只能引用 owner/admin/member/guest/non_member/enterprise_admin、受控上下文和同类型字段。
+- 角色能力上限由服务端固定：owner/admin/member 最高 write，guest 最高 read，non_member/enterprise_admin 为 hidden。disabled 空间/类型最多 read，archived/retired 空间、类型或字段为 hidden；企业管理员不因后台身份自动获得空间内容访问。
+- 正式读取使用 `GET /api/project-spaces/{spaceId}/types/{typeId}/layouts/{layoutKind}/projection`；返回已过滤节点、安全字段 DTO、逐字段决策和脱敏诊断，不返回原策略。hidden 字段的名称、key、节点、配置、条件、选项和诊断身份均不进入响应，空容器被裁剪。
+- 管理配置使用 `PUT .../configuration/types/{typeId}/layouts/{layoutKind}/policies`，复用布局 aggregate version、规范 hash、request ID 回执、幂等、审计和 outbox。owner/admin 可写，其他身份由服务端拒绝；拒绝审计只记录操作、原因和请求边界，不记录策略正文或字段身份。
+- 合成预览使用 `POST .../configuration/types/{typeId}/layouts/{layoutKind}/preview`，仅 owner/admin 可调用。角色、空间/类型/字段状态和字段样本必须属于受控集合；预览不写布局、策略、命令、工作项、审计、outbox、通知或搜索事实。
+- 管理 UI 的策略编辑器只编辑完整配置视图，支持默认效果、六身份覆盖、必填约束、条件规则保留和危险收窄确认。共享渲染器只消费服务端投影；缺少决策时按 hidden 失败关闭，不从客户端策略推导或补全权限。
+- 120 字段并发求值、规范 hash、策略写幂等、六身份/资源状态矩阵、停用身份、跨边界、伪造角色和最小披露均有定向自动化证据。该预算只代表配置策略求值，不代表生产工作项容量。
+
+### 22.5 恢复时仍未实现的能力
 
 S05 的表单和详情页是“配置与渲染合同”，不是已经可创建真实 WorkItem 的运行页面。真实实例创建、字段值持久化和 legacy 迁移属于 S07；已发布不可变配置版本和发布切换属于 S06。预览必须明确使用合成上下文或配置样本，不能把合成记录写入业务表或表述为正式实例。

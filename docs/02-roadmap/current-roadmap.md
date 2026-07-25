@@ -90,17 +90,17 @@ S05 不创建规范 WorkItem 实例、字段值或 legacy 迁移，不修改已�
 
 | 任务 | 内容 | 验收标准 | 状态 |
 | --- | --- | --- | --- |
-| PROJECT-PLATFORM-S05-M3-T01 | 冻结字段 `read/write/required/hidden` 策略语义、优先级和求值上下文 | deny/hidden 优先级、required 与 write 关系、默认策略、空间角色和合成状态上下文无冲突 | Pending |
-| PROJECT-PLATFORM-S05-M3-T02 | 实现版本化字段访问策略 schema、规范化和静态校验 | 策略只能引用允许角色、上下文和同类型字段；未知版本、空授权、冲突规则和越权默认值被拒绝 | Pending |
-| PROJECT-PLATFORM-S05-M3-T03 | 实现服务端访问策略求值器和可解释决策链 | 相同输入确定输出；每个结果可解释规则来源；hidden 不返回字段标题、配置、选项或条件值 | Pending |
-| PROJECT-PLATFORM-S05-M3-T04 | 将空间成员资格、空间角色、空间/类型/字段状态接入求值上下文 | owner/admin/member/guest/non-member/enterprise admin 六身份结果符合分层权限，企业管理员不自动获得内容访问 | Pending |
-| PROJECT-PLATFORM-S05-M3-T05 | 实现布局读取过滤与诊断脱敏 | 不可读字段节点从有效图移除或变为安全占位且结构仍合法；诊断不泄露隐藏字段身份 | Pending |
-| PROJECT-PLATFORM-S05-M3-T06 | 实现字段策略配置 API、availableActions 和伪造写入服务端拒绝 | 无权角色即使直接调用 API、篡改 fieldId/role/condition 或省略 UI 限制也被一致拒绝并审计 | Pending |
-| PROJECT-PLATFORM-S05-M3-T07 | 实现 synthetic preview context API 与严格非持久化边界 | 预览可切换合法角色/状态/字段样本；请求不写业务表、不创建实例、不触发正式 outbox/通知/搜索 | Pending |
-| PROJECT-PLATFORM-S05-M3-T08 | 实现前端字段访问策略编辑器和规则冲突提示 | 策略控件按权限启用；read/write/required/hidden 关系清楚；危险收窄需确认且不暴露不可见角色数据 | Pending |
-| PROJECT-PLATFORM-S05-M3-T09 | 将访问投影接入共享渲染器的隐藏、只读、可写和必填状态 | UI 只消费服务端决策，不自行扩权；禁用控件、必填标识、错误摘要和提交候选保持一致 | Pending |
-| PROJECT-PLATFORM-S05-M3-T10 | 覆盖六身份、空间状态、字段状态、条件组合、最小披露和直接 API 负向测试 | 权限矩阵正反例完整；跨 workspace/space/type、停用成员和企业管理员越权均为零泄露 | Pending |
-| PROJECT-PLATFORM-S05-M3-T11 | 完成策略性能、规范 hash、并发、幂等、安全扫描和 M3 checkpoint | 120 字段策略求值在冻结预算内且结果确定；目标后端、前端和真实隔离浏览器权限流程通过 | Pending |
+| PROJECT-PLATFORM-S05-M3-T01 | 冻结字段 `read/write/required/hidden` 策略语义、优先级和求值上下文 | deny/hidden 优先级、required 与 write 关系、默认策略、空间角色和合成状态上下文无冲突 | Done |
+| PROJECT-PLATFORM-S05-M3-T02 | 实现版本化字段访问策略 schema、规范化和静态校验 | 策略只能引用允许角色、上下文和同类型字段；未知版本、空授权、冲突规则和越权默认值被拒绝 | Done |
+| PROJECT-PLATFORM-S05-M3-T03 | 实现服务端访问策略求值器和可解释决策链 | 相同输入确定输出；每个结果可解释规则来源；hidden 不返回字段标题、配置、选项或条件值 | Done |
+| PROJECT-PLATFORM-S05-M3-T04 | 将空间成员资格、空间角色、空间/类型/字段状态接入求值上下文 | owner/admin/member/guest/non-member/enterprise admin 六身份结果符合分层权限，企业管理员不自动获得内容访问 | Done |
+| PROJECT-PLATFORM-S05-M3-T05 | 实现布局读取过滤与诊断脱敏 | 不可读字段节点从有效图移除或变为安全占位且结构仍合法；诊断不泄露隐藏字段身份 | Done |
+| PROJECT-PLATFORM-S05-M3-T06 | 实现字段策略配置 API、availableActions 和伪造写入服务端拒绝 | 无权角色即使直接调用 API、篡改 fieldId/role/condition 或省略 UI 限制也被一致拒绝并审计 | Done |
+| PROJECT-PLATFORM-S05-M3-T07 | 实现 synthetic preview context API 与严格非持久化边界 | 预览可切换合法角色/状态/字段样本；请求不写业务表、不创建实例、不触发正式 outbox/通知/搜索 | Done |
+| PROJECT-PLATFORM-S05-M3-T08 | 实现前端字段访问策略编辑器和规则冲突提示 | 策略控件按权限启用；read/write/required/hidden 关系清楚；危险收窄需确认且不暴露不可见角色数据 | Done |
+| PROJECT-PLATFORM-S05-M3-T09 | 将访问投影接入共享渲染器的隐藏、只读、可写和必填状态 | UI 只消费服务端决策，不自行扩权；禁用控件、必填标识、错误摘要和提交候选保持一致 | Done |
+| PROJECT-PLATFORM-S05-M3-T10 | 覆盖六身份、空间状态、字段状态、条件组合、最小披露和直接 API 负向测试 | 权限矩阵正反例完整；跨 workspace/space/type、停用成员和企业管理员越权均为零泄露 | Done |
+| PROJECT-PLATFORM-S05-M3-T11 | 完成策略性能、规范 hash、并发、幂等、安全扫描和 M3 checkpoint | 120 字段策略求值在冻结预算内且结果确定；目标后端、前端和真实隔离浏览器权限流程通过 | Done |
 
 ### PROJECT-PLATFORM-S05-M4 配置预览、用户形态、可访问性与规模收口
 

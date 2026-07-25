@@ -21,15 +21,18 @@ public class WorkItemLayoutFieldReferenceValidator {
     private final WorkItemFieldRepository fieldRepository;
     private final WorkItemFieldTypeRegistry fieldTypeRegistry;
     private final WorkItemLayoutConditionDsl conditionDsl;
+    private final WorkItemFieldAccessPolicySchema policySchema;
 
     public WorkItemLayoutFieldReferenceValidator(
         WorkItemFieldRepository fieldRepository,
         WorkItemFieldTypeRegistry fieldTypeRegistry,
-        WorkItemLayoutConditionDsl conditionDsl
+        WorkItemLayoutConditionDsl conditionDsl,
+        WorkItemFieldAccessPolicySchema policySchema
     ) {
         this.fieldRepository = fieldRepository;
         this.fieldTypeRegistry = fieldTypeRegistry;
         this.conditionDsl = conditionDsl;
+        this.policySchema = policySchema;
     }
 
     public void validateForSave(
@@ -49,7 +52,7 @@ public class WorkItemLayoutFieldReferenceValidator {
                 throw failure("INVALID_LAYOUT_FIELD_REFERENCE", "A layout field reference is unavailable");
             }
         }
-        validateConditions(workspaceId, spaceId, typeId, nodes);
+        validateConditions(workspaceId, spaceId, typeId, nodes, policies);
     }
 
     public List<LayoutDiagnostic> diagnostics(
@@ -104,7 +107,8 @@ public class WorkItemLayoutFieldReferenceValidator {
         UUID workspaceId,
         UUID spaceId,
         UUID typeId,
-        List<LayoutNode> nodes
+        List<LayoutNode> nodes,
+        List<FieldAccessPolicy> policies
     ) {
         Map<UUID, FieldDefinition> fields = new LinkedHashMap<>();
         fieldRepository.listByType(workspaceId, spaceId, typeId, "")
@@ -147,6 +151,26 @@ public class WorkItemLayoutFieldReferenceValidator {
             }
             if (node.fieldKey() != null) {
                 dependencies.put(node.fieldKey(), List.copyOf(nodeDependencies));
+            }
+        }
+        for (FieldAccessPolicy policy : policies) {
+            for (FieldReference reference : policySchema.fieldReferences(policy.policy())) {
+                FieldDefinition field = fields.get(reference.fieldId());
+                if (field == null
+                    || !field.fieldKey().equals(reference.fieldKey())
+                    || !"active".equals(field.status())) {
+                    throw failure(
+                        "INVALID_FIELD_ACCESS_POLICY_REFERENCE",
+                        "Policy field condition reference is unavailable"
+                    );
+                }
+                if (!fieldTypeRegistry.require(field.fieldType()).operators().contains(reference.operator())) {
+                    throw failure(
+                        "INVALID_FIELD_ACCESS_POLICY_OPERATOR",
+                        "Policy condition operator is not supported by field type " + field.fieldType()
+                    );
+                }
+                validateLiteral(field.fieldType(), reference.operator(), reference.value());
             }
         }
         detectConditionCycles(dependencies);
