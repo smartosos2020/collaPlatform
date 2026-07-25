@@ -7,7 +7,7 @@ domain_contract_version: 1
 domain_contract_status: frozen-s01-m3
 migration_contract_version: 1
 stage_review_status: active-s05-after-platform-foundation
-updated_at: 2026-07-25
+updated_at: 2026-07-26
 ---
 
 # 项目协作平台目标架构
@@ -210,7 +210,7 @@ S01-M3 已冻结动态字段的混合存储方向：工作项规范值使用 JSO
 | --- | --- | --- | --- | --- |
 | 项目空间 | `ProjectSpace` | `spaceId`，workspace 内稳定 UUID；`spaceKey` 在 workspace 内唯一且停用后保留 | `Workspace` | `active -> disabled -> active`；`active/disabled -> archived -> active`；非空空间禁止硬删除 |
 | 工作项类型定义 | `WorkItemTypeDefinition` | `typeDefinitionId`；`typeKey` 在 space 内永久唯一 | `ProjectSpace` | `active <-> disabled -> retired`；retired 不可新建实例但历史可读 |
-| 工作项类型版本 | `WorkItemTypeVersion` | `typeVersionId` + 单调 `versionNumber` + `configHash` | `WorkItemTypeDefinition` | `draft -> published -> superseded`；published/superseded 均不可变 |
+| 工作项类型版本 | `WorkItemTypeVersion` | `typeVersionId` + 单调 `versionNumber` + `configHash` | `WorkItemTypeDefinition` | `published -> superseded`；创建后不可变，不承担可变草稿职责 |
 | 工作项 | `WorkItem` | `workItemId`，workspace 内稳定 UUID；展示编号由独立原子序列生成 | `ProjectSpace`，并绑定一个类型版本 | `active <-> archived`；业务流程状态与对象生命周期分离 |
 | 配置草稿 | `ConfigurationDraft` | `draftId`，同一 type definition 同时最多一个活动草稿 | `WorkItemTypeDefinition` | `editing -> validating -> published/abandoned` |
 | 工作项模板 | `WorkItemTemplate` | `templateId` + `templateVersionId` | workspace 模板目录或平台预置目录 | `draft -> published -> retired`；安装后生成本地配置草稿和 lineage |
@@ -577,7 +577,7 @@ S03 的交付边界是“工作项类型定义底座”：类型 schema、标识
 | Table | Required columns / constraints | Ownership and invariant |
 | --- | --- | --- |
 | `project_work_item_types` | id UUID PK；workspace_id；space_id；type_key；name；icon；description；sort_order；status；is_system；current_version_id；created_by/at；updated_at；aggregate_version；`unique(space_id, type_key)` | 类型归属空间；typeKey 在 space 内永久唯一且发布后不可复用；status 仅 active/disabled/retired；is_system 受保护类型禁止删除和改键 |
-| `project_work_item_type_versions` | id UUID PK；workspace_id；space_id；type_definition_id；version_number；config_hash；status；config JSONB；created_by/at；published_by/at；`unique(type_definition_id, version_number)`；published/superseded 行禁止 update/delete | version 归属类型；status 仅 draft/published/superseded；发布在单事务内完成校验与 config_hash；历史版本不可变 |
+| `project_work_item_type_versions` | id UUID PK；workspace_id；space_id；type_definition_id；version_number；config_hash；status；config JSONB；created_by/at；published_by/at；`unique(type_definition_id, version_number)`；published/superseded 行禁止 update/delete | S03 既有 schema 暂时允许 draft/published/superseded；其中 draft 是 S06 必须迁移或拒绝的遗留状态，不是后续草稿权威。S06 收紧后只允许 published/superseded，版本创建后不可变 |
 
 约束：
 
@@ -601,7 +601,7 @@ S03 的交付边界是“工作项类型定义底座”：类型 schema、标识
 - 空间 owner/admin：创建、编辑、复制、排序、停用、恢复、retire 类型；member/guest：只读 active 类型摘要；非成员：最小披露，不确认空间与类型存在性。
 - 企业 RBAC（`project.manage`）只治理空间状态，不授予类型配置或类型内容访问。
 - 系统预置类型 `project`、`requirement`、`task`、`bug`、`iteration`、`release` 作为受保护初始模板按空间启用/停用：不允许删除 typeKey，不允许改变存储语义，允许空间级停用与排序。
-- 生命周期：type `active <-> disabled -> retired`，retired 不可新建实例（S03 无实例）但定义与历史版本可读；version `draft -> published -> superseded`，published/superseded 不可变。
+- 生命周期：type `active <-> disabled -> retired`，retired 不可新建实例（S03 无实例）但定义与历史版本可读；S03 物理 schema 中的 version draft 仅是待 S06 收紧的兼容状态，规范 version 生命周期为 `published -> superseded` 且创建后不可变。可变编辑只发生在 `ConfigurationDraft`。
 - 全部类型写操作记录 actor、对象、前后状态、request id 并写审计/outbox；幂等重复请求收敛。
 
 ### 19.4 迁移和兼容输入
@@ -754,3 +754,70 @@ S04 已完成并归档，S05 准入合同继续有效。暂停期间 PLATFORM-SC
 ### 22.6 恢复时仍未实现的能力
 
 S05 的表单和详情页是“配置与渲染合同”，不是已经可创建真实 WorkItem 的运行页面。真实实例创建、字段值持久化和 legacy 迁移属于 S07；已发布不可变配置版本和发布切换属于 S06。预览必须明确使用合成上下文或配置样本，不能把合成记录写入业务表或表述为正式实例。
+
+### 22.7 S05-M5 冻结的 S06/S07 准入合同
+
+本节是 S05-M5 对 S06 与 S07 的固定工程输入，不代表以下发布、模板或 WorkItem 运行能力已经实现。S06 必须先完成草稿与不可变版本流水线，S07 才能创建或迁移真实 WorkItem；两者不得借用 S04/S05 的 live 配置表绕过版本边界。
+
+#### 22.7.1 唯一草稿权威与遗留状态收紧
+
+- `ConfigurationDraft` 是 S06 唯一可变草稿权威，以 `WorkItemTypeDefinition` 为聚合根；同一 type definition 同时最多一个 active draft。保存使用 aggregate version 乐观并发，禁止以 `WorkItemTypeVersion(status=draft)` 建立第二条编辑路径。
+- `WorkItemTypeVersion` 只允许 `published` 或 `superseded`，创建后 config、schema version、config hash、version number 和归属均不可修改或删除。更正只能创建更高版本。
+- S03 既有 `project_work_item_type_versions.status=draft` 是待收紧的物理兼容状态。S06 migration 必须先画像其数量、归属和 payload hash：可无损转换的行迁入 `ConfigurationDraft`，冲突、重复 active draft 或不可解析 payload 必须输出稳定诊断并阻止切换；完成后数据库约束和应用枚举都只接受 published/superseded。
+- draft 状态固定为 `editing -> validating -> published|abandoned`。发布成功后 draft 只保留审计身份和 published version 引用，不再允许编辑；发布失败继续保留原 active draft 和 aggregate version，不产生半版本。
+
+#### 22.7.2 发布快照、规范序列化与 hash
+
+- published snapshot 必须自包含当时的类型展示语义、S04 字段定义、选项、默认值、校验规则、复杂类型配置，以及 S05 create/detail 布局、节点、条件 DSL 和字段访问策略。快照不得只保存 live 表 ID 后在运行时回查当前配置。
+- 快照携带显式 `snapshotSchemaVersion`。规范序列化统一 UTF-8、JSON 属性顺序、稳定业务 key、节点父子顺序、选项顺序、规则优先级、空值表达和数值表达；数据库行顺序、创建时间、临时 ID 和 UI 折叠状态不得影响结果。
+- canonical order 至少按配置域、稳定 key、显式 sort order 和永久 ID 依次打破平局；同一语义的重排必须生成相同 canonical payload。`configHash` 由完整 canonical payload 计算 SHA-256，并与 snapshot schema version 一起持久化和返回。
+- 发布前必须在同一一致性视图内重新校验 workspace/space/type 归属、永久 key、字段状态、布局闭包、条件引用、策略引用、数量/深度预算和 unknown schema fail-closed。保存 draft 时的历史校验结果不能代替发布时校验。
+
+#### 22.7.3 原子发布事务
+
+- 发布先取得 type definition 级互斥锁，并在锁内再次读取 active draft、`current_version_id`、aggregate version、request id 和 payload hash。version number 在锁内单调分配，禁止客户端指定或用无锁 `max + 1`。
+- 单一数据库事务必须原子完成：创建不可变 version、把上一 current version 标记为 superseded、切换 `current_version_id`、终结 draft、递增聚合版本、写审计、写事务 outbox 和写幂等 receipt。任一步失败必须整体回滚。
+- audit/outbox 记录 type/version/draft 身份、schema version、config hash、actor、request id 和差异摘要，不复制敏感字段策略正文。outbox 事件至少包含稳定 event id、`configuration.version_published`、schema version 和新旧 version/hash。
+- receipt 以 workspace + type definition + command + request id 为作用域，并绑定请求 payload hash。相同 key 与相同 payload 重放必须返回首次提交保存的原始 version/result，不读取并伪装成最新 aggregate；相同 key 与不同 payload 返回稳定冲突。
+
+#### 22.7.4 Diff 与 rollback-as-new-version
+
+- diff 只比较两个不可变 canonical snapshot，按 `additive`、`behavioral`、`conditional`、`breaking` 分类，并给出字段、布局、策略和引用的稳定 key 路径。顺序变化与语义变化分开报告，未知 schema version 不猜测差异。
+- 字段删除/类型变化、必填收紧、选项移除、访问收窄、布局必需入口移除和悬空引用至少属于 breaking；发布 API 必须返回分类计数、受影响 key 和确认要求，不能只返回一段文本。
+- rollback 不修改历史 version，也不把 version number 或 current pointer 直接倒退。系统从目标历史 snapshot 复制出新的 `ConfigurationDraft`，按当前 schema 重新校验，再发布为更高 version；审计和 lineage 记录 rollback source version。
+- S06 的 diff 是配置影响说明，不冒充 S07 的实例迁移预览。真实 WorkItem 值映射、默认值回填、拒绝清单和批次回滚仍由 S07 的显式 migration plan 承担。
+
+#### 22.7.5 模板复制、lineage 与升级
+
+- 模板安装采用 copy-with-lineage：从不可变 template version snapshot 创建空间本地 `ConfigurationDraft`，记录 template id/version/hash、安装目标、安装者和时间；安装后本地草稿与后续 published version 都不是 live link。
+- 模板升级必须以“上次安装的 base snapshot、模板新的 upstream snapshot、空间当前 local snapshot”执行三方差异。自动合并只允许无冲突 additive 变化；本地覆盖、删除、重命名和权限收窄必须保留或要求管理员逐项决策。
+- lineage 记录来源和升级历史，不授予模板提供者跨空间读取或修改权限。模板被撤回、retired 或不可见时，已复制的本地 published snapshot 仍可解释，但不能静默获取后续版本。
+- detach 是显式、可审计且幂等的本地操作：停止后续升级提示并冻结最后 lineage 摘要，不删除本地草稿、published versions 或历史来源。detach 后重新关联必须按新的安装命令处理，不能复用旧 receipt 绕过冲突。
+
+#### 22.7.6 API、DTO、错误、授权与幂等边界
+
+| Surface | Canonical shape | DTO / required result |
+| --- | --- | --- |
+| 草稿 | `GET/PUT .../configuration/types/{typeId}/draft`，`POST .../draft:validate|abandon` | `ConfigurationDraftDetail/SaveRequest/ValidationResult`；返回 draft identity、aggregate version、canonical hash、诊断和服务端 `availableActions` |
+| 发布与版本 | `POST .../draft:publish`，`GET .../versions`，`GET .../versions/{versionId}` | `ConfigurationPublishRequest/Result`、`WorkItemTypeVersionSummary/Detail`；publish request 必须携带 request id、expected draft version 和确认的 diff hash |
+| Diff 与回滚 | `GET .../versions/{from}:diff?to={to}`，`POST .../versions/{versionId}:prepare-rollback` | `ConfigurationDiffResult`、`ConfigurationRollbackDraftResult`；回滚只创建/复用受控 draft，不直接切指针 |
+| 模板 | `POST .../templates/{templateVersionId}:install`，`POST .../draft:merge-template|detach-template` | `TemplateInstallResult/TemplateMergePreview/TemplateDetachResult`；全部返回 lineage、冲突和 receipt |
+
+- 写权限只授予目标空间 owner/admin；member/guest 无配置写权限，non-member 与仅 enterprise admin 使用 `not_found_or_hidden`，企业治理身份不自动获得空间内容访问。读取 draft、完整 snapshot、diff 和模板冲突同样受空间配置权限约束。
+- 错误合同至少区分 `not_found_or_hidden`、`active_draft_conflict`、`draft_version_conflict`、`invalid_configuration_graph`、`unsupported_snapshot_schema`、`publication_conflict`、`idempotency_key_reused`、`source_version_not_found`、`template_lineage_conflict` 和 `breaking_change_confirmation_required`。
+- DTO 不暴露数据库约束名、内部表名、策略敏感正文或隐藏字段身份。服务端 reason code、`availableActions` 和最小披露是唯一授权解释来源，前端不得根据状态文本补算发布、回滚或模板动作。
+- 所有写命令都使用持久化 receipt、payload hash、乐观版本和审计/outbox；重试、超时恢复和并发发布必须有正反自动化证据。进程内缓存、只返回“当前最新状态”或按 UI 防重复都不构成幂等。
+
+#### 22.7.7 S07 只消费已发布快照
+
+- S07 创建 WorkItem 时在事务内解析 type definition 的 `current_version_id`，并把明确的 `type_version_id` 和 `config_hash` 绑定到实例；迁移 legacy 数据时也必须由 migration unit 明确指定目标 published version。
+- S07 的字段校验、默认值、布局渲染、条件求值和字段访问决策只消费该实例绑定的 published snapshot 或由其构建的可重建投影。运行路径不得直接读取 S04 字段 live 表、S05 layout/policy live 表或 active draft。
+- S04/S05 后续编辑和 S06 新版本发布不得改变既有实例语义。旧实例升级只能经显式 diff、mapping/default、授权、幂等和失败清单驱动；失败实例继续绑定原 version。
+- S07 可以复用 S05 的 renderer、条件求值和字段注册实现，但输入必须来自 published snapshot adapter。不得让共享代码退化为对 live 配置 repository 的隐式依赖。
+
+#### 22.7.8 未实现边界与准入判定
+
+- 截至 S05-M5，已实现的是字段、布局、访问策略、规范 hash、配置预览和共享渲染合同；`ConfigurationDraft` 持久化、legacy draft 迁移、发布锁、不可变完整 snapshot、版本 diff/rollback、模板 lineage API 和原子 publication receipt 仍属于 S06。
+- `project_work_items`、字段值、实例命令、实例版本升级、legacy project/issue 数据迁移、运行查询容量和生产 cutover 仍属于 S07 及后续 Stage。S06 不得创建合成实例来提前宣称这些能力。
+- S06 Go 的最低条件是：唯一 active draft 约束和遗留状态迁移可回放；发布事务故障注入证明无半版本；相同 request id 返回首次 receipt；published version update/delete 被数据库拒绝；canonical hash、diff、rollback-as-new-version、模板三方差异和六类身份矩阵均有自动化证据。
+- S07 Go 的最低条件是：所有运行读取均可证明来自绑定的 published snapshot，静态依赖与负向测试阻止直接读取 live S04/S05 配置；在此之前不得激活规范 WorkItem 写入或 legacy cutover。
