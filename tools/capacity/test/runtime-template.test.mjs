@@ -44,6 +44,10 @@ test('checked-in M1 runtime resolves only environment credentials and materializ
   assert.equal(result.loaders.http.users.length, 5)
   assert.equal(result.loaders.websocket.users.length, 5)
   assert.equal(result.loaders.collaboration.rooms.length, 4)
+  assert.deepEqual(
+    result.loaders.collaboration.rooms.map((room) => room.knowledgeItemOrdinal),
+    [2, 3, 4, 5],
+  )
   assert.equal(
     result.loaders.collaboration.collaborationUrl,
     environment.COLLA_CAPACITY_COLLABORATION_URL,

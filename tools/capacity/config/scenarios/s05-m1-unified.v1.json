@@ -37,7 +37,10 @@
       "options": {},
       "warmupOptions": {
         "connections": 2,
-        "reconnects": 0
+        "reconnects": 0,
+        "targets": {
+          "expectedFanout": 2
+        }
       }
     },
     "collaboration": {

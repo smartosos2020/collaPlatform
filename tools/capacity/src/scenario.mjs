@@ -680,16 +680,19 @@ async function executeLoaderSet(input) {
     const runtimeOptions = input.options.loaderOptions?.[name] ?? {}
     const phaseOptions = input.phase === 'warmup' ? entry.warmupOptions ?? {} : {}
     const durationOptions = input.durationMs > 0 ? { durationMs: input.durationMs } : {}
-    const mergedOptions = {
-      ...baseOptions,
-      ...runtimeOptions,
-      ...phaseOptions,
-      ...durationOptions,
-    }
+    const mergedOptions = mergeLoaderOptions(
+      baseOptions,
+      runtimeOptions,
+      phaseOptions,
+      durationOptions,
+    )
     const runtimeValues = mergedOptions.runtimeValues
     const phaseProbeRunId = runtimeValues?.probeRunIds?.[input.phase]
-    const phaseRuntimeValues = phaseProbeRunId
-      ? { ...runtimeValues, probeRunId: phaseProbeRunId }
+    const loaderProbeRunId = phaseProbeRunId
+      ? deriveLoaderProbeRunId(phaseProbeRunId, name)
+      : null
+    const phaseRuntimeValues = loaderProbeRunId
+      ? { ...runtimeValues, probeRunId: loaderProbeRunId }
       : runtimeValues
     try {
       const result = await raceWithSignal(
@@ -743,10 +746,54 @@ function appendLoaderRaw(raw, phase, loader, result) {
     durationMs: result?.durationMs ?? null,
     summary: result?.summary ?? {},
     metrics: result?.metrics ?? {},
+    errors: result?.errors ?? [],
   })
   for (const sample of result?.samples ?? []) {
     raw.push({ kind: 'loader.sample', phase, loader, ...sample })
   }
+}
+
+function mergeLoaderOptions(...sources) {
+  const output = {}
+  for (const source of sources) mergePlainObject(output, source)
+  return output
+}
+
+function mergePlainObject(target, source) {
+  if (!isPlainObject(source)) return target
+  for (const [key, value] of Object.entries(source)) {
+    if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue
+    if (isPlainObject(value)) {
+      const nested = isPlainObject(target[key]) ? target[key] : {}
+      target[key] = mergePlainObject({ ...nested }, value)
+    } else {
+      target[key] = value
+    }
+  }
+  return target
+}
+
+function isPlainObject(value) {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false
+  const prototype = Object.getPrototypeOf(value)
+  return prototype === Object.prototype || prototype === null
+}
+
+function deriveLoaderProbeRunId(phaseProbeRunId, loader) {
+  const digest = createHash('sha256')
+    .update(`${phaseProbeRunId}:${loader}`)
+    .digest('hex')
+    .slice(0, 32)
+    .split('')
+  digest[12] = '4'
+  digest[16] = ['8', '9', 'a', 'b'][Number.parseInt(digest[16], 16) % 4]
+  return [
+    digest.slice(0, 8).join(''),
+    digest.slice(8, 12).join(''),
+    digest.slice(12, 16).join(''),
+    digest.slice(16, 20).join(''),
+    digest.slice(20, 32).join(''),
+  ].join('-')
 }
 
 function evaluateAbortRules(results, rules) {

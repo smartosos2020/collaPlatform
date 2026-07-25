@@ -936,6 +936,17 @@ function materializePermissionSql(plan, start, end) {
   const memberCount = countFor(plan, "member");
   const roleName = permissionRoleCase(plan, "batch.ordinal");
   const memberOrdinal = localOrdinal("batch.ordinal", memberCount);
+  const collaborationPermissionStart = memberCount * 2 + 1;
+  const collaborationPermissionEnd = collaborationPermissionStart + 19;
+  const collaborationMemberOrdinal =
+    `(1 + (batch.ordinal - ${collaborationPermissionStart}) / 4)`;
+  const collaborationItemOrdinal =
+    `(2 + mod(batch.ordinal - ${collaborationPermissionStart}, 4))`;
+  const effectiveMemberOrdinal = `(CASE
+    WHEN batch.ordinal BETWEEN ${collaborationPermissionStart} AND ${collaborationPermissionEnd}
+      THEN ${collaborationMemberOrdinal}
+    ELSE ${memberOrdinal}
+  END)`;
   return `WITH batch AS (
   SELECT records.*, workspace.ordinal::integer workspace_ordinal
   FROM ${schema}.fixture_records records
@@ -997,14 +1008,20 @@ WITH batch AS (
 ),
 permission_targets AS (
   SELECT batch.*,
-         ${memberOrdinal} member_ordinal,
+         ${effectiveMemberOrdinal} member_ordinal,
          CASE WHEN batch.ordinal <= ${memberCount * 2}
            THEN 'project' ELSE 'knowledge_content' END resource_type,
          CASE WHEN batch.ordinal <= ${memberCount * 2}
            THEN ${recordUuidExpression(plan, "project", localOrdinal("batch.ordinal", countFor(plan, "project")))}
+           WHEN batch.ordinal BETWEEN ${collaborationPermissionStart} AND ${collaborationPermissionEnd}
+           THEN ${recordUuidExpression(plan, "knowledge-item", collaborationItemOrdinal)}
            ELSE ${recordUuidExpression(plan, "knowledge-item", localOrdinal("batch.ordinal", countFor(plan, "knowledge-item")))}
          END resource_id,
-         ${permissionRoleCase(plan, memberOrdinal)} role_name
+         CASE
+           WHEN batch.ordinal BETWEEN ${collaborationPermissionStart} AND ${collaborationPermissionEnd}
+             THEN 'editor'
+           ELSE ${permissionRoleCase(plan, effectiveMemberOrdinal)}
+         END role_name
   FROM batch
 )
 INSERT INTO resource_permissions (

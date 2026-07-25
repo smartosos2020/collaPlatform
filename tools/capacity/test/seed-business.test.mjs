@@ -93,6 +93,9 @@ test("apply SQL materializes registry records into every required business table
   assert.match(applySql, /'conversationMemberId', owned_members\.member_id/);
   assert.match(applySql, /'spaceId', owned_spaces\.space_id/);
   assert.match(applySql, /row_number\(\) OVER \(\s*ORDER BY role_permissions\.role_id/);
+  assert.match(applySql, /batch\.ordinal BETWEEN 4001 AND 4020/);
+  assert.match(applySql, /2 \+ mod\(batch\.ordinal - 4001, 4\)/);
+  assert.match(applySql, /THEN 'editor'/);
   assert.doesNotMatch(applySql, /INSERT INTO\s+(?:domain_events|event_outbox|outbox_events)\b/i);
 });
 

@@ -329,6 +329,13 @@ test('required warmup failure aborts before the measured run and can never Pass'
     assert.equal(result.summary.conclusion, 'Fail')
     assert.equal(result.verification.ok, true)
     assert.ok(result.errors.some((error) => error.code === 'scenario_aborted'))
+    const raw = await readFile(path.join(directory, 'raw', 'metrics.jsonl'), 'utf8')
+    const loaderResult = raw
+      .split(/\r?\n/)
+      .filter(Boolean)
+      .map((line) => JSON.parse(line))
+      .find((entry) => entry.kind === 'loader.result')
+    assert.deepEqual(loaderResult.errors, failedLoader('http').errors)
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
@@ -354,13 +361,14 @@ test('warmup and measured loaders receive distinct probe run ids and explicit ph
       http: { enabled: true, options: {}, warmupOptions: { iterations: 1 } },
       websocket: { enabled: false },
       collaboration: { enabled: false },
-      worker: { enabled: false },
+      worker: { enabled: true, options: {}, warmupOptions: { iterations: 1 } },
     },
     thresholds: {
       maxErrorRate: 0,
       minSamples: 1,
       loaders: {
         http: { required: true, maxErrorRate: 0, minSamples: 1 },
+        worker: { required: true, maxErrorRate: 0, minSamples: 1 },
       },
     },
   })
@@ -370,6 +378,15 @@ test('warmup and measured loaders receive distinct probe run ids and explicit ph
       runId: 'scenario-phase-001',
       loaderOptions: {
         http: {
+          runtimeValues: {
+            probeRunId: 'legacy-run',
+            probeRunIds: {
+              warmup: '11111111-1111-4111-8111-111111111111',
+              measured: '22222222-2222-4222-8222-222222222222',
+            },
+          },
+        },
+        worker: {
           runtimeValues: {
             probeRunId: 'legacy-run',
             probeRunIds: {
@@ -388,6 +405,14 @@ test('warmup and measured loaders receive distinct probe run ids and explicit ph
           })
           return successfulLoader('http')
         },
+        worker: async (options) => {
+          invocations.push({
+            phase: options.scenarioPhase,
+            scenarioRunId: options.scenarioRunId,
+            probeRunId: options.runtimeValues.probeRunId,
+          })
+          return successfulLoader('worker')
+        },
       },
       adapters: {
         prometheus: async () => [],
@@ -395,18 +420,84 @@ test('warmup and measured loaders receive distinct probe run ids and explicit ph
       },
     })
     assert.equal(result.summary.conclusion, 'Pass')
-    assert.deepEqual(invocations, [
-      {
-        phase: 'warmup',
-        scenarioRunId: 'scenario-phase-001',
-        probeRunId: '11111111-1111-4111-8111-111111111111',
-      },
-      {
-        phase: 'measured',
-        scenarioRunId: 'scenario-phase-001',
-        probeRunId: '22222222-2222-4222-8222-222222222222',
-      },
+    assert.deepEqual(invocations.map(({ phase, scenarioRunId }) => ({ phase, scenarioRunId })), [
+      { phase: 'warmup', scenarioRunId: 'scenario-phase-001' },
+      { phase: 'warmup', scenarioRunId: 'scenario-phase-001' },
+      { phase: 'measured', scenarioRunId: 'scenario-phase-001' },
+      { phase: 'measured', scenarioRunId: 'scenario-phase-001' },
     ])
+    assert.ok(invocations.every(({ probeRunId }) => /^[0-9a-f-]{36}$/.test(probeRunId)))
+    assert.notEqual(invocations[0].probeRunId, '11111111-1111-4111-8111-111111111111')
+    assert.notEqual(invocations[2].probeRunId, '22222222-2222-4222-8222-222222222222')
+    assert.notEqual(invocations[0].probeRunId, invocations[1].probeRunId)
+    assert.notEqual(invocations[2].probeRunId, invocations[3].probeRunId)
+    assert.notEqual(invocations[0].probeRunId, invocations[2].probeRunId)
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test('loader option overlays merge nested targets without dropping runtime contracts', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'colla-capacity-merge-scenario-'))
+  const invocations = []
+  const config = baseConfig({
+    execution: {
+      mode: 'serial',
+      warmup: { enabled: true, required: true, mode: 'serial', durationMs: 1 },
+      durationMs: 1,
+      abort: {
+        maxDurationMs: 1000,
+        stopOnLoaderFailure: true,
+        maxErrorCount: 0,
+        maxErrorRate: 0,
+        maxCollectorFailures: 0,
+      },
+    },
+    loaders: {
+      websocket: {
+        enabled: true,
+        options: { targets: { expectedFanout: 8 } },
+        warmupOptions: { connections: 2, targets: { expectedFanout: 2 } },
+      },
+      http: { enabled: false },
+      collaboration: { enabled: false },
+      worker: { enabled: false },
+    },
+    thresholds: {
+      maxErrorRate: 0,
+      minSamples: 1,
+      loaders: {
+        websocket: { required: true, maxErrorRate: 0, minSamples: 1 },
+      },
+    },
+  })
+  try {
+    const result = await runCapacityScenario(config, {
+      evidenceDirectory: directory,
+      loaderOptions: {
+        websocket: {
+          targets: {
+            trigger: { name: 'runtime-trigger' },
+            calibration: { name: 'runtime-calibration' },
+          },
+        },
+      },
+      loaders: {
+        websocket: async (options) => {
+          invocations.push(options)
+          return successfulLoader('websocket')
+        },
+      },
+      adapters: {
+        prometheus: async () => [],
+        docker: async () => [],
+      },
+    })
+    assert.equal(result.summary.conclusion, 'Pass')
+    assert.equal(invocations[0].targets.expectedFanout, 2)
+    assert.equal(invocations[0].targets.trigger.name, 'runtime-trigger')
+    assert.equal(invocations[0].targets.calibration.name, 'runtime-calibration')
+    assert.equal(invocations[1].targets.expectedFanout, 8)
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
