@@ -157,6 +157,36 @@ class KnowledgeSchemaMigrationIntegrationTests {
                 """,
             Boolean.class
         ));
+        assertEquals(0, jdbcTemplate.queryForObject(
+            """
+                select count(*)
+                from pg_constraint constraint_row
+                join pg_class table_row on table_row.oid = constraint_row.conrelid
+                join pg_namespace table_namespace on table_namespace.oid = table_row.relnamespace
+                where constraint_row.contype = 'f'
+                  and table_namespace.nspname = 'public'
+                  and table_row.relname in (
+                    'knowledge_content_blocks',
+                    'knowledge_base_items'
+                  )
+                  and not exists (
+                    select 1
+                    from pg_index index_row
+                    where index_row.indrelid = constraint_row.conrelid
+                      and index_row.indisvalid
+                      and index_row.indisready
+                      and index_row.indpred is null
+                      and array(
+                        select (index_row.indkey::smallint[])[series_row]
+                        from generate_series(
+                          0,
+                          cardinality(constraint_row.conkey) - 1
+                        ) series_row
+                      ) = constraint_row.conkey
+                  )
+                """,
+            Integer.class
+        ));
         assertEquals(
             "UNIQUE (workspace_id, item_id, generation, update_id)",
             jdbcTemplate.queryForObject(
