@@ -1,12 +1,15 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { changedSinceBaseline, fileSignatures, gitHead, gitStatusPaths, type GitBaseline } from '../lib/git.js'
+import { changedSinceBaseline, fileSignatures, gitHead, gitStatusPaths } from '../lib/git.js'
 import { repositoryRoot } from '../lib/paths.js'
 import { run } from '../lib/process.js'
-import { assertRealBrowserEvidence } from '../security/browserEvidence.js'
 import { auditSnapshot } from '../audit/snapshot.js'
-import { runQualityGate, type BackendStrategy, type FrontendStrategy, type QualityGateEvidence } from './quality.js'
+import { currentWorkContextSchemaVersion, migrateWorkContext, type WorkContext } from './contracts.js'
+import { affectedAreas } from './gatePlan.js'
+import { runQualityGate, type BackendStrategy, type FrontendStrategy } from './quality.js'
 import { assertTaskScopeInPlanning, loadActivePlanningContract } from './planning.js'
+import { executeSystemEvidence } from './systemEvidence.js'
+import { parseVerificationContracts, systemRealTaskIds } from './verification.js'
 
 export interface WorkCycleOptions {
   stage: 'start' | 'checkpoint' | 'finish'
@@ -20,28 +23,10 @@ export interface WorkCycleOptions {
   browserEvidenceKind?: 'real' | 'mock'
   browserEvidenceEnvironment?: 'isolated' | 'shared-readonly' | 'mock'
   browserNotRequiredReason?: string
+  systemEvidenceCommand?: string
+  systemEvidenceArgs?: string[]
+  systemEvidenceCwd?: string
   force?: boolean
-}
-
-interface WorkContext extends GitBaseline {
-  goal: string; status: string; taskRange: string; milestone: string; docMode: string; startedAt: string
-  completedAt?: string
-  requiredDocs: string[]; workScope: { scopeValid: boolean; expectedTasks: string[]; milestoneCount: number; maxMilestonesPerCycle: number }
-  allowedActiveDocs: string[]; allowedReportDir: string
-  evidencePolicy: { contractVersion: number }
-  browserEvidence?: Record<string, string>
-  lastQualityGate?: QualityGateEvidence
-  auditSnapshots?: string[]
-  planning: {
-    program: string
-    programDoc: string
-    initiativeIndexDoc: string
-    targetArchitectureDoc: string
-    programRevision: number
-    stage: string
-    stageFinalMilestone: string
-    isStageFinalMilestone: boolean
-  }
 }
 
 const reportDir = join(repositoryRoot, '.local-reports')
@@ -59,16 +44,21 @@ export function parseTaskScope(range: string): WorkContext['workScope'] & { mile
 
 function writeContext(context: WorkContext): void {
   mkdirSync(reportDir, { recursive: true })
-  writeFileSync(contextPath, JSON.stringify(context, null, 2))
+  writeFileSync(contextPath, JSON.stringify({ ...context, schemaVersion: currentWorkContextSchemaVersion }, null, 2))
+}
+
+function readContext(): WorkContext {
+  const context = JSON.parse(readFileSync(contextPath, 'utf8').replace(/^\uFEFF/, '')) as WorkContext
+  return migrateWorkContext(context)
 }
 
 function reportTemplate(context: WorkContext): string {
-  return [`# ${context.milestone} Execution Report`, '', '## Scope', context.taskRange, '', '## Verification Contract', '| Task | Verification level | Browser evidence kind | Environment | Mock browser allowed | Required real flow |', '| --- | --- | --- | --- | --- | --- |', ...context.workScope.expectedTasks.map((task) => `| ${task} | Pending | Pending | Pending | Pending | Pending |`), '', '## Completed Items', '- Pending', '', '## Acceptance Evidence', '| Task | Acceptance criterion | Implementation evidence | Automated evidence | Browser evidence | Status |', '| --- | --- | --- | --- | --- | --- |', ...context.workScope.expectedTasks.map((task) => `| ${task} | Pending | Pending | Pending | Pending | Pending |`), '', '## Code Changes', '- Pending', '', '## Validation', '- Backend tests: Pending', '- Frontend build: Pending', '- Local quality gate: Pending', '- Browser smoke: Pending', '', '## Remaining Gaps', '| Related task | Gap | Acceptance effect | Tracking |', '| --- | --- | --- | --- |', '| N/A | None | non-blocking | Closed |', '', '## Next Steps', '- Pending', ''].join('\n')
+  return [`# ${context.milestone} Execution Report`, '', '## Scope', context.taskRange, '', '## Verification Contract', '| Task | Closure class | Verification level | Browser evidence kind | Environment | Mock browser allowed | Required real flow |', '| --- | --- | --- | --- | --- | --- | --- |', ...context.workScope.expectedTasks.map((task) => `| ${task} | Pending | Pending | Pending | Pending | Pending | Pending |`), '', '## Completed Items', '- Pending', '', '## Acceptance Evidence', '| Task | Acceptance criterion | Implementation evidence | Automated evidence | Browser evidence | Status |', '| --- | --- | --- | --- | --- | --- |', ...context.workScope.expectedTasks.map((task) => `| ${task} | Pending | Pending | Pending | Pending | Pending |`), '', '## Code Changes', '- Pending', '', '## Validation', '- Backend tests: Pending', '- Frontend build: Pending', '- Local quality gate: Pending', '- Browser smoke: Pending', '', '## Remaining Gaps', '| Related task | Gap | Acceptance effect | Tracking |', '| --- | --- | --- | --- |', '| N/A | None | non-blocking | Closed |', '', '## Next Steps', '- Pending', ''].join('\n')
 }
 
 function start(options: WorkCycleOptions): void {
   if (existsSync(contextPath) && !options.force) {
-    const existing = JSON.parse(readFileSync(contextPath, 'utf8')) as WorkContext
+    const existing = readContext()
     if (existing.status === 'in-progress') throw new Error(`A work cycle is already active: ${existing.goal}`)
   }
   const taskRange = options.taskRange ?? ''
@@ -81,6 +71,7 @@ function start(options: WorkCycleOptions): void {
   const requiredDocs = options.docMode === 'archive-only' ? [] : ['docs/02-roadmap/current-roadmap.md', report, ...(isStageFinalMilestone && planning ? [planning.programDoc, planning.initiativeIndexDoc, planning.targetArchitectureDoc] : [])].filter(Boolean)
   const baselineChangedPaths = gitStatusPaths(repositoryRoot)
   const context: WorkContext = {
+    schemaVersion: currentWorkContextSchemaVersion,
     goal: options.goal ?? '', status: 'in-progress', taskRange, milestone: scope.milestone, docMode: options.docMode ?? 'code-doc-report', startedAt: new Date().toISOString(),
     baselineCommit: gitHead(repositoryRoot), baselineChangedPaths, baselineFileSignatures: fileSignatures(repositoryRoot, [...baselineChangedPaths, ...requiredDocs]), requiredDocs, workScope: scope,
     allowedActiveDocs: [
@@ -88,7 +79,6 @@ function start(options: WorkCycleOptions): void {
       'docs/00-product/current-product-scope.md',
       ...(planning ? [planning.initiativeIndexDoc] : []),
       ...(planning ? [planning.programDoc] : []),
-      'docs/00-product/initiatives/project-platform-program.md',
       'docs/01-architecture/current-architecture.md',
       ...(planning ? [planning.targetArchitectureDoc] : []),
       'docs/01-architecture/technology-selection.md',
@@ -99,7 +89,7 @@ function start(options: WorkCycleOptions): void {
       'docs/03-engineering/ai-engineering-governance.md',
     ],
     allowedReportDir: 'docs/90-reports',
-    evidencePolicy: { contractVersion: 2 },
+    evidencePolicy: { contractVersion: 3 },
     planning: planning ? {
       program: planning.program,
       programDoc: planning.programDoc,
@@ -123,17 +113,6 @@ function start(options: WorkCycleOptions): void {
   console.log(`Work cycle started: ${context.goal}; milestone=${context.milestone}; tasks=${context.workScope.expectedTasks.length}`)
 }
 
-function affected(context: WorkContext): Set<string> {
-  const areas = new Set<string>()
-  for (const path of changedSinceBaseline(repositoryRoot, context)) {
-    if (/^server\//.test(path)) areas.add('backend')
-    if (/^(web\/|package\.json|pnpm-lock\.yaml|tools\/workbench\/)/.test(path)) areas.add('frontend')
-    if (/^collaboration\//.test(path)) areas.add('collaboration')
-    if (/^(docs\/|scripts\/|deploy\/|tools\/workbench\/)/.test(path)) areas.add('workbench')
-  }
-  return areas
-}
-
 export function assertFinishBrowserOptions(options: WorkCycleOptions, docMode: string): void {
   const hasSpecs = (options.browserSpecs?.length ?? 0) > 0
   const reason = options.browserNotRequiredReason?.trim() ?? ''
@@ -151,20 +130,19 @@ export function assertStageFinalValidationProfile(stage: WorkCycleOptions['stage
 
 async function verify(options: WorkCycleOptions): Promise<void> {
   if (!existsSync(contextPath)) throw new Error('No active work cycle; run work:start first')
-  const context = JSON.parse(readFileSync(contextPath, 'utf8')) as WorkContext
+  const context = readContext()
   if (context.status !== 'in-progress') throw new Error(`Work cycle is ${context.status}, not in-progress`)
-  const areas = affected(context)
+  const areas = affectedAreas(changedSinceBaseline(repositoryRoot, context))
   const profile = options.validationProfile ?? (options.stage === 'finish' ? 'stage' : 'light')
   const planning = loadActivePlanningContract(repositoryRoot)
   context.allowedActiveDocs = [...new Set([
     ...(context.allowedActiveDocs ?? []),
     'docs/01-architecture/platform-module-contracts.md',
     'docs/01-architecture/event-side-effect-matrix.md',
-    'docs/00-product/initiatives/project-platform-program.md',
   ])]
   if (context.planning?.program && (planning.program !== context.planning.program || planning.stage !== context.planning.stage)) throw new Error('Active Program or Stage changed during the work cycle; restart the cycle after reviewing the planning change')
   if (context.planning?.program && planning.programRevision !== context.planning.programRevision && !(options.stage === 'finish' && context.planning.isStageFinalMilestone)) throw new Error('Program revision changed during the work cycle; restart after reviewing the planning change')
-  assertStageFinalValidationProfile(options.stage, Boolean(context.planning?.isStageFinalMilestone), profile, context.milestone)
+  assertStageFinalValidationProfile(options.stage, Boolean(context.planning?.isStageFinalMilestone), profile, context.milestone ?? '')
   let backend: BackendStrategy = areas.has('backend') ? 'compile' : 'skip'
   let frontend: FrontendStrategy = areas.has('frontend') ? 'lint' : 'skip'
   if (profile === 'stage' && areas.has('backend')) backend = 'targeted'
@@ -176,6 +154,27 @@ async function verify(options: WorkCycleOptions): Promise<void> {
   const hasSpecs = browserSpecs.length > 0
   const hasReason = Boolean(options.browserNotRequiredReason?.trim())
   assertFinishBrowserOptions(options, context.docMode)
+  if (options.stage === 'finish') {
+    const reportPath = context.requiredDocs.find((path) => path.startsWith('docs/90-reports/'))
+    if (!reportPath) throw new Error('System evidence requires an execution report in requiredDocs')
+    const report = readFileSync(join(repositoryRoot, reportPath), 'utf8')
+    const contracts = parseVerificationContracts(report, context.workScope.expectedTasks, context.evidencePolicy?.contractVersion ?? 1)
+    const systemTasks = systemRealTaskIds(contracts)
+    if (systemTasks.length && !options.systemEvidenceCommand) {
+      throw new Error(`system-real-isolated tasks require --system-evidence-command: ${systemTasks.join(', ')}`)
+    }
+    if (!systemTasks.length && options.systemEvidenceCommand) {
+      throw new Error('--system-evidence-command was provided but no task declares system-real-isolated')
+    }
+    if (options.systemEvidenceCommand) {
+      context.systemEvidence = await executeSystemEvidence(repositoryRoot, {
+        executable: options.systemEvidenceCommand,
+        args: options.systemEvidenceArgs,
+        cwd: options.systemEvidenceCwd,
+        tasks: systemTasks,
+      })
+    }
+  }
   if (hasSpecs) {
     const evidenceKind = options.browserEvidenceKind!
     const evidenceEnvironment = options.browserEvidenceEnvironment!
@@ -184,7 +183,10 @@ async function verify(options: WorkCycleOptions): Promise<void> {
     if (!existsSync(playwrightCli)) throw new Error(`Playwright CLI is not installed: ${playwrightCli}`)
     const args = [playwrightCli, 'test', ...browserSpecs, '--config', 'e2e/playwright.config.ts']
     if (options.browserGrep) args.push('--grep', options.browserGrep)
-    if (evidenceKind === 'real') assertRealBrowserEvidence(browserSpecs.join(' '), repositoryRoot)
+    if (evidenceKind === 'real') {
+      const { assertRealBrowserEvidence } = await import('../security/browserEvidence.js')
+      assertRealBrowserEvidence(browserSpecs.join(' '), repositoryRoot)
+    }
     const output = await run('node', args, {
       cwd: webRoot,
       env: { COLLA_E2E_SUITE: 'all' },
@@ -203,7 +205,16 @@ async function verify(options: WorkCycleOptions): Promise<void> {
     context.browserEvidence = { status: 'not_required', kind: 'not-required', environment: 'not-required', reason, completedAt: new Date().toISOString() }
   }
   writeContext(context)
-  const quality = await runQualityGate(repositoryRoot, { mode: profile === 'route-final' ? 'full' : options.stage === 'finish' ? 'stage' : 'quick', backend, backendTestPattern: options.backendTestPattern, frontend, collaboration: areas.has('collaboration') || profile === 'route-final' ? 'test' : 'skip', skipDocker: profile !== 'route-final', skipAudit: profile !== 'route-final', compact: true })
+  const quality = await runQualityGate(repositoryRoot, {
+    mode: profile === 'route-final' ? 'full' : options.stage === 'finish' ? 'stage' : 'quick',
+    backend,
+    backendTestPattern: options.backendTestPattern,
+    frontend,
+    collaboration: areas.has('collaboration') || profile === 'route-final' ? 'test' : 'skip',
+    areas: [...areas],
+    skipDocker: profile !== 'route-final',
+    compact: true,
+  })
   context.lastQualityGate = quality.evidence
   if (options.stage === 'finish') { context.status = 'complete'; context.completedAt = new Date().toISOString() }
   const snapshot = auditSnapshot(repositoryRoot, `${options.stage}-${context.goal}`, profile === 'route-final' ? 'full' : 'light')

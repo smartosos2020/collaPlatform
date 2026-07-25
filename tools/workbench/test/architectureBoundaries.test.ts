@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import test from 'node:test'
-import { checkArchitectureBoundaries } from '../src/architecture/boundaries.js'
+import { checkArchitectureBoundaries, writeBoundaryBaseline } from '../src/architecture/boundaries.js'
 
 function write(root: string, path: string, content: string): void {
   const target = join(root, ...path.split('/'))
@@ -157,4 +157,19 @@ test('rejects every cross-owner write and Flyway owner drift', () => {
   seedBaseline(migrationFixture)
   write(migrationFixture, 'server/src/main/resources/db/migration/V002__rename.sql', 'alter table projects rename to project_records;')
   assert.throws(() => checkArchitectureBoundaries(migrationFixture), /Table owner manifest mismatch/)
+})
+
+test('baseline writing uses caller lifecycle metadata instead of historical stage constants', () => {
+  const root = fixture()
+  const baseline = writeBoundaryBaseline(root, {
+    baselineId: 'fixture-active-boundary',
+    sourceCommit: 'fixture',
+    syncExceptions: true,
+    exceptionLifecycle: { introducedStage: 'FIXTURE-S02', exitStage: 'FIXTURE-S04' },
+  })
+  assert.equal(baseline.baselineId, 'fixture-active-boundary')
+  const manifest = JSON.parse(readFileSync(join(root, 'tools/workbench/config/platform-boundary-exceptions.json'), 'utf8')) as {
+    exceptions: Array<{ introducedStage: string; exitStage: string }>
+  }
+  assert.ok(manifest.exceptions.every((item) => item.introducedStage === 'FIXTURE-S02' && item.exitStage === 'FIXTURE-S04'))
 })

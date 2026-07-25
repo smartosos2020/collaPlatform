@@ -16,6 +16,7 @@ const workCommandHelp: Record<string, string> = {
     '',
     'Runs the closing quality gate and completes the active work cycle.',
     'Provide either --browser-spec with evidence metadata or --browser-not-required-reason.',
+    'For system-real-isolated tasks also provide --system-evidence-command and repeat --system-evidence-arg as needed.',
   ].join('\n'),
 }
 

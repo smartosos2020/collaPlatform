@@ -29,12 +29,12 @@ export function auditSnapshot(root: string, label: string, profile: 'light' | 'f
   const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, '')
   const report = join(directory, `audit-snapshot-${stamp}.md`)
   const lines = ['# AI Audit Snapshot', '', `- Profile: ${profile}`, `- Label: ${label}`, `- Time: ${new Date().toISOString()}`, `- Root: ${root}`]
+  const files = profile === 'full' ? inventory(root) : []
   if (profile === 'full') {
-    const files = inventory(root)
     lines.push(`- File count excluding generated artifacts: ${files.length}`, '', '## Toolchain', '```text', capture('java', ['-version'], root), capture('mvn', ['-version'], root), `node ${capture('node', ['--version'], root)}`, `pnpm ${capture('pnpm', ['--version'], root)}`, capture('docker', ['--version'], root), '```')
   }
   lines.push('', '## Git Status', '```text', capture('git', ['status', '--short'], root) || 'Working tree clean.', '```')
-  if (profile === 'full') lines.push('', '## Docker Compose', '```text', capture('docker', ['compose', 'ps'], root), '```', '', '## Source Inventory', '```text', ...inventory(root), '```')
+  if (profile === 'full') lines.push('', '## Docker Compose', '```text', capture('docker', ['compose', 'ps'], root), '```', '', '## Source Inventory', '```text', ...files, '```')
   writeFileSync(report, lines.join('\n'))
   return report
 }

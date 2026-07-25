@@ -72,8 +72,15 @@ function fixture(): string {
   `)
   write(root, 'deploy/docker-compose.prod.yml', `
 services:
-  server:
+  api-a:
     image: server:test
+    environment:
+      COLLA_RUNTIME_ROLE: api
+  worker-a:
+    extends:
+      service: api-a
+    environment:
+      COLLA_RUNTIME_ROLE: worker
   collaboration-a:
     image: collaboration:test
 volumes:
@@ -108,7 +115,10 @@ test('builds deterministic backend, frontend, Flyway, SQL, and runtime inventory
 
   assert.equal(inventory.runtime.scheduledTasks.length, 1)
   assert.equal(inventory.runtime.inMemoryState.length, 1)
-  assert.deepEqual(inventory.runtime.productionServices.map((service) => service.service), ['server', 'collaboration-a'])
+  assert.deepEqual(inventory.runtime.productionServices.map((service) => service.service), ['api-a', 'worker-a', 'collaboration-a'])
+  assert.deepEqual(inventory.runtime.productionServices.map((service) => service.role), ['api', 'worker', 'collaboration'])
+  assert.equal(inventory.runtime.roles.find((role) => role.role === 'api')?.currentDeployment, 'api-a')
+  assert.equal(inventory.runtime.roles.some((role) => role.role === 'legacy-collaboration'), false)
 
   const first = renderArchitectureInventory(inventory)
   const second = renderArchitectureInventory(scanArchitecture(root))

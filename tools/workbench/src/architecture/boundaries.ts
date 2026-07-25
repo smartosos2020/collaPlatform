@@ -114,10 +114,10 @@ function sqlKey(item: SqlCandidate): string {
   return `${item.sourceFile}|${item.sourceModule}|${item.tableOwner}|${item.table}|read`
 }
 
-function baselineFrom(root: string, inventory: ArchitectureInventory, sourceCommit = gitHead(root)): BoundaryBaseline {
+function baselineFrom(root: string, inventory: ArchitectureInventory, baselineId: string, sourceCommit = gitHead(root)): BoundaryBaseline {
   return {
     schemaVersion: 1,
-    baselineId: 'PLATFORM-SCALE-S01-M3',
+    baselineId,
     sourceCommit,
     backend: {
       foreignPrivateImports: inventory.backend.foreignPrivateImports.map(importKey).sort(),
@@ -184,7 +184,15 @@ function render(result: BoundaryGateResult, failures: string[]): string {
   return `${lines.join('\n')}\n`
 }
 
-export function synchronizeSqlReadExceptions(root: string, inventory: ArchitectureInventory): number {
+export interface BoundaryExceptionLifecycle {
+  introducedStage: string
+  exitStage: string
+}
+
+export function synchronizeSqlReadExceptions(root: string, inventory: ArchitectureInventory, lifecycle: BoundaryExceptionLifecycle): number {
+  if (!lifecycle.introducedStage.trim() || !lifecycle.exitStage.trim()) {
+    throw new Error('Synchronizing boundary exceptions requires introducedStage and exitStage')
+  }
   const path = assertWithin(root, resolve(root, 'tools/workbench/config/platform-boundary-exceptions.json'), 'boundary exception manifest')
   const current = JSON.parse(readFileSync(path, 'utf8')) as BoundaryExceptionManifest
   const modules = readJson<ModuleManifest>(root, 'tools/workbench/config/platform-modules.json')
@@ -201,8 +209,8 @@ export function synchronizeSqlReadExceptions(root: string, inventory: Architectu
     modes: ['read'],
     reason: `${item.sourceModule} currently reads ${item.tableOwner} facts until an approved query contract or owned projection replaces this exact access.`,
     owner: owners.get(item.sourceModule) ?? item.sourceModule,
-    introducedStage: 'PLATFORM-SCALE-S01',
-    exitStage: 'PLATFORM-SCALE-S05',
+    introducedStage: lifecycle.introducedStage,
+    exitStage: lifecycle.exitStage,
     expiryDecision: item.sourceModule === 'search' ? 'replace-with-projection' : 'replace-with-contract',
     status: 'approved',
   }))
@@ -212,13 +220,28 @@ export function synchronizeSqlReadExceptions(root: string, inventory: Architectu
 
 export function writeBoundaryBaseline(
   root: string,
-  path = 'tools/workbench/config/platform-boundary-baseline.json',
-  syncExceptions = false,
+  options: {
+    path?: string
+    baselineId?: string
+    sourceCommit?: string
+    syncExceptions?: boolean
+    exceptionLifecycle?: BoundaryExceptionLifecycle
+  } = {},
 ): BoundaryBaseline {
+  const path = options.path ?? 'tools/workbench/config/platform-boundary-baseline.json'
   const inventory = scanArchitecture(root)
-  if (syncExceptions) synchronizeSqlReadExceptions(root, inventory)
-  const baseline = baselineFrom(root, inventory)
   const target = assertWithin(root, resolve(root, path), 'boundary baseline')
+  if (options.syncExceptions) {
+    if (!options.exceptionLifecycle) throw new Error('--sync-exceptions requires --introduced-stage and --exit-stage')
+    synchronizeSqlReadExceptions(root, inventory, options.exceptionLifecycle)
+  }
+  const existingId = (() => {
+    try { return readJson<BoundaryBaseline>(root, path).baselineId }
+    catch { return undefined }
+  })()
+  const sourceCommit = options.sourceCommit?.trim() || gitHead(root)
+  const baselineId = options.baselineId?.trim() || existingId || `architecture-boundary-${sourceCommit.slice(0, 12)}`
+  const baseline = baselineFrom(root, inventory, baselineId, sourceCommit)
   mkdirSync(dirname(target), { recursive: true })
   writeFileSync(target, `${JSON.stringify(baseline, null, 2)}\n`)
   return baseline
@@ -232,7 +255,7 @@ export function checkArchitectureBoundaries(
   const inventory = scanArchitecture(root)
   const baseline = readJson<BoundaryBaseline>(root, options.baselinePath ?? 'tools/workbench/config/platform-boundary-baseline.json')
   if (baseline.schemaVersion !== 1) throw new Error('Boundary baseline schema version is invalid')
-  const actual = baselineFrom(root, inventory, baseline.sourceCommit)
+  const actual = baselineFrom(root, inventory, baseline.baselineId, baseline.sourceCommit)
   const failures: string[] = []
   compareExact('Backend private import', actual.backend.foreignPrivateImports, baseline.backend.foreignPrivateImports, failures)
   compareExact('Shared reverse import', actual.backend.sharedToModuleImports, baseline.backend.sharedToModuleImports, failures)

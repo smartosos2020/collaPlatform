@@ -1,14 +1,20 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
-import { changedSinceBaseline, type GitBaseline } from '../lib/git.js'
+import { changedSinceBaseline } from '../lib/git.js'
 import { runSync } from '../lib/process.js'
-import { namingGuard } from '../knowledge/checks.js'
-import { runSecurityAudit } from '../security/audit.js'
-import { scanSensitiveData } from '../security/sensitiveScan.js'
-import { activePlatformViolations } from '../security/platformGuard.js'
-import { checkArchitectureBoundaries } from '../architecture/boundaries.js'
+import { migrateWorkContext, type QualityGateEvidence, type WorkContext } from './contracts.js'
+import { createQualityGatePlan, type AffectedArea } from './gatePlan.js'
 import { loadActivePlanningContract, planningSummary } from './planning.js'
-import { assertDocumentationStructure, assertFrontendRouteLazyLoading, assertGeneratedArtifacts, assertMockitoJavaAgent, implementationMarkers } from './staticChecks.js'
+import { sha256File } from './systemEvidence.js'
+import {
+  assertConcrete,
+  isCoreClosure,
+  markdownCells,
+  parseVerificationContracts,
+  reportSection,
+  systemRealTaskIds,
+  type VerificationContract,
+} from './verification.js'
 
 export type BackendStrategy = 'compile' | 'targeted' | 'full' | 'skip'
 export type FrontendStrategy = 'lint' | 'full' | 'skip'
@@ -19,110 +25,20 @@ export interface QualityOptions {
   backendTestPattern?: string
   frontend: FrontendStrategy
   collaboration: CollaborationStrategy
+  areas?: AffectedArea[]
   skipDocker?: boolean
   skipAudit?: boolean
   compact?: boolean
 }
 
-interface WorkCycleContext extends GitBaseline {
-  docMode: string
-  status?: string
-  startedAt: string
-  taskRange?: string
-  requiredDocs: string[]
-  allowedActiveDocs?: string[]
-  allowedReportDir?: string
-  evidencePolicy?: { contractVersion?: number }
-  browserEvidence?: {
-    status: 'passed' | 'not_required' | string
-    kind?: 'real' | 'mock' | 'not-required' | string
-    environment?: 'isolated' | 'shared-readonly' | 'mock' | 'not-required' | string
-    command?: string
-    logPath?: string
-    reason?: string
-    completedAt?: string
-  }
-  workScope: { scopeValid: boolean; expectedTasks: string[]; milestoneCount: number; maxMilestonesPerCycle: number }
-  planning?: {
-    program: string
-    programDoc: string
-    targetArchitectureDoc: string
-    programRevision: number
-    stage: string
-    stageFinalMilestone: string
-    isStageFinalMilestone: boolean
-  }
-  lastQualityGate?: QualityGateEvidence
-}
-
-export interface QualityGateEvidence {
-  reportPath: string
-  mode: QualityOptions['mode']
-  status: 'PASS' | 'FAIL'
-  stepLogs: string[]
-  completedAt: string
-}
+type WorkCycleContext = WorkContext
 
 export const dockerDependencyArgs = ['compose', 'up', '-d', '--wait', '--wait-timeout', '120', 'postgres', 'redis', 'minio'] as const
-
-interface VerificationContract {
-  level: 'static' | 'unit' | 'integration' | 'system-real-isolated' | 'e2e-real' | 'e2e-real-isolated'
-  browserKind: 'real' | 'mock' | 'not-required'
-  environment: 'isolated' | 'shared-readonly' | 'mock' | 'not-required'
-  mockAllowed: 'yes' | 'no'
-  realFlow: string
-}
 
 function timestamp(): string {
   return new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, '')
 }
 
-function markdownCells(line: string): string[] {
-  if (!line.trim().startsWith('|')) return []
-  return line.trim().slice(1, -1).split(/(?<!\\)\|/).map((cell) => cell.replaceAll('\\|', '|').trim())
-}
-
-function assertConcrete(value: string, label: string): void {
-  if (!value || /^(?:todo|tbd|pending|n\/?a)$/i.test(value) || /待补|待执行|稍后|占位/.test(value)) throw new Error(`${label} requires concrete evidence`)
-}
-
-function section(content: string, start: string, end: string): string {
-  const match = content.match(new RegExp(`^${start.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*([\\s\\S]+?)\\s*^${end.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`, 'm'))
-  if (!match) throw new Error(`Execution report section cannot be parsed: ${start}`)
-  return match[1]
-}
-
-function isCoreClosure(criterion: string): boolean {
-  return /(登录|认证|权限|创建|新增|修改|删除|停用|启用|密码|安全策略|会话|设备|交接|导出|审计|login|auth|permission|create|update|delete|disable|enable|password|security|session|device|handover|offboard|export|audit)/i.test(criterion)
-}
-
-function parseVerificationContracts(report: string, tasks: string[]): Map<string, VerificationContract> {
-  const rows = section(report, '## Verification Contract', '## Completed Items').split(/\r?\n/).map(markdownCells)
-    .filter((cells) => cells.length === 6 && cells[0] !== 'Task' && !/^-+$/.test(cells[0]))
-  const contracts = new Map<string, VerificationContract>()
-  for (const task of tasks) {
-    const matches = rows.filter((cells) => cells[0] === task)
-    if (matches.length !== 1) throw new Error(`Verification Contract must contain exactly one six-column row for ${task}; found ${matches.length}`)
-    const cells = matches[0]
-    cells.slice(1).forEach((value, index) => assertConcrete(value, `${task} verification contract field ${index + 1}`))
-    const level = cells[1].toLowerCase() as VerificationContract['level']
-    const browserKind = cells[2].toLowerCase() as VerificationContract['browserKind']
-    const environment = cells[3].toLowerCase() as VerificationContract['environment']
-    const mockAllowed = cells[4].toLowerCase() as VerificationContract['mockAllowed']
-    if (!['static', 'unit', 'integration', 'system-real-isolated', 'e2e-real', 'e2e-real-isolated'].includes(level)) throw new Error(`${task} has an invalid verification level: ${cells[1]}`)
-    if (!['real', 'mock', 'not-required'].includes(browserKind)) throw new Error(`${task} has an invalid browser evidence kind: ${cells[2]}`)
-    if (!['isolated', 'shared-readonly', 'mock', 'not-required'].includes(environment)) throw new Error(`${task} has an invalid verification environment: ${cells[3]}`)
-    if (!['yes', 'no'].includes(mockAllowed)) throw new Error(`${task} mock browser allowed must be Yes or No`)
-    if (browserKind === 'real' && (!['isolated', 'shared-readonly'].includes(environment) || mockAllowed !== 'no')) throw new Error(`${task} real browser evidence requires isolated/shared-readonly environment and Mock browser allowed = No`)
-    if (browserKind === 'mock' && (environment !== 'mock' || mockAllowed !== 'yes')) throw new Error(`${task} mock browser evidence requires Environment = mock and Mock browser allowed = Yes`)
-    if (browserKind === 'not-required' && environment !== 'not-required' && level !== 'system-real-isolated') throw new Error(`${task} not-required browser evidence requires Environment = not-required`)
-    if (level === 'system-real-isolated' && (browserKind !== 'not-required' || environment !== 'isolated' || mockAllowed !== 'no')) throw new Error(`${task} system-real-isolated requires a real isolated service flow, no browser evidence, and no mock`)
-    if (level === 'e2e-real' && (browserKind !== 'real' || mockAllowed !== 'no')) throw new Error(`${task} e2e-real requires real browser evidence and no mock`)
-    if (level === 'e2e-real-isolated' && (browserKind !== 'real' || environment !== 'isolated' || mockAllowed !== 'no')) throw new Error(`${task} e2e-real-isolated requires real browser evidence in an isolated environment and no mock`)
-    contracts.set(task, { level, browserKind, environment, mockAllowed, realFlow: cells[5] })
-  }
-  return contracts
-}
 
 function assertBrowserEvidence(root: string, context: WorkCycleContext, contracts: Map<string, VerificationContract>): void {
   const evidence = context.browserEvidence
@@ -150,8 +66,29 @@ function assertBrowserEvidence(root: string, context: WorkCycleContext, contract
   if (kinds[0] === 'mock' && evidence.environment !== 'mock') throw new Error('Mock Verification Contract requires browser evidence environment = mock')
 }
 
+function assertSystemEvidence(root: string, context: WorkCycleContext, contracts: Map<string, VerificationContract>): void {
+  const expectedTasks = systemRealTaskIds(contracts)
+  if (!expectedTasks.length) return
+  const evidence = context.systemEvidence
+  if (!evidence || evidence.status !== 'passed') throw new Error('system-real-isolated tasks require passed systemEvidence in the active work-cycle context')
+  if (evidence.environment !== 'isolated') throw new Error('System evidence must use an isolated environment')
+  if (!evidence.command?.trim()) throw new Error('System evidence must record the executed command')
+  if (JSON.stringify([...evidence.tasks].sort()) !== JSON.stringify(expectedTasks)) {
+    throw new Error(`System evidence task coverage mismatch; expected ${expectedTasks.join(', ')}`)
+  }
+  const started = Date.parse(context.startedAt)
+  const completed = Date.parse(evidence.completedAt)
+  if (!Number.isFinite(completed) || completed < started) throw new Error('System evidence predates the active work cycle')
+  const logPath = existsSync(evidence.logPath) ? evidence.logPath : join(root, evidence.logPath)
+  if (!existsSync(logPath)) throw new Error(`System evidence log does not exist: ${evidence.logPath}`)
+  if (statSync(logPath).mtimeMs < started) throw new Error('System evidence log predates the active work cycle')
+  if (!/^[a-f0-9]{64}$/.test(evidence.sha256) || sha256File(logPath) !== evidence.sha256) {
+    throw new Error('System evidence log checksum does not match the recorded SHA-256')
+  }
+}
+
 function assertRemainingGaps(report: string, tasks: string[], roadmap: string[], contractV2: boolean): void {
-  const gaps = section(report, '## Remaining Gaps', '## Next Steps').trim()
+  const gaps = reportSection(report, '## Remaining Gaps', '## Next Steps').trim()
   if (!gaps || gaps === '-' || /^-\s*(?:todo|tbd|pending)?\s*$/i.test(gaps)) throw new Error('Execution report Remaining Gaps must explicitly state None or list concrete residual risks')
   if (!contractV2) return
   const rows = gaps.split(/\r?\n/).map(markdownCells).filter((cells) => cells.length === 4 && cells[0] !== 'Related task' && !/^-+$/.test(cells[0]))
@@ -190,7 +127,7 @@ function assertDocumentBoundary(root: string, context: WorkCycleContext, changed
 export function assertWorkCycleDocuments(root: string, strict: boolean, freshLogs: string[] = []): void {
   const contextPath = join(root, '.local-reports', 'work-cycle-current.json')
   if (!existsSync(contextPath)) return
-  const context = JSON.parse(readFileSync(contextPath, 'utf8').replace(/^\uFEFF/, '')) as WorkCycleContext
+  const context = migrateWorkContext(JSON.parse(readFileSync(contextPath, 'utf8').replace(/^\uFEFF/, '')) as WorkCycleContext)
   if (context.status && !['in-progress', 'in_progress'].includes(context.status)) return
   if (context.docMode === 'archive-only') return
   if (!context.workScope?.scopeValid || context.workScope.milestoneCount > (context.workScope.maxMilestonesPerCycle ?? 1)) throw new Error('Active work-cycle scope is invalid')
@@ -219,10 +156,11 @@ export function assertWorkCycleDocuments(root: string, strict: boolean, freshLog
   if (context.taskRange && !report.includes(context.taskRange) && expectedTasks.some((task) => !report.includes(task))) {
     throw new Error('Execution report Scope must include the active TaskRange or every expected task ID')
   }
-  const contractV2 = (context.evidencePolicy?.contractVersion ?? 0) >= 2
-  const contracts = contractV2 ? parseVerificationContracts(report, expectedTasks) : new Map<string, VerificationContract>()
+  const contractVersion = context.evidencePolicy?.contractVersion ?? 0
+  const contractV2 = contractVersion >= 2
+  const contracts = contractV2 ? parseVerificationContracts(report, expectedTasks, contractVersion) : new Map<string, VerificationContract>()
   const roadmap = readFileSync(join(root, 'docs/02-roadmap/current-roadmap.md'), 'utf8').split(/\r?\n/)
-  const acceptanceRows = section(report, '## Acceptance Evidence', '## Code Changes').split(/\r?\n/).map(markdownCells)
+  const acceptanceRows = reportSection(report, '## Acceptance Evidence', '## Code Changes').split(/\r?\n/).map(markdownCells)
   for (const task of expectedTasks) {
     const acceptance = acceptanceRows.filter((cells) => cells.length === 6 && cells[0] === task)
     if (acceptance.length !== 1) throw new Error(`Acceptance Evidence must contain exactly one six-column row for ${task}; found ${acceptance.length}`)
@@ -230,7 +168,7 @@ export function assertWorkCycleDocuments(root: string, strict: boolean, freshLog
     if (acceptance[0][5] !== 'Done') throw new Error(`${task} cannot finish because Acceptance Evidence status is '${acceptance[0][5]}'`)
     if (contractV2) {
       const contract = contracts.get(task)!
-      if (isCoreClosure(acceptance[0][1]) && !['e2e-real-isolated', 'system-real-isolated'].includes(contract.level)) throw new Error(`${task} acceptance criterion describes a core closure and requires e2e-real-isolated or system-real-isolated evidence`)
+      if (contractVersion < 3 && isCoreClosure(acceptance[0][1]) && !['e2e-real-isolated', 'system-real-isolated'].includes(contract.level)) throw new Error(`${task} acceptance criterion describes a core closure and requires e2e-real-isolated or system-real-isolated evidence`)
       if (contract.browserKind === 'real' && !/\breal\b/i.test(acceptance[0][4])) throw new Error(`${task} Browser evidence must explicitly state real`)
       if (contract.browserKind === 'mock' && !/\bmock\b/i.test(acceptance[0][4])) throw new Error(`${task} Browser evidence must explicitly state mock`)
     }
@@ -251,6 +189,7 @@ export function assertWorkCycleDocuments(root: string, strict: boolean, freshLog
   if (!validLog) throw new Error(`Execution report Validation must reference a fresh quality-gate report or step log. Available step logs: ${freshLogs.map((path) => basename(path)).join(', ')}`)
   assertRemainingGaps(report, expectedTasks, roadmap, contractV2)
   assertBrowserEvidence(root, context, contracts)
+  assertSystemEvidence(root, context, contracts)
   assertDocumentBoundary(root, context, changed)
 }
 
@@ -290,8 +229,18 @@ export async function runQualityGate(root: string, options: QualityOptions): Pro
   const failures: string[] = []
   const warnings: string[] = []
   const logs: string[] = []
+  const plan = createQualityGatePlan({
+    mode: options.mode,
+    areas: options.areas,
+    skipDocker: options.skipDocker,
+    skipAudit: options.skipAudit,
+  })
   const step = (name: string, action: () => void): void => {
-    try { action(); results.push(`- PASS: ${name}`); console.log(`PASS: ${name}`) }
+    try {
+      action()
+      results.push(`- PASS: ${name}`)
+      if (!options.compact) console.log(`PASS: ${name}`)
+    }
     catch (error) { const message = error instanceof Error ? error.message : String(error); failures.push(`- FAIL: ${name} - ${message}`); console.error(`FAIL: ${name} - ${message}`) }
   }
   const command = (name: string, executable: string, args: string[], cwd = root): void => step(name, () => {
@@ -302,16 +251,20 @@ export async function runQualityGate(root: string, options: QualityOptions): Pro
     if (!options.compact && output) console.log(output)
   })
 
-  step('Toolchain', () => { for (const [cmd, args] of [['java', ['-version']], ['mvn', ['-version']], ['node', ['--version']], ['pnpm', ['--version']], ['docker', ['--version']]] as const) runSync(cmd, [...args], { cwd: root }) })
+  if (plan.has('toolchain')) step('Toolchain', () => { for (const [cmd, args] of [['java', ['-version']], ['mvn', ['-version']], ['node', ['--version']], ['pnpm', ['--version']], ['docker', ['--version']]] as const) runSync(cmd, [...args], { cwd: root }) })
   const planning = loadActivePlanningContract(root)
-  step('Active planning contract', () => console.log(planningSummary(planning)))
-  if (existsSync(join(root, 'tools/workbench/config/platform-boundary-baseline.json'))) {
+  if (plan.has('planning')) step('Active planning contract', () => {
+    const summary = planningSummary(planning)
+    if (!options.compact) console.log(summary)
+  })
+  if (plan.has('architecture') && existsSync(join(root, 'tools/workbench/config/platform-boundary-baseline.json'))) {
+    const { checkArchitectureBoundaries } = await import('../architecture/boundaries.js')
     step('Architecture boundaries', () => checkArchitectureBoundaries(root, {
       outputDirectory: '.local-reports',
       label: `architecture-boundaries-${stamp}`,
     }))
   }
-  if (!options.skipDocker) command('Docker dependencies', 'docker', [...dockerDependencyArgs])
+  if (plan.has('docker')) command('Docker dependencies', 'docker', [...dockerDependencyArgs])
   if (options.backend === 'compile') command('Backend compile', 'mvn', ['-DskipTests', 'test'], join(root, 'server'))
   if (options.backend === 'targeted') {
     if (!options.backendTestPattern) throw new Error('Targeted backend verification requires --backend-test-pattern')
@@ -326,31 +279,56 @@ export async function runQualityGate(root: string, options: QualityOptions): Pro
       const oversized = readdirSync(join(root, 'web/dist/assets')).filter((name) => name.endsWith('.js') && statSync(join(root, 'web/dist/assets', name)).size > 500 * 1024)
       if (oversized.length) throw new Error(`JavaScript chunks exceed 500KB: ${oversized.join(', ')}`)
     })
+    const { assertFrontendRouteLazyLoading } = await import('./staticChecks.js')
     step('Frontend route lazy-loading', () => assertFrontendRouteLazyLoading(root))
   }
   if (options.collaboration === 'test') command('Collaboration tests', 'pnpm', ['collaboration:test'])
-  if (!options.skipAudit) {
+  if (plan.has('workbench-typecheck')) command('Workbench typecheck', 'pnpm', ['--dir', 'tools/workbench', 'typecheck'])
+  if (plan.has('workbench-tests')) command('Workbench tests', 'pnpm', ['--dir', 'tools/workbench', 'test'])
+  if (plan.has('mockito')) {
+    const { assertMockitoJavaAgent } = await import('./staticChecks.js')
     step('Mockito javaagent configuration', () => assertMockitoJavaAgent(root))
+  }
+  if (plan.has('sensitive-data')) {
+    const { scanSensitiveData } = await import('../security/sensitiveScan.js')
     step('Sensitive data scan', () => { const value = scanSensitiveData(root, { writeReport: false }); if (value.hits.length) throw new Error(value.hits.map((hit) => `${hit.path}:${hit.line}`).join(', ')) })
+  }
+  if (plan.has('security-audit')) {
+    const { runSecurityAudit } = await import('../security/audit.js')
     step('Security audit guardrails', () => { const value = runSecurityAudit(root); if (value.failures.length) throw new Error(value.failures.join('; ')) })
-    step('Flyway migration order', () => flywayCheck(root))
+  }
+  if (plan.has('flyway')) step('Flyway migration order', () => flywayCheck(root))
+  if (plan.has('knowledge-naming')) {
+    const { namingGuard } = await import('../knowledge/checks.js')
     step('Knowledge naming guard', () => { const findings = namingGuard(root); if (findings.length) throw new Error(findings.join('; ')) })
+  }
+  if (plan.has('active-platform')) {
+    const { activePlatformViolations } = await import('../security/platformGuard.js')
     step('Active script platform', () => {
       const violations = activePlatformViolations(root)
       if (violations.length) throw new Error(violations.join('; '))
     })
+  }
+  if (plan.has('generated-artifacts')) {
+    const { assertGeneratedArtifacts } = await import('./staticChecks.js')
     step('Generated artifact scan', () => assertGeneratedArtifacts(root))
+  }
+  if (plan.has('implementation-markers')) {
+    const { implementationMarkers } = await import('./staticChecks.js')
     step('TODO/FIXME inventory', () => {
       for (const marker of implementationMarkers(root)) warnings.push(`- WARN: Open implementation marker: ${marker}`)
     })
+  }
+  if (plan.has('documentation-structure')) {
+    const { assertDocumentationStructure } = await import('./staticChecks.js')
     step('Documentation structure', () => assertDocumentationStructure(root, planning))
   }
-  step('Work-cycle documentation contract', () => assertWorkCycleDocuments(root, ['stage', 'full'].includes(options.mode), logs))
-  if (['stage', 'full'].includes(options.mode)) step('Git diff whitespace and conflict check', () => assertGitDiffClean(root))
+  if (plan.has('work-cycle-documents')) step('Work-cycle documentation contract', () => assertWorkCycleDocuments(root, ['stage', 'full'].includes(options.mode), logs))
+  if (plan.has('git-diff')) step('Git diff whitespace and conflict check', () => assertGitDiffClean(root))
   const report = join(directory, `quality-gate-${stamp}.md`)
   const completedAt = new Date().toISOString()
   const evidence: QualityGateEvidence = { reportPath: report, mode: options.mode, status: failures.length ? 'FAIL' : 'PASS', stepLogs: logs, completedAt }
-  writeFileSync(report, ['# AI Quality Gate', '', `- Status: ${evidence.status}`, `- Mode: ${options.mode}`, `- Time: ${completedAt}`, '', '## Results', ...results, '', '## Warnings', ...(warnings.length ? warnings : ['- None']), '', '## Failures', ...(failures.length ? failures : ['- None']), ''].join('\n'))
+  writeFileSync(report, ['# AI Quality Gate', '', `- Status: ${evidence.status}`, `- Mode: ${options.mode}`, `- Time: ${completedAt}`, `- Areas: ${[...plan.areas].sort().join(', ') || 'none'}`, `- Gates: ${[...plan.gates].sort().join(', ')}`, '', '## Results', ...results, '', '## Warnings', ...(warnings.length ? warnings : ['- None']), '', '## Failures', ...(failures.length ? failures : ['- None']), ''].join('\n'))
   recordQualityGateEvidence(root, evidence)
   if (failures.length) throw new Error(`Quality gate failed (${failures.length}); report: ${report}`)
   console.log(`Quality gate report: ${report}`)

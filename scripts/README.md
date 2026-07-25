@@ -21,6 +21,7 @@ pnpm architecture:boundaries
 pnpm work:start -- --goal project-platform-s01-m1 --task-range "PROJECT-PLATFORM-S01-M1-T01 to PROJECT-PLATFORM-S01-M1-T09"
 pnpm work:checkpoint -- --goal project-platform-s01-m1
 pnpm work:finish -- --goal project-platform-s01-m1 --backend-test-pattern ProjectControllerIntegrationTests --browser-spec e2e/cross-module-route-final.spec.ts --browser-evidence-kind real --browser-evidence-environment isolated
+pnpm work:finish -- --goal project-platform-s01-m1 --browser-not-required-reason "real isolated service flow without browser interaction" --system-evidence-command node --system-evidence-arg deploy/verification/isolated-flow.mjs
 pnpm work:plan-check
 pnpm work:test
 pnpm verify

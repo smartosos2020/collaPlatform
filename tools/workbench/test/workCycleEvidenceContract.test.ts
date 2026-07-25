@@ -7,11 +7,12 @@ import { fileSignatures, gitHead } from '../src/lib/git.js'
 import { runSync } from '../src/lib/process.js'
 import { assertFinishBrowserOptions, assertStageFinalValidationProfile, parseTaskScope } from '../src/workcycle/cycle.js'
 import { assertGitDiffClean, assertWorkCycleDocuments } from '../src/workcycle/quality.js'
+import { sha256File } from '../src/workcycle/systemEvidence.js'
 
 const task = 'TEST-M1-T01'
 const defaultContract = '| TEST-M1-T01 | static | not-required | not-required | No | No real flow required |'
 
-function fixture(contract = defaultContract, browserEvidence?: object, qualityArtifact = 'quality-gate-20260718T120000-test.log'): string {
+function fixture(contract = defaultContract, browserEvidence?: object, qualityArtifact = 'quality-gate-20260718T120000-test.log', contractVersion = 2): string {
   const root = mkdtempSync(join(tmpdir(), 'colla-evidence-contract-'))
   mkdirSync(join(root, 'docs/02-roadmap'), { recursive: true })
   mkdirSync(join(root, 'docs/90-reports'), { recursive: true })
@@ -43,11 +44,23 @@ function fixture(contract = defaultContract, browserEvidence?: object, qualityAr
     '| N/A | None | non-blocking | Closed |', '', '## Next Steps', '- Merge after review', '',
   ].join('\n'))
   const defaultEvidence = { status: 'not_required', kind: 'not-required', environment: 'not-required', reason: 'Static-only change has no browser-visible behavior.', completedAt: new Date().toISOString() }
+  const systemLog = join(root, '.local-reports/system-evidence.log')
+  const requiresSystemEvidence = contract.includes('system-real-isolated')
+  if (requiresSystemEvidence) writeFileSync(systemLog, 'real isolated API and durable ledger passed')
   writeFileSync(join(root, '.local-reports/work-cycle-current.json'), JSON.stringify({
     docMode: 'code-doc-report', startedAt, taskRange: task, baselineCommit, baselineChangedPaths: [],
     baselineFileSignatures: fileSignatures(root, []), requiredDocs: [roadmapPath, reportPath],
-    allowedActiveDocs: [roadmapPath], allowedReportDir: 'docs/90-reports', evidencePolicy: { contractVersion: 2 },
+    allowedActiveDocs: [roadmapPath], allowedReportDir: 'docs/90-reports', evidencePolicy: { contractVersion },
     browserEvidence: browserEvidence ?? defaultEvidence,
+    systemEvidence: requiresSystemEvidence ? {
+      status: 'passed',
+      environment: 'isolated',
+      command: 'node isolated-system-flow.mjs',
+      tasks: [task],
+      logPath: systemLog,
+      sha256: sha256File(systemLog),
+      completedAt: new Date().toISOString(),
+    } : undefined,
     workScope: { scopeValid: true, expectedTasks: [task], milestoneCount: 1, maxMilestonesPerCycle: 1 },
   }, null, 2))
   return root
@@ -63,7 +76,7 @@ test('verification contract accepts the TypeScript quality-gate markdown summary
 
 test('verification contract requires exactly one row per expected task', () => {
   const root = fixture('')
-  assert.throws(() => assertWorkCycleDocuments(root, true), /exactly one six-column row/)
+  assert.throws(() => assertWorkCycleDocuments(root, true), /exactly one 6-column row/)
 })
 
 test('core closure acceptance requires isolated real E2E evidence', () => {
@@ -82,11 +95,47 @@ test('core service closure accepts a real isolated system flow without browser e
   assert.doesNotThrow(() => assertWorkCycleDocuments(root, true))
 })
 
+test('verification contract v3 uses an explicit closure class instead of acceptance keywords', () => {
+  const root = fixture(
+    '| TEST-M1-T01 | non-core | static | not-required | not-required | No | No real flow required |',
+    undefined,
+    'quality-gate-20260718T120000-test.log',
+    3,
+  )
+  const report = join(root, 'docs/90-reports/test-m1-execution-report.md')
+  writeFileSync(report, readFileSync(report, 'utf8').replace('Render dashboard', 'Inspect permission documentation'))
+  assert.doesNotThrow(() => assertWorkCycleDocuments(root, true))
+})
+
+test('verification contract v3 requires core-user and core-system evidence classes', () => {
+  assert.throws(
+    () => assertWorkCycleDocuments(fixture(
+      '| TEST-M1-T01 | core-user | static | not-required | not-required | No | No real flow required |',
+      undefined,
+      'quality-gate-20260718T120000-test.log',
+      3,
+    ), true),
+    /core-user requires e2e-real-isolated/,
+  )
+  assert.doesNotThrow(() => assertWorkCycleDocuments(fixture(
+    '| TEST-M1-T01 | core-system | system-real-isolated | not-required | isolated | No | Exercise the real isolated API and durable ledger |',
+    undefined,
+    'quality-gate-20260718T120000-test.log',
+    3,
+  ), true))
+})
+
 test('system real isolated evidence rejects mock or non-isolated contracts', () => {
   assert.throws(
     () => assertWorkCycleDocuments(fixture('| TEST-M1-T01 | system-real-isolated | not-required | not-required | No | Exercise the real service flow |'), true),
     /system-real-isolated requires/,
   )
+})
+
+test('system real isolated evidence rejects a tampered evidence log', () => {
+  const root = fixture('| TEST-M1-T01 | system-real-isolated | not-required | isolated | No | Exercise the real service flow |')
+  writeFileSync(join(root, '.local-reports/system-evidence.log'), 'tampered after evidence capture')
+  assert.throws(() => assertWorkCycleDocuments(root, true), /checksum/)
 })
 
 test('remaining acceptance gaps block a Done task', () => {

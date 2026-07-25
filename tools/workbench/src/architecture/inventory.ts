@@ -680,14 +680,21 @@ function scanRuntime(source: RepositorySource): ArchitectureInventory['runtime']
       const service = insideServices ? line.match(/^  ([A-Za-z0-9_-]+):\s*$/)?.[1] : undefined
       if (!service) continue
       let image = ''
+      let configuredRole = ''
       for (let cursor = index + 1; cursor < lines.length && !/^  [A-Za-z0-9_-]+:\s*$/.test(lines[cursor]) && !/^\S/.test(lines[cursor]); cursor += 1) {
         const imageMatch = lines[cursor].match(/^\s{4}image:\s*(.+)$/)
         if (imageMatch) image = imageMatch[1].trim()
+        const roleMatch = lines[cursor].match(/^\s+COLLA_RUNTIME_ROLE:\s*["']?([^"'#\s]+)["']?/)
+        if (roleMatch) configuredRole = roleMatch[1]
       }
-      const role = service.startsWith('collaboration-') ? 'collaboration' : service === 'server' ? 'api+worker+event-gateway+legacy-collaboration' : 'infrastructure'
+      const role = configuredRole || (service.startsWith('collaboration-') ? 'collaboration' : ['web', 'nginx'].includes(service) ? service : 'infrastructure')
       productionServices.push({ service, image, role })
     }
   }
+  const deployments = (role: string): string => productionServices
+    .filter((service) => service.role === role)
+    .map((service) => service.service)
+    .join(', ') || 'not deployed'
 
   return {
     scheduledTasks,
@@ -696,35 +703,35 @@ function scanRuntime(source: RepositorySource): ArchitectureInventory['runtime']
     roles: [
       {
         role: 'api',
-        currentDeployment: 'server',
-        responsibility: 'HTTP API plus transaction commands and queries; currently co-hosts worker, general WebSocket, and legacy collaboration schedules',
+        currentDeployment: deployments('api'),
+        responsibility: 'HTTP API transaction commands and queries; production runtime excludes worker scheduling and general WebSocket sessions',
         factSource: 'PostgreSQL/MinIO with Redis integration',
-        evidence: ['deploy/docker-compose.prod.yml', 'server/src/main/java'],
+        evidence: ['deploy/docker-compose.prod.yml', 'server/src/main/java/com/colla/platform/config/runtime'],
       },
       {
         role: 'worker',
-        currentDeployment: 'server',
-        responsibility: 'Domain event polling and hard-coded notification/search consumers run as an unconditional scheduled bean',
-        factSource: 'PostgreSQL domain_events',
-        evidence: ['server/src/main/java/com/colla/platform/modules/event/application/DomainEventWorker.java'],
+        currentDeployment: deployments('worker'),
+        responsibility: 'Reliable leased domain-event delivery through the public handler registry with bounded concurrency and recovery',
+        factSource: 'PostgreSQL domain_events and domain_event_deliveries',
+        evidence: ['deploy/docker-compose.prod.yml', 'server/src/main/java/com/colla/platform/modules/event/application/ReliableDomainEventWorker.java'],
       },
       {
         role: 'event-gateway',
-        currentDeployment: 'server',
-        responsibility: 'General /ws/events sessions are process-local and message delivery targets the local registry',
-        factSource: 'PostgreSQL/REST facts; process-local sessions',
-        evidence: ['server/src/main/java/com/colla/platform/shared/websocket/WebSocketSessionRegistry.java'],
+        currentDeployment: deployments('event-gateway'),
+        responsibility: 'General /ws/events connections use process-local session registries with Redis-backed cross-instance delivery',
+        factSource: 'PostgreSQL business facts, Redis fanout, and process-local connections',
+        evidence: ['deploy/docker-compose.prod.yml', 'server/src/main/java/com/colla/platform/shared/websocket'],
       },
       {
-        role: 'legacy-collaboration',
-        currentDeployment: 'server',
-        responsibility: 'Knowledge rooms, dirty snapshots, presence, autosave, and cleanup remain in Spring memory',
-        factSource: 'Process memory with PostgreSQL persistence',
-        evidence: ['server/src/main/java/com/colla/platform/modules/knowledge/application/KnowledgeContentCollaborationService.java'],
+        role: 'maintenance',
+        currentDeployment: deployments('maintenance'),
+        responsibility: 'One-shot schema migration and startup maintenance commands complete before serving runtimes start',
+        factSource: 'PostgreSQL schema and durable maintenance receipts',
+        evidence: ['deploy/docker-compose.prod.yml', 'server/src/main/java/com/colla/platform/config/runtime/MaintenanceApplicationRunner.java'],
       },
       {
         role: 'collaboration',
-        currentDeployment: 'collaboration-a, collaboration-b',
+        currentDeployment: deployments('collaboration'),
         responsibility: 'Hocuspocus/Yjs collaboration runs as two independently deployed nodes with Redis fanout and durable backend persistence',
         factSource: 'PostgreSQL durable updates; Redis ephemeral fanout',
         evidence: ['deploy/docker-compose.prod.yml', 'collaboration/src'],
@@ -734,7 +741,7 @@ function scanRuntime(source: RepositorySource): ArchitectureInventory['runtime']
       { store: 'PostgreSQL', role: 'Business facts, outbox, audit, search projection, and collaboration durable state', evidence: ['server/src/main/resources/db/migration', 'deploy/docker-compose.prod.yml'] },
       { store: 'Redis', role: 'Ephemeral collaboration fanout and coordination; not the sole business fact', evidence: ['collaboration/src', 'deploy/docker-compose.prod.yml'] },
       { store: 'MinIO', role: 'File object bytes; file metadata and access facts remain in PostgreSQL', evidence: ['server/src/main/java/com/colla/platform/modules/file', 'deploy/docker-compose.prod.yml'] },
-      { store: 'Process memory', role: 'General WebSocket sessions and legacy Spring collaboration room/presence state', evidence: ['server/src/main/java/com/colla/platform/shared/websocket', 'server/src/main/java/com/colla/platform/modules/knowledge/application/KnowledgeContentCollaborationService.java'] },
+      { store: 'Process memory', role: 'Per-instance general WebSocket connections and bounded worker execution state; durable facts remain external', evidence: ['server/src/main/java/com/colla/platform/shared/websocket', 'server/src/main/java/com/colla/platform/modules/event/application/ReliableDomainEventWorker.java'] },
     ],
   }
 }

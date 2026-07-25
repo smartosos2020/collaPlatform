@@ -37,3 +37,15 @@ export function optionBoolean(options: CliOptions, name: string): boolean {
   const value = options[name]
   return value === true || value === 'true' || value === '1'
 }
+
+export function optionStrings(options: CliOptions, name: string): string[] {
+  const value = options[name]
+  if (Array.isArray(value)) return value
+  return typeof value === 'string' ? [value] : []
+}
+
+export function optionNumber(options: CliOptions, name: string, fallback: number): number {
+  const value = Number(optionString(options, name, String(fallback)))
+  if (!Number.isFinite(value)) throw new Error(`--${name} must be numeric`)
+  return value
+}

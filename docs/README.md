@@ -50,6 +50,7 @@ M31/M40 仿真和试运行材料已经归档，不再作为默认数据或发布
 | `01-architecture/platform-object-model.md` | 当前平台对象、链接、卡片、权限态和搜索关系 |
 | `02-roadmap/current-roadmap.md` | 当前唯一执行路线入口；没有 active 路线时明确写“等待目标” |
 | `03-engineering/ai-engineering-governance.md` | 当前 AI 工作循环与质量门禁 |
+| `03-engineering/ai-workbench-reference.md` | 工作台实现、门禁选择和证据格式参考；仅维护工作台时按需读取 |
 
 ## 参考资料
 
