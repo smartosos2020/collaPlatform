@@ -137,13 +137,12 @@ class ReliableDomainEventWorkerIntegrationTests {
             workerA = worker("worker-a", properties);
             workerA.start();
 
-            workerA.pollOnce();
-            assertThat(handler.started.await(3, TimeUnit.SECONDS)).isTrue();
+            pollUntilHandlerStarts(workerA, Duration.ofSeconds(3));
             workerA.pollOnce();
             awaitProcessing(2);
             Thread.sleep(1_300);
 
-            assertThat(coordinator.recoverExpired(Instant.now())).isZero();
+            assertThat(coordinator.recoverExpired(coordinator.currentTime())).isZero();
             handler.release();
             awaitProcessed(2);
             assertThat(jdbcTemplate.queryForObject(
@@ -176,12 +175,11 @@ class ReliableDomainEventWorkerIntegrationTests {
             workerA = worker("worker-a", properties, resilientCoordinator);
             workerA.start();
 
-            workerA.pollOnce();
-            assertThat(handler.started.await(3, TimeUnit.SECONDS)).isTrue();
+            pollUntilHandlerStarts(workerA, Duration.ofSeconds(3));
             Thread.sleep(1_300);
 
             assertThat(firstHeartbeat).isFalse();
-            assertThat(coordinator.recoverExpired(Instant.now())).isZero();
+            assertThat(coordinator.recoverExpired(coordinator.currentTime())).isZero();
             handler.release();
             awaitProcessed(1);
             assertThat(jdbcTemplate.queryForObject(
@@ -202,7 +200,7 @@ class ReliableDomainEventWorkerIntegrationTests {
         doAnswer(invocation -> {
             Thread.sleep(200);
             Object result = invocation.callRealMethod();
-            recoveryFinishedAt.set(Instant.now());
+            recoveryFinishedAt.set(coordinator.currentTime());
             return result;
         }).when(delayedCoordinator).recoverExpired(any());
         workerA = worker("worker-a", properties(1, 0, 1), delayedCoordinator);
@@ -283,6 +281,15 @@ class ReliableDomainEventWorkerIntegrationTests {
             Thread.sleep(20);
         }
         assertThat(processed()).isEqualTo(expected);
+    }
+
+    private void pollUntilHandlerStarts(ReliableDomainEventWorker worker, Duration timeout) throws Exception {
+        long deadline = System.nanoTime() + timeout.toNanos();
+        while (handler.started.getCount() > 0 && System.nanoTime() < deadline) {
+            worker.pollOnce();
+            Thread.sleep(10);
+        }
+        assertThat(handler.started.getCount()).isZero();
     }
 
     private void awaitProcessing(long expected) throws Exception {

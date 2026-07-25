@@ -40,6 +40,10 @@ public class DomainEventDeliveryCoordinator {
         return deliveries;
     }
 
+    public Instant currentTime() {
+        return repository.currentTime();
+    }
+
     public boolean heartbeat(EventDelivery delivery, Instant now) {
         Instant executionDeadline = delivery.claimedAt().plus(properties.getMaxExecutionDuration());
         if (!now.isBefore(executionDeadline)) {
@@ -110,7 +114,7 @@ public class DomainEventDeliveryCoordinator {
     }
 
     public int recoverExpired(Instant now) {
-        int recovered = repository.recoverExpired(now);
+        int recovered = repository.recoverExpired(now, properties.getMaxMaintenanceBatch());
         if (recovered > 0) {
             log.warn("domain_event_delivery_leases_recovered count={}", recovered);
         }

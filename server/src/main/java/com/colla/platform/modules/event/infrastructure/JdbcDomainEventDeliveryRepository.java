@@ -38,6 +38,14 @@ public class JdbcDomainEventDeliveryRepository implements DomainEventDeliveryRep
     }
 
     @Override
+    public Instant currentTime() {
+        return jdbcTemplate.queryForObject(
+            "select clock_timestamp()",
+            (rs, rowNum) -> rs.getTimestamp(1).toInstant()
+        );
+    }
+
+    @Override
     @Transactional
     public List<EventDelivery> claim(String workerId, int limit, Instant now, Duration leaseDuration) {
         Instant leaseUntil = now.plus(leaseDuration);
@@ -146,10 +154,18 @@ public class JdbcDomainEventDeliveryRepository implements DomainEventDeliveryRep
     }
 
     @Override
-    public int recoverExpired(Instant now) {
+    public int recoverExpired(Instant now, int limit) {
         return jdbcTemplate.update(
             """
-                update domain_event_handler_deliveries
+                with expired as (
+                    select id
+                    from domain_event_handler_deliveries
+                    where status = 'processing' and lease_until < ?
+                    order by lease_until, id
+                    limit ?
+                    for update skip locked
+                )
+                update domain_event_handler_deliveries delivery
                 set status = 'pending',
                     worker_id = null,
                     lease_until = null,
@@ -158,9 +174,11 @@ public class JdbcDomainEventDeliveryRepository implements DomainEventDeliveryRep
                     failure_kind = 'TRANSIENT',
                     last_error = coalesce(last_error, 'Lease expired before completion'),
                     updated_at = ?
-                where status = 'processing' and lease_until < ?
+                from expired
+                where delivery.id = expired.id
                 """,
             Timestamp.from(now),
+            limit,
             Timestamp.from(now),
             Timestamp.from(now)
         );

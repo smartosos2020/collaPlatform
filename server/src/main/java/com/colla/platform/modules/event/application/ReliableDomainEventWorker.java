@@ -56,7 +56,7 @@ public class ReliableDomainEventWorker implements SmartLifecycle {
     private volatile ScheduledExecutorService heartbeatExecutor;
     private volatile boolean running;
     private volatile boolean acceptingClaims;
-    private volatile Instant lastSuccessfulPoll;
+    private volatile long lastSuccessfulPollNanos;
     private volatile String lastPollFailure;
     private volatile Instant lastRecovery = Instant.EPOCH;
 
@@ -93,24 +93,24 @@ public class ReliableDomainEventWorker implements SmartLifecycle {
             counter("colla.event.worker.backpressure", "none").increment();
             return;
         }
-        Instant pollStartedAt = Instant.now();
         try {
+            Instant pollStartedAt = coordinator.currentTime();
             if (!pollStartedAt.isBefore(lastRecovery.plus(properties.getRecoveryInterval()))) {
                 int recovered = coordinator.recoverExpired(pollStartedAt);
                 if (recovered > 0) {
                     counter("colla.event.worker.recovered", "none").increment(recovered);
                 }
-                lastRecovery = Instant.now();
+                lastRecovery = coordinator.currentTime();
             }
             int limit = Math.min(Math.min(capacity, properties.getClaimBatch()), properties.capacity());
-            Instant claimStartedAt = Instant.now();
+            Instant claimStartedAt = coordinator.currentTime();
             List<EventDelivery> deliveries = coordinator.claim(workerId, limit, claimStartedAt);
             for (EventDelivery delivery : deliveries) {
                 submit(current, delivery);
             }
-            Instant pollCompletedAt = Instant.now();
+            Instant pollCompletedAt = coordinator.currentTime();
             updateBacklog(coordinator.stats(pollCompletedAt));
-            lastSuccessfulPoll = pollCompletedAt;
+            lastSuccessfulPollNanos = System.nanoTime();
             lastPollFailure = null;
         } catch (RuntimeException exception) {
             lastPollFailure = exception.getClass().getSimpleName();
@@ -127,7 +127,7 @@ public class ReliableDomainEventWorker implements SmartLifecycle {
             counter("colla.event.worker.claimed", delivery.handlerKey()).increment();
         } catch (RejectedExecutionException exception) {
             task.cancelHeartbeat();
-            coordinator.release(delivery, Instant.now(), "Worker queue rejected claimed delivery");
+            coordinator.release(delivery, coordinator.currentTime(), "Worker queue rejected claimed delivery");
             counter("colla.event.worker.rejected", delivery.handlerKey()).increment();
         }
     }
@@ -143,15 +143,15 @@ public class ReliableDomainEventWorker implements SmartLifecycle {
                 throw new DomainEventPermanentFailureException(exception.getMessage());
             }
             handler.handle(toMessage(delivery));
-            if (!coordinator.complete(delivery, Map.of("workerId", workerId), Instant.now()).accepted()) {
+            if (!coordinator.complete(delivery, Map.of("workerId", workerId), coordinator.currentTime()).accepted()) {
                 outcome = "stale";
             }
         } catch (RuntimeException exception) {
             outcome = "failed";
             if (!acceptingClaims && Thread.currentThread().isInterrupted()) {
-                coordinator.release(delivery, Instant.now(), "Worker stopped during delivery");
+                coordinator.release(delivery, coordinator.currentTime(), "Worker stopped during delivery");
             } else {
-                coordinator.fail(delivery, exception, Instant.now());
+                coordinator.fail(delivery, exception, coordinator.currentTime());
             }
             counter("colla.event.worker.failed", delivery.handlerKey()).increment();
         } finally {
@@ -250,7 +250,11 @@ public class ReliableDomainEventWorker implements SmartLifecycle {
                 for (Runnable runnable : queued) {
                     if (runnable instanceof DeliveryTask task) {
                         task.cancelHeartbeat();
-                        coordinator.release(task.delivery, Instant.now(), "Worker shutdown released queued delivery");
+                        coordinator.release(
+                            task.delivery,
+                            coordinator.currentTime(),
+                            "Worker shutdown released queued delivery"
+                        );
                     }
                 }
             }
@@ -276,8 +280,9 @@ public class ReliableDomainEventWorker implements SmartLifecycle {
         if (!running || !acceptingClaims || lastPollFailure != null) {
             return false;
         }
-        return lastSuccessfulPoll == null
-            || Duration.between(lastSuccessfulPoll, Instant.now()).compareTo(properties.getPollInterval().multipliedBy(5)) <= 0;
+        long successfulPollNanos = lastSuccessfulPollNanos;
+        return successfulPollNanos == 0L
+            || System.nanoTime() - successfulPollNanos <= properties.getPollInterval().multipliedBy(5).toNanos();
     }
 
     String readinessDetail() {
@@ -316,7 +321,7 @@ public class ReliableDomainEventWorker implements SmartLifecycle {
 
     private void renewLease(EventDelivery delivery) {
         try {
-            if (!coordinator.heartbeat(delivery, Instant.now())) {
+            if (!coordinator.heartbeat(delivery, coordinator.currentTime())) {
                 counter("colla.event.worker.heartbeat.stale", delivery.handlerKey()).increment();
                 log.warn(
                     "domain_event_delivery_heartbeat_stale deliveryId={} eventId={} handlerKey={} workerId={} fencingToken={}",

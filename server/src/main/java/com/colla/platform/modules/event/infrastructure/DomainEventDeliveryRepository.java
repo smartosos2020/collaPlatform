@@ -16,13 +16,15 @@ import java.util.Optional;
 import java.util.UUID;
 
 public interface DomainEventDeliveryRepository {
+    Instant currentTime();
+
     List<EventDelivery> claim(String workerId, int limit, Instant now, Duration leaseDuration);
 
     boolean heartbeat(UUID deliveryId, String workerId, long fencingToken, Instant now, Instant leaseUntil);
 
     boolean release(EventDelivery delivery, Instant now, String reason);
 
-    int recoverExpired(Instant now);
+    int recoverExpired(Instant now, int limit);
 
     DeliveryResult complete(EventDelivery delivery, Map<String, Object> result, Instant completedAt);
 

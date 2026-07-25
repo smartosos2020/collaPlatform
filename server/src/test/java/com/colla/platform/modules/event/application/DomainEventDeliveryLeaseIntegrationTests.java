@@ -116,6 +116,26 @@ class DomainEventDeliveryLeaseIntegrationTests {
     }
 
     @Test
+    void expiredLeaseRecoveryIsBoundedAcrossMaintenanceBatches() {
+        append(UUID.randomUUID(), "expired-a");
+        append(UUID.randomUUID(), "expired-b");
+        Instant start = Instant.parse("2026-07-24T00:00:00Z");
+        assertThat(coordinator.claim("worker-a", 2, start)).hasSize(2);
+
+        assertThat(deliveryRepository.recoverExpired(start.plusSeconds(31), 1)).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject(
+            "select count(*) from domain_event_handler_deliveries where status = 'processing'",
+            Long.class
+        )).isEqualTo(1);
+
+        assertThat(deliveryRepository.recoverExpired(start.plusSeconds(31), 1)).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject(
+            "select count(*) from domain_event_handler_deliveries where status = 'processing'",
+            Long.class
+        )).isZero();
+    }
+
+    @Test
     void deadLettersReplaysAndAbandonsWithAuditHistory() {
         UUID eventId = append(UUID.randomUUID(), "poison");
         Instant start = Instant.parse("2026-07-24T01:00:00Z");
