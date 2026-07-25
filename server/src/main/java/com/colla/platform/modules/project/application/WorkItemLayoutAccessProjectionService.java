@@ -89,6 +89,7 @@ public class WorkItemLayoutAccessProjectionService {
                 Map.of(),
                 Map.of()
             ),
+            false,
             false
         );
     }
@@ -110,7 +111,8 @@ public class WorkItemLayoutAccessProjectionService {
             context,
             LayoutKind.parse(layoutKind).name(),
             requested,
-            true
+            true,
+            false
         );
     }
 
@@ -133,6 +135,7 @@ public class WorkItemLayoutAccessProjectionService {
                 fieldValues,
                 Map.of()
             ),
+            true,
             true
         );
     }
@@ -142,7 +145,8 @@ public class WorkItemLayoutAccessProjectionService {
         Context actual,
         String layoutKind,
         SyntheticContext requested,
-        boolean synthetic
+        boolean synthetic,
+        boolean minimumDisclosureSample
     ) {
         LayoutDefinition definition = layoutRepository.findByKind(
             user.workspaceId(), actual.space().id(), actual.type().id(), layoutKind
@@ -152,7 +156,6 @@ public class WorkItemLayoutAccessProjectionService {
         List<FieldDefinition> fields = fieldRepository.listByType(
             user.workspaceId(), actual.space().id(), actual.type().id(), ""
         );
-        validateSampleKeys(fields, requested);
         Map<UUID, FieldDefinition> fieldsById = new LinkedHashMap<>();
         fields.forEach(field -> fieldsById.put(field.id(), field));
         Map<UUID, List<FieldOption>> optionsByField = optionRepository.listByType(
@@ -164,34 +167,31 @@ public class WorkItemLayoutAccessProjectionService {
         ));
         Map<UUID, FieldAccessPolicy> policiesByField = new LinkedHashMap<>();
         policies.forEach(policy -> policiesByField.put(policy.fieldId(), policy));
-        Map<String, FieldAccessDecision> decisions = new LinkedHashMap<>();
-        for (LayoutNode node : nodes) {
-            if (node.fieldId() == null) {
-                continue;
-            }
-            FieldDefinition field = fieldsById.get(node.fieldId());
-            if (field == null || !field.fieldKey().equals(node.fieldKey())) {
-                continue;
-            }
-            String fieldStatus = requested.fieldStatuses().getOrDefault(
-                field.fieldKey(), field.status()
+        if (minimumDisclosureSample) {
+            Map<String, FieldAccessDecision> baselineDecisions = evaluateDecisions(
+                nodes,
+                fieldsById,
+                policiesByField,
+                requested,
+                layoutKind,
+                synthetic,
+                Map.of()
             );
-            FieldAccessPolicy policy = policiesByField.get(field.id());
-            FieldAccessDecision decision = policyEvaluator.evaluate(
-                policy == null ? null : policy.policy(),
-                new EvaluationContext(
-                    requested.role(),
-                    requested.spaceStatus(),
-                    requested.typeStatus(),
-                    fieldStatus,
-                    layoutKind,
-                    synthetic,
-                    requested.fieldValues()
-                )
-            );
-            if (!"hidden".equals(decision.mode())) {
-                decisions.put(field.fieldKey(), decision);
-            }
+            validateVisibleSampleKeys(baselineDecisions.keySet(), requested.fieldValues().keySet());
+        } else {
+            validateSampleKeys(fields, requested);
+        }
+        Map<String, FieldAccessDecision> decisions = evaluateDecisions(
+            nodes,
+            fieldsById,
+            policiesByField,
+            requested,
+            layoutKind,
+            synthetic,
+            requested.fieldValues()
+        );
+        if (minimumDisclosureSample) {
+            validateVisibleSampleKeys(decisions.keySet(), requested.fieldValues().keySet());
         }
         List<LayoutNode> projectedNodes = filterNodes(
             nodes,
@@ -262,6 +262,47 @@ public class WorkItemLayoutAccessProjectionService {
             diagnostics,
             synthetic ? List.of() : List.of("view")
         );
+    }
+
+    private Map<String, FieldAccessDecision> evaluateDecisions(
+        List<LayoutNode> nodes,
+        Map<UUID, FieldDefinition> fieldsById,
+        Map<UUID, FieldAccessPolicy> policiesByField,
+        SyntheticContext requested,
+        String layoutKind,
+        boolean synthetic,
+        Map<String, JsonNode> fieldValues
+    ) {
+        Map<String, FieldAccessDecision> decisions = new LinkedHashMap<>();
+        for (LayoutNode node : nodes) {
+            if (node.fieldId() == null) {
+                continue;
+            }
+            FieldDefinition field = fieldsById.get(node.fieldId());
+            if (field == null || !field.fieldKey().equals(node.fieldKey())) {
+                continue;
+            }
+            String fieldStatus = requested.fieldStatuses().getOrDefault(
+                field.fieldKey(), field.status()
+            );
+            FieldAccessPolicy policy = policiesByField.get(field.id());
+            FieldAccessDecision decision = policyEvaluator.evaluate(
+                policy == null ? null : policy.policy(),
+                new EvaluationContext(
+                    requested.role(),
+                    requested.spaceStatus(),
+                    requested.typeStatus(),
+                    fieldStatus,
+                    layoutKind,
+                    synthetic,
+                    fieldValues
+                )
+            );
+            if (!"hidden".equals(decision.mode())) {
+                decisions.put(field.fieldKey(), decision);
+            }
+        }
+        return Map.copyOf(decisions);
     }
 
     private List<LayoutNode> filterNodes(
@@ -390,6 +431,12 @@ public class WorkItemLayoutAccessProjectionService {
                 );
             }
         });
+    }
+
+    private void validateVisibleSampleKeys(Set<String> visibleKeys, Set<String> requestedKeys) {
+        if (!visibleKeys.containsAll(requestedKeys)) {
+            throw failure("NOT_FOUND_OR_HIDDEN", "Work item layout is not available");
+        }
     }
 
     public record SyntheticContext(
