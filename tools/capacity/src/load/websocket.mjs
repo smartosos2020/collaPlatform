@@ -60,6 +60,7 @@ export async function runWebSocketScenario(options = {}) {
     missingEvents: 0,
     recoveredGaps: 0,
     calibrationRequests: 0,
+    calibrationAttempts: 0,
     calibrationFailures: 0,
     reconnectCalibrationRequests: 0,
     reconnectConvergenceFailures: 0,
@@ -594,26 +595,60 @@ export async function runWebSocketScenario(options = {}) {
       }))
       return false
     }
-    const result = await requestTarget(fetchImpl, options.apiBaseUrl ?? options.baseUrl, {
-      name: target.name ?? 'calibration',
-      method: target.method ?? 'GET',
-      ...target,
-      path: calibrationPath,
-    }, {
-      ...calibrationContext,
-      token: state?.user?.token ?? options.token,
-      clock,
-      signal,
-    }, { resolvedPath: calibrationPath })
-    const proof = result.ok
-      ? proveConvergence(result.body, expected, target, { state, ...details, response: result })
-      : { ok: false, errors: result.errors }
+    const convergenceTimeoutMs = Math.max(
+      0,
+      Number(target.convergenceTimeoutMs ?? options.calibrationTimeoutMs) || 0,
+    )
+    const pollIntervalMs = Math.max(
+      1,
+      Number(target.convergencePollIntervalMs ?? options.calibrationPollIntervalMs) || 250,
+    )
+    const calibrationStartedAt = clock()
+    let result
+    let proof
+    while (!signal?.aborted) {
+      metrics.calibrationAttempts += 1
+      result = await requestTarget(fetchImpl, options.apiBaseUrl ?? options.baseUrl, {
+        name: target.name ?? 'calibration',
+        method: target.method ?? 'GET',
+        ...target,
+        path: calibrationPath,
+      }, {
+        ...calibrationContext,
+        token: state?.user?.token ?? options.token,
+        clock,
+        signal,
+      }, { resolvedPath: calibrationPath })
+      proof = result.ok
+        ? proveConvergence(result.body, expected, target, { state, ...details, response: result })
+        : { ok: false, errors: result.errors }
+      if (result.aborted || !result.ok || proof.ok) break
+
+      const elapsedMs = Math.max(0, clock() - calibrationStartedAt)
+      if (elapsedMs >= convergenceTimeoutMs) break
+      try {
+        await waitForDelay(Math.min(pollIntervalMs, convergenceTimeoutMs - elapsedMs), {
+          signal,
+          sleep: options.sleep,
+        })
+      } catch {
+        break
+      }
+    }
+
+    const converged = result?.ok === true && proof?.ok === true
     samples.push({
-      ...sampleFromRequest('calibration', target.name ?? 'calibration', result, state?.index),
+      ...sampleFromRequest('calibration', target.name ?? 'calibration', result ?? {
+        ok: false,
+        aborted: signal?.aborted === true,
+        latencyMs: 0,
+        status: null,
+      }, state?.index),
+      latencyMs: Math.max(0, clock() - calibrationStartedAt),
       operation: details.reason === 'reconnect' ? 'calibration.reconnect' : target.name ?? 'calibration',
-      ok: result.ok && proof.ok,
+      ok: converged,
     })
-    if (!result.aborted && !result.ok) {
+    if (!result?.aborted && result?.ok === false) {
       metrics.calibrationFailures += 1
       addErrors(errors, result.errors, {
         code: 'calibration_failure',
@@ -625,9 +660,9 @@ export async function runWebSocketScenario(options = {}) {
       })
       return false
     }
-    if (!result.aborted && !proof.ok) {
+    if (!signal?.aborted && !converged) {
       metrics.calibrationFailures += 1
-      addErrors(errors, proof.errors, {
+      addErrors(errors, proof?.errors ?? ['calibration did not converge before timeout'], {
         code: 'calibration_not_converged',
         operation: target.name ?? 'calibration',
         connectionIndex: state?.index,
@@ -635,11 +670,11 @@ export async function runWebSocketScenario(options = {}) {
         businessObjectId: expected?.businessObjectId,
         missingSequence: details.gap?.missingSequence,
         reason: details.reason,
-        status: result.status,
+        status: result?.status,
       })
       return false
     }
-    return !result.aborted
+    return !signal?.aborted
   }
 
   function validateFanout() {
@@ -867,12 +902,14 @@ function proveConvergence(body, expected, target, context) {
     ? matchingObjects.find((candidate) =>
       String(candidate.sideEffectId ?? '') === expected.eventId &&
       (!expected.sourceEventId || String(candidate.eventId ?? '') === expected.sourceEventId))
-      ?? matchingObjects[0]
     : matchingObjects[0]
   if (!object) {
+    const message = target.requireCapacityReceipt === true && matchingObjects.length > 0
+      ? `REST calibration did not contain exact side effect ${expected.eventId} for source event ${expected.sourceEventId ?? 'any'}`
+      : `REST calibration did not contain business object ${expected.businessObjectId}`
     return {
       ok: false,
-      errors: [`REST calibration did not contain business object ${expected.businessObjectId}`],
+      errors: [message],
     }
   }
   if (target.requireCapacityReceipt === true) {

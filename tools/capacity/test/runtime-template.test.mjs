@@ -62,6 +62,8 @@ test('checked-in M1 runtime resolves only environment credentials and materializ
     result.loaders.worker.runtimeValues.probeRunIds.measured,
   )
   assert.equal(result.loaders.websocket.triggerAggregateLanes, 4)
+  assert.equal(result.loaders.websocket.calibrationTimeoutMs, 45000)
+  assert.equal(result.loaders.websocket.calibrationPollIntervalMs, 250)
   assert.equal(
     result.loaders.websocket.targets.trigger.body.aggregateKey,
     'websocket-lane-{{triggerLane}}',

@@ -247,13 +247,70 @@ test('capacity ledger calibration requires processed receipt and exact side effe
     reconnects: 0,
     socketFactory: harness.socketFactory,
     fetch: harness.fetch,
-    targets: targets({ expectedFanout: 1, requireCapacityReceipt: true }),
+    targets: {
+      ...targets({ expectedFanout: 1, requireCapacityReceipt: true }),
+      minEvents: 0,
+    },
   })
 
   assert.equal(result.ok, false)
   assert.ok(result.errors.some((error) =>
     error.code === 'calibration_not_converged' &&
     /side effect/.test(error.message)))
+  assert.ok(!result.errors.some((error) => /sequence was/.test(error.message)))
+})
+
+test('capacity ledger calibration polls until the exact receipt converges', async () => {
+  const descriptor = expectedEvent(1)
+  const clock = createClock()
+  const harness = createHarness({
+    omitSequence: 1,
+    calibrationBodies: [
+      {
+        entries: [{
+          eventId: 'old-source-event',
+          sideEffectId: 'old-side-effect',
+          aggregateId: descriptor.businessObjectId,
+          sequence: 0,
+          deliveryStatus: 'processed',
+          receiptRecorded: true,
+        }],
+      },
+      {
+        entries: [{
+          eventId: 'source-event-1',
+          sideEffectId: descriptor.eventId,
+          aggregateId: descriptor.businessObjectId,
+          sequence: descriptor.sequence,
+          deliveryStatus: 'processed',
+          receiptRecorded: true,
+        }],
+      },
+    ],
+  })
+  const result = await runWebSocketScenario({
+    wsUrl: 'ws://gateway.test/ws/events',
+    apiBaseUrl: 'https://api.test',
+    connections: 1,
+    iterations: 1,
+    settleMs: 1,
+    reconnects: 0,
+    calibrationTimeoutMs: 100,
+    calibrationPollIntervalMs: 10,
+    clock: clock.now,
+    sleep: clock.sleep,
+    socketFactory: harness.socketFactory,
+    fetch: harness.fetch,
+    targets: {
+      ...targets({ expectedFanout: 1, requireCapacityReceipt: true }),
+      minEvents: 0,
+    },
+  })
+
+  assert.equal(result.ok, true, JSON.stringify(result.errors))
+  assert.equal(result.metrics.calibrationRequests, 1)
+  assert.equal(result.metrics.calibrationAttempts, 2)
+  assert.equal(result.metrics.calibrationFailures, 0)
 })
 
 test('capacity ledger calibration selects the exact side effect for a shared aggregate', async () => {
@@ -424,6 +481,7 @@ function createHarness(options = {}) {
     if (parsed.pathname === '/api/notifications') {
       const objectId = parsed.searchParams.get('objectId')
       calibratedIds.add(objectId)
+      if (options.calibrationBodies?.length) return jsonResponse(options.calibrationBodies.shift())
       if (options.calibrationBody) return jsonResponse(options.calibrationBody)
       const descriptor = objectId === options.unavailableObjectId ? undefined : durable.get(objectId)
       return jsonResponse({

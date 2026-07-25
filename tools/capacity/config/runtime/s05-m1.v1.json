@@ -115,6 +115,8 @@
       "reconnects": 1,
       "settleMs": 10000,
       "reconnectSettleMs": 1000,
+      "calibrationTimeoutMs": 45000,
+      "calibrationPollIntervalMs": 250,
       "triggerRatePerSecond": 1,
       "triggerConcurrency": 2,
       "triggerAggregateLanes": 4,
