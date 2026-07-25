@@ -37,6 +37,27 @@ test('scenario config requires explicit execution and abort contracts', () => {
   assert.deepEqual(valid, { ok: true, errors: [] })
 })
 
+test('scenario config rejects a timeout that cannot cover serial warmup and measurement', () => {
+  const invalid = validateScenarioConfig({
+    ...baseConfig(),
+    execution: {
+      mode: 'concurrent',
+      warmup: { enabled: true, required: true, mode: 'serial', durationMs: 30_000 },
+      durationMs: 300_000,
+      abort: {
+        maxDurationMs: 420_000,
+        stopOnLoaderFailure: true,
+        maxErrorCount: 0,
+        maxErrorRate: 0,
+        maxCollectorFailures: 0,
+      },
+    },
+  })
+
+  assert.equal(invalid.ok, false)
+  assert.match(invalid.errors.join('\n'), /must exceed planned warmup and measured duration \(420000ms\)/)
+})
+
 test('checked-in versioned scenario configs satisfy the scenario contract', async () => {
   const configDirectory = fileURLToPath(new URL('../config/scenarios/', import.meta.url))
   for (const file of ['s05-m1-unified.v1.json', 's05-smoke.v1.json']) {

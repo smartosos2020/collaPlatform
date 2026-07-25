@@ -65,6 +65,26 @@ export function validateScenarioConfig(config) {
   for (const name of Object.keys(config.loaders ?? {})) {
     if (!loaderNames.includes(name)) errors.push(`unsupported loader: ${name}`)
   }
+  if (config.execution?.warmup?.enabled !== false && enabled.length > 0) {
+    const warmupMode = config.execution?.warmup?.mode ?? mode
+    if (!['serial', 'concurrent'].includes(warmupMode)) {
+      errors.push('execution.warmup.mode must be serial or concurrent')
+    } else {
+      const warmupDurationMs = Number(config.execution?.warmup?.durationMs)
+      const durationMs = Number(config.execution?.durationMs)
+      const maxDurationMs = Number(config.execution?.abort?.maxDurationMs)
+      if ([warmupDurationMs, durationMs, maxDurationMs].every(Number.isFinite)) {
+        const warmupBudgetMs = warmupDurationMs * (warmupMode === 'serial' ? enabled.length : 1)
+        const plannedDurationMs = warmupBudgetMs + durationMs
+        if (maxDurationMs <= plannedDurationMs) {
+          errors.push(
+            `execution.abort.maxDurationMs must exceed planned warmup and measured duration `
+            + `(${plannedDurationMs}ms)`,
+          )
+        }
+      }
+    }
+  }
 
   validateRatio(config.thresholds?.maxErrorRate, 'thresholds.maxErrorRate', errors, true)
   validateNonNegative(config.thresholds?.maxP95Ms, 'thresholds.maxP95Ms', errors, true)

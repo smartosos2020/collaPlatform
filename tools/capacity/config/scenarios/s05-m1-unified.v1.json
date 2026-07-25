@@ -16,7 +16,7 @@
     },
     "durationMs": 300000,
     "abort": {
-      "maxDurationMs": 420000,
+      "maxDurationMs": 600000,
       "stopOnLoaderFailure": true,
       "maxErrorCount": 0,
       "maxErrorRate": 0,
