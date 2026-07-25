@@ -1,7 +1,11 @@
 spring:
   datasource:
-    url: jdbc:tc:postgresql:16:///colla_platform_test
+    url: jdbc:tc:postgresql:16:///colla_platform_test?TC_DAEMON=true
     driver-class-name: org.testcontainers.jdbc.ContainerDatabaseDriver
+    hikari:
+      maximum-pool-size: 4
+      minimum-idle: 0
+      idle-timeout: 10000
   jpa:
     hibernate:
       ddl-auto: validate

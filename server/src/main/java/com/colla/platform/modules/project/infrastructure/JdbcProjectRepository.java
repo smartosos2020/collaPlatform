@@ -660,7 +660,7 @@ public class JdbcProjectRepository implements ProjectRepository {
                 from issue_verification_logs v
                 join users u on u.id = v.verifier_id
                 where v.workspace_id = ? and v.issue_id = ?
-                order by v.created_at desc, v.id desc
+                order by v.sequence_no desc
                 """,
             (rs, rowNum) -> new IssueVerification(
                 rs.getObject("id", UUID.class),

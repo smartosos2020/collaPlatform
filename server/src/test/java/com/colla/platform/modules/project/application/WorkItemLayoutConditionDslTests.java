@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.colla.platform.modules.project.domain.WorkItemLayoutModels.WorkItemLayoutException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.Map;
 import java.util.UUID;
@@ -74,6 +75,49 @@ class WorkItemLayoutConditionDslTests {
         }
         ObjectNode tooDeep = nested;
         assertThrows(WorkItemLayoutException.class, () -> dsl.canonicalize(wrap(tooDeep)));
+    }
+
+    @Test
+    void evaluatesDeepCompositeConditionsDeterministicallyWithinTheFrozenBudget() {
+        ObjectNode deep = predicate("context", "eq");
+        deep.put("contextKey", "mode");
+        deep.put("value", "edit");
+        for (int index = 0; index < 5; index++) {
+            deep = objectMapper.createObjectNode().put("kind", "not").set("operand", deep);
+        }
+
+        ObjectNode root = objectMapper.createObjectNode().put("kind", "all");
+        ArrayNode operands = root.putArray("operands");
+        operands.add(deep);
+        for (int index = 0; index < 32; index++) {
+            operands.addObject()
+                .put("kind", "predicate")
+                .put("source", "context")
+                .put("contextKey", "actor_role")
+                .put("operator", "in")
+                .putArray("value")
+                .add("owner")
+                .add("admin");
+        }
+
+        var canonical = dsl.canonicalize(wrap(root));
+        assertFalse(dsl.evaluate(
+            canonical,
+            Map.of(),
+            Map.of(
+                "mode", objectMapper.getNodeFactory().textNode("edit"),
+                "actor_role", objectMapper.getNodeFactory().textNode("owner")
+            )
+        ));
+        assertTrue(dsl.evaluate(
+            canonical,
+            Map.of(),
+            Map.of(
+                "mode", objectMapper.getNodeFactory().textNode("view"),
+                "actor_role", objectMapper.getNodeFactory().textNode("owner")
+            )
+        ));
+        assertTrue(canonical.equals(dsl.canonicalize(canonical)));
     }
 
     private ObjectNode predicate(String source, String operator) {

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "migrationRange": "V001-V078",
+  "migrationRange": "V001-V079",
   "defaultKind": "business",
   "owners": {
     "approval": ["approval_action_logs","approval_flow_nodes","approval_forms","approval_instances","approval_tasks"],

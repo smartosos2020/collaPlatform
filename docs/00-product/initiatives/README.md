@@ -1,7 +1,7 @@
 ---
 title: 长期专项索引
 status: active
-updated_at: 2026-07-25
+updated_at: 2026-07-26
 tracked_paused_programs: KB-PRODUCT, PLATFORM-SCALE
 ---
 
@@ -11,7 +11,7 @@ tracked_paused_programs: KB-PRODUCT, PLATFORM-SCALE
 
 | Program | Status | Current Stage | Remaining Commitment | Source |
 | --- | --- | --- | --- | --- |
-| PROJECT-PLATFORM | Active | PROJECT-PLATFORM-S05 | S01-S04 已归档；S05 执行表单、详情布局和字段访问合同 | `project-platform-program.md` |
+| PROJECT-PLATFORM | Active | none | S01-S05 已完成；S05 待归档，S06 已 Go 但尚未激活 | `project-platform-program.md` |
 | PLATFORM-SCALE | Paused | none | S05-M1 已完成；M2-M5 待核心功能、接口、数据模型和负载模型稳定后恢复 | `platform-scale-program.md` |
 | KB-PRODUCT | Paused | none | KB-PRODUCT-M12-T06 至 T10：真实参与者试用、反馈、复验和 Go/No-Go | `../../99-archive/superseded-roadmaps/kb-product-roadmap-paused-2026-07-18.md` |
 

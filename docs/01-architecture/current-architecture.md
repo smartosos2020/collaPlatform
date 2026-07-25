@@ -14,7 +14,7 @@ Colla Platform 当前是模块化单体：
 
 - 后端：单个 Spring Boot 应用，按业务模块分包。
 - 前端：单个 React SPA，用户工作台和管理后台使用独立 Shell、导航和路由边界。
-- 数据库：单个 PostgreSQL schema，通过 Flyway V001-V078 演进。
+- 数据库：单个 PostgreSQL schema，通过 Flyway V001-V079 演进。
 - 基础设施：Redis、MinIO、WebSocket、平台对象、权限、事件、审计和搜索由模块共享。
 - 交付：本地 Docker 依赖；生产基线是 maintenance、双 API、Worker、Event Gateway、双协作节点的 Docker Compose + Nginx。
 
@@ -52,7 +52,7 @@ Colla Platform 当前是模块化单体：
 
 该历史快照只描述当时的依赖和访问事实，不代表当前计数、边界合格或容量承诺。table owner、允许例外和公共 contract 在 S01-M2 冻结，自动失败门禁在 S01-M3 交付。
 
-S01-M2 已接受 `platform-module-contracts.md`，并以 `platform-modules.json`、`platform-table-owners.json`、`platform-boundary-exceptions.json` 和 `pnpm architecture:contracts` 建立模块、table owner、精确只读例外及 identity/file/platform/event/audit/IM 公共合同。2026-07-26 在 V001-V078 基线执行当前工具得到：15 个后端模块、326 个 Java 文件、225 条后端跨模块 import、64 条前端跨 feature import 和 93 个跨 owner SQL 候选；合同门禁确认 94 张当前有效表、93 条精确例外和 22 个公共合同文件。94 张表在 owner manifest 中全部唯一归属，重复与 ownerless 均为 0。
+S01-M2 已接受 `platform-module-contracts.md`，并以 `platform-modules.json`、`platform-table-owners.json`、`platform-boundary-exceptions.json` 和 `pnpm architecture:contracts` 建立模块、table owner、精确只读例外及 identity/file/platform/event/audit/IM 公共合同。2026-07-26 在 V001-V079 基线执行当前工具得到：15 个后端模块、326 个 Java 文件、225 条后端跨模块 import、64 条前端跨 feature import 和 93 个跨 owner SQL 候选；合同门禁确认 94 张当前有效表、93 条精确例外和 22 个公共合同文件。94 张表在 owner manifest 中全部唯一归属，重复与 ownerless 均为 0。
 
 ## 前端模块与路由
 
@@ -119,7 +119,7 @@ S01-M2 已接受 `platform-module-contracts.md`，并以 `platform-modules.json`
 
 ## 数据库迁移
 
-当前 Flyway 版本为 V078。历史迁移文件不可修改。
+当前 Flyway 版本为 V079。历史迁移文件不可修改。
 
 知识库最后四个迁移：
 
@@ -160,6 +160,7 @@ S01-M2 已接受 `platform-module-contracts.md`，并以 `platform-modules.json`
 | V076 | 为大规模知识库外键关系补齐索引 |
 | V077 | 建立 workspace/space/type 隔离的 create/detail 布局、节点、字段访问策略和命令回执，包含永久标识、同域字段引用、规范 hash、乐观版本、索引和身份保护触发器 |
 | V078 | 为布局命令回执增加 schema 版本、聚合版本、配置 hash 和不可变响应 JSON，完成命令后冻结原始响应并保护已完成回执不可更新或删除 |
+| V079 | 为 BUG 验证日志增加数据库单调序号，消除墙钟回拨或同精度时间戳导致的历史顺序不确定性 |
 
 数据库规则：
 
@@ -263,11 +264,11 @@ PLATFORM-SCALE-S01 把模块边界从文档约定升级为机器门禁。2026-07
 
 - 15 个后端模块、326 个 Java 文件、225 条后端跨模块 import。
 - 前端有 64 条跨 feature import。
-- V001-V078 形成 94 张当前有效表，每张表有唯一 owner；93 条跨 owner SQL 候选由精确例外治理，foreign write 仍为禁止项。
+- V001-V079 形成 94 张当前有效表，每张表有唯一 owner；93 条跨 owner SQL 候选由精确例外治理，foreign write 仍为禁止项。
 - 22 个公开 contract 文件受合同门禁约束；`pnpm architecture:contracts` 同时检查模块、table owner、例外和公共合同来源。
 - S02 收口复核确认 93 条只读例外不属于运行隔离交付范围，退出 Stage 已重新批准为 PLATFORM-SCALE-S05，其中 project 9 条；因 S05-M2-M5 Deferred，例外清理尚未完成，现有精确条目仍不能扩张，修改相关文件时只能保持或减少。
 
-以上数字来自当前 inventory/config，而不是沿用 S03 历史快照。S02 已实现双 API 和独立运行角色，S03 已交付 Worker 多实例 lease、逐 Handler 可靠消费和恢复门槛，S04 已交付双 Event Gateway fanout、业务信号迁移、前端重连校准、旧 Spring 协同退出和双 Hocuspocus 节点恢复。基础设施集群高可用与正式容量承诺仍未交付；PLATFORM-SCALE-S05 的 M2-M5 已 Deferred。PROJECT-PLATFORM 已恢复业务开发，S05 正在最终收口。
+以上数字来自当前 inventory/config，而不是沿用 S03 历史快照。S02 已实现双 API 和独立运行角色，S03 已交付 Worker 多实例 lease、逐 Handler 可靠消费和恢复门槛，S04 已交付双 Event Gateway fanout、业务信号迁移、前端重连校准、旧 Spring 协同退出和双 Hocuspocus 节点恢复。基础设施集群高可用与正式容量承诺仍未交付；PLATFORM-SCALE-S05 的 M2-M5 已 Deferred。PROJECT-PLATFORM-S05 已完成并给出 Go S06，当前等待路线归档与 S06 激活。
 
 ## 项目模块当前事实
 
@@ -307,7 +308,7 @@ PROJECT-PLATFORM-S01 于 2026-07-18 完成项目模块当前事实审计、目�
 - 用户侧 `POST /api/project-spaces/{spaceId}/types/{typeId}/layouts/{layoutKind}/sample` 只向有效空间成员返回当前身份的 synthetic 只读样本；member/guest 不获得配置读权限，non-member 与仅企业管理员仍按 not-found 最小披露。用户投影的选项 DTO 只包含 key、名称、颜色、排序和状态，诊断不返回管理细节。
 - 管理预览和用户样本复用 `WorkItemLayoutRenderer`。当前 S04 注册的 11 类字段均有显式编辑/只读映射；rich-text presentation 复用 text 的多行模式，附件和工作项引用只呈现规范占位而不创建上传或实例事实。interval/computed 尚未进入 S04 注册表，遇到未知类型时失败关闭并显示安全的不支持状态。
 - 布局配置基线在真实 PostgreSQL 中覆盖 120 字段与 2400 选项，集合读模型预算为 3 秒；冻结布局图最多 120 节点，因此合法最大渲染图为 1 个根 section 加 119 个字段节点。该结论只覆盖配置读取与合成渲染，不代表真实 WorkItem、动态值查询或平台容量。
-- S05-M5 正在执行 V065 存量升级到 V078、空库迁移、幂等回执、权限最小披露、复杂布局、浏览器身份矩阵和文档准入的最终收口；M1-M4 的布局与字段访问能力已实现，但 Stage 在 M5 完整门禁结束前仍不得标记完成。
+- S05-M5 已完成 V065 存量升级到 V079、空库迁移、幂等回执、权限最小披露、复杂布局、浏览器身份矩阵和文档准入的最终收口；V079 同时稳定 BUG 验证历史的最新优先顺序。M1-M4 的布局与字段访问能力已经完整复验，Stage 可归档并进入 S06。
 - 当前仍没有 `project_work_items` 表、工作项实例 API、动态字段值、流程或完整草稿发布流水线。S04 字段和 S05 布局/策略仍是独立待发布配置图，不改写 S03 published v1；S06 承接新配置版本发布，S07 承接显式绑定 `type_version_id` 的统一实例。
 - S04 的规模事实仅覆盖字段配置目录：真实 PostgreSQL 中 120 个字段、2400 个选项的 API 查询预算为 3 秒，并校验复合索引计划。10 万工作项、动态字段过滤和并发查询尚无运行时承载，归入 S07/S13，不作为当前性能事实。
 - 成员治理以 `project_spaces` 行级悲观锁串行化同空间变更；成员唯一约束、活动角色唯一索引和邀请 pending 唯一索引承担最终数据库防线。直接加入、角色变化、移除、owner 转移和邀请状态变化均支持重复请求收敛。

@@ -206,7 +206,11 @@ class ReliableDomainEventWorkerIntegrationTests {
         workerA = worker("worker-a", properties(1, 0, 1), delayedCoordinator);
         workerA.start();
 
-        workerA.pollOnce();
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3);
+        while (recoveryFinishedAt.get() == null && System.nanoTime() < deadline) {
+            workerA.pollOnce();
+            Thread.sleep(10);
+        }
 
         Instant claimedAt = jdbcTemplate.queryForObject(
             "select min(claimed_at) from domain_event_handler_deliveries",

@@ -104,6 +104,28 @@ class WorkItemLayoutCanonicalizerTests {
         assertEquals("LAYOUT_DEPTH_LIMIT", depth.code());
     }
 
+    @Test
+    void maximumLegalGroupingDepthRemainsRenderable() {
+        UUID root = UUID.randomUUID();
+        UUID nested = UUID.randomUUID();
+        UUID column = UUID.randomUUID();
+        UUID field = UUID.randomUUID();
+
+        var result = canonicalizer.canonicalize(
+            "create",
+            List.of(
+                node(root, null, "root", "section", null, null, 0),
+                node(nested, root, "nested", "section", null, null, 0),
+                node(column, nested, "column", "column", null, null, 0),
+                node(field, column, "title", "field", UUID.randomUUID(), "title", 0)
+            ),
+            List.of()
+        );
+
+        assertEquals(4, result.nodes().size());
+        assertEquals(field, result.nodes().getLast().id());
+    }
+
     private LayoutNode node(
         UUID id,
         UUID parentId,

@@ -1,13 +1,13 @@
 ---
 title: PROJECT-PLATFORM-S05 表单、详情页布局和字段访问当前执行路线
-status: active
+status: completed
 route: PROJECT-PLATFORM-S05
 program: PROJECT-PLATFORM
 program_doc: docs/00-product/initiatives/project-platform-program.md
-program_revision: 17
+program_revision: 18
 stage: PROJECT-PLATFORM-S05
 stage_final_milestone: PROJECT-PLATFORM-S05-M5
-last_code_check: 2026-07-25
+last_code_check: 2026-07-26
 source_rule: 本文件是唯一执行路线入口；长期专项只提供 Stage 索引，不直接执行。
 ---
 
@@ -49,7 +49,7 @@ S05 不创建规范 WorkItem 实例、字段值或 legacy 迁移，不修改已�
 | PROJECT-PLATFORM-S05-M2 | 布局图编辑、条件显示和共享渲染器 | M1 | `docs/90-reports/project-platform-s05-m2-execution-report.md` | Done |
 | PROJECT-PLATFORM-S05-M3 | 服务端字段访问策略与最小披露 | M1-M2 | `docs/90-reports/project-platform-s05-m3-execution-report.md` | Done |
 | PROJECT-PLATFORM-S05-M4 | 配置预览、用户形态、可访问性与规模收口 | M1-M3 | `docs/90-reports/project-platform-s05-m4-execution-report.md` | Done |
-| PROJECT-PLATFORM-S05-M5 | Stage 评审、route-final 与 S06 准入 | M1-M4 | `docs/90-reports/project-platform-s05-m5-execution-report.md` | Pending |
+| PROJECT-PLATFORM-S05-M5 | Stage 评审、route-final 与 S06 准入 | M1-M4 | `docs/90-reports/project-platform-s05-m5-execution-report.md` | Done |
 
 ## 5. 详细任务
 
@@ -109,7 +109,7 @@ S05 不创建规范 WorkItem 实例、字段值或 legacy 迁移，不修改已�
 | PROJECT-PLATFORM-S05-M4-T01 | 建立布局配置集合读模型，组合类型、字段、布局、策略、诊断和 availableActions | 一次读取可稳定驱动编辑与预览；数据来源、版本、hash 和 synthetic 标识清楚，无 N+1 | Done |
 | PROJECT-PLATFORM-S05-M4-T02 | 完成管理员 create/detail 双模式预览和角色/状态上下文切换 | 预览与保存配置使用同一渲染器；上下文切换不写事实；当前角色、条件和字段状态可解释 | Done |
 | PROJECT-PLATFORM-S05-M4-T03 | 建立用户侧只读布局样本入口与未来 S07 运行时组件边界 | 用户入口只展示有权类型和 synthetic preview，不提供伪创建/伪保存；组件 API 可由 S07 传入真实实例值 | Done |
-| PROJECT-PLATFORM-S05-M4-T04 | 完成文本、富文本、数字、布尔、单/多选、人员、日期、区间、URL、附件、引用和 computed 控件映射 | 每种 S04 字段类型有明确编辑/只读/不支持状态；引用和附件不提前创建正式对象或上传事实 | Done |
+| PROJECT-PLATFORM-S05-M4-T04 | 完成 S04 已注册 11 类字段及 rich-text presentation 的控件映射，并为未知类型建立失败关闭状态 | 每种 S04 已注册字段类型有明确编辑/只读状态；未知类型安全不可用；引用和附件不提前创建正式对象或上传事实 | Done |
 | PROJECT-PLATFORM-S05-M4-T05 | 完成条件变化、隐藏字段清值策略和错误摘要的预览行为 | 条件切换结果确定；隐藏不等于删除；潜在清值需显式提示且预览不修改持久配置或样本 | Done |
 | PROJECT-PLATFORM-S05-M4-T06 | 完成失效字段、非法布局、未知控件和过期版本的可操作诊断 UI | 管理员可定位并修复具体节点；普通用户只见最小安全提示；系统不自动删除或重绑 | Done |
 | PROJECT-PLATFORM-S05-M4-T07 | 完成键盘导航、焦点管理、标签关联、错误朗读和对比度 | 编辑器和预览核心路径无需鼠标可操作；无焦点陷阱、无重复标签、状态变化可被辅助技术感知 | Done |
@@ -123,17 +123,17 @@ S05 不创建规范 WorkItem 实例、字段值或 legacy 迁移，不修改已�
 
 | 任务 | 内容 | 验收标准 | 状态 |
 | --- | --- | --- | --- |
-| PROJECT-PLATFORM-S05-M5-T01 | 逐项复核 M1-M4 的 46 项实现任务、Verification Contract、Acceptance Evidence 和 Gap | 每项任务状态与代码、测试、浏览器、迁移和报告一致；无跳项、占位、Deferred 冒充 Done 或陈旧证据 | Pending |
-| PROJECT-PLATFORM-S05-M5-T02 | 复验 V001 至最新空库迁移、V065 升级、约束、索引和回滚边界 | 迁移可重复；layout/policy 表 owner 与复合隔离正确；legacy 表、published v1 和既有字段 hash 不被改写 | Pending |
-| PROJECT-PLATFORM-S05-M5-T03 | 复验永久节点身份、规范 hash、幂等、并发冲突、图原子性和失效引用 | 重排/复制/删除/冲突/重放/字段退役均有确定结果；无半图、静默重绑或历史身份复用 | Pending |
-| PROJECT-PLATFORM-S05-M5-T04 | 复验六身份字段访问、最小披露、synthetic preview 和伪造请求负例 | hidden/read/write/required 与服务端决策一致；企业管理员、非成员、跨空间请求和日志均零泄露 | Pending |
-| PROJECT-PLATFORM-S05-M5-T05 | 复验 create/detail 编辑、共享渲染、可访问性、响应式和 120 字段配置预算 | 管理员配置和用户只读样本闭环通过；性能结论限定配置范围，不描述真实 WorkItem 或平台容量 | Pending |
-| PROJECT-PLATFORM-S05-M5-T06 | 运行架构 inventory/boundaries/contracts 并核对 project/shared 与 table owner | project/shared P0、foreign write、新增未批准跨 owner read 和 shared reverse import 为 0；历史基线不扩散 | Pending |
-| PROJECT-PLATFORM-S05-M5-T07 | 执行完整后端测试、V001 至最新 Flyway、前端 lint/build、collaboration、工作台和安全门禁 | 全部使用 fresh 日志通过；失败、跳过、豁免、生成物污染或 mock 证据形成阻断决定 | Pending |
-| PROJECT-PLATFORM-S05-M5-T08 | 更新当前架构、产品范围、技术选择、模块合同、Program、目标架构和专项索引 | 文档只声明已实现布局/访问事实；PLATFORM-SCALE Deferred、S06/S07 未实现和非容量承诺保持清楚 | Pending |
-| PROJECT-PLATFORM-S05-M5-T09 | 冻结 S06 draft/publish/version/template 准入包和 S07 渲染器承接合同 | S06 输入包含字段/布局/策略规范快照与 hash；S07 只注入实例值和上下文，不复制策略或字段模型 | Pending |
-| PROJECT-PLATFORM-S05-M5-T10 | 完成 PROJECT-PLATFORM-S05 Go/No-Go 和下一 Stage 决策 | 明确 Go S06、Reopen S05 或新增修复 Stage；依据、阻断、迁移和第一入口可直接执行，不在本路线提前激活 | Pending |
-| PROJECT-PLATFORM-S05-M5-T11 | 完成 Stage 报告、影响审计、真实隔离浏览器复验和路线级 `route-final` | 57 项逐 Task 闭环；当前路线标记 completed、Program revision 递增且 current_stage 置 none；最终门禁通过 | Pending |
+| PROJECT-PLATFORM-S05-M5-T01 | 逐项复核 M1-M4 的 46 项实现任务、Verification Contract、Acceptance Evidence 和 Gap | 每项任务状态与代码、测试、浏览器、迁移和报告一致；无跳项、占位、Deferred 冒充 Done 或陈旧证据 | Done |
+| PROJECT-PLATFORM-S05-M5-T02 | 复验 V001 至最新空库迁移、V065 升级、约束、索引和回滚边界 | 迁移可重复；layout/policy 表 owner 与复合隔离正确；legacy 表、published v1 和既有字段 hash 不被改写 | Done |
+| PROJECT-PLATFORM-S05-M5-T03 | 复验永久节点身份、规范 hash、幂等、并发冲突、图原子性和失效引用 | 重排/复制/删除/冲突/重放/字段退役均有确定结果；无半图、静默重绑或历史身份复用 | Done |
+| PROJECT-PLATFORM-S05-M5-T04 | 复验六身份字段访问、最小披露、synthetic preview 和伪造请求负例 | hidden/read/write/required 与服务端决策一致；企业管理员、非成员、跨空间请求和日志均零泄露 | Done |
+| PROJECT-PLATFORM-S05-M5-T05 | 复验 create/detail 编辑、共享渲染、可访问性、响应式和 120 字段配置预算 | 管理员配置和用户只读样本闭环通过；性能结论限定配置范围，不描述真实 WorkItem 或平台容量 | Done |
+| PROJECT-PLATFORM-S05-M5-T06 | 运行架构 inventory/boundaries/contracts 并核对 project/shared 与 table owner | project/shared P0、foreign write、新增未批准跨 owner read 和 shared reverse import 为 0；历史基线不扩散 | Done |
+| PROJECT-PLATFORM-S05-M5-T07 | 执行完整后端测试、V001 至最新 Flyway、前端 lint/build、collaboration、工作台和安全门禁 | 全部使用 fresh 日志通过；失败、跳过、豁免、生成物污染或 mock 证据形成阻断决定 | Done |
+| PROJECT-PLATFORM-S05-M5-T08 | 更新当前架构、产品范围、技术选择、模块合同、Program、目标架构和专项索引 | 文档只声明已实现布局/访问事实；PLATFORM-SCALE Deferred、S06/S07 未实现和非容量承诺保持清楚 | Done |
+| PROJECT-PLATFORM-S05-M5-T09 | 冻结 S06 draft/publish/version/template 准入包和 S07 渲染器承接合同 | S06 输入包含字段/布局/策略规范快照与 hash；S07 只注入实例值和上下文，不复制策略或字段模型 | Done |
+| PROJECT-PLATFORM-S05-M5-T10 | 完成 PROJECT-PLATFORM-S05 Go/No-Go 和下一 Stage 决策 | 明确 Go S06、Reopen S05 或新增修复 Stage；依据、阻断、迁移和第一入口可直接执行，不在本路线提前激活 | Done |
+| PROJECT-PLATFORM-S05-M5-T11 | 完成 Stage 报告、影响审计、真实隔离浏览器复验和路线级 `route-final` | 57 项逐 Task 闭环；当前路线标记 completed、Program revision 递增且 current_stage 置 none；最终门禁通过 | Done |
 
 ## 6. Stage 全局验收标准
 

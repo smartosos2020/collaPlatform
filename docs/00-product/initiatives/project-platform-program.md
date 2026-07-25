@@ -2,10 +2,10 @@
 title: 项目协作平台长期专项规划
 status: active
 program: PROJECT-PLATFORM
-revision: 17
-updated_at: 2026-07-25
+revision: 18
+updated_at: 2026-07-26
 planning_mode: rolling
-current_stage: PROJECT-PLATFORM-S05
+current_stage: none
 initiative_index_doc: docs/00-product/initiatives/README.md
 target_architecture_doc: docs/01-architecture/project-platform-target-architecture.md
 ---
@@ -18,7 +18,7 @@ target_architecture_doc: docs/01-architecture/project-platform-target-architectu
 
 规划采用滚动维护：当前 Stage 细化到 Task，下一 Stage 细化到 Milestone，后续 Stage 只冻结目标、依赖和退出证据。新调研、技术验证、代码事实或真实用户反馈可以修改未来规划，但不得静默改写已完成 Stage 的历史结论，也不得在没有变更记录的情况下改变正在执行 Stage 的目标。
 
-当前专项已恢复并激活 `PROJECT-PLATFORM-S05`。暂停期间 `PLATFORM-SCALE-S01-S04` 已建立模块边界门禁、公共合同、双 API、可靠双 Worker、双 Event Gateway、统一客户端校准和唯一知识协同协议；`PLATFORM-SCALE-S05-M1` 已建立容量验证环境、确定性种子和四类加载器。平台专项的目标容量、长稳、综合故障、发布扩缩容和最终 Go/No-Go 仍 Deferred，不构成生产容量或基础设施 HA 承诺。S05 按当前代码事实重新拆解，不执行暂停前的旧概括路线。
+`PROJECT-PLATFORM-S05` 已完成并给出 Go S06；在完成路线归档和生成新当前路线前，`current_stage` 保持 `none`，S06 仍为 Planned。S05 已交付 create/detail 布局图、稳定节点、条件显示、字段访问策略、配置预览、六身份最小披露和共享渲染边界，但没有创建规范 WorkItem、动态字段值或发布版本。`PLATFORM-SCALE-S01-S04` 已建立模块边界门禁、公共合同、双 API、可靠双 Worker、双 Event Gateway、统一客户端校准和唯一知识协同协议；`PLATFORM-SCALE-S05-M1` 只建立容量验证环境、确定性种子和四类加载器，M2-M5 继续 Deferred，不构成生产容量或基础设施 HA 承诺。
 
 ## 2. 专项目标
 
@@ -69,7 +69,7 @@ target_architecture_doc: docs/01-architecture/project-platform-target-architectu
 | PROJECT-PLATFORM-S02 | 项目空间、成员和空间治理 | S01 | Completed | 空间生命周期、成员角色、可见性和治理 API 已交付；三轮审计补验完成，M5 评审、无污染迁移 rehearsal v4 与 route-final 通过 |
 | PROJECT-PLATFORM-S03 | 工作项类型定义底座 | S01-S02 | Completed | 类型定义、不可变首发版本、分层 API/UI、六类预置、既有空间补齐和 route-final 证据 |
 | PROJECT-PLATFORM-S04 | 动态字段、选项和校验规则 | S03 | Completed | 字段类型注册、定义、选项、默认值、结构化规则、复杂类型、配置 UI、六身份验收与 S05/S06 准入已交付 |
-| PROJECT-PLATFORM-S05 | 表单、详情页布局和字段权限 | S04；PLATFORM-SCALE-S01-S04 | Active | 新建/详情布局图、稳定节点、条件显示、字段访问策略、配置预览和 route-final |
+| PROJECT-PLATFORM-S05 | 表单、详情页布局和字段权限 | S04；PLATFORM-SCALE-S01-S04 | Completed | create/detail 布局图、稳定节点、条件显示、字段访问策略、六身份投影、配置预览、迁移复验和 route-final 已交付 |
 | PROJECT-PLATFORM-S06 | 配置草稿、发布、版本和模板复用 | S03-S05 | Planned | 配置发布事务、版本升级、回滚和复用/解绑 |
 | PROJECT-PLATFORM-S07 | 统一工作项运行时与第一阶段迁移 | S03-S06 | Planned | 规范实例 API、旧项目读取适配和迁移校验 |
 | PROJECT-PLATFORM-S08 | 轻量状态流定义与运行时 | S06-S07 | Planned | 状态、动作、守卫、回退、终止和历史 |
@@ -335,6 +335,7 @@ S02 固定输入见目标架构 17：落 `project_spaces`、成员、角色分�
 | 15 | 2026-07-24 | 保持 PROJECT-PLATFORM 暂停，并把恢复复核点从 PLATFORM-SCALE-S02 延后到其 S03 收口 | S02 已完成双 API 与运行角色隔离；用户明确选择继续消除单 Worker、无 lease/fencing、硬编码 Handler 和无 dead-letter/replay 的风险 | S05-S21 保持 Planned；PLATFORM-SCALE-S03 成为唯一活动路线；S03 Go/No-Go 再决定是否恢复 S05 |
 | 16 | 2026-07-24 | 保持 PROJECT-PLATFORM 暂停，并把恢复复核点延后到 PLATFORM-SCALE-S05 专项 Go/No-Go | S04 已消除单 Gateway、本地 session 和双知识协议风险，但尚无固定容量、8 小时长稳、基础设施单点处置和 93 条历史例外复核结论 | S05-S21 保持 Planned；S04 归档后建议先执行 PLATFORM-SCALE-S05，完成后再重建 PROJECT-PLATFORM-S05 准入 |
 | 17 | 2026-07-25 | 基于 PLATFORM-SCALE-S01-S04 和 S05-M1 底座恢复 PROJECT-PLATFORM-S05，并把旧四行概括重建为五个可审计 Milestone | 模块边界、table owner、运行角色、多节点实时和容量验证工具已建立；继续等待完整压测会阻塞业务模型成熟，反而使负载结论失真。S05 只交付布局与字段访问配置，不提前创建 WorkItem 实例或发布版本 | PROJECT-PLATFORM-S05 成为唯一 Active Stage；PLATFORM-SCALE 暂停且 M2-M5 保持 Deferred；S05 新当前路线独立执行 schema、配置渲染、服务端访问策略、真实体验和 Stage 收口 |
+| 18 | 2026-07-26 | S05 五个 Milestone、57 个 Task 完成；补齐 V078 不可变命令响应回执、V065/空库升级复验、隐藏字段零泄漏、120 字段/2400 选项配置预算、六身份真实隔离浏览器和 S06/S07 准入合同 | M5 审计发现历史回执不能精确重放、样本隐藏值仍参与条件、迁移/规模/键盘/离线证据不完整，均按阻断修复并重新验证；S05 仍只交付配置，不冒充发布版本、实例或容量承诺 | S05 Completed；`current_stage` 置 none；Go S06 但保持 Planned，必须先归档 S05 并生成独立 S06 当前路线 |
 
 ## 10. 主要产品参考
 

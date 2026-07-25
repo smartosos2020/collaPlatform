@@ -164,6 +164,8 @@ class WorkItemLayoutConfigurationControllerIntegrationTests {
         ObjectNode layout = objectMapper.createObjectNode();
         ArrayNode nodes = layout.putArray("nodes");
         UUID sectionId = UUID.randomUUID();
+        UUID nestedSectionId = UUID.randomUUID();
+        UUID columnId = UUID.randomUUID();
         nodes.addObject()
             .put("id", sectionId.toString())
             .putNull("parentId")
@@ -177,13 +179,59 @@ class WorkItemLayoutConfigurationControllerIntegrationTests {
             "visibilityCondition",
             objectMapper.createObjectNode().put("schemaVersion", 1)
         );
-        // The frozen graph budget is 120 nodes, so one root section plus 119 fields
-        // is the largest legal rendered layout over the 120-field configuration catalog.
-        for (int index = 0; index < fields.size() - 1; index++) {
+        nodes.addObject()
+            .put("id", nestedSectionId.toString())
+            .put("parentId", sectionId.toString())
+            .put("nodeKey", "details")
+            .put("nodeType", "section")
+            .putNull("fieldId")
+            .putNull("fieldKey")
+            .put("sortOrder", 0)
+            .set("config", objectMapper.createObjectNode().put("title", "Details"));
+        ((ObjectNode) nodes.get(1)).set(
+            "visibilityCondition",
+            objectMapper.createObjectNode()
+                .put("schemaVersion", 1)
+                .set("expression", objectMapper.createObjectNode()
+                    .put("kind", "all")
+                    .set("operands", objectMapper.createArrayNode()
+                        .add(objectMapper.createObjectNode()
+                            .put("kind", "predicate")
+                            .put("source", "context")
+                            .put("contextKey", "mode")
+                            .put("operator", "in")
+                            .set("value", objectMapper.createArrayNode()
+                                .add("runtime")
+                                .add("synthetic")))
+                        .add(objectMapper.createObjectNode()
+                            .put("kind", "not")
+                            .set("operand", objectMapper.createObjectNode()
+                                .put("kind", "predicate")
+                                .put("source", "context")
+                                .put("contextKey", "actor_role")
+                                .put("operator", "eq")
+                                .put("value", "non_member")))))
+        );
+        nodes.addObject()
+            .put("id", columnId.toString())
+            .put("parentId", nestedSectionId.toString())
+            .put("nodeKey", "details_column")
+            .put("nodeType", "column")
+            .putNull("fieldId")
+            .putNull("fieldKey")
+            .put("sortOrder", 0)
+            .set("config", objectMapper.createObjectNode());
+        ((ObjectNode) nodes.get(2)).set(
+            "visibilityCondition",
+            objectMapper.createObjectNode().put("schemaVersion", 1)
+        );
+        // The 120-node budget remains saturated while exercising the maximum legal
+        // section/section/column/field depth and a composite visibility condition.
+        for (int index = 0; index < fields.size() - 3; index++) {
             FieldDefinition field = fields.get(index);
             ObjectNode node = nodes.addObject();
             node.put("id", UUID.randomUUID().toString())
-                .put("parentId", sectionId.toString())
+                .put("parentId", columnId.toString())
                 .put("nodeKey", "field_" + index)
                 .put("nodeType", "field")
                 .put("fieldId", field.id().toString())
@@ -213,7 +261,7 @@ class WorkItemLayoutConfigurationControllerIntegrationTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.fields.items.length()").value(120))
                 .andExpect(jsonPath("$.fields.items[0].options.length()").value(20))
-                .andExpect(jsonPath("$.layouts.create.runtimeProjection.fields.length()").value(119))
+                .andExpect(jsonPath("$.layouts.create.runtimeProjection.fields.length()").value(117))
                 .andExpect(jsonPath("$.layouts.create.runtimeProjection.fields[0].options.length()").value(20))
                 .andReturn()
         );

@@ -188,6 +188,10 @@ export function ProjectWorkItemLayoutsPanel({
 
   const runCommand = (command: Omit<WorkItemLayoutNodeCommand, 'aggregateVersion'>) => {
     if (!layout) return
+    if (!navigator.onLine) {
+      message.error('当前网络不可用，布局操作未保存')
+      return
+    }
     commandMutation.mutate({ ...command, aggregateVersion: layout.aggregateVersion })
   }
 

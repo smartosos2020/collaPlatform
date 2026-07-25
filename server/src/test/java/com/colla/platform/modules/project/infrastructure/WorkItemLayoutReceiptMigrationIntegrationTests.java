@@ -66,4 +66,66 @@ class WorkItemLayoutReceiptMigrationIntegrationTests {
             container.stop();
         }
     }
+
+    @Test
+    void v078UpgradeToLatestAddsStableIssueVerificationSequence() {
+        PostgreSQLContainer<?> container = new PostgreSQLContainer<>("postgres:16");
+        container.start();
+        try {
+            Flyway.configure()
+                .dataSource(container.getJdbcUrl(), container.getUsername(), container.getPassword())
+                .target("78")
+                .load()
+                .migrate();
+            Flyway latest = Flyway.configure()
+                .dataSource(container.getJdbcUrl(), container.getUsername(), container.getPassword())
+                .load();
+
+            assertEquals(1, latest.migrate().migrationsExecuted);
+            assertEquals(0, latest.migrate().migrationsExecuted);
+
+            org.postgresql.ds.PGSimpleDataSource dataSource = new org.postgresql.ds.PGSimpleDataSource();
+            dataSource.setURL(container.getJdbcUrl());
+            dataSource.setUser(container.getUsername());
+            dataSource.setPassword(container.getPassword());
+            JdbcTemplate isolated = new JdbcTemplate(dataSource);
+            assertEquals("079", isolated.queryForObject(
+                "select max(version) from flyway_schema_history",
+                String.class
+            ));
+            assertEquals("NO", isolated.queryForObject(
+                """
+                    select is_nullable
+                      from information_schema.columns
+                     where table_schema='public'
+                       and table_name='issue_verification_logs'
+                       and column_name='sequence_no'
+                    """,
+                String.class
+            ));
+            assertTrue(isolated.queryForObject(
+                """
+                    select column_default like 'nextval(%'
+                      from information_schema.columns
+                     where table_schema='public'
+                       and table_name='issue_verification_logs'
+                       and column_name='sequence_no'
+                    """,
+                Boolean.class
+            ));
+            assertTrue(isolated.queryForObject(
+                """
+                    select exists(
+                        select 1
+                          from pg_indexes
+                         where schemaname='public'
+                           and indexname='idx_issue_verification_logs_issue_sequence'
+                    )
+                    """,
+                Boolean.class
+            ));
+        } finally {
+            container.stop();
+        }
+    }
 }

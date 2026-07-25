@@ -104,6 +104,7 @@ test.describe('PROJECT-PLATFORM-S05-M4 layout workbench and user samples', () =>
       }
 
       await verifyManagerPage(page, sessions.owner, spaceId, typeId)
+      await verifyManagerAccess(page, sessions.admin, spaceId, typeId)
       await verifySamplePage(page, sessions.member, spaceId, typeId, 1440, 900)
       await page.screenshot({
         path: testInfo.outputPath('member-layout-sample-1440.png'),
@@ -111,6 +112,8 @@ test.describe('PROJECT-PLATFORM-S05-M4 layout workbench and user samples', () =>
       })
       await verifySamplePage(page, sessions.guest, spaceId, typeId, 1366, 768)
       await verifySamplePage(page, sessions.member, spaceId, typeId, 820, 900)
+      await verifyHiddenPage(page, sessions.nonMember, spaceId, typeId)
+      await verifyHiddenPage(page, enterpriseAdmin, spaceId, typeId)
     } finally {
       if (spaceId) {
         await request.post(`${apiBaseUrl}/project-spaces/${spaceId}/settings/archive`, {
@@ -154,16 +157,42 @@ async function verifyManagerPage(
   await expect(page.getByText('合成预览')).toBeVisible()
   await expect(page.locator('.work-item-layout-preview-field').filter({ hasText: '标题' })).toBeVisible()
   await previewRole.focus()
-  await page.keyboard.press('Tab')
-  await expect.poll(() => page.evaluate(() => document.activeElement?.tagName)).not.toBe('BODY')
+  const focusPath = new Set<string>()
+  let bodyTransitions = 0
+  for (let index = 0; index < 12; index++) {
+    await page.keyboard.press('Tab')
+    const focused = await page.evaluate(() => {
+      const element = document.activeElement as HTMLElement | null
+      return element
+        ? `${element.tagName}:${element.getAttribute('aria-label') ?? element.textContent?.trim() ?? ''}`
+        : ''
+    })
+    if (focused.startsWith('BODY:')) {
+      bodyTransitions += 1
+    }
+    focusPath.add(focused)
+  }
+  expect(focusPath.size).toBeGreaterThan(4)
+  expect(bodyTransitions).toBeLessThanOrEqual(1)
+  expect([...focusPath].some((focused) => focused.includes('运行预览'))).toBeTruthy()
+  expect(await page.getByRole('button', { name: '添加区块' }).evaluate((element) =>
+    !(element as HTMLButtonElement).disabled && (element as HTMLElement).tabIndex >= 0)).toBeTruthy()
+  await expect(page.locator('[aria-live="polite"]')).not.toHaveCount(0)
+  expect(await minimumLabelContrast(page)).toBeGreaterThanOrEqual(4.5)
   expect(await page.evaluate(() =>
     document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1)
 
   await page.context().setOffline(true)
   const offlineAlert = page.getByText('当前处于离线状态，已打开页面可继续查看，新的保存操作会失败。')
   await expect(offlineAlert).toBeVisible()
+  await page.getByRole('button', { name: '添加区块' }).click()
+  await expect(page.getByText('当前网络不可用，布局操作未保存')).toBeVisible()
   await page.context().setOffline(false)
   await expect(offlineAlert).toHaveCount(0)
+  const recoveredCommand = page.waitForResponse((response) =>
+    response.url().includes('/nodes:command') && response.request().method() === 'POST')
+  await page.getByRole('button', { name: '添加区块' }).click()
+  expect((await recoveredCommand).ok()).toBeTruthy()
   await page.getByRole('button', { name: /刷\s*新/ }).click()
   await expect(page.getByTestId('work-item-layout-renderer')).toBeVisible()
 
@@ -173,6 +202,64 @@ async function verifyManagerPage(
     document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1)
   expect(await page.locator('.work-item-layout-editor').evaluate((element) =>
     element.scrollWidth >= element.clientWidth)).toBeTruthy()
+}
+
+async function verifyManagerAccess(
+  page: Page,
+  session: E2eSession,
+  spaceId: string,
+  typeId: string,
+) {
+  await installSession(page, session)
+  await page.setViewportSize({ width: 1366, height: 768 })
+  await page.goto(`/project-spaces/${spaceId}/types/${typeId}/layouts`)
+  await expect(page.getByTestId('work-item-layouts-panel')).toBeVisible()
+  await expect(page.getByTestId('work-item-layout-policy-editor')).toBeVisible()
+}
+
+async function verifyHiddenPage(
+  page: Page,
+  session: E2eSession,
+  spaceId: string,
+  typeId: string,
+) {
+  await installSession(page, session)
+  await page.goto(`/project-spaces/${spaceId}/types/${typeId}/sample`)
+  await expect(page.getByText('空间不存在或你无权访问')).toBeVisible()
+  await expect(page.getByTestId('work-item-layout-sample')).toHaveCount(0)
+}
+
+async function minimumLabelContrast(page: Page) {
+  return page.locator('.work-item-layout-preview-field label').evaluateAll((labels) => {
+    const parse = (value: string) => {
+      const channels = value.match(/[\d.]+/g)?.slice(0, 3).map(Number) ?? [0, 0, 0]
+      return channels.map((channel) => {
+        const normalized = channel / 255
+        return normalized <= 0.03928
+          ? normalized / 12.92
+          : ((normalized + 0.055) / 1.055) ** 2.4
+      })
+    }
+    const luminance = (channels: number[]) =>
+      0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2]
+    return Math.min(...labels.map((label) => {
+      const style = getComputedStyle(label)
+      const foreground = luminance(parse(style.color))
+      let backgroundElement: Element | null = label
+      let background = [1, 1, 1]
+      while (backgroundElement) {
+        const color = getComputedStyle(backgroundElement).backgroundColor
+        if (color !== 'rgba(0, 0, 0, 0)' && color !== 'transparent') {
+          background = parse(color)
+          break
+        }
+        backgroundElement = backgroundElement.parentElement
+      }
+      const backgroundLuminance = luminance(background)
+      return (Math.max(foreground, backgroundLuminance) + 0.05)
+        / (Math.min(foreground, backgroundLuminance) + 0.05)
+    }))
+  })
 }
 
 async function verifySamplePage(

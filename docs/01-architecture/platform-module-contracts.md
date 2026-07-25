@@ -108,7 +108,7 @@ contract 只允许 JDK 类型、同 contract 包类型或另一个经过批准�
 
 ## 6. Table Owner
 
-V001-V078 当前 94 张有效表在 `platform-table-owners.json` 中恰好归属一个 owner。规则如下：
+V001-V079 当前 94 张有效表在 `platform-table-owners.json` 中恰好归属一个 owner。规则如下：
 
 - `foreignWrite = forbidden`：foreign write 没有例外通道。
 - foreign read 必须匹配精确文件、精确表、read 模式和有效退出 Stage。
