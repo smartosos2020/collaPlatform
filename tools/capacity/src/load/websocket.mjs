@@ -91,7 +91,13 @@ export async function runWebSocketScenario(options = {}) {
       ? triggerRun.scheduled / (triggerRun.durationMs / 1_000)
       : triggerRun.scheduled
 
-    await settle(triggerRun.rateScheduled ? options.settleMs : options.durationMs ?? options.settleMs)
+    if (strictLedger) {
+      await settleExpectedLedger(
+        triggerRun.rateScheduled ? options.settleMs : options.durationMs ?? options.settleMs,
+      )
+    } else {
+      await settle(triggerRun.rateScheduled ? options.settleMs : options.durationMs ?? options.settleMs)
+    }
     if (strictLedger) {
       replayExpectedLedgerFrames()
       recordMissingExpectedEvents()
@@ -739,6 +745,26 @@ export async function runWebSocketScenario(options = {}) {
       // Abort is represented once in the scenario result below.
     }
   }
+
+  async function settleExpectedLedger(milliseconds) {
+    const timeoutMs = Math.max(0, Number(milliseconds) || 0)
+    const started = clock()
+    while (!signal?.aborted && clock() - started < timeoutMs && !expectedLedgerComplete()) {
+      try {
+        await waitForDelay(Math.min(20, timeoutMs - (clock() - started)), {
+          signal,
+          sleep: options.sleep,
+        })
+      } catch {
+        break
+      }
+    }
+  }
+
+  function expectedLedgerComplete() {
+    return expectedEvents.size > 0 && [...expectedEvents.values()].every((expected) =>
+      (eventFanout.get(expected.eventId)?.size ?? 0) >= expected.expectedFanout)
+  }
 }
 
 function extractExpectedEvents(body, target, context) {
@@ -823,7 +849,7 @@ function proveConvergence(body, expected, target, context) {
   }
 
   const candidates = collectObjects(body)
-  const object = candidates.find((candidate) => {
+  const matchingObjects = candidates.filter((candidate) => {
     const id = candidate.id ??
       candidate.objectId ??
       candidate.businessObjectId ??
@@ -831,6 +857,12 @@ function proveConvergence(body, expected, target, context) {
       candidate.aggregateId
     return String(id ?? '') === expected.businessObjectId
   })
+  const object = target.requireCapacityReceipt === true
+    ? matchingObjects.find((candidate) =>
+      String(candidate.sideEffectId ?? '') === expected.eventId &&
+      (!expected.sourceEventId || String(candidate.eventId ?? '') === expected.sourceEventId))
+      ?? matchingObjects[0]
+    : matchingObjects[0]
   if (!object) {
     return {
       ok: false,

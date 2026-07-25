@@ -33,6 +33,27 @@ test('WebSocket loader paces sustained triggers and proves ledger fanout', async
   assert.ok(result.metrics.achievedTriggerRatePerSecond >= 3.9)
 })
 
+test('WebSocket loader drains delayed expected fanout within the bounded settle window', async () => {
+  const harness = createHarness({ delaySequence: 2, delayMs: 20 })
+  const result = await runWebSocketScenario({
+    wsUrl: 'ws://gateway.test/ws/events',
+    apiBaseUrl: 'https://api.test',
+    connections: 2,
+    iterations: 2,
+    settleMs: 100,
+    reconnects: 0,
+    socketFactory: harness.socketFactory,
+    fetch: harness.fetch,
+    targets: targets({ expectedFanout: 2 }),
+  })
+
+  assert.equal(result.ok, true, JSON.stringify(result.errors))
+  assert.equal(result.metrics.expectedEvents, 2)
+  assert.equal(result.metrics.fanoutEvents, 2)
+  assert.equal(result.metrics.fanoutMisses, 0)
+  assert.equal(result.metrics.calibrationRequests, 0)
+})
+
 test('WebSocket loader rejects a 2xx calibration that does not contain the missing business object', async () => {
   const harness = createHarness({
     omitSequence: 2,
@@ -196,6 +217,51 @@ test('capacity ledger calibration requires processed receipt and exact side effe
     /side effect/.test(error.message)))
 })
 
+test('capacity ledger calibration selects the exact side effect for a shared aggregate', async () => {
+  const descriptor = expectedEvent(1)
+  const harness = createHarness({
+    omitSequence: 1,
+    calibrationBody: {
+      entries: [
+        {
+          eventId: 'old-source-event',
+          sideEffectId: 'old-side-effect',
+          aggregateId: descriptor.businessObjectId,
+          sequence: 0,
+          deliveryStatus: 'processed',
+          receiptRecorded: true,
+        },
+        {
+          eventId: 'source-event-1',
+          sideEffectId: descriptor.eventId,
+          aggregateId: descriptor.businessObjectId,
+          sequence: descriptor.sequence,
+          deliveryStatus: 'processed',
+          receiptRecorded: true,
+        },
+      ],
+    },
+  })
+  const result = await runWebSocketScenario({
+    wsUrl: 'ws://gateway.test/ws/events',
+    apiBaseUrl: 'https://api.test',
+    connections: 1,
+    iterations: 1,
+    settleMs: 1,
+    reconnects: 0,
+    socketFactory: harness.socketFactory,
+    fetch: harness.fetch,
+    targets: {
+      ...targets({ expectedFanout: 1, requireCapacityReceipt: true }),
+      minEvents: 0,
+    },
+  })
+
+  assert.equal(result.ok, true, JSON.stringify(result.errors))
+  assert.equal(result.metrics.recoveredGaps, 1)
+  assert.equal(result.metrics.calibrationFailures, 0)
+})
+
 test('WebSocket loader does not produce events before every connection reports ready', async () => {
   const harness = createHarness({ suppressReady: true })
   const result = await runWebSocketScenario({
@@ -298,12 +364,17 @@ function createHarness(options = {}) {
       }
       if (sequence !== options.omitSequence) {
         for (const socket of sockets.filter((entry) => entry.readyState === 1)) {
-          queueMicrotask(() => {
+          const emit = () => {
             socket.emit('message', JSON.stringify(realtimeFrame(descriptor)))
             if (sequence === options.duplicateSequence) {
               socket.emit('message', JSON.stringify(realtimeFrame(descriptor)))
             }
-          })
+          }
+          if (sequence === options.delaySequence) {
+            setTimeout(emit, options.delayMs ?? 1)
+          } else {
+            queueMicrotask(emit)
+          }
         }
       }
       return jsonResponse(descriptor, 202)

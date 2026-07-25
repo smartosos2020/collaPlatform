@@ -1,6 +1,9 @@
 package com.colla.platform.modules.event.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.spy;
 
 import com.colla.platform.config.runtime.RuntimeRoleProperties;
 import com.colla.platform.modules.event.contract.DomainEventHandler;
@@ -12,6 +15,7 @@ import com.colla.platform.modules.event.contract.TransactionalOutbox.EventEnvelo
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -19,6 +23,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -133,6 +139,7 @@ class ReliableDomainEventWorkerIntegrationTests {
 
             workerA.pollOnce();
             assertThat(handler.started.await(3, TimeUnit.SECONDS)).isTrue();
+            workerA.pollOnce();
             awaitProcessing(2);
             Thread.sleep(1_300);
 
@@ -147,6 +154,68 @@ class ReliableDomainEventWorkerIntegrationTests {
             deliveryProperties.setLeaseDuration(originalLease);
             handler.release();
         }
+    }
+
+    @Test
+    void transientHeartbeatFailureDoesNotCancelLaterLeaseRenewals() throws Exception {
+        Duration originalLease = deliveryProperties.getLeaseDuration();
+        try {
+            deliveryProperties.setLeaseDuration(Duration.ofSeconds(1));
+            append("heartbeat-recovers");
+            handler.block();
+            AtomicBoolean firstHeartbeat = new AtomicBoolean(true);
+            DomainEventDeliveryCoordinator resilientCoordinator = spy(coordinator);
+            doAnswer(invocation -> {
+                if (firstHeartbeat.getAndSet(false)) {
+                    throw new DomainEventTransientFailureException("simulated heartbeat outage");
+                }
+                return invocation.callRealMethod();
+            }).when(resilientCoordinator).heartbeat(any(), any());
+            DomainEventWorkerProperties properties = properties(1, 0, 1);
+            properties.setHeartbeatInterval(Duration.ofMillis(200));
+            workerA = worker("worker-a", properties, resilientCoordinator);
+            workerA.start();
+
+            workerA.pollOnce();
+            assertThat(handler.started.await(3, TimeUnit.SECONDS)).isTrue();
+            Thread.sleep(1_300);
+
+            assertThat(firstHeartbeat).isFalse();
+            assertThat(coordinator.recoverExpired(Instant.now())).isZero();
+            handler.release();
+            awaitProcessed(1);
+            assertThat(jdbcTemplate.queryForObject(
+                "select max(attempt_count) from domain_event_handler_deliveries",
+                Integer.class
+            )).isEqualTo(1);
+        } finally {
+            deliveryProperties.setLeaseDuration(originalLease);
+            handler.release();
+        }
+    }
+
+    @Test
+    void blockingRecoveryCannotCreateAnAlreadyAgedClaimLease() throws Exception {
+        append("claim-after-recovery");
+        AtomicReference<Instant> recoveryFinishedAt = new AtomicReference<>();
+        DomainEventDeliveryCoordinator delayedCoordinator = spy(coordinator);
+        doAnswer(invocation -> {
+            Thread.sleep(200);
+            Object result = invocation.callRealMethod();
+            recoveryFinishedAt.set(Instant.now());
+            return result;
+        }).when(delayedCoordinator).recoverExpired(any());
+        workerA = worker("worker-a", properties(1, 0, 1), delayedCoordinator);
+        workerA.start();
+
+        workerA.pollOnce();
+
+        Instant claimedAt = jdbcTemplate.queryForObject(
+            "select min(claimed_at) from domain_event_handler_deliveries",
+            Instant.class
+        );
+        assertThat(recoveryFinishedAt.get()).isNotNull();
+        assertThat(claimedAt).isAfterOrEqualTo(recoveryFinishedAt.get().truncatedTo(ChronoUnit.MICROS));
     }
 
     @Test
@@ -165,11 +234,19 @@ class ReliableDomainEventWorkerIntegrationTests {
     }
 
     private ReliableDomainEventWorker worker(String id, DomainEventWorkerProperties properties) {
+        return worker(id, properties, coordinator);
+    }
+
+    private ReliableDomainEventWorker worker(
+        String id,
+        DomainEventWorkerProperties properties,
+        DomainEventDeliveryCoordinator workerCoordinator
+    ) {
         RuntimeRoleProperties runtime = new RuntimeRoleProperties();
         runtime.setRole("worker");
         runtime.setInstanceId(id);
         return new ReliableDomainEventWorker(
-            coordinator, registry, properties, deliveryProperties, runtime, new SimpleMeterRegistry()
+            workerCoordinator, registry, properties, deliveryProperties, runtime, new SimpleMeterRegistry()
         );
     }
 

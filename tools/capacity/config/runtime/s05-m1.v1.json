@@ -113,7 +113,7 @@
       "connectConcurrency": 4,
       "connectTimeoutMs": 10000,
       "reconnects": 1,
-      "settleMs": 1000,
+      "settleMs": 10000,
       "reconnectSettleMs": 1000,
       "triggerRatePerSecond": 1,
       "triggerConcurrency": 2,
