@@ -129,6 +129,7 @@ class KnowledgeSchemaMigrationIntegrationTests {
             """
                 select index_row.indisvalid
                    and index_row.indisready
+                   and index_row.indpred is null
                    and pg_get_indexdef(index_row.indexrelid) like '%USING btree (parent_id)'
                 from pg_index index_row
                 join pg_class index_class on index_class.oid = index_row.indexrelid
@@ -137,6 +138,22 @@ class KnowledgeSchemaMigrationIntegrationTests {
                 where table_namespace.nspname = 'public'
                   and table_class.relname = 'knowledge_content_blocks'
                   and index_class.relname = 'idx_knowledge_content_blocks_parent_id'
+            """,
+            Boolean.class
+        ));
+        assertTrue(jdbcTemplate.queryForObject(
+            """
+                select index_row.indisvalid
+                   and index_row.indisready
+                   and index_row.indpred is null
+                   and pg_get_indexdef(index_row.indexrelid) like '%USING btree (parent_id)'
+                from pg_index index_row
+                join pg_class index_class on index_class.oid = index_row.indexrelid
+                join pg_class table_class on table_class.oid = index_row.indrelid
+                join pg_namespace table_namespace on table_namespace.oid = table_class.relnamespace
+                where table_namespace.nspname = 'public'
+                  and table_class.relname = 'knowledge_base_items'
+                  and index_class.relname = 'idx_knowledge_base_items_parent_id_fk'
                 """,
             Boolean.class
         ));
