@@ -2,6 +2,7 @@ package com.colla.platform.modules.project.api;
 
 import com.colla.platform.modules.project.domain.WorkItemTypeModels.WorkItemTypeException;
 import com.colla.platform.modules.project.domain.WorkItemFieldModels.WorkItemFieldException;
+import com.colla.platform.modules.project.domain.WorkItemConfigurationModels.WorkItemConfigurationException;
 import com.colla.platform.modules.project.domain.WorkItemLayoutModels.WorkItemLayoutException;
 import com.colla.platform.shared.errors.ApiErrorResponse;
 import com.colla.platform.shared.errors.ApiErrorResponse.ApiError;
@@ -15,6 +16,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 @RestControllerAdvice(assignableTypes = {
     WorkItemTypeConfigurationController.class,
+    WorkItemConfigurationDraftController.class,
     WorkItemFieldConfigurationController.class,
     WorkItemLayoutConfigurationController.class,
     WorkItemLayoutWorkbenchController.class,
@@ -42,6 +44,12 @@ public class WorkItemTypeExceptionHandler {
         return ResponseEntity.status(status(sourceCode)).body(response(apiCode(sourceCode), exception.getMessage()));
     }
 
+    @ExceptionHandler(WorkItemConfigurationException.class)
+    public ResponseEntity<ApiErrorResponse> handleConfiguration(WorkItemConfigurationException exception) {
+        String sourceCode = exception.code();
+        return ResponseEntity.status(status(sourceCode)).body(response(apiCode(sourceCode), exception.getMessage()));
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiErrorResponse> handleValidation(MethodArgumentNotValidException exception) {
         String message = exception.getBindingResult().getFieldErrors().stream()
@@ -65,6 +73,7 @@ public class WorkItemTypeExceptionHandler {
             case "TYPE_KEY_CONFLICT" -> "type_key_conflict";
             case "FIELD_KEY_CONFLICT" -> "field_key_conflict";
             case "VERSION_CONFLICT", "FIELD_VERSION_CONFLICT", "LAYOUT_VERSION_CONFLICT" -> "version_conflict";
+            case "DRAFT_VERSION_CONFLICT" -> "draft_version_conflict";
             case "SYSTEM_TYPE_PROTECTED" -> "system_type_protected";
             case "SYSTEM_FIELD_PROTECTED" -> "system_field_protected";
             case "RETIRED_TYPE", "INVALID_LIFECYCLE_TRANSITION" -> "retired_type";

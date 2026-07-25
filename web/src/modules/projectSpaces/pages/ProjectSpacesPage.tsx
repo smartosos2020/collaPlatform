@@ -44,6 +44,7 @@ import {
 } from '../api/projectSpacesApi'
 import { ProjectSpaceMembersPanel } from '../components/ProjectSpaceMembersPanel'
 import { ProjectWorkItemFieldsPanel } from '../components/ProjectWorkItemFieldsPanel'
+import { ProjectWorkItemConfigurationDraftPanel } from '../components/ProjectWorkItemConfigurationDraftPanel'
 import { ProjectWorkItemLayoutsPanel } from '../components/ProjectWorkItemLayoutsPanel'
 import { ProjectWorkItemLayoutSample } from '../components/ProjectWorkItemLayoutSample'
 import { ProjectWorkItemTypesPanel } from '../components/ProjectWorkItemTypesPanel'
@@ -290,6 +291,14 @@ function ProjectSpaceShell({
         {canManage ? <Button aria-label="成员" type={view === 'members' ? 'primary' : 'text'} icon={<TeamOutlined />} onClick={() => onNavigate('members')}>成员</Button> : null}
         {canManage ? <Button aria-label="空间设置" type={view === 'settings' ? 'primary' : 'text'} icon={<SettingOutlined />} onClick={() => onNavigate('settings')}>空间设置</Button> : null}
       </nav>
+
+      {canManage && selectedTypeId && ['types', 'fields', 'layouts'].includes(view) ? (
+        <ProjectWorkItemConfigurationDraftPanel
+          spaceId={space.id}
+          typeId={selectedTypeId}
+          readOnly={readOnly}
+        />
+      ) : null}
 
       {view === 'overview' ? <ProjectSpaceOverview space={space} /> : null}
       {view === 'types' && canManage ? (

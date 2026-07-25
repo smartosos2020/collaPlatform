@@ -33,6 +33,7 @@ import { useMemo, useState } from 'react'
 
 import { ApiRequestError } from '../../../shared/api/httpClient'
 import type { UserProjectSpace } from '../api/projectSpacesApi'
+import { workItemConfigurationDraftKeys } from '../api/workItemConfigurationApi'
 import {
   type ConfiguredWorkItemField,
 } from '../api/workItemFieldsApi'
@@ -123,7 +124,10 @@ export function ProjectWorkItemLayoutsPanel({
     : undefined
 
   const refresh = async () => {
-    await queryClient.invalidateQueries({ queryKey: workItemLayoutKeys.workbench(space.id, typeId) })
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: workItemLayoutKeys.workbench(space.id, typeId) }),
+      queryClient.invalidateQueries({ queryKey: workItemConfigurationDraftKeys.detail(space.id, typeId) }),
+    ])
   }
 
   const saveMutation = useMutation({

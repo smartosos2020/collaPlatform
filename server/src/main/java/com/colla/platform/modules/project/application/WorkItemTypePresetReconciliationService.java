@@ -24,19 +24,22 @@ public class WorkItemTypePresetReconciliationService {
     private final WorkItemTypeRepository repository;
     private final AuditLog auditRepository;
     private final TransactionalOutbox eventRepository;
+    private final WorkItemConfigurationDraftService draftService;
 
     public WorkItemTypePresetReconciliationService(
         WorkItemTypePresetCatalog catalog,
         WorkItemTypeDefinitionService definitionService,
         WorkItemTypeRepository repository,
         AuditLog auditRepository,
-        TransactionalOutbox eventRepository
+        TransactionalOutbox eventRepository,
+        WorkItemConfigurationDraftService draftService
     ) {
         this.catalog = catalog;
         this.definitionService = definitionService;
         this.repository = repository;
         this.auditRepository = auditRepository;
         this.eventRepository = eventRepository;
+        this.draftService = draftService;
     }
 
     @Transactional
@@ -75,6 +78,7 @@ public class WorkItemTypePresetReconciliationService {
                 preset.sortOrder(),
                 true
             ));
+            draftService.refreshAfterMutation(workspaceId, spaceId, created.id(), actorId);
             installed.add(preset.typeKey());
             installedTypeIds.add(created.id());
         }

@@ -212,7 +212,7 @@ S01-M3 已冻结动态字段的混合存储方向：工作项规范值使用 JSO
 | 工作项类型定义 | `WorkItemTypeDefinition` | `typeDefinitionId`；`typeKey` 在 space 内永久唯一 | `ProjectSpace` | `active <-> disabled -> retired`；retired 不可新建实例但历史可读 |
 | 工作项类型版本 | `WorkItemTypeVersion` | `typeVersionId` + 单调 `versionNumber` + `configHash` | `WorkItemTypeDefinition` | `published -> superseded`；创建后不可变，不承担可变草稿职责 |
 | 工作项 | `WorkItem` | `workItemId`，workspace 内稳定 UUID；展示编号由独立原子序列生成 | `ProjectSpace`，并绑定一个类型版本 | `active <-> archived`；业务流程状态与对象生命周期分离 |
-| 配置草稿 | `ConfigurationDraft` | `draftId`，同一 type definition 同时最多一个活动草稿 | `WorkItemTypeDefinition` | `editing -> validating -> published/abandoned` |
+| 配置草稿 | `ConfigurationDraft` | `draftId`，同一 type definition 同时最多一个活动草稿 | `WorkItemTypeDefinition` | `editing/validating/valid/invalid -> abandoned`；发布由 M2 原子关闭草稿 |
 | 工作项模板 | `WorkItemTemplate` | `templateId` + `templateVersionId` | workspace 模板目录或平台预置目录 | `draft -> published -> retired`；安装后生成本地配置草稿和 lineage |
 
 约束：
@@ -764,7 +764,7 @@ S05 的表单和详情页是“配置与渲染合同”，不是已经可创建�
 - `ConfigurationDraft` 是 S06 唯一可变草稿权威，以 `WorkItemTypeDefinition` 为聚合根；同一 type definition 同时最多一个 active draft。保存使用 aggregate version 乐观并发，禁止以 `WorkItemTypeVersion(status=draft)` 建立第二条编辑路径。
 - `WorkItemTypeVersion` 只允许 `published` 或 `superseded`，创建后 config、schema version、config hash、version number 和归属均不可修改或删除。更正只能创建更高版本。
 - S03 既有 `project_work_item_type_versions.status=draft` 是待收紧的物理兼容状态。S06 migration 必须先画像其数量、归属和 payload hash：可无损转换的行迁入 `ConfigurationDraft`，冲突、重复 active draft 或不可解析 payload 必须输出稳定诊断并阻止切换；完成后数据库约束和应用枚举都只接受 published/superseded。
-- draft 状态固定为 `editing -> validating -> published|abandoned`。发布成功后 draft 只保留审计身份和 published version 引用，不再允许编辑；发布失败继续保留原 active draft 和 aggregate version，不产生半版本。
+- draft 校验状态固定为 `editing -> validating -> valid|invalid`，任何 active 状态都可在授权下进入 `abandoned`；配置写入会把 valid/invalid 草稿重新置为 editing。M2 发布成功后以原子事务关闭 active draft 并关联 published version，不把 `published` 伪装成草稿状态；发布失败继续保留原 active draft 和 aggregate version，不产生半版本。
 
 #### 22.7.2 发布快照、规范序列化与 hash
 

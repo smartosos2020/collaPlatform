@@ -48,6 +48,7 @@ public class WorkItemLayoutConfigurationService {
     private final AuditLog auditLog;
     private final TransactionalOutbox outbox;
     private final ObjectMapper objectMapper;
+    private final WorkItemConfigurationDraftService draftService;
 
     public WorkItemLayoutConfigurationService(
         WorkItemLayoutRepository layoutRepository,
@@ -61,7 +62,8 @@ public class WorkItemLayoutConfigurationService {
         ProjectSpaceRepository spaceRepository,
         AuditLog auditLog,
         TransactionalOutbox outbox,
-        ObjectMapper objectMapper
+        ObjectMapper objectMapper,
+        WorkItemConfigurationDraftService draftService
     ) {
         this.layoutRepository = layoutRepository;
         this.commandRepository = commandRepository;
@@ -75,6 +77,7 @@ public class WorkItemLayoutConfigurationService {
         this.auditLog = auditLog;
         this.outbox = outbox;
         this.objectMapper = objectMapper;
+        this.draftService = draftService;
     }
 
     public LayoutAggregate get(CurrentUser user, UUID spaceId, UUID typeId, String layoutKind) {
@@ -214,6 +217,7 @@ public class WorkItemLayoutConfigurationService {
             LayoutDefinition saved = layoutRepository.findById(
                 user.workspaceId(), spaceId, typeId, layoutId
             ).orElseThrow(() -> failure("LAYOUT_NOT_FOUND", "Saved work item layout is unavailable"));
+            draftService.refreshAfterMutation(user, spaceId, typeId);
             recordChange(
                 user,
                 saved,

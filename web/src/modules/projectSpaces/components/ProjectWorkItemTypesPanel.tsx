@@ -47,6 +47,7 @@ import {
   type WorkItemTypeStatus,
 } from '../api/workItemTypesApi'
 import type { UserProjectSpace } from '../api/projectSpacesApi'
+import { workItemConfigurationDraftKeys } from '../api/workItemConfigurationApi'
 import { errorMessage, formatTime } from '../projectSpaceView'
 
 type FilterStatus = 'all' | WorkItemTypeStatus
@@ -100,6 +101,7 @@ export function ProjectWorkItemTypesPanel({
       queryClient.invalidateQueries({ queryKey: [...workItemTypeKeys.all, space.id] }),
       queryClient.invalidateQueries({ queryKey: workItemTypeKeys.active(space.id) }),
       typeId ? queryClient.invalidateQueries({ queryKey: workItemTypeKeys.detail(space.id, typeId) }) : Promise.resolve(),
+      typeId ? queryClient.invalidateQueries({ queryKey: workItemConfigurationDraftKeys.detail(space.id, typeId) }) : Promise.resolve(),
     ])
   }
 

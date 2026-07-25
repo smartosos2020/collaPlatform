@@ -5299,6 +5299,79 @@ body {
   border-radius: 7px;
 }
 
+.work-item-draft-panel {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 10px;
+  border: 1px solid var(--ui-card-border);
+  border-left: 3px solid #6d4cff;
+  border-radius: 9px;
+  padding: 12px 14px;
+  background: #fff;
+}
+
+.work-item-draft-panel.status-valid {
+  border-left-color: #22a06b;
+}
+
+.work-item-draft-panel.status-invalid {
+  border-left-color: #e5484d;
+}
+
+.work-item-draft-panel.status-abandoned {
+  border-left-color: #94a3b8;
+}
+
+.work-item-draft-summary {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 11px;
+}
+
+.work-item-draft-icon {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: 8px;
+  background: #f0edff;
+  color: #5b3fd6;
+  font-size: 17px;
+}
+
+.work-item-draft-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.work-item-draft-copy > .ant-typography {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.work-item-draft-actions {
+  justify-content: flex-end;
+}
+
+.work-item-draft-diagnostics {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding-left: 45px;
+}
+
+.work-item-draft-clean {
+  padding-left: 45px;
+}
+
 .work-item-layout-page {
   display: flex;
   min-width: 0;

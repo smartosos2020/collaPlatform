@@ -154,6 +154,107 @@ class WorkItemTypeConfigurationControllerIntegrationTests {
     }
 
     @Test
+    void configurationDraftTracksWritesValidatesReplaysAndAbandonsWithoutLeaking() throws Exception {
+        TestUser root = root("wicd-root");
+        TestUser owner = member(root.token(), "wicdowner");
+        TestUser readonly = member(root.token(), "wicdmember");
+        TestUser outsider = member(root.token(), "wicdoutside");
+        UUID spaceId = createSpace(owner.token(), "wicd-space");
+        addSpaceMember(spaceId, readonly.id(), "member", owner.id());
+        JsonNode type = createType(
+            owner.token(), spaceId, "wicd_task", "Draft Task", 10, "wicd-create-" + suffix()
+        );
+        String typeId = type.get("id").asText();
+        String draftPath = configPath(spaceId) + "/" + typeId + "/draft";
+
+        JsonNode initial = json(mockMvc.perform(get(draftPath)
+                .header("Authorization", bearer(owner.token())))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.status").value("editing"))
+            .andExpect(jsonPath("$.snapshotSchemaVersion").value(1))
+            .andExpect(jsonPath("$.aggregateVersion").value(0))
+            .andExpect(jsonPath("$.availableActions", contains("save", "validate", "abandon")))
+            .andReturn());
+
+        mockMvc.perform(patch(configPath(spaceId) + "/" + typeId)
+                .header("Authorization", bearer(owner.token()))
+                .header("X-Colla-Request-Id", "wicd-type-update-" + suffix())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"name":"Updated Draft Task","description":"tracked","aggregateVersion":0}
+                    """))
+            .andExpect(status().isOk());
+
+        JsonNode changed = json(mockMvc.perform(get(draftPath)
+                .header("Authorization", bearer(owner.token())))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.aggregateVersion").value(1))
+            .andExpect(jsonPath("$.snapshot.typeDefinition.name").value("Updated Draft Task"))
+            .andReturn());
+        assertNotEquals(initial.get("configHash").asText(), changed.get("configHash").asText());
+
+        String validateRequestId = "wicd-validate-" + suffix();
+        String validateBody = "{\"expectedAggregateVersion\":1}";
+        JsonNode validated = json(mockMvc.perform(post(draftPath + ":validate")
+                .header("Authorization", bearer(owner.token()))
+                .header("X-Colla-Request-Id", validateRequestId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(validateBody))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.status").value("valid"))
+            .andExpect(jsonPath("$.aggregateVersion").value(2))
+            .andReturn());
+        JsonNode replayed = json(mockMvc.perform(post(draftPath + ":validate")
+                .header("Authorization", bearer(owner.token()))
+                .header("X-Colla-Request-Id", validateRequestId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(validateBody))
+            .andExpect(status().isOk())
+            .andReturn());
+        assertEquals(validated, replayed);
+        mockMvc.perform(post(draftPath + ":validate")
+                .header("Authorization", bearer(owner.token()))
+                .header("X-Colla-Request-Id", validateRequestId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"expectedAggregateVersion\":2}"))
+            .andExpect(status().isConflict())
+            .andExpect(jsonPath("$.error.code").value("idempotency_key_reused"));
+
+        String abandonedId = json(mockMvc.perform(post(draftPath + ":abandon")
+                .header("Authorization", bearer(owner.token()))
+                .header("X-Colla-Request-Id", "wicd-abandon-" + suffix())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"expectedAggregateVersion\":2}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.status").value("abandoned"))
+            .andExpect(jsonPath("$.availableActions").isEmpty())
+            .andReturn()).get("id").asText();
+
+        mockMvc.perform(patch(configPath(spaceId) + "/" + typeId)
+                .header("Authorization", bearer(owner.token()))
+                .header("X-Colla-Request-Id", "wicd-type-update-2-" + suffix())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"name":"Next Draft Task","description":"new active draft","aggregateVersion":1}
+                    """))
+            .andExpect(status().isOk());
+        JsonNode next = json(mockMvc.perform(get(draftPath)
+                .header("Authorization", bearer(owner.token())))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.status").value("editing"))
+            .andExpect(jsonPath("$.aggregateVersion").value(0))
+            .andReturn());
+        assertNotEquals(abandonedId, next.get("id").asText());
+
+        mockMvc.perform(get(draftPath).header("Authorization", bearer(readonly.token())))
+            .andExpect(status().isForbidden())
+            .andExpect(jsonPath("$.error.code").value("forbidden"));
+        mockMvc.perform(get(draftPath).header("Authorization", bearer(outsider.token())))
+            .andExpect(status().isNotFound())
+            .andExpect(jsonPath("$.error.code").value("not_found_or_hidden"));
+    }
+
+    @Test
     void separatesConfigurationSummaryAndEnterpriseGovernanceSurfaces() throws Exception {
         TestUser root = root("wit-rbac-root");
         TestUser owner = member(root.token(), "witowner");

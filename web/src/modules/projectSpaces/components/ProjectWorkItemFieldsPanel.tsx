@@ -63,6 +63,7 @@ import {
   workItemTypeKeys,
 } from '../api/workItemTypesApi'
 import type { UserProjectSpace } from '../api/projectSpacesApi'
+import { workItemConfigurationDraftKeys } from '../api/workItemConfigurationApi'
 import { errorMessage, formatTime } from '../projectSpaceView'
 import { WorkItemFieldConfigDrawer } from './WorkItemFieldConfigDrawer'
 
@@ -159,6 +160,7 @@ export function ProjectWorkItemFieldsPanel({
       fieldId
         ? queryClient.invalidateQueries({ queryKey: workItemFieldKeys.detail(space.id, typeId, fieldId) })
         : Promise.resolve(),
+      queryClient.invalidateQueries({ queryKey: workItemConfigurationDraftKeys.detail(space.id, typeId) }),
     ])
   }
 

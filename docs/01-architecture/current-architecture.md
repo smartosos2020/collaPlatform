@@ -14,7 +14,7 @@ Colla Platform 当前是模块化单体：
 
 - 后端：单个 Spring Boot 应用，按业务模块分包。
 - 前端：单个 React SPA，用户工作台和管理后台使用独立 Shell、导航和路由边界。
-- 数据库：单个 PostgreSQL schema，通过 Flyway V001-V079 演进。
+- 数据库：单个 PostgreSQL schema，通过 Flyway V001-V081 演进。
 - 基础设施：Redis、MinIO、WebSocket、平台对象、权限、事件、审计和搜索由模块共享。
 - 交付：本地 Docker 依赖；生产基线是 maintenance、双 API、Worker、Event Gateway、双协作节点的 Docker Compose + Nginx。
 
@@ -52,7 +52,7 @@ Colla Platform 当前是模块化单体：
 
 该历史快照只描述当时的依赖和访问事实，不代表当前计数、边界合格或容量承诺。table owner、允许例外和公共 contract 在 S01-M2 冻结，自动失败门禁在 S01-M3 交付。
 
-S01-M2 已接受 `platform-module-contracts.md`，并以 `platform-modules.json`、`platform-table-owners.json`、`platform-boundary-exceptions.json` 和 `pnpm architecture:contracts` 建立模块、table owner、精确只读例外及 identity/file/platform/event/audit/IM 公共合同。2026-07-26 在 V001-V079 基线执行当前工具得到：15 个后端模块、326 个 Java 文件、225 条后端跨模块 import、64 条前端跨 feature import 和 93 个跨 owner SQL 候选；合同门禁确认 94 张当前有效表、93 条精确例外和 22 个公共合同文件。94 张表在 owner manifest 中全部唯一归属，重复与 ownerless 均为 0。
+S01-M2 已接受 `platform-module-contracts.md`，并以 `platform-modules.json`、`platform-table-owners.json`、`platform-boundary-exceptions.json` 和 `pnpm architecture:contracts` 建立模块、table owner、精确只读例外及 identity/file/platform/event/audit/IM 公共合同。2026-07-26 在 V001-V081 基线执行当前工具得到：15 个后端模块、334 个 Java 文件、227 条后端跨模块 import、64 条前端跨 feature import 和 93 个跨 owner SQL 候选；合同门禁确认 97 张当前有效表、93 条精确例外和 22 个公共合同文件。97 张表在 owner manifest 中全部唯一归属，重复与 ownerless 均为 0。
 
 ## 前端模块与路由
 
@@ -119,7 +119,7 @@ S01-M2 已接受 `platform-module-contracts.md`，并以 `platform-modules.json`
 
 ## 数据库迁移
 
-当前 Flyway 版本为 V079。历史迁移文件不可修改。
+当前 Flyway 版本为 V081。历史迁移文件不可修改。
 
 知识库最后四个迁移：
 
@@ -161,6 +161,8 @@ S01-M2 已接受 `platform-module-contracts.md`，并以 `platform-modules.json`
 | V077 | 建立 workspace/space/type 隔离的 create/detail 布局、节点、字段访问策略和命令回执，包含永久标识、同域字段引用、规范 hash、乐观版本、索引和身份保护触发器 |
 | V078 | 为布局命令回执增加 schema 版本、聚合版本、配置 hash 和不可变响应 JSON，完成命令后冻结原始响应并保护已完成回执不可更新或删除 |
 | V079 | 为 BUG 验证日志增加数据库单调序号，消除墙钟回拨或同精度时间戳导致的历史顺序不确定性 |
+| V080 | 建立完整配置草稿、草稿命令回执与 legacy 草稿诊断底座，并以不可变触发器保护终态草稿和回执 |
+| V081 | 退役 `project_work_item_type_versions` 的 legacy `draft` 状态，只保留不可变 published/superseded 历史版本 |
 
 数据库规则：
 
@@ -264,7 +266,7 @@ PLATFORM-SCALE-S01 把模块边界从文档约定升级为机器门禁。2026-07
 
 - 15 个后端模块、326 个 Java 文件、225 条后端跨模块 import。
 - 前端有 64 条跨 feature import。
-- V001-V079 形成 94 张当前有效表，每张表有唯一 owner；93 条跨 owner SQL 候选由精确例外治理，foreign write 仍为禁止项。
+- V001-V081 形成 97 张当前有效表，每张表有唯一 owner；跨 owner SQL 候选由精确例外治理，foreign write 仍为禁止项。
 - 22 个公开 contract 文件受合同门禁约束；`pnpm architecture:contracts` 同时检查模块、table owner、例外和公共合同来源。
 - S02 收口复核确认 93 条只读例外不属于运行隔离交付范围，退出 Stage 已重新批准为 PLATFORM-SCALE-S05，其中 project 9 条；因 S05-M2-M5 Deferred，例外清理尚未完成，现有精确条目仍不能扩张，修改相关文件时只能保持或减少。
 

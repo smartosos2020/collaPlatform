@@ -40,6 +40,7 @@ public class WorkItemTypeConfigurationService {
     private final AuditLog auditService;
     private final ProjectAuthorization permissionService;
     private final ObjectMapper objectMapper;
+    private final WorkItemConfigurationDraftService draftService;
 
     public WorkItemTypeConfigurationService(
         WorkItemTypeDefinitionService definitionService,
@@ -50,7 +51,8 @@ public class WorkItemTypeConfigurationService {
         TransactionalOutbox eventRepository,
         AuditLog auditService,
         ProjectAuthorization permissionService,
-        ObjectMapper objectMapper
+        ObjectMapper objectMapper,
+        WorkItemConfigurationDraftService draftService
     ) {
         this.definitionService = definitionService;
         this.spaceRepository = spaceRepository;
@@ -61,6 +63,7 @@ public class WorkItemTypeConfigurationService {
         this.auditService = auditService;
         this.permissionService = permissionService;
         this.objectMapper = objectMapper;
+        this.draftService = draftService;
     }
 
     public Configuration configuration(CurrentUser user, UUID spaceId, String status) {
@@ -127,6 +130,7 @@ public class WorkItemTypeConfigurationService {
         WorkItemTypeDefinition created = definitionService.create(new CreateWorkItemType(
             user.workspaceId(), spaceId, user.id(), typeKey, name, icon, description, sortOrder, false
         ));
+        draftService.refreshAfterMutation(user, spaceId, created.id());
         recordChange(user, "created", null, created, command.requestId());
         commandRepository.complete(command.receipt().id(), created.id());
         return configured(space, created);
@@ -159,6 +163,7 @@ public class WorkItemTypeConfigurationService {
         WorkItemTypeDefinition after = definitionService.updateDisplay(
             user.workspaceId(), spaceId, typeId, name, icon, description, user.id(), expectedAggregateVersion
         );
+        draftService.refreshAfterMutation(user, spaceId, after.id());
         recordChange(user, "updated", before, after, command.requestId());
         commandRepository.complete(command.receipt().id(), after.id());
         return configured(space, after);
@@ -196,6 +201,7 @@ public class WorkItemTypeConfigurationService {
         WorkItemTypeDefinition copied = definitionService.create(new CreateWorkItemType(
             user.workspaceId(), spaceId, user.id(), typeKey, nextName, nextIcon, nextDescription, nextSortOrder, false
         ));
+        draftService.refreshAfterMutation(user, spaceId, copied.id());
         recordChange(user, "copied", source, copied, command.requestId());
         commandRepository.complete(command.receipt().id(), copied.id());
         return configured(space, copied);
@@ -227,6 +233,7 @@ public class WorkItemTypeConfigurationService {
         }
         for (int index = 0; index < after.size(); index++) {
             WorkItemTypeDefinition reordered = after.get(index);
+            draftService.refreshAfterMutation(user, spaceId, reordered.id());
             recordChange(user, "reordered", before.get(index), reordered, command.requestId());
         }
         commandRepository.complete(command.receipt().id(), null);
@@ -268,6 +275,7 @@ public class WorkItemTypeConfigurationService {
             user.workspaceId(), spaceId, typeId, targetStatus, user.id(), expectedAggregateVersion
         );
         if (after.aggregateVersion() != before.aggregateVersion()) {
+            draftService.refreshAfterMutation(user, spaceId, after.id());
             recordChange(user, operation + "d", before, after, command.requestId());
         }
         commandRepository.complete(command.receipt().id(), after.id());

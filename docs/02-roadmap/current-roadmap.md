@@ -21,7 +21,7 @@ S06 的核心不是增加一个“发布”按钮，而是消除 live 配置表�
 
 ## 2. 固定输入与当前事实
 
-- S05 已归档，当前 schema 为 V079；S03 published v1 是 legacy partial 版本，不得伪装为完整 S06 snapshot。
+- S05 已归档，当前 schema 为 V081；S03 published v1 是 legacy partial 版本，不得伪装为完整 S06 snapshot。
 - 类型展示、字段、选项、规则、布局和访问策略当前仍由多个服务修改规范化 live 表，尚无统一 draft aggregate。
 - `project_work_item_type_versions` 仍允许 `draft` 状态；S06 必须迁移遗留值并收紧为 `published/superseded`。
 - 当前前端有类型、字段和布局配置入口，但无统一草稿状态、发布校验、版本历史、diff、回滚或模板入口。
@@ -45,7 +45,7 @@ S06 的核心不是增加一个“发布”按钮，而是消除 live 配置表�
 
 | Milestone | 目标 | 依赖 | 执行报告 | 状态 |
 | --- | --- | --- | --- | --- |
-| PROJECT-PLATFORM-S06-M1 | 唯一配置草稿、完整快照和发布校验 | S05 归档；Program revision 19 | `docs/90-reports/project-platform-s06-m1-execution-report.md` | Pending |
+| PROJECT-PLATFORM-S06-M1 | 唯一配置草稿、完整快照和发布校验 | S05 归档；Program revision 19 | `docs/90-reports/project-platform-s06-m1-execution-report.md` | Done |
 | PROJECT-PLATFORM-S06-M2 | 不可变版本、原子发布、diff 和回滚 | M1 | `docs/90-reports/project-platform-s06-m2-execution-report.md` | Pending |
 | PROJECT-PLATFORM-S06-M3 | 配置模板版本、安装、同步、三方合并和解绑 | M1-M2 | `docs/90-reports/project-platform-s06-m3-execution-report.md` | Pending |
 | PROJECT-PLATFORM-S06-M4 | 兼容矩阵、S07 adapter、迁移/安全/体验和 Stage 收口 | M1-M3 | `docs/90-reports/project-platform-s06-m4-execution-report.md` | Pending |
@@ -56,18 +56,18 @@ S06 的核心不是增加一个“发布”按钮，而是消除 live 配置表�
 
 | 任务 | 内容 | 验收标准 | 状态 |
 | --- | --- | --- | --- |
-| PROJECT-PLATFORM-S06-M1-T01 | 审计 S03-S05 类型、字段、布局、版本、写服务、API/UI、授权、迁移和测试事实 | 双权威风险、可复用合同、owner、跨模块依赖和 S07 禁止项可定位到代码、表与测试 | Pending |
-| PROJECT-PLATFORM-S06-M1-T02 | 冻结 ConfigurationDraft、snapshot schema、状态机、诊断和 aggregate version 领域合同 | 唯一 active draft、editing/validating/valid/invalid/abandoned 语义及错误码无歧义 | Pending |
-| PROJECT-PLATFORM-S06-M1-T03 | 设计并落地 draft、draft command receipt 和 legacy draft diagnostics Flyway schema | 复合隔离、唯一 active draft、乐观版本、hash、状态约束、索引和 owner 完整 | Pending |
-| PROJECT-PLATFORM-S06-M1-T04 | 迁移 legacy type version draft 并收紧版本状态为 published/superseded | 无遗留 draft 版本；未知/冲突数据阻断并留下可操作诊断；历史 published v1 不改写 | Pending |
-| PROJECT-PLATFORM-S06-M1-T05 | 实现完整配置 snapshot assembler | 类型、字段、选项、规则、复杂引用、两类布局、条件和访问策略均进入自包含 snapshot | Pending |
-| PROJECT-PLATFORM-S06-M1-T06 | 实现 snapshot canonicalizer、schema version、稳定排序和 SHA-256 hash | 相同语义同 hash；顺序敏感项不被误归一；未知 schema 拒绝 | Pending |
-| PROJECT-PLATFORM-S06-M1-T07 | 实现 ConfigurationDraft Repository、行锁、唯一 active 查询和幂等命令回执 | 所有读写带复合边界；并发创建/更新确定冲突；同请求精确重放 | Pending |
-| PROJECT-PLATFORM-S06-M1-T08 | 实现统一 draft service 和触碰/刷新策略 | 所有成功配置写入在同事务刷新 draft；失败写入不改变 draft；不存在第二可变权威 | Pending |
-| PROJECT-PLATFORM-S06-M1-T09 | 接入类型、字段、选项、规则、布局和访问策略既有写服务 | 每条 S03-S05 写路径均更新同一 draft aggregate/version/hash，并有静态负向守卫 | Pending |
-| PROJECT-PLATFORM-S06-M1-T10 | 实现跨域引用、结构、预算、访问策略和发布前 validator | 错误定位稳定 key path；warning/error 分级；跨空间、悬空、隐藏依赖和超预算阻断 | Pending |
-| PROJECT-PLATFORM-S06-M1-T11 | 实现 draft 获取、更新、validate、abandon API/DTO/授权/availableActions | owner/admin 按合同操作；其他身份最小披露；abandon 幂等且不修改已发布版本 | Pending |
-| PROJECT-PLATFORM-S06-M1-T12 | 实现统一草稿状态 UI、诊断面板和 M1 目标验证/checkpoint | 配置页展示 hash/version/status/诊断；并发、隔离、迁移、API、前端和工作循环通过 | Pending |
+| PROJECT-PLATFORM-S06-M1-T01 | 审计 S03-S05 类型、字段、布局、版本、写服务、API/UI、授权、迁移和测试事实 | 双权威风险、可复用合同、owner、跨模块依赖和 S07 禁止项可定位到代码、表与测试 | Done |
+| PROJECT-PLATFORM-S06-M1-T02 | 冻结 ConfigurationDraft、snapshot schema、状态机、诊断和 aggregate version 领域合同 | 唯一 active draft、editing/validating/valid/invalid/abandoned 语义及错误码无歧义 | Done |
+| PROJECT-PLATFORM-S06-M1-T03 | 设计并落地 draft、draft command receipt 和 legacy draft diagnostics Flyway schema | 复合隔离、唯一 active draft、乐观版本、hash、状态约束、索引和 owner 完整 | Done |
+| PROJECT-PLATFORM-S06-M1-T04 | 迁移 legacy type version draft 并收紧版本状态为 published/superseded | 无遗留 draft 版本；未知/冲突数据阻断并留下可操作诊断；历史 published v1 不改写 | Done |
+| PROJECT-PLATFORM-S06-M1-T05 | 实现完整配置 snapshot assembler | 类型、字段、选项、规则、复杂引用、两类布局、条件和访问策略均进入自包含 snapshot | Done |
+| PROJECT-PLATFORM-S06-M1-T06 | 实现 snapshot canonicalizer、schema version、稳定排序和 SHA-256 hash | 相同语义同 hash；顺序敏感项不被误归一；未知 schema 拒绝 | Done |
+| PROJECT-PLATFORM-S06-M1-T07 | 实现 ConfigurationDraft Repository、行锁、唯一 active 查询和幂等命令回执 | 所有读写带复合边界；并发创建/更新确定冲突；同请求精确重放 | Done |
+| PROJECT-PLATFORM-S06-M1-T08 | 实现统一 draft service 和触碰/刷新策略 | 所有成功配置写入在同事务刷新 draft；失败写入不改变 draft；不存在第二可变权威 | Done |
+| PROJECT-PLATFORM-S06-M1-T09 | 接入类型、字段、选项、规则、布局和访问策略既有写服务 | 每条 S03-S05 写路径均更新同一 draft aggregate/version/hash，并有静态负向守卫 | Done |
+| PROJECT-PLATFORM-S06-M1-T10 | 实现跨域引用、结构、预算、访问策略和发布前 validator | 错误定位稳定 key path；warning/error 分级；跨空间、悬空、隐藏依赖和超预算阻断 | Done |
+| PROJECT-PLATFORM-S06-M1-T11 | 实现 draft 获取、更新、validate、abandon API/DTO/授权/availableActions | owner/admin 按合同操作；其他身份最小披露；abandon 幂等且不修改已发布版本 | Done |
+| PROJECT-PLATFORM-S06-M1-T12 | 实现统一草稿状态 UI、诊断面板和 M1 目标验证/checkpoint | 配置页展示 hash/version/status/诊断；并发、隔离、迁移、API、前端和工作循环通过 | Done |
 
 ### PROJECT-PLATFORM-S06-M2 不可变版本、原子发布、diff 和回滚
 

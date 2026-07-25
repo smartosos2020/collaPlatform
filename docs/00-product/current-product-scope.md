@@ -67,7 +67,7 @@ UI-SPLIT-M12 冻结“双 UI v1”：当前不拆服务、不拆仓库，但用�
 
 ## 小团队试运行边界
 
-历史 M40 试运行方案已归档，不能再作为当前准入或数据基线。当前代码已演进到 V079 schema、知识库唯一模型和用户端/管理端双 UI，正式试运行前必须重新建立与当前版本匹配的角色剧本、场景数据、初始化流程、回归清单和 Go/No-Go 标准。
+历史 M40 试运行方案已归档，不能再作为当前准入或数据基线。当前代码已演进到 V081 schema、知识库唯一模型和用户端/管理端双 UI，正式试运行前必须重新建立与当前版本匹配的角色剧本、场景数据、初始化流程、回归清单和 Go/No-Go 标准。
 
 当前只保留以下稳定边界：试运行不得使用过时 M31/M40 重置脚本；真实数据与测试数据必须隔离；回退前必须完成备份和恢复演练；部署与协同恢复按 `docs/05-runbooks/admin-operations.md`、`docs/05-runbooks/event-worker-fleet.md` 和 `docs/05-runbooks/platform-scale-s04-realtime.md` 执行。应用层已提供双 API、双 Worker、双 Gateway 和双协作节点恢复，但 PostgreSQL、Redis、MinIO 高可用与生产容量承诺仍不在当前产品化范围内。
 

@@ -49,6 +49,7 @@ public class WorkItemFieldConfigurationService {
     private final TransactionalOutbox eventRepository;
     private final AuditLog auditRepository;
     private final ObjectMapper objectMapper;
+    private final WorkItemConfigurationDraftService draftService;
 
     public WorkItemFieldConfigurationService(
         WorkItemFieldDefinitionService definitionService,
@@ -63,7 +64,8 @@ public class WorkItemFieldConfigurationService {
         WorkItemFieldOptionRepository optionRepository,
         TransactionalOutbox eventRepository,
         AuditLog auditRepository,
-        ObjectMapper objectMapper
+        ObjectMapper objectMapper,
+        WorkItemConfigurationDraftService draftService
     ) {
         this.definitionService = definitionService;
         this.typeService = typeService;
@@ -78,6 +80,7 @@ public class WorkItemFieldConfigurationService {
         this.eventRepository = eventRepository;
         this.auditRepository = auditRepository;
         this.objectMapper = objectMapper;
+        this.draftService = draftService;
     }
 
     public List<FieldTypeDescriptor> fieldTypes(CurrentUser user, UUID spaceId) {
@@ -127,6 +130,7 @@ public class WorkItemFieldConfigurationService {
             user.workspaceId(), spaceId, typeId, user.id(), fieldKey, name, description,
             canonicalFieldType, canonicalConfig.config(), sortOrder, false
         ));
+        draftService.refreshAfterMutation(user, spaceId, typeId);
         recordChange(user, "created", null, created, command.requestId());
         commandRepository.complete(command.receipt().id(), created.id());
         return configured(context, created);
@@ -166,6 +170,7 @@ public class WorkItemFieldConfigurationService {
             user.workspaceId(), spaceId, typeId, fieldId, name, description, canonicalConfig.config(),
             options, user.id(), expectedAggregateVersion
         );
+        draftService.refreshAfterMutation(user, spaceId, typeId);
         recordChange(user, "updated", before, after, command.requestId());
         commandRepository.complete(command.receipt().id(), after.id());
         return configured(context, after);
@@ -221,6 +226,7 @@ public class WorkItemFieldConfigurationService {
                 );
             }
         }
+        draftService.refreshAfterMutation(user, spaceId, typeId);
         Map<String, Object> optionDiff = optionDiff(existing, normalizedOptions);
         recordChange(user, "configured", before, after, command.requestId(), Map.of("optionDiff", optionDiff));
         commandRepository.complete(command.receipt().id(), after.id());
@@ -259,6 +265,7 @@ public class WorkItemFieldConfigurationService {
         for (int index = 0; index < after.size(); index++) {
             recordChange(user, "reordered", before.get(index), after.get(index), command.requestId());
         }
+        draftService.refreshAfterMutation(user, spaceId, typeId);
         commandRepository.complete(command.receipt().id(), null);
         return configuration(context, definitionService.list(user.workspaceId(), spaceId, typeId, null));
     }
@@ -293,6 +300,7 @@ public class WorkItemFieldConfigurationService {
             user.workspaceId(), spaceId, typeId, fieldId, targetStatus, user.id(), expectedAggregateVersion
         );
         if (after.aggregateVersion() != before.aggregateVersion()) {
+            draftService.refreshAfterMutation(user, spaceId, typeId);
             recordChange(user, operation + "d", before, after, command.requestId());
         }
         commandRepository.complete(command.receipt().id(), after.id());
