@@ -59,14 +59,36 @@ function isSafeRelativePath(relative) {
 }
 
 function isSafeCredentialProof(key, value) {
-  return key === "credentialSource"
-    && value && typeof value === "object" && !Array.isArray(value)
-    && stableStringify(Object.keys(value).sort()) === stableStringify([
-      "fixtureFingerprintMatches",
-      "matchedUsers"
-    ])
-    && Number.isInteger(value.matchedUsers)
-    && typeof value.fixtureFingerprintMatches === "boolean";
+  if (key !== "credentialSource"
+    || !value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const keys = stableStringify(Object.keys(value).sort());
+  const minimalKeys = stableStringify([
+    "fixtureFingerprintMatches",
+    "matchedUsers"
+  ]);
+  if (keys === minimalKeys) {
+    return value.matchedUsers === 1
+      && value.fixtureFingerprintMatches === true;
+  }
+  const verificationKeys = stableStringify([
+    "fingerprintAlgorithm",
+    "fixtureFingerprintMatches",
+    "matchedUsers",
+    "passwordHashFingerprint",
+    "requiredStatus",
+    "type",
+    "username"
+  ]);
+  return keys === verificationKeys
+    && value.type === "initialized-user-password-hash"
+    && /^[a-zA-Z0-9][a-zA-Z0-9_.@-]{0,127}$/.test(value.username)
+    && value.requiredStatus === "active"
+    && value.matchedUsers === 1
+    && value.fingerprintAlgorithm === "md5-of-stored-password-hash"
+    && /^[0-9a-f]{32}$/.test(value.passwordHashFingerprint)
+    && value.fixtureFingerprintMatches === true;
 }
 
 function isSensitiveEvidenceKey(key) {

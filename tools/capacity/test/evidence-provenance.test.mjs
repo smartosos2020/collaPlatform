@@ -31,7 +31,12 @@ function protectedFixture(seedRunId = "s05-m1-evidence-original") {
     supportMismatches: [],
     duplicateUsernames: [],
     credentialSource: {
+      type: "initialized-user-password-hash",
+      username: "admin",
+      requiredStatus: "active",
       matchedUsers: 1,
+      fingerprintAlgorithm: "md5-of-stored-password-hash",
+      passwordHashFingerprint: "1".repeat(32),
       fixtureFingerprintMatches: true
     }
   });
@@ -258,6 +263,29 @@ test("credential proof preservation cannot collide with ordinary evidence string
       fixtureFingerprintMatches: true
     });
     assert.equal(manifest.provenance.audit.password, "[REDACTED]");
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("credential proof cannot smuggle additional sensitive fields", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "colla-capacity-evidence-credential-"));
+  const fixture = protectedFixture();
+  const checkpoint = fixture.input.attachments[
+    "provenance/checkpoints/firstInitialization.json"
+  ];
+  const tampered = JSON.parse(checkpoint.toString("utf8"));
+  tampered.credentialSource[["pass", "word"].join("")] = [
+    "must", "not", "be", "written"
+  ].join("-");
+  fixture.input.attachments[
+    "provenance/checkpoints/firstInitialization.json"
+  ] = Buffer.from(`${JSON.stringify(tampered)}\n`);
+  try {
+    await assert.rejects(
+      createEvidenceBundle(directory, fixture.input),
+      /evidence attachment contains sensitive material/
+    );
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
