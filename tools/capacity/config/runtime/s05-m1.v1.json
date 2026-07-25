@@ -199,15 +199,54 @@
       "targets": {
         "producers": [
           {
-            "name": "capacity-realtime-worker",
+            "name": "capacity-realtime-worker-lane-1",
             "path": "/api/admin/event-deliveries/capacity-runs/{{options.runtimeValues.probeRunId}}/events",
             "method": "POST",
             "headers": {
               "X-Colla-Capacity-SecretEnv": "COLLA_CAPACITY_PROBE_SECRET"
             },
             "body": {
-              "aggregateKey": "worker",
-              "requestKey": "worker-{{iteration}}"
+              "aggregateKey": "worker-lane-1",
+              "requestKey": "worker-lane-1-{{iteration}}"
+            },
+            "requiredPaths": ["eventId", "sideEffectId", "aggregateId", "sequence"]
+          },
+          {
+            "name": "capacity-realtime-worker-lane-2",
+            "path": "/api/admin/event-deliveries/capacity-runs/{{options.runtimeValues.probeRunId}}/events",
+            "method": "POST",
+            "headers": {
+              "X-Colla-Capacity-SecretEnv": "COLLA_CAPACITY_PROBE_SECRET"
+            },
+            "body": {
+              "aggregateKey": "worker-lane-2",
+              "requestKey": "worker-lane-2-{{iteration}}"
+            },
+            "requiredPaths": ["eventId", "sideEffectId", "aggregateId", "sequence"]
+          },
+          {
+            "name": "capacity-realtime-worker-lane-3",
+            "path": "/api/admin/event-deliveries/capacity-runs/{{options.runtimeValues.probeRunId}}/events",
+            "method": "POST",
+            "headers": {
+              "X-Colla-Capacity-SecretEnv": "COLLA_CAPACITY_PROBE_SECRET"
+            },
+            "body": {
+              "aggregateKey": "worker-lane-3",
+              "requestKey": "worker-lane-3-{{iteration}}"
+            },
+            "requiredPaths": ["eventId", "sideEffectId", "aggregateId", "sequence"]
+          },
+          {
+            "name": "capacity-realtime-worker-lane-4",
+            "path": "/api/admin/event-deliveries/capacity-runs/{{options.runtimeValues.probeRunId}}/events",
+            "method": "POST",
+            "headers": {
+              "X-Colla-Capacity-SecretEnv": "COLLA_CAPACITY_PROBE_SECRET"
+            },
+            "body": {
+              "aggregateKey": "worker-lane-4",
+              "requestKey": "worker-lane-4-{{iteration}}"
             },
             "requiredPaths": ["eventId", "sideEffectId", "aggregateId", "sequence"]
           }

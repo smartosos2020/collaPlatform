@@ -113,7 +113,12 @@ public class CapacityEventProbeService {
 
     public CapacityRunSummary summary(CurrentUser actor, UUID runId, String suppliedSecret) {
         requireAccess(actor, suppliedSecret);
-        return deliveryRepository.capacityRunSummary(actor.workspaceId(), runId, HANDLER_KEY, Instant.now());
+        return deliveryRepository.capacityRunSummary(
+            actor.workspaceId(),
+            runId,
+            HANDLER_KEY,
+            deliveryRepository.currentTime()
+        );
     }
 
     public CapacityLedgerPage ledger(

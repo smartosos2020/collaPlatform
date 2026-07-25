@@ -219,6 +219,7 @@ class CapacityEventProbeServiceTests {
         TransactionalOutbox outbox = mock(TransactionalOutbox.class);
         DomainEventRepository events = mock(DomainEventRepository.class);
         DomainEventDeliveryRepository deliveries = mock(DomainEventDeliveryRepository.class);
+        when(deliveries.currentTime()).thenReturn(Instant.parse("2026-07-25T10:00:00Z"));
         when(deliveries.capacityRunSummary(any(), any(), anyString(), any()))
             .thenReturn(new CapacityRunSummary(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0));
         CapacityEventProbeService service = new CapacityEventProbeService(properties, outbox, events, deliveries);
@@ -321,16 +322,19 @@ class CapacityEventProbeServiceTests {
         DomainEventRepository events = mock(DomainEventRepository.class);
         DomainEventDeliveryRepository deliveries = mock(DomainEventDeliveryRepository.class);
         UUID runId = UUID.randomUUID();
+        Instant databaseNow = Instant.parse("2026-07-25T10:00:00Z");
         CapacityRunSummary expected = new CapacityRunSummary(4, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 2);
+        when(deliveries.currentTime()).thenReturn(databaseNow);
         when(deliveries.capacityRunSummary(any(), any(), anyString(), any())).thenReturn(expected);
         CapacityEventProbeService service = new CapacityEventProbeService(properties, outbox, events, deliveries);
 
         assertThat(service.summary(admin, runId, SECRET)).isEqualTo(expected);
+        verify(deliveries).currentTime();
         verify(deliveries).capacityRunSummary(
             org.mockito.ArgumentMatchers.eq(admin.workspaceId()),
             org.mockito.ArgumentMatchers.eq(runId),
             org.mockito.ArgumentMatchers.eq("realtime.signal"),
-            any(Instant.class)
+            org.mockito.ArgumentMatchers.eq(databaseNow)
         );
     }
 

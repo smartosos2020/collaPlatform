@@ -61,10 +61,14 @@ test('checked-in M1 runtime resolves only environment credentials and materializ
     result.loaders.worker.runtimeValues.probeRunIds.warmup,
     result.loaders.worker.runtimeValues.probeRunIds.measured,
   )
-  assert.match(
-    result.loaders.worker.targets.producers[0].path,
-    /{{options\.runtimeValues\.probeRunId}}/,
-  )
+  const workerProducers = result.loaders.worker.targets.producers
+  assert.equal(workerProducers.length, 4)
+  assert.equal(new Set(workerProducers.map((producer) => producer.name)).size, 4)
+  assert.equal(new Set(workerProducers.map((producer) => producer.body.aggregateKey)).size, 4)
+  for (const producer of workerProducers) {
+    assert.match(producer.path, /{{options\.runtimeValues\.probeRunId}}/)
+    assert.match(producer.body.requestKey, new RegExp(`^${producer.body.aggregateKey}-\\{\\{iteration\\}\\}$`))
+  }
   assert.doesNotMatch(source, /runtime-password|runtime-probe-secret|jwt-/)
 })
 
