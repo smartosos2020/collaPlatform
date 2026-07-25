@@ -288,6 +288,11 @@ test('capacity runner has an explicit image and repository-root build context', 
     environmentExample,
     /^CAPACITY_STACK_INSTANCE_NONCE=replace-with-capacity-stack-instance-nonce$/m,
   )
+  assert.match(environmentExample, /^CAPACITY_EVENT_LEASE_DURATION=120s$/m)
+  assert.match(
+    compose,
+    /COLLA_EVENT_LEASE_DURATION: \$\{CAPACITY_EVENT_LEASE_DURATION:-120s\}/,
+  )
   const stackEntrypoint = readFileSync(stackFile, 'utf8')
   assert.match(
     stackEntrypoint,

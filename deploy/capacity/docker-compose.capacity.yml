@@ -99,12 +99,14 @@ services:
       - "127.0.0.1:${WORKER_A_METRICS_PORT:-19083}:8080"
     environment:
       JAVA_TOOL_OPTIONS: ${WORKER_JAVA_TOOL_OPTIONS:--Xms256m -Xmx704m -XX:+UseG1GC -XX:MaxGCPauseMillis=250 -Dcolla.worker.concurrency=4}
+      COLLA_EVENT_LEASE_DURATION: ${CAPACITY_EVENT_LEASE_DURATION:-120s}
 
   worker-b:
     ports:
       - "127.0.0.1:${WORKER_B_METRICS_PORT:-19084}:8080"
     environment:
       JAVA_TOOL_OPTIONS: ${WORKER_JAVA_TOOL_OPTIONS:--Xms256m -Xmx704m -XX:+UseG1GC -XX:MaxGCPauseMillis=250 -Dcolla.worker.concurrency=4}
+      COLLA_EVENT_LEASE_DURATION: ${CAPACITY_EVENT_LEASE_DURATION:-120s}
 
   event-gateway-a:
     ports:
