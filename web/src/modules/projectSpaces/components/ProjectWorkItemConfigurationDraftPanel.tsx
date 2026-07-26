@@ -29,6 +29,8 @@ import {
 import { workItemTypeKeys } from '../api/workItemTypesApi'
 import { errorMessage, formatTime } from '../projectSpaceView'
 import { ProjectWorkItemConfigurationTemplatePanel } from './ProjectWorkItemConfigurationTemplatePanel'
+import { ProjectWorkItemStateFlowEditor } from './ProjectWorkItemStateFlowEditor'
+import { ProjectWorkItemStateBackfillPanel } from './ProjectWorkItemStateBackfillPanel'
 
 export function ProjectWorkItemConfigurationDraftPanel({
   spaceId,
@@ -171,20 +173,32 @@ export function ProjectWorkItemConfigurationDraftPanel({
   const warnings = draft.diagnostics.filter((item) => item.severity === 'warning')
   const canValidate = !readOnly && draft.availableActions.includes('validate')
   const canAbandon = !readOnly && draft.availableActions.includes('abandon')
-  const canPublish = !readOnly && draft.status === 'valid'
   const currentVersion = versionsQuery.data?.find((version) => version.status === 'published')
+  const compatibilityImpact = compatibilityQuery.data?.overallImpact
+  const publicationBlocked = compatibilityImpact === 'blocked'
+  const migrationConfirmationRequired = compatibilityImpact === 'migration_required'
+  const compatibilityReady = !currentVersion || compatibilityQuery.isSuccess
+  const canPublish = !readOnly
+    && draft.status === 'valid'
+    && compatibilityReady
+    && !publicationBlocked
   const breaking = draftDiffQuery.data?.breaking ?? false
 
   const confirmPublish = () => {
+    const confirmationRequired = breaking || migrationConfirmationRequired
     modal.confirm({
-      title: breaking ? '确认发布破坏性配置变更？' : '发布当前配置？',
-      content: breaking
-        ? `检测到 ${draftDiffQuery.data?.summary.breaking ?? 0} 项 breaking 变化。发布后会生成不可变新版本，旧版本仅变为 superseded。`
+      title: migrationConfirmationRequired
+        ? '确认发布需要实例迁移的配置？'
+        : breaking ? '确认发布破坏性配置变更？' : '发布当前配置？',
+      content: migrationConfirmationRequired
+        ? '新版本只会原子切换类型 current pointer；既有 WorkItem 仍保持旧绑定。实例升级必须另行提供显式状态映射、失败清单和验证，发布不会静默迁移实例。'
+        : breaking
+          ? `检测到 ${draftDiffQuery.data?.summary.breaking ?? 0} 项 breaking 变化。发布后会生成不可变新版本，旧版本仅变为 superseded。`
         : '将生成不可变新版本并原子切换当前版本；发布后的历史快照不能编辑或删除。',
-      okText: breaking ? '确认并发布' : '发布版本',
-      okButtonProps: { danger: breaking },
+      okText: confirmationRequired ? '明确确认并发布' : '发布版本',
+      okButtonProps: { danger: confirmationRequired },
       cancelText: '取消',
-      onOk: () => publishMutation.mutateAsync(breaking),
+      onOk: () => publishMutation.mutateAsync(confirmationRequired),
     })
   }
 
@@ -256,6 +270,29 @@ export function ProjectWorkItemConfigurationDraftPanel({
           当前快照没有诊断项
         </Typography.Text>
       )}
+      {publicationBlocked ? (
+        <Alert
+          className="work-item-publication-block"
+          type="error"
+          showIcon
+          message="发布已被兼容合同阻断"
+          description="前端和服务端都不会提供普通绕过入口；请保留旧绑定或另行完成受控恢复方案。"
+        />
+      ) : null}
+      <ProjectWorkItemStateFlowEditor
+        key={`${draft.id}:${draft.aggregateVersion}`}
+        spaceId={spaceId}
+        typeId={typeId}
+        readOnly={readOnly || draft.status === 'abandoned'}
+        draft={draft}
+        onDraftSaved={updateCachedDraft}
+      />
+      <ProjectWorkItemStateBackfillPanel
+        spaceId={spaceId}
+        typeId={typeId}
+        currentVersion={currentVersion}
+        readOnly={readOnly}
+      />
       <ProjectWorkItemConfigurationTemplatePanel
         spaceId={spaceId}
         typeId={typeId}
@@ -282,6 +319,45 @@ export function ProjectWorkItemConfigurationDraftPanel({
           ) : null}
         </Space>
       </div>
+      {draftDiffQuery.data?.items.length ? (
+        <List
+          className="work-item-configuration-change-list"
+          size="small"
+          header={<Typography.Text strong>草稿与当前发布版本差异</Typography.Text>}
+          dataSource={draftDiffQuery.data.items}
+          renderItem={(item) => (
+            <List.Item>
+              <Space wrap>
+                <Tag>{item.changeType}</Tag>
+                <Tag color={item.impact === 'breaking' ? 'error' : 'processing'}>{item.impact}</Tag>
+                <Typography.Text code>{item.keyPath}</Typography.Text>
+              </Space>
+            </List.Item>
+          )}
+        />
+      ) : null}
+      {compatibilityQuery.data?.findings.length ? (
+        <List
+          className="work-item-configuration-change-list"
+          size="small"
+          header={<Typography.Text strong>兼容与迁移提示</Typography.Text>}
+          dataSource={compatibilityQuery.data.findings}
+          renderItem={(finding) => (
+            <List.Item>
+              <List.Item.Meta
+                title={(
+                  <Space wrap>
+                    <CompatibilityTag impact={finding.impact} count={1} />
+                    <Typography.Text code>{finding.keyPath}</Typography.Text>
+                    <Tag>{finding.reasonCode}</Tag>
+                  </Space>
+                )}
+                description={finding.recommendation}
+              />
+            </List.Item>
+          )}
+        />
+      ) : null}
       <List
         className="work-item-version-list"
         loading={versionsQuery.isLoading}

@@ -75,6 +75,39 @@ class WorkItemConfigurationCompatibilityAnalyzerTests {
         assertEquals("additive_change", report.findings().getFirst().reasonCode());
     }
 
+    @Test
+    void stateFlowAdditionAndStateRemovalRequireExplicitMigration() throws Exception {
+        var withoutFlow = snapshot(false, "text", false);
+        var withFlow = withoutFlow.deepCopy();
+        ((com.fasterxml.jackson.databind.node.ObjectNode) withFlow).set(
+            "stateFlow",
+            objectMapper.readTree("""
+                {
+                  "states":[
+                    {"stateKey":"open","category":"initial"},
+                    {"stateKey":"done","category":"terminal"}
+                  ],
+                  "actions":[],
+                  "transitions":[],
+                  "guards":[]
+                }
+                """)
+        );
+        var added = analyzer.analyze("a".repeat(64), withoutFlow, "b".repeat(64), withFlow);
+        assertEquals(CompatibilityImpact.migration_required, added.overallImpact());
+        assertTrue(added.findings().stream().anyMatch(finding ->
+            "state_flow_added".equals(finding.reasonCode())
+        ));
+
+        var afterRemoval = withFlow.deepCopy();
+        ((com.fasterxml.jackson.databind.node.ArrayNode) afterRemoval.path("stateFlow").path("states")).remove(1);
+        var removed = analyzer.analyze("b".repeat(64), withFlow, "c".repeat(64), afterRemoval);
+        assertEquals(CompatibilityImpact.migration_required, removed.overallImpact());
+        assertTrue(removed.findings().stream().anyMatch(finding ->
+            "state_removed".equals(finding.reasonCode())
+        ));
+    }
+
     private com.fasterxml.jackson.databind.JsonNode snapshot(
         boolean required,
         String fieldType,

@@ -1,6 +1,8 @@
 package com.colla.platform.modules.project.runtime;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -40,6 +42,8 @@ class PublishedSnapshotAdapterTests {
         assertEquals(versionId, result.versionId());
         assertEquals(canonical.configHash(), result.configHash());
         assertEquals("task", result.snapshot().path("typeDefinition").path("typeKey").asText());
+        assertFalse(result.hasStateFlow());
+        assertEquals("not_configured", result.stateFlowAvailability());
     }
 
     @Test
@@ -82,7 +86,7 @@ class PublishedSnapshotAdapterTests {
         var repository = mock(PublishedSnapshotReader.class);
         var canonicalizer = new WorkItemConfigurationSnapshotCanonicalizer(objectMapper);
         var snapshot = objectMapper.readTree("""
-            {"snapshotSchemaVersion":2,"typeDefinition":{"typeKey":"future"},"fields":[],"layouts":[]}
+            {"snapshotSchemaVersion":3,"typeDefinition":{"typeKey":"future"},"fields":[],"layouts":[]}
             """);
         UUID workspaceId = UUID.randomUUID();
         UUID spaceId = UUID.randomUUID();
@@ -90,7 +94,7 @@ class PublishedSnapshotAdapterTests {
         UUID versionId = UUID.randomUUID();
         when(repository.findPublishedSnapshot(workspaceId, spaceId, typeId, versionId))
             .thenReturn(Optional.of(version(
-                workspaceId, spaceId, typeId, versionId, 2, "c".repeat(64), snapshot
+                workspaceId, spaceId, typeId, versionId, 3, "c".repeat(64), snapshot
             )));
 
         WorkItemConfigurationException unsupported = assertThrows(
@@ -100,6 +104,36 @@ class PublishedSnapshotAdapterTests {
         );
 
         assertEquals("UNSUPPORTED_SNAPSHOT_SCHEMA", unsupported.code());
+    }
+
+    @Test
+    void consumesSchemaV2StateFlowWithoutReadingLatestConfiguration() throws Exception {
+        var repository = mock(PublishedSnapshotReader.class);
+        var canonicalizer = new WorkItemConfigurationSnapshotCanonicalizer(objectMapper);
+        var snapshot = objectMapper.readTree("""
+            {
+              "snapshotSchemaVersion":2,
+              "typeDefinition":{"typeKey":"task"},
+              "fields":[],
+              "layouts":[],
+              "stateFlow":{"states":[],"actions":[],"transitions":[],"guards":[]}
+            }
+            """);
+        var canonical = canonicalizer.canonicalize(snapshot);
+        UUID workspaceId = UUID.randomUUID();
+        UUID spaceId = UUID.randomUUID();
+        UUID typeId = UUID.randomUUID();
+        UUID versionId = UUID.randomUUID();
+        when(repository.findPublishedSnapshot(workspaceId, spaceId, typeId, versionId))
+            .thenReturn(Optional.of(version(
+                workspaceId, spaceId, typeId, versionId, 2, canonical.configHash(), snapshot
+            )));
+
+        var result = new PublishedSnapshotAdapter(repository, canonicalizer)
+            .requireComplete(workspaceId, spaceId, typeId, versionId);
+
+        assertTrue(result.hasStateFlow());
+        assertEquals("available", result.stateFlowAvailability());
     }
 
     private PublishedConfigurationVersion version(

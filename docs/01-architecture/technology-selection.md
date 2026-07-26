@@ -18,7 +18,7 @@ last_code_check: 2026-07-26
 | WebSocket | Spring WebSocket | `spring-boot-starter-websocket`, `/ws/events` |
 | 安全 | Spring Security + JWT | `SecurityConfig`, `JwtTokenService` |
 | 数据库 | PostgreSQL 16 | `docker-compose.yml`, Flyway migrations |
-| 数据库迁移 | Flyway | `server/src/main/resources/db/migration/V001...V082` |
+| 数据库迁移 | Flyway | `server/src/main/resources/db/migration/V001...V091` |
 | Redis | Redis 7 | `docker-compose.yml`, Spring Data Redis, collaboration Redis extension |
 | 对象存储 | MinIO | `docker-compose.yml`, `minio` dependency |
 | OpenAPI | springdoc-openapi | `springdoc-openapi-starter-webmvc-ui` |
@@ -31,6 +31,8 @@ S04-M4 前端继续使用 React、TypeScript、Ant Design 与 TanStack Query，�
 S04-M5 保持上述选型并完成迁移与规模复核：Flyway 可从 V063 保留 legacy sentinel 数据升级至 V065，重复 migrate 为零变更；字段配置规模使用关系索引和规范 JSONB/hash 承载，120 字段、2400 选项目录预算为 3 秒。S05/S06 继续复用关系 ID、规范 JSON 和不可变版本，不引入按字段动态 DDL；10 万工作项查询只能在 S07 运行时与 S13 查询层具备后再建立生产 SLO。
 
 S05-M1-M4 继续采用“关系身份 + 规范配置图 + SHA-256 hash + 服务端访问投影”。create/detail 布局、节点和字段访问策略存放在类型内部关系表中，条件使用有深度与表达式预算的无副作用 DSL；管理预览和成员样本复用同一 React renderer，并只消费服务端裁剪后的安全 DTO。配置集合读取使用 PostgreSQL `REPEATABLE READ` 与批量选项查询，不引入 schema-form、低代码运行时或按字段动态 DDL。V078 为布局命令回执增加 schema 版本、聚合版本、配置 hash 和不可变响应 JSON，使幂等重放返回原始响应而非聚合最新状态。以上选型仍不建立规范 WorkItem、动态字段值或运行时流程。
+
+S08-M1 继续复用 Jackson 规范 JSON、SHA-256 configuration snapshot、Spring 领域校验与 PostgreSQL/Flyway，不引入图数据库、脚本引擎或通用 BPMN 运行时。声明式 guard/operator 与副作用 key 由服务端注册表白名单约束；V091 只用关系约束、复合外键、唯一键、索引和触发器预建单一 current state、持久回执及不可变 history，不创建 S09 node token/instance 表。
 
 ## 前端 Web
 

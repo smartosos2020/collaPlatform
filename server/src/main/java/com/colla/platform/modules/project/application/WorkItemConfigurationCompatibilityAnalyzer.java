@@ -32,6 +32,7 @@ public class WorkItemConfigurationCompatibilityAnalyzer {
         );
         compareKeyedArray("$.fields", "fieldKey", before.path("fields"), after.path("fields"), findings);
         compareKeyedArray("$.layouts", "layoutKind", before.path("layouts"), after.path("layouts"), findings);
+        compareStateFlow(before.get("stateFlow"), after.get("stateFlow"), findings);
         findings.sort(Comparator.comparing(CompatibilityFinding::keyPath)
             .thenComparing(CompatibilityFinding::reasonCode));
         if (findings.size() > MAX_FINDINGS) {
@@ -60,6 +61,48 @@ public class WorkItemConfigurationCompatibilityAnalyzer {
                     || finding.impact() == CompatibilityImpact.blocked
             )
         );
+    }
+
+    private void compareStateFlow(
+        JsonNode before,
+        JsonNode after,
+        List<CompatibilityFinding> findings
+    ) {
+        if (before == null && after == null) {
+            return;
+        }
+        if (before == null) {
+            findings.add(new CompatibilityFinding(
+                "$.stateFlow",
+                CompatibilityImpact.migration_required,
+                "state_flow_added",
+                "Initialize existing work items through an explicit manifest before enabling runtime actions",
+                null,
+                copy(after)
+            ));
+            return;
+        }
+        if (after == null) {
+            findings.add(new CompatibilityFinding(
+                "$.stateFlow",
+                CompatibilityImpact.blocked,
+                "state_flow_removed",
+                "Retain the state flow or explicitly migrate every bound instance",
+                copy(before),
+                null
+            ));
+            return;
+        }
+        compareKeyedArray("$.stateFlow.states", "stateKey", before.path("states"), after.path("states"), findings);
+        compareKeyedArray("$.stateFlow.actions", "actionKey", before.path("actions"), after.path("actions"), findings);
+        compareKeyedArray(
+            "$.stateFlow.transitions",
+            "transitionKey",
+            before.path("transitions"),
+            after.path("transitions"),
+            findings
+        );
+        compareKeyedArray("$.stateFlow.guards", "guardKey", before.path("guards"), after.path("guards"), findings);
     }
 
     private void compareObject(
@@ -153,6 +196,34 @@ public class WorkItemConfigurationCompatibilityAnalyzer {
     private Classification classify(String path, JsonNode before, JsonNode after) {
         boolean removed = before != null && after == null;
         boolean added = before == null && after != null;
+        if (path.matches("^\\$\\.stateFlow\\.states\\[[^]]+]$") && removed) {
+            return migration("state_removed", "Provide an explicit state key mapping for every bound instance");
+        }
+        if (path.matches("^\\$\\.stateFlow\\.actions\\[[^]]+]$") && removed) {
+            return review("action_removed", "Review clients and permissions that reference this action key");
+        }
+        if (path.matches("^\\$\\.stateFlow\\.transitions\\[[^]]+]$") && removed) {
+            return review("transition_removed", "Review reachability and available action changes");
+        }
+        if (path.matches("^\\$\\.stateFlow\\.guards\\[[^]]+]$") && removed) {
+            return migration("guard_removed", "Revalidate transitions and bound instances before upgrade");
+        }
+        if (path.contains("$.stateFlow.states") && path.endsWith(".category")) {
+            return migration("state_category_changed", "Revalidate terminal, canceled, and initial-state mappings");
+        }
+        if (path.contains("$.stateFlow.states") && path.endsWith(".stateKey")) {
+            return blocked("state_key_changed", "State semantic keys are immutable; add an explicit mapped state instead");
+        }
+        if (path.contains("$.stateFlow.actions") && path.endsWith(".actionKey")) {
+            return blocked("action_key_changed", "Action semantic keys are immutable");
+        }
+        if (path.contains("$.stateFlow.guards")) {
+            return migration("guard_changed", "Revalidate affected instances against the changed guard");
+        }
+        if (path.contains("$.stateFlow.actions")
+            && (path.contains(".authorizedRoles") || path.contains(".requiredFieldKeys"))) {
+            return migration("action_contract_changed", "Revalidate authorization and required-field coverage");
+        }
         if (path.matches("^\\$\\.fields\\[[^]]+]$") && removed) {
             return migration("field_removed", "Map or retire values before upgrading existing work items");
         }

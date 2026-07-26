@@ -155,6 +155,27 @@ public class JdbcWorkItemRepository implements WorkItemRepository {
     }
 
     @Override
+    public Optional<WorkItem> lock(UUID workspaceId, UUID spaceId, UUID workItemId) {
+        if (spaceId == null) {
+            return Optional.empty();
+        }
+        try {
+            return Optional.ofNullable(jdbcTemplate.queryForObject(
+                ITEM_SELECT + """
+                     where wi.workspace_id = ? and wi.space_id = ? and wi.id = ?
+                     for update of wi
+                    """,
+                this::mapItem,
+                workspaceId,
+                spaceId,
+                workItemId
+            ));
+        } catch (EmptyResultDataAccessException exception) {
+            return Optional.empty();
+        }
+    }
+
+    @Override
     public Optional<UUID> findSpaceId(UUID workspaceId, UUID workItemId) {
         try {
             return Optional.ofNullable(jdbcTemplate.queryForObject(
@@ -295,6 +316,51 @@ public class JdbcWorkItemRepository implements WorkItemRepository {
             workItemId,
             expectedStatus,
             expectedVersion
+        );
+    }
+
+    @Override
+    public int workflowUpdate(
+        UUID workspaceId,
+        UUID spaceId,
+        UUID workItemId,
+        JsonNode fieldValues,
+        UUID actorId,
+        long expectedVersion
+    ) {
+        return jdbcTemplate.update(
+            """
+                update project_work_items
+                   set field_values = ?::jsonb, updated_by = ?, updated_at = now(), version = version + 1
+                 where workspace_id = ? and space_id = ? and id = ?
+                   and status = 'active' and version = ?
+                """,
+            json(fieldValues),
+            actorId,
+            workspaceId,
+            spaceId,
+            workItemId,
+            expectedVersion
+        );
+    }
+
+    @Override
+    public int workflowBindingUpdate(
+        UUID workspaceId, UUID spaceId, UUID workItemId, UUID expectedTypeVersionId,
+        String expectedConfigHash, UUID targetTypeVersionId, String targetConfigHash,
+        JsonNode fieldValues, UUID actorId, long expectedVersion
+    ) {
+        return jdbcTemplate.update(
+            """
+                update project_work_items
+                   set type_version_id=?, config_hash=?, field_values=?::jsonb,
+                       updated_by=?, updated_at=now(), version=version+1
+                 where workspace_id=? and space_id=? and id=?
+                   and type_version_id=? and config_hash=? and version=?
+                """,
+            targetTypeVersionId, targetConfigHash, json(fieldValues), actorId,
+            workspaceId, spaceId, workItemId, expectedTypeVersionId,
+            expectedConfigHash, expectedVersion
         );
     }
 

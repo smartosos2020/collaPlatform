@@ -1,5 +1,6 @@
 package com.colla.platform.modules.project.application;
 
+import static com.colla.platform.modules.project.domain.WorkItemConfigurationModels.FIRST_COMPLETE_SNAPSHOT_SCHEMA_VERSION;
 import static com.colla.platform.modules.project.domain.WorkItemConfigurationModels.SNAPSHOT_SCHEMA_VERSION;
 import static com.colla.platform.modules.project.domain.WorkItemConfigurationModels.failure;
 
@@ -13,6 +14,7 @@ import com.colla.platform.modules.project.domain.WorkItemConfigurationModels.Pub
 import com.colla.platform.modules.project.domain.WorkItemConfigurationModels.PublishedConfigurationVersion;
 import com.colla.platform.modules.project.domain.WorkItemConfigurationModels.ValidationResult;
 import com.colla.platform.modules.project.domain.WorkItemConfigurationCompatibilityModels.CompatibilityReport;
+import com.colla.platform.modules.project.domain.WorkItemConfigurationCompatibilityModels.CompatibilityImpact;
 import com.colla.platform.modules.project.infrastructure.ConfigurationDraftRepository;
 import com.colla.platform.modules.project.infrastructure.ConfigurationDraftRepository.NewDraft;
 import com.colla.platform.modules.project.infrastructure.ConfigurationPublicationRepository;
@@ -138,8 +140,11 @@ public class WorkItemConfigurationPublicationService {
         if (draft.aggregateVersion() != expectedDraftVersion) {
             throw failure("DRAFT_VERSION_CONFLICT", "Configuration draft version changed");
         }
-        if (draft.snapshotSchemaVersion() != SNAPSHOT_SCHEMA_VERSION) {
+        if (draft.snapshotSchemaVersion() < FIRST_COMPLETE_SNAPSHOT_SCHEMA_VERSION) {
             throw failure("LEGACY_PARTIAL_SNAPSHOT", "Legacy partial snapshots cannot be published");
+        }
+        if (draft.snapshotSchemaVersion() > SNAPSHOT_SCHEMA_VERSION) {
+            throw failure("UNSUPPORTED_SNAPSHOT_SCHEMA", "Configuration snapshot schema is not supported");
         }
         ConfigurationSnapshot canonical = canonicalizer.canonicalize(draft.snapshot());
         ValidationResult validation = validator.validate(canonical.payload());
@@ -155,6 +160,25 @@ public class WorkItemConfigurationPublicationService {
         ConfigurationDiff diff = current.completeSnapshot()
             ? diffEngine.diff(current.configHash(), current.snapshot(), draft.configHash(), draft.snapshot())
             : new ConfigurationDiff(current.configHash(), draft.configHash(), List.of(), Map.of(), false);
+        CompatibilityReport compatibility = current.completeSnapshot()
+            ? compatibilityAnalyzer.analyze(
+                current.configHash(), current.snapshot(), draft.configHash(), draft.snapshot()
+            )
+            : null;
+        if (compatibility != null && compatibility.overallImpact() == CompatibilityImpact.blocked) {
+            throw failure(
+                "CONFIGURATION_CHANGE_BLOCKED",
+                "Blocked configuration changes require an explicit instance recovery plan"
+            );
+        }
+        if (compatibility != null
+            && compatibility.overallImpact() == CompatibilityImpact.migration_required
+            && !breakingConfirmed) {
+            throw failure(
+                "MIGRATION_CONFIRMATION_REQUIRED",
+                "Configuration changes that require instance migration need explicit confirmation"
+            );
+        }
         if (diff.breaking() && !breakingConfirmed) {
             throw failure("BREAKING_CONFIRMATION_REQUIRED", "Breaking configuration changes require confirmation");
         }

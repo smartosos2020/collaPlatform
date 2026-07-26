@@ -10,6 +10,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -60,6 +62,11 @@ public class WorkItemConfigurationDiffEngine {
             return;
         }
         if (before.isArray() && after.isArray()) {
+            String keySpec = keySpec(path);
+            if (keySpec != null && canIndex(before, keySpec) && canIndex(after, keySpec)) {
+                compareKeyedArray(path, keySpec, before, after, items);
+                return;
+            }
             int size = Math.max(before.size(), after.size());
             for (int index = 0; index < size; index++) {
                 compare(path + "[" + index + "]", before.get(index), after.get(index), items);
@@ -67,6 +74,90 @@ public class WorkItemConfigurationDiffEngine {
             return;
         }
         items.add(entry(path, "changed", before, after));
+    }
+
+    private boolean canIndex(JsonNode values, String keySpec) {
+        Set<String> keys = new TreeSet<>();
+        for (JsonNode value : values) {
+            StringBuilder key = new StringBuilder();
+            for (String field : keySpec.split("\\+")) {
+                String part = value.path(field).asText("");
+                if (part.isBlank()) {
+                    return false;
+                }
+                if (!key.isEmpty()) {
+                    key.append('|');
+                }
+                key.append(part);
+            }
+            if (!keys.add(key.toString())) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private void compareKeyedArray(
+        String path,
+        String keySpec,
+        JsonNode before,
+        JsonNode after,
+        List<ConfigurationDiffEntry> items
+    ) {
+        Map<String, JsonNode> left = index(before, keySpec);
+        Map<String, JsonNode> right = index(after, keySpec);
+        Set<String> keys = new TreeSet<>();
+        keys.addAll(left.keySet());
+        keys.addAll(right.keySet());
+        for (String key : keys) {
+            compare(path + "[" + escape(key) + "]", left.get(key), right.get(key), items);
+        }
+    }
+
+    private Map<String, JsonNode> index(JsonNode values, String keySpec) {
+        Map<String, JsonNode> indexed = new LinkedHashMap<>();
+        for (JsonNode value : values) {
+            StringBuilder key = new StringBuilder();
+            for (String field : keySpec.split("\\+")) {
+                if (!key.isEmpty()) {
+                    key.append('|');
+                }
+                key.append(value.path(field).asText());
+            }
+            indexed.put(key.toString(), value);
+        }
+        return indexed;
+    }
+
+    private String keySpec(String path) {
+        if (path.endsWith(".fields")) {
+            return "fieldKey";
+        }
+        if (path.endsWith(".options")) {
+            return "optionKey";
+        }
+        if (path.endsWith(".layouts")) {
+            return "layoutKind";
+        }
+        if (path.endsWith(".nodes")) {
+            return "nodeKey";
+        }
+        if (path.endsWith(".policies")) {
+            return "fieldKey+policyKey";
+        }
+        if (path.endsWith(".states")) {
+            return "stateKey";
+        }
+        if (path.endsWith(".actions")) {
+            return "actionKey";
+        }
+        if (path.endsWith(".transitions")) {
+            return "transitionKey";
+        }
+        if (path.endsWith(".guards")) {
+            return "guardKey";
+        }
+        return null;
     }
 
     private ConfigurationDiffEntry entry(String path, String changeType, JsonNode before, JsonNode after) {

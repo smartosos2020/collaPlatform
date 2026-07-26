@@ -9,7 +9,9 @@ import java.util.Set;
 import java.util.UUID;
 
 public final class WorkItemConfigurationModels {
-    public static final int SNAPSHOT_SCHEMA_VERSION = 1;
+    public static final int SNAPSHOT_SCHEMA_VERSION = 2;
+    public static final int FIRST_COMPLETE_SNAPSHOT_SCHEMA_VERSION = 1;
+    public static final int STATE_FLOW_SNAPSHOT_SCHEMA_VERSION = 2;
     public static final int LEGACY_PARTIAL_SNAPSHOT_SCHEMA_VERSION = 0;
     public static final int COMMAND_RESPONSE_SCHEMA_VERSION = 1;
     public static final int MAX_FIELDS = 120;
@@ -152,7 +154,8 @@ public final class WorkItemConfigurationModels {
         }
 
         public boolean supportedSnapshot() {
-            return snapshotSchemaVersion == SNAPSHOT_SCHEMA_VERSION;
+            return snapshotSchemaVersion >= FIRST_COMPLETE_SNAPSHOT_SCHEMA_VERSION
+                && snapshotSchemaVersion <= SNAPSHOT_SCHEMA_VERSION;
         }
     }
 

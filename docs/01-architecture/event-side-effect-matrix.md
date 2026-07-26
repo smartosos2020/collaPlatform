@@ -53,6 +53,7 @@ Search 事件不携带 ACL 快照或供无权消费者直接展示的标题。�
 | 成员状态、部门和用户组变化 | identity owner 表 + `identity.security.changed` | `identity.invalidated` | workspace | changed identity object sequence | user/department/group id；payload 指定 `/api/admin/...` | 已移除 |
 | 工作项配置发布 | `project_work_item_type_versions` + `work_item_configuration.published` | 当前不生成 realtime signal | N/A | published version id；类型行锁内单调 version number | version/type/space id；`GET /api/project-spaces/{spaceId}/work-item-types/{typeId}/configuration/versions` | 从未直接发送 |
 | 工作项配置模板创建/安装/升级/解绑 | `project_work_item_configuration_templates`、installation/upgrade history + `work_item_configuration.template_*` | 当前不生成 realtime signal | N/A | template/installation id；命令回执与 aggregate version | template/type/space id、来源版本/hash 与冲突摘要；配置模板 API | 从未直接发送 |
+| S08 状态流定义与 M2 forward 运行时 | configuration snapshot + `project_work_item_current_states`/command receipt/history/activity/audit + `workflow.action_executed`/`workflow.state_changed` | M2 不生成 realtime signal | N/A | WorkItem expected version + current-state aggregate version + request id/hash；列表批量投影 | 用户 workflow/current/history/action API；事件仅含绑定、semantic key 和版本 | 从未直接发送 |
 
 配置发布事件与不可变版本、current pointer、草稿关闭、审计和 publication receipt 同事务提交。payload 只包含 request、space/type/version、schema/hash/source draft 与 breaking 摘要，不复制完整 snapshot、隐藏字段或访问策略正文。
 
@@ -61,6 +62,12 @@ S07-M2 的 `project.contract.WorkItemChangedEvent` 与实例、类型化投影�
 S07-M3 的 shadow compare 是观测副作用，不是业务双写：主读结果先按调用身份授权，后台只比较安全指纹并追加 outcome/latency。cutover 变更写审计但不伪造工作项领域事件；旧写关闭不会因 kill switch 自动恢复。
 
 S07-M4 的迁移在单个 legacy project 单元事务中创建规范 WorkItem、平台对象链接、参与者、评论、附件、活动和来源 provenance；任一写失败时该单元全部回滚。迁移不伪造用户命令 receipt，也不对每条历史事实重发 `work_item.changed`，避免下游把历史导入误判为在线变更。plan、pause、execute、verify、convergence、rollback 和 post-cutover compensation-required 均写治理审计；审计只含 batch、计数、状态和稳定错误码，不复制 manifest 业务正文。
+
+S08-M1 只把声明式状态流定义纳入配置 snapshot，并预建运行事实 schema；保存、校验、发布与 rollback 仍只产生既有配置事件。S08-M2 按动作 request id/hash 激活 `forward`；S08-M3 扩展 `return/reopen/terminate/restore/correction`、binding upgrade 和 explicit backfill。current state、WorkItem version/binding、field projection、history、activity、audit、两个 outbox event 与 completed receipt/单元状态在各自事务中同成同败。公共 payload 固定 `eventSchemaVersion=1`，只含 space/type/version/hash、action/from/to、WorkItem/aggregate version 和 decision reference，不含标题、字段值、guard、参与者、原因正文或策略正文。
+
+S08-M4 的配置器、成员动作、correction 和 backfill UI 不增加浏览器推算事件或旁路副作用；所有事实仍由上述服务端事务产生。409/422/timeout/offline 只保留 caller-stable request 与用户输入，恢复后重新读取 current/history，不在客户端补写 history/activity/outbox。S09 若复用公共 envelope 必须使用新的明确 event type/version，禁止读取 S08 私表补全 node token、分支或会签事实。
+
+S08-M3 注册 `project.workflow.consumer-contract` v1，订阅 `workflow.action_executed/state_changed/initialized/binding_changed` v1。该 Handler 不读取 project 状态、命令、history 或 backfill 私表，也不直接创建通知正文或搜索索引；它只验证公共最小 payload，使 delivery receipt/replay 有稳定消费者身份，并把未知 payload schema 分类为 permanent/dead-letter。通知/搜索若后续选择产品投影，只能消费同一公共合同并经 `work_item` resolver/用户 API 重新授权校准，不能通过跨模块 SQL 补全状态事实。
 
 workspace audience 只表示“该 workspace 的已连接客户端需要丢弃相关缓存并重新鉴权”，不携带
 角色、成员、ACL、标题或正文。被撤权用户也只能收到对象定位和失效提示，不能从 signal 恢复已

@@ -11,6 +11,7 @@ import com.colla.platform.modules.project.domain.WorkItemConfigurationModels.Con
 import com.colla.platform.modules.project.domain.WorkItemConfigurationModels.DraftCommandReceipt;
 import com.colla.platform.modules.project.domain.WorkItemConfigurationModels.ValidationResult;
 import com.colla.platform.modules.project.infrastructure.ConfigurationDraftRepository;
+import com.colla.platform.modules.project.infrastructure.ConfigurationPublicationRepository;
 import com.colla.platform.modules.project.infrastructure.ConfigurationDraftRepository.DraftCommandResponse;
 import com.colla.platform.modules.project.infrastructure.ConfigurationDraftRepository.DraftCommandStart;
 import com.colla.platform.modules.project.infrastructure.ConfigurationDraftRepository.NewDraft;
@@ -21,6 +22,7 @@ import com.colla.platform.shared.auth.CurrentUser;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -35,6 +37,7 @@ public class WorkItemConfigurationDraftService {
     private static final Set<String> MANAGER_ROLES = Set.of("owner", "admin");
 
     private final ConfigurationDraftRepository draftRepository;
+    private final ConfigurationPublicationRepository publicationRepository;
     private final WorkItemConfigurationSnapshotAssembler assembler;
     private final WorkItemConfigurationSnapshotCanonicalizer canonicalizer;
     private final WorkItemConfigurationValidator validator;
@@ -47,6 +50,7 @@ public class WorkItemConfigurationDraftService {
 
     public WorkItemConfigurationDraftService(
         ConfigurationDraftRepository draftRepository,
+        ConfigurationPublicationRepository publicationRepository,
         WorkItemConfigurationSnapshotAssembler assembler,
         WorkItemConfigurationSnapshotCanonicalizer canonicalizer,
         WorkItemConfigurationValidator validator,
@@ -58,6 +62,7 @@ public class WorkItemConfigurationDraftService {
         ObjectMapper objectMapper
     ) {
         this.draftRepository = draftRepository;
+        this.publicationRepository = publicationRepository;
         this.assembler = assembler;
         this.canonicalizer = canonicalizer;
         this.validator = validator;
@@ -212,9 +217,17 @@ public class WorkItemConfigurationDraftService {
         UUID typeId,
         UUID actorId
     ) {
-        ConfigurationSnapshot snapshot = assembler.assemble(workspaceId, spaceId, typeId);
-        ValidationResult validation = validator.validate(snapshot.payload());
         ConfigurationDraft active = draftRepository.lockActive(workspaceId, spaceId, typeId).orElse(null);
+        ConfigurationSnapshot snapshot = preserveDraftOnlyConfiguration(
+            preservePublishedStateFlow(
+                assembler.assemble(workspaceId, spaceId, typeId),
+                workspaceId,
+                spaceId,
+                typeId
+            ),
+            active
+        );
+        ValidationResult validation = validator.validate(snapshot.payload());
         if (active == null) {
             return create(workspaceId, spaceId, typeId, actorId, snapshot, validation.diagnostics());
         }
@@ -224,6 +237,41 @@ public class WorkItemConfigurationDraftService {
             return active;
         }
         return update(active, snapshot, validation.diagnostics(), "editing", actorId);
+    }
+
+    private ConfigurationSnapshot preserveDraftOnlyConfiguration(
+        ConfigurationSnapshot assembled,
+        ConfigurationDraft active
+    ) {
+        if (active == null || !active.snapshot().path("stateFlow").isObject()) {
+            return assembled;
+        }
+        ObjectNode merged = assembled.payload().deepCopy();
+        merged.set("stateFlow", active.snapshot().path("stateFlow").deepCopy());
+        return canonicalizer.canonicalize(merged);
+    }
+
+    private ConfigurationSnapshot preservePublishedStateFlow(
+        ConfigurationSnapshot assembled,
+        UUID workspaceId,
+        UUID spaceId,
+        UUID typeId
+    ) {
+        var type = typeRepository.findById(workspaceId, spaceId, typeId).orElse(null);
+        if (type == null || type.currentVersionId() == null) {
+            return assembled;
+        }
+        var current = publicationRepository.findVersion(
+            workspaceId, spaceId, typeId, type.currentVersionId()
+        ).orElse(null);
+        if (current == null
+            || !current.completeSnapshot()
+            || !current.snapshot().path("stateFlow").isObject()) {
+            return assembled;
+        }
+        ObjectNode merged = assembled.payload().deepCopy();
+        merged.set("stateFlow", current.snapshot().path("stateFlow").deepCopy());
+        return canonicalizer.canonicalize(merged);
     }
 
     private ConfigurationDraft ensureFromLive(
@@ -236,7 +284,12 @@ public class WorkItemConfigurationDraftService {
         if (active != null) {
             return active;
         }
-        ConfigurationSnapshot snapshot = assembler.assemble(workspaceId, spaceId, typeId);
+        ConfigurationSnapshot snapshot = preservePublishedStateFlow(
+            assembler.assemble(workspaceId, spaceId, typeId),
+            workspaceId,
+            spaceId,
+            typeId
+        );
         return create(
             workspaceId,
             spaceId,

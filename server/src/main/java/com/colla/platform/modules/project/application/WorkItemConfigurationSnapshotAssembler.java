@@ -31,6 +31,7 @@ public class WorkItemConfigurationSnapshotAssembler {
     private final WorkItemFieldRepository fieldRepository;
     private final WorkItemFieldOptionRepository optionRepository;
     private final WorkItemLayoutRepository layoutRepository;
+    private final WorkItemStateFlowPresetCatalog stateFlowPresetCatalog;
     private final WorkItemConfigurationSnapshotCanonicalizer canonicalizer;
     private final ObjectMapper objectMapper;
 
@@ -39,6 +40,7 @@ public class WorkItemConfigurationSnapshotAssembler {
         WorkItemFieldRepository fieldRepository,
         WorkItemFieldOptionRepository optionRepository,
         WorkItemLayoutRepository layoutRepository,
+        WorkItemStateFlowPresetCatalog stateFlowPresetCatalog,
         WorkItemConfigurationSnapshotCanonicalizer canonicalizer,
         ObjectMapper objectMapper
     ) {
@@ -46,6 +48,7 @@ public class WorkItemConfigurationSnapshotAssembler {
         this.fieldRepository = fieldRepository;
         this.optionRepository = optionRepository;
         this.layoutRepository = layoutRepository;
+        this.stateFlowPresetCatalog = stateFlowPresetCatalog;
         this.canonicalizer = canonicalizer;
         this.objectMapper = objectMapper;
     }
@@ -72,6 +75,10 @@ public class WorkItemConfigurationSnapshotAssembler {
             .map(kind -> layoutRepository.findByKind(workspaceId, spaceId, typeId, kind).orElse(null))
             .filter(java.util.Objects::nonNull)
             .forEach(layout -> layouts.add(layoutJson(workspaceId, layout)));
+        if (type.system()) {
+            stateFlowPresetCatalog.stateFlowFor(type.typeKey())
+                .ifPresent(stateFlow -> root.set("stateFlow", stateFlow));
+        }
         return canonicalizer.canonicalize(root);
     }
 

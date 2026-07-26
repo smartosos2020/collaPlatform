@@ -1,6 +1,5 @@
 package com.colla.platform.modules.project.runtime;
 
-import static com.colla.platform.modules.project.domain.WorkItemConfigurationModels.SNAPSHOT_SCHEMA_VERSION;
 import static com.colla.platform.modules.project.domain.WorkItemConfigurationModels.failure;
 
 import com.colla.platform.modules.project.application.WorkItemConfigurationSnapshotCanonicalizer;
@@ -34,10 +33,10 @@ public final class PublishedSnapshotAdapter {
             "NOT_FOUND_OR_HIDDEN",
             "Published configuration snapshot is not available"
         ));
-        if (!version.completeSnapshot() || version.snapshotSchemaVersion() != SNAPSHOT_SCHEMA_VERSION) {
+        if (!version.completeSnapshot() || !version.supportedSnapshot()) {
             throw failure(
                 "UNSUPPORTED_SNAPSHOT_SCHEMA",
-                "Legacy partial snapshots cannot be consumed by the work item runtime"
+                "Published snapshot schema is not supported by the work item runtime"
             );
         }
         var canonical = canonicalizer.canonicalize(version.snapshot());
@@ -66,7 +65,9 @@ public final class PublishedSnapshotAdapter {
         return snapshotReader.findPublishedSnapshot(workspaceId, spaceId, typeId, versionId)
             .map(version -> new SnapshotAvailability(
                 version.supportedSnapshot()
-                    ? "supported"
+                    ? version.snapshot().path("stateFlow").isObject()
+                        ? "supported_with_state_flow"
+                        : "supported_without_state_flow"
                     : version.completeSnapshot() ? "unsupported" : "legacy_partial",
                 version.snapshotSchemaVersion(),
                 version.configHash()
@@ -82,6 +83,13 @@ public final class PublishedSnapshotAdapter {
         String configHash,
         JsonNode snapshot
     ) {
+        public boolean hasStateFlow() {
+            return snapshot.path("stateFlow").isObject();
+        }
+
+        public String stateFlowAvailability() {
+            return hasStateFlow() ? "available" : "not_configured";
+        }
     }
 
     public record SnapshotAvailability(String status, int snapshotSchemaVersion, String configHash) {

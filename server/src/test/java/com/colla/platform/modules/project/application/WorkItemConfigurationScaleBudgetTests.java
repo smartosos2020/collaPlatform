@@ -73,7 +73,8 @@ class WorkItemConfigurationScaleBudgetTests {
         when(layouts.findByKind(workspaceId, spaceId, typeId, "detail")).thenReturn(Optional.empty());
         var canonicalizer = new WorkItemConfigurationSnapshotCanonicalizer(objectMapper);
         var assembler = new WorkItemConfigurationSnapshotAssembler(
-            types, fields, options, layouts, canonicalizer, objectMapper
+            types, fields, options, layouts, new WorkItemStateFlowPresetCatalog(objectMapper),
+            canonicalizer, objectMapper
         );
 
         long started = System.nanoTime();

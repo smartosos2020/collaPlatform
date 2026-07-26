@@ -1,5 +1,6 @@
 package com.colla.platform.modules.project.application;
 
+import static com.colla.platform.modules.project.domain.WorkItemConfigurationModels.FIRST_COMPLETE_SNAPSHOT_SCHEMA_VERSION;
 import static com.colla.platform.modules.project.domain.WorkItemConfigurationModels.SNAPSHOT_SCHEMA_VERSION;
 import static com.colla.platform.modules.project.domain.WorkItemConfigurationModels.failure;
 
@@ -57,6 +58,7 @@ public class WorkItemConfigurationTemplateService {
     private final ProjectSpaceRepository spaceRepository;
     private final WorkItemTypeRepository typeRepository;
     private final WorkItemTypePresetCatalog presetCatalog;
+    private final WorkItemStateFlowPresetCatalog stateFlowPresetCatalog;
     private final WorkItemConfigurationSnapshotCanonicalizer canonicalizer;
     private final WorkItemConfigurationValidator validator;
     private final WorkItemConfigurationThreeWayMerge mergeEngine;
@@ -72,6 +74,7 @@ public class WorkItemConfigurationTemplateService {
         ProjectSpaceRepository spaceRepository,
         WorkItemTypeRepository typeRepository,
         WorkItemTypePresetCatalog presetCatalog,
+        WorkItemStateFlowPresetCatalog stateFlowPresetCatalog,
         WorkItemConfigurationSnapshotCanonicalizer canonicalizer,
         WorkItemConfigurationValidator validator,
         WorkItemConfigurationThreeWayMerge mergeEngine,
@@ -86,6 +89,7 @@ public class WorkItemConfigurationTemplateService {
         this.spaceRepository = spaceRepository;
         this.typeRepository = typeRepository;
         this.presetCatalog = presetCatalog;
+        this.stateFlowPresetCatalog = stateFlowPresetCatalog;
         this.canonicalizer = canonicalizer;
         this.validator = validator;
         this.mergeEngine = mergeEngine;
@@ -604,6 +608,8 @@ public class WorkItemConfigurationTemplateService {
             layout.putArray("nodes");
             layout.putArray("policies");
         }
+        stateFlowPresetCatalog.stateFlowFor(preset)
+            .ifPresent(stateFlow -> root.set("stateFlow", stateFlow));
         return root;
     }
 
@@ -711,7 +717,8 @@ public class WorkItemConfigurationTemplateService {
         UUID versionId
     ) {
         return templateRepository.findVersion(workspaceId, templateId, versionId)
-            .filter(value -> value.snapshotSchemaVersion() == SNAPSHOT_SCHEMA_VERSION)
+            .filter(value -> value.snapshotSchemaVersion() >= FIRST_COMPLETE_SNAPSHOT_SCHEMA_VERSION)
+            .filter(value -> value.snapshotSchemaVersion() <= SNAPSHOT_SCHEMA_VERSION)
             .orElseThrow(() -> failure("NOT_FOUND_OR_HIDDEN", "Complete template version is not available"));
     }
 

@@ -20,14 +20,20 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.Comparator;
 import org.springframework.stereotype.Component;
 
 @Component
 public class WorkItemConfigurationValidator {
     private final WorkItemConfigurationSnapshotCanonicalizer canonicalizer;
+    private final WorkItemStateFlowValidator stateFlowValidator;
 
-    public WorkItemConfigurationValidator(WorkItemConfigurationSnapshotCanonicalizer canonicalizer) {
+    public WorkItemConfigurationValidator(
+        WorkItemConfigurationSnapshotCanonicalizer canonicalizer,
+        WorkItemStateFlowValidator stateFlowValidator
+    ) {
         this.canonicalizer = canonicalizer;
+        this.stateFlowValidator = stateFlowValidator;
     }
 
     public ValidationResult validate(JsonNode requested) {
@@ -105,7 +111,63 @@ public class WorkItemConfigurationValidator {
         if (!kinds.contains("create") || !kinds.contains("detail")) {
             warning(diagnostics, "missing_layout_kind", "$.layouts", "Both create and detail layouts should be configured");
         }
+        Set<String> hiddenFieldKeys = hiddenFieldKeys(layouts);
+        if (snapshot.path("stateFlow").isObject()
+            && snapshot.path("snapshotSchemaVersion").asInt() < 2) {
+            error(
+                diagnostics,
+                "state_flow_requires_schema_v2",
+                "$.stateFlow",
+                "State flow definitions require snapshot schema version 2"
+            );
+        }
+        stateFlowValidator.validate(
+            snapshot.path("stateFlow"),
+            fieldKeys,
+            activeFieldKeys,
+            hiddenFieldKeys,
+            diagnostics
+        );
+        diagnostics.sort(Comparator.comparing(ConfigurationDiagnostic::keyPath)
+            .thenComparing(ConfigurationDiagnostic::code));
         return ValidationResult.of(diagnostics);
+    }
+
+    private Set<String> hiddenFieldKeys(JsonNode layouts) {
+        Set<String> hidden = new HashSet<>();
+        for (JsonNode layout : layouts) {
+            for (JsonNode policy : layout.path("policies")) {
+                if (containsHiddenEffect(policy.path("policy"))) {
+                    hidden.add(policy.path("fieldKey").asText(""));
+                }
+            }
+        }
+        hidden.remove("");
+        return hidden;
+    }
+
+    private boolean containsHiddenEffect(JsonNode value) {
+        if (value == null || value.isNull()) {
+            return false;
+        }
+        if (value.isTextual()) {
+            return "hidden".equals(value.asText());
+        }
+        if (value.isArray()) {
+            for (JsonNode child : value) {
+                if (containsHiddenEffect(child)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        Iterator<JsonNode> children = value.elements();
+        while (children.hasNext()) {
+            if (containsHiddenEffect(children.next())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void validateLayout(

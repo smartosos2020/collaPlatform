@@ -164,6 +164,9 @@ public class WorkItemRuntimeProjection {
             layouts.add(projectedLayout);
         });
         visible.set("layouts", layouts);
+        // State-flow guards, authorization rules, patches, and transition targets are
+        // server-side policy. User runtime endpoints expose only a decision projection.
+        visible.remove("stateFlow");
         return visible;
     }
 

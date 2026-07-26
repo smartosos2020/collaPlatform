@@ -15,11 +15,13 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.colla.platform.modules.project.application.WorkItemStateFlowPresetCatalog;
 import com.colla.platform.modules.project.application.WorkItemTypeDefinitionService;
 import com.colla.platform.modules.project.domain.WorkItemTypeModels.CreateWorkItemType;
 import com.colla.platform.modules.project.domain.WorkItemTypeModels.WorkItemTypeDefinition;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
@@ -172,10 +174,29 @@ class WorkItemTypeConfigurationControllerIntegrationTests {
                 .header("Authorization", bearer(owner.token())))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.status").value("editing"))
-            .andExpect(jsonPath("$.snapshotSchemaVersion").value(1))
+            .andExpect(jsonPath("$.snapshotSchemaVersion").value(2))
             .andExpect(jsonPath("$.aggregateVersion").value(0))
+            .andExpect(jsonPath("$.snapshot.stateFlow").doesNotExist())
             .andExpect(jsonPath("$.availableActions", contains("save", "validate", "abandon")))
             .andReturn());
+
+        ObjectNode requestedSnapshot = initial.path("snapshot").deepCopy();
+        requestedSnapshot.set(
+            "stateFlow",
+            new WorkItemStateFlowPresetCatalog(objectMapper).stateFlowFor("task").orElseThrow()
+        );
+        ObjectNode saveBody = objectMapper.createObjectNode()
+            .put("expectedAggregateVersion", initial.get("aggregateVersion").asLong());
+        saveBody.set("snapshot", requestedSnapshot);
+        mockMvc.perform(put(draftPath)
+                .header("Authorization", bearer(owner.token()))
+                .header("X-Colla-Request-Id", "wicd-state-flow-save-" + suffix())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(saveBody)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.aggregateVersion").value(1))
+            .andExpect(jsonPath("$.snapshot.stateFlow.states[*].stateKey", hasItem("canceled")))
+            .andExpect(jsonPath("$.snapshot.stateFlow.actions[*].actionKey", hasItem("complete")));
 
         mockMvc.perform(patch(configPath(spaceId) + "/" + typeId)
                 .header("Authorization", bearer(owner.token()))
@@ -189,13 +210,15 @@ class WorkItemTypeConfigurationControllerIntegrationTests {
         JsonNode changed = json(mockMvc.perform(get(draftPath)
                 .header("Authorization", bearer(owner.token())))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.aggregateVersion").value(1))
+            .andExpect(jsonPath("$.aggregateVersion").value(2))
             .andExpect(jsonPath("$.snapshot.typeDefinition.name").value("Updated Draft Task"))
+            .andExpect(jsonPath("$.snapshot.stateFlow.states[*].stateKey", hasItem("canceled")))
+            .andExpect(jsonPath("$.snapshot.stateFlow.actions[*].actionKey", hasItem("complete")))
             .andReturn());
         assertNotEquals(initial.get("configHash").asText(), changed.get("configHash").asText());
 
         String validateRequestId = "wicd-validate-" + suffix();
-        String validateBody = "{\"expectedAggregateVersion\":1}";
+        String validateBody = "{\"expectedAggregateVersion\":2}";
         JsonNode validated = json(mockMvc.perform(post(draftPath + ":validate")
                 .header("Authorization", bearer(owner.token()))
                 .header("X-Colla-Request-Id", validateRequestId)
@@ -203,7 +226,7 @@ class WorkItemTypeConfigurationControllerIntegrationTests {
                 .content(validateBody))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.status").value("valid"))
-            .andExpect(jsonPath("$.aggregateVersion").value(2))
+            .andExpect(jsonPath("$.aggregateVersion").value(3))
             .andReturn());
         JsonNode replayed = json(mockMvc.perform(post(draftPath + ":validate")
                 .header("Authorization", bearer(owner.token()))
@@ -217,7 +240,7 @@ class WorkItemTypeConfigurationControllerIntegrationTests {
                 .header("Authorization", bearer(owner.token()))
                 .header("X-Colla-Request-Id", validateRequestId)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"expectedAggregateVersion\":2}"))
+                .content("{\"expectedAggregateVersion\":3}"))
             .andExpect(status().isConflict())
             .andExpect(jsonPath("$.error.code").value("idempotency_key_reused"));
 
@@ -225,7 +248,7 @@ class WorkItemTypeConfigurationControllerIntegrationTests {
                 .header("Authorization", bearer(owner.token()))
                 .header("X-Colla-Request-Id", "wicd-abandon-" + suffix())
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"expectedAggregateVersion\":2}"))
+                .content("{\"expectedAggregateVersion\":3}"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.status").value("abandoned"))
             .andExpect(jsonPath("$.availableActions").isEmpty())
@@ -294,7 +317,7 @@ class WorkItemTypeConfigurationControllerIntegrationTests {
                 .content(publishBody))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.version.versionNumber").value(2))
-            .andExpect(jsonPath("$.version.snapshotSchemaVersion").value(1))
+            .andExpect(jsonPath("$.version.snapshotSchemaVersion").value(2))
             .andExpect(jsonPath("$.version.completeSnapshot").value(true))
             .andReturn());
         String version2Id = published.at("/version/id").asText();

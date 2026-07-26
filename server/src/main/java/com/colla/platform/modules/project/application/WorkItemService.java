@@ -23,6 +23,12 @@ import com.colla.platform.modules.project.domain.WorkItemModels.WorkItemPage;
 import com.colla.platform.modules.project.domain.WorkItemModels.WorkItemParticipant;
 import com.colla.platform.modules.project.domain.WorkItemModels.WorkItemParticipantState;
 import com.colla.platform.modules.project.domain.WorkItemModels.WorkItemView;
+import com.colla.platform.modules.project.domain.WorkItemStateRuntimeModels.WorkflowCommandResult;
+import com.colla.platform.modules.project.domain.WorkItemStateRuntimeModels.WorkflowBindingCommandResult;
+import com.colla.platform.modules.project.domain.WorkItemStateRuntimeModels.WorkflowHistoryEntry;
+import com.colla.platform.modules.project.domain.WorkItemStateRuntimeModels.WorkflowPresentation;
+import com.colla.platform.modules.project.domain.WorkItemStateRuntimeModels.StateBackfillBatch;
+import com.colla.platform.modules.project.domain.WorkItemStateRuntimeModels.StateBackfillVerification;
 import com.colla.platform.modules.project.application.WorkItemFieldValueCodec.CanonicalValues;
 import com.colla.platform.modules.project.application.WorkItemFieldValueCodec.FieldProjection;
 import com.colla.platform.modules.project.infrastructure.ProjectSpaceRepository;
@@ -63,6 +69,8 @@ public class WorkItemService {
     private final SubjectDirectory subjectDirectory;
     private final FileAccess fileAccess;
     private final WorkItemTypeConfigCanonicalizer canonicalizer;
+    private final WorkItemStateFlowService stateFlowService;
+    private final WorkItemStateBackfillService stateBackfillService;
     private final PlatformObjectCommands objectCommands;
     private final AuditLog auditLog;
     private final TransactionalOutbox outbox;
@@ -78,6 +86,8 @@ public class WorkItemService {
         SubjectDirectory subjectDirectory,
         FileAccess fileAccess,
         WorkItemTypeConfigCanonicalizer canonicalizer,
+        WorkItemStateFlowService stateFlowService,
+        WorkItemStateBackfillService stateBackfillService,
         PlatformObjectCommands objectCommands,
         AuditLog auditLog,
         TransactionalOutbox outbox,
@@ -92,6 +102,8 @@ public class WorkItemService {
         this.subjectDirectory = subjectDirectory;
         this.fileAccess = fileAccess;
         this.canonicalizer = canonicalizer;
+        this.stateFlowService = stateFlowService;
+        this.stateBackfillService = stateBackfillService;
         this.objectCommands = objectCommands;
         this.auditLog = auditLog;
         this.outbox = outbox;
@@ -176,6 +188,9 @@ public class WorkItemService {
             user.id(),
             activityPayload(0, "active")
         );
+        stateFlowService.initializeForNewItem(
+            user, requireItem(user, spaceId, workItemId)
+        );
         WorkItemView result = view(user, space, requireItem(user, spaceId, workItemId));
         complete(receipt, result);
         register(result.item(), user.id());
@@ -228,7 +243,7 @@ public class WorkItemService {
         );
         boolean hasMore = rows.size() > safeLimit;
         List<WorkItem> visible = hasMore ? rows.subList(0, safeLimit) : rows;
-        List<WorkItemView> items = visible.stream().map(item -> view(user, space, item)).toList();
+        List<WorkItemView> items = views(user, space, visible);
         return new WorkItemPage(
             items,
             hasMore && !visible.isEmpty() ? visible.get(visible.size() - 1).id() : null
@@ -276,6 +291,7 @@ public class WorkItemService {
         ) != 1) {
             throw failure("WORK_ITEM_VERSION_CONFLICT", "Work item changed or is no longer editable");
         }
+        stateFlowService.alignWorkItemVersion(user, current, expectedVersion, expectedVersion + 1);
         repository.replaceFieldProjections(
             user.workspaceId(), spaceId, workItemId, values.projections()
         );
@@ -340,6 +356,7 @@ public class WorkItemService {
         ) != 1) {
             throw failure("WORK_ITEM_VERSION_CONFLICT", "Work item changed or cannot transition");
         }
+        stateFlowService.alignWorkItemVersion(user, current, expectedVersion, expectedVersion + 1);
         repository.appendActivity(
             UUID.randomUUID(),
             user.workspaceId(),
@@ -427,6 +444,7 @@ public class WorkItemService {
         ) != 1) {
             throw failure("WORK_ITEM_VERSION_CONFLICT", "Work item changed or is no longer editable");
         }
+        stateFlowService.alignWorkItemVersion(user, current, expectedVersion, expectedVersion + 1);
         if (remove) {
             repository.removeParticipant(
                 user.workspaceId(), spaceId, workItemId, participantUserId
@@ -541,6 +559,7 @@ public class WorkItemService {
         if (repository.touch(user.workspaceId(), spaceId, workItemId, user.id(), expectedVersion) != 1) {
             throw failure("WORK_ITEM_VERSION_CONFLICT", "Work item changed or is no longer editable");
         }
+        stateFlowService.alignWorkItemVersion(user, current, expectedVersion, expectedVersion + 1);
         UUID commentId = UUID.randomUUID();
         repository.insertComment(
             commentId, user.workspaceId(), spaceId, workItemId, user.id(), normalizedContent
@@ -624,6 +643,7 @@ public class WorkItemService {
         if (repository.touch(user.workspaceId(), spaceId, workItemId, user.id(), expectedVersion) != 1) {
             throw failure("WORK_ITEM_VERSION_CONFLICT", "Work item changed or is no longer editable");
         }
+        stateFlowService.alignWorkItemVersion(user, current, expectedVersion, expectedVersion + 1);
         if (repository.insertAttachment(
             UUID.randomUUID(), user.workspaceId(), spaceId, workItemId, fileId, user.id()
         ) != 1) {
@@ -694,7 +714,7 @@ public class WorkItemService {
         FieldProjection queryValue = valueCodec.canonicalize(configuration, requested)
             .projections().getFirst();
         int safeLimit = Math.max(1, Math.min(limit, MAX_PAGE_SIZE));
-        List<WorkItemView> rows = repository.queryByProjection(
+        List<WorkItem> matched = repository.queryByProjection(
             user.workspaceId(),
             spaceId,
             typeId,
@@ -703,8 +723,8 @@ public class WorkItemService {
             queryValue,
             normalizedSort,
             safeLimit
-        ).stream().map(item -> view(user, space, item)).toList();
-        return new WorkItemPage(rows, null);
+        );
+        return new WorkItemPage(views(user, space, matched), null);
     }
 
     @Transactional
@@ -721,14 +741,161 @@ public class WorkItemService {
     }
 
     private WorkItemView view(CurrentUser user, ProjectSpaceSummary space, WorkItem item) {
-        RuntimeConfiguration configuration = configuration(user, item);
+        return view(user, space, item, stateFlowService.presentation(user, space, item));
+    }
+
+    private WorkItemView view(
+        CurrentUser user,
+        ProjectSpaceSummary space,
+        WorkItem item,
+        WorkflowPresentation workflow
+    ) {
+        return view(user, space, item, workflow, configuration(user, item));
+    }
+
+    private WorkItemView view(
+        CurrentUser user,
+        ProjectSpaceSummary space,
+        WorkItem item,
+        WorkflowPresentation workflow,
+        RuntimeConfiguration configuration
+    ) {
         JsonNode values = projection.projectDetail(
             configuration, space.currentUserRole(), space.status(), item.fieldValues()
         );
-        JsonNode runtime = projection.runtimePresentation(
+        ObjectNode runtime = (ObjectNode) projection.runtimePresentation(
             configuration, space.currentUserRole(), space.status(), "detail", item.fieldValues()
         );
+        runtime.set("workflow", objectMapper.valueToTree(workflow));
         return new WorkItemView(item, values, runtime, actions(space, item));
+    }
+
+    private List<WorkItemView> views(
+        CurrentUser user,
+        ProjectSpaceSummary space,
+        List<WorkItem> items
+    ) {
+        Map<UUID, WorkflowPresentation> workflows = stateFlowService.presentations(user, space, items);
+        Map<String, RuntimeConfiguration> configurations = new java.util.HashMap<>();
+        return items.stream()
+            .map(item -> view(
+                user,
+                space,
+                item,
+                workflows.get(item.id()),
+                configurations.computeIfAbsent(
+                    item.typeVersionId() + ":" + item.configHash(),
+                    ignored -> configuration(user, item)
+                )
+            ))
+            .toList();
+    }
+
+    public WorkflowPresentation workflow(CurrentUser user, UUID spaceId, UUID workItemId) {
+        ProjectSpaceSummary space = requireMember(user, spaceId);
+        return stateFlowService.presentation(user, space, requireItem(user, spaceId, workItemId));
+    }
+
+    public List<WorkflowHistoryEntry> workflowHistory(
+        CurrentUser user,
+        UUID spaceId,
+        UUID workItemId,
+        Long beforeSequence,
+        int limit
+    ) {
+        requireMember(user, spaceId);
+        return stateFlowService.history(
+            user, requireItem(user, spaceId, workItemId), beforeSequence, limit
+        );
+    }
+
+    public WorkflowCommandResult executeWorkflowAction(
+        CurrentUser user,
+        UUID spaceId,
+        UUID workItemId,
+        String actionKey,
+        String fromStateKey,
+        long expectedVersion,
+        JsonNode fieldPatch,
+        String requestId
+    ) {
+        ProjectSpaceSummary space = requireWritableMember(user, spaceId);
+        return stateFlowService.execute(
+            user, space, requireItem(user, spaceId, workItemId), actionKey,
+            fromStateKey, expectedVersion, fieldPatch, requestId
+        );
+    }
+
+    public WorkflowCommandResult correctWorkflowState(
+        CurrentUser user,
+        UUID spaceId,
+        UUID workItemId,
+        String targetStateKey,
+        long expectedVersion,
+        String reason,
+        String confirmation,
+        String requestId
+    ) {
+        ProjectSpaceSummary space = requireWorkflowManager(user, spaceId);
+        return stateFlowService.correct(
+            user, space, requireItem(user, spaceId, workItemId), targetStateKey,
+            expectedVersion, reason, confirmation, requestId
+        );
+    }
+
+    public WorkflowBindingCommandResult upgradeWorkflowBinding(
+        CurrentUser user,
+        UUID spaceId,
+        UUID workItemId,
+        UUID targetTypeVersionId,
+        String targetStateKey,
+        long expectedVersion,
+        String reason,
+        String confirmation,
+        String requestId
+    ) {
+        ProjectSpaceSummary space = requireWorkflowManager(user, spaceId);
+        return stateFlowService.upgradeBinding(
+            user, space, requireItem(user, spaceId, workItemId), targetTypeVersionId,
+            targetStateKey, expectedVersion, reason, confirmation, requestId
+        );
+    }
+
+    public StateBackfillBatch createWorkflowBackfill(
+        CurrentUser user,
+        UUID spaceId,
+        UUID typeDefinitionId,
+        UUID targetTypeVersionId,
+        String targetStateKey,
+        List<UUID> workItemIds,
+        String reason,
+        String confirmation,
+        String requestId
+    ) {
+        ProjectSpaceSummary space = requireWorkflowManager(user, spaceId);
+        return stateBackfillService.createAndExecute(
+            user, space, typeDefinitionId, targetTypeVersionId, targetStateKey,
+            workItemIds, reason, confirmation, requestId
+        );
+    }
+
+    public StateBackfillBatch resumeWorkflowBackfill(
+        CurrentUser user,
+        UUID spaceId,
+        UUID batchId,
+        String confirmation
+    ) {
+        ProjectSpaceSummary space = requireWorkflowManager(user, spaceId);
+        return stateBackfillService.resume(user, space, batchId, confirmation);
+    }
+
+    public StateBackfillVerification verifyWorkflowBackfill(
+        CurrentUser user,
+        UUID spaceId,
+        UUID batchId
+    ) {
+        ProjectSpaceSummary space = requireWorkflowManager(user, spaceId);
+        return stateBackfillService.verify(user, space, batchId);
     }
 
     private RuntimeConfiguration configuration(CurrentUser user, WorkItem item) {
@@ -774,6 +941,14 @@ public class WorkItemService {
         }
         if (!"active".equals(space.status())) {
             throw failure("RUNTIME_NOT_WRITABLE", "Project space is not active");
+        }
+        return space;
+    }
+
+    private ProjectSpaceSummary requireWorkflowManager(CurrentUser user, UUID spaceId) {
+        ProjectSpaceSummary space = requireWritableMember(user, spaceId);
+        if (!space.canManage()) {
+            throw failure("FORBIDDEN", "Only project space owners and admins may recover workflow state");
         }
         return space;
     }

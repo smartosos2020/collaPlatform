@@ -1,6 +1,7 @@
 package com.colla.platform.modules.project.application;
 
 import static com.colla.platform.modules.project.domain.WorkItemConfigurationModels.SNAPSHOT_SCHEMA_VERSION;
+import static com.colla.platform.modules.project.domain.WorkItemConfigurationModels.FIRST_COMPLETE_SNAPSHOT_SCHEMA_VERSION;
 import static com.colla.platform.modules.project.domain.WorkItemConfigurationModels.failure;
 
 import com.colla.platform.modules.project.domain.WorkItemConfigurationModels.ConfigurationSnapshot;
@@ -34,14 +35,17 @@ public class WorkItemConfigurationSnapshotCanonicalizer {
             throw failure("INVALID_CONFIGURATION_SNAPSHOT", "Configuration snapshot must be an object");
         }
         JsonNode schemaVersion = requested.path("snapshotSchemaVersion");
-        if (!schemaVersion.isInt() || schemaVersion.asInt() != SNAPSHOT_SCHEMA_VERSION) {
+        if (!schemaVersion.isInt()
+            || schemaVersion.asInt() < FIRST_COMPLETE_SNAPSHOT_SCHEMA_VERSION
+            || schemaVersion.asInt() > SNAPSHOT_SCHEMA_VERSION) {
             throw failure(
                 "UNSUPPORTED_SNAPSHOT_SCHEMA",
-                "Configuration snapshot schema version must be " + SNAPSHOT_SCHEMA_VERSION
+                "Configuration snapshot schema version must be between "
+                    + FIRST_COMPLETE_SNAPSHOT_SCHEMA_VERSION + " and " + SNAPSHOT_SCHEMA_VERSION
             );
         }
         JsonNode payload = normalize(requested, null);
-        return new ConfigurationSnapshot(SNAPSHOT_SCHEMA_VERSION, payload, hash(payload));
+        return new ConfigurationSnapshot(schemaVersion.asInt(), payload, hash(payload));
     }
 
     private JsonNode normalize(JsonNode node, String fieldName) {
@@ -92,6 +96,23 @@ public class WorkItemConfigurationSnapshotCanonicalizer {
                 Comparator.comparing((JsonNode value) -> value.path("fieldKey").asText())
                     .thenComparing(value -> value.path("policyKey").asText())
             );
+        }
+        if ("states".equals(fieldName)) {
+            return java.util.Optional.of(byOrderThenKey("stateKey"));
+        }
+        if ("actions".equals(fieldName)) {
+            return java.util.Optional.of(byOrderThenKey("actionKey"));
+        }
+        if ("transitions".equals(fieldName)) {
+            return java.util.Optional.of(byOrderThenKey("transitionKey"));
+        }
+        if ("guards".equals(fieldName)) {
+            return java.util.Optional.of(Comparator.comparing(value -> value.path("guardKey").asText()));
+        }
+        if (List.of(
+            "authorizedRoles", "requiredFieldKeys", "sideEffectKeys", "spaceRoles", "guardKeys"
+        ).contains(fieldName)) {
+            return java.util.Optional.of(Comparator.comparing(JsonNode::asText));
         }
         return java.util.Optional.empty();
     }

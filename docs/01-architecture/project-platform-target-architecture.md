@@ -2,11 +2,11 @@
 title: 项目协作平台目标架构
 status: target
 program: PROJECT-PLATFORM
-program_revision: 23
+program_revision: 24
 domain_contract_version: 1
 domain_contract_status: frozen-s01-m3
 migration_contract_version: 1
-stage_review_status: s08-active
+stage_review_status: s08-completed-s09-planned
 updated_at: 2026-07-26
 ---
 
@@ -968,3 +968,53 @@ S08 的交付边界是“轻量状态流定义与运行时”。它允许任务�
 - 用户执行 UI 在 WorkItem 详情展示 current state、可见历史和服务端 `availableActions`；409、422、超时和离线保留用户输入，刷新后 state/history/activity 一致。
 - M4 执行六身份真实隔离浏览器、键盘/焦点/窄屏、并发动作、终态重开、恢复、backfill、完整 Flyway、后端、前端、协作、架构、安全和 route-final。
 - S08 完成只授权进入 S09 节点流设计与运行时，不构成 S14 看板、S17 自动化或生产容量承诺。
+
+### 24.8 S08-M1 已实现边界
+
+- 完整 configuration snapshot 当前支持 schema v1-v2：v1 继续可读且显式不具备状态流能力，v2 可选承载状态、动作、转换、guard、授权、必填字段、字段 patch 和受控副作用引用；未来 schema 失败关闭。
+- 状态流定义复用 S06 唯一 active draft、canonical hash、validation、diff、compatibility、publish、rollback 和模板链路。没有 live definition、published definition 或运行时回读第二权威。
+- 六个研发预置类型的轻量状态流来自显式、确定性 preset catalog；未知/自定义 type key 不猜流程，live 配置刷新也不覆盖 workspace 已保存的本地状态流。
+- V091 只建立 current state、状态命令回执和不可变 workflow history schema。S08-M1 不执行状态动作、不写运行事实、不发 workflow 事件、不提供状态 API/UI，也不创建 S09 node token/instance 表；M2 必须从绑定 snapshot 实现运行时 adapter、决策、Repository 与事务命令。
+
+### 24.9 S08-M2 已实现边界
+
+- `WorkItemStateRuntimeAdapter` 只解释 WorkItem 绑定的 published type version/config hash；schema v1 或无 `stateFlow` 的绑定返回显式 capability missing，既有未初始化实例不被读取路径静默补写。
+- `WorkItemStateFlowRepository` 对 current state 提供唯一初始化、批量投影、行锁、WorkItem/aggregate 双版本 CAS、持久 receipt 和不可变 history；WorkItem 的其他规范命令同步 current-state 中的 WorkItem version，防止版本漂移。
+- `WorkItemStateFlowDecisionService` 是列表/详情 `availableActions` 与 execute 的唯一决策入口，覆盖字段、调用者参与者角色、空间角色、组合 guard 和 action required fields。拒绝结果只返回稳定 reason/error code，不返回 guard 正文、输入值或不可见目标。
+- M2 用户 API 提供 current/actions、history 与 forward execute。成功命令在同一事务写字段 patch/投影、WorkItem/current state、history、activity、audit、completed receipt 和两个最小 outbox event；相同 request ID/hash 精确重放，异载荷、stale 或并发败者不追加事实。
+- M2 只执行 `forward`。return/reopen/terminate/restore/correction、存量 backfill、版本 state-key mapping、recovery UI 和状态配置/执行 UI 仍由 M3/M4 交付；M2 没有创建或模拟 S09 node instance/token。
+
+### 24.10 S08-M3 已实现边界
+
+- 普通动作运行时已支持 snapshot 明示的 `return`、`reopen`、`terminate` 和 `restore`，并继续复用与 forward 相同的 decision、guard、required field、expected version、持久回执和不可变历史事务。terminal、canceled 与对象 archive 三种语义保持分离。
+- owner/space-admin 可通过受控 `correction` 和 configuration binding upgrade 命令恢复实例；两者都要求原因、精确危险确认、目标 state key、expected version、审计和最小 lifecycle event。普通 member/guest、非成员和仅有 enterprise 治理角色者不能借此读取或修改内容。
+- V092 增加显式状态 backfill batch/unit。manifest、目标版本/hash/initial key、来源绑定/version、reason hash、失败码和 attempt 固定可追溯；每个单元独立事务，全量副作用同成同败，失败可续跑并通过 verify 检测漂移。
+- configuration binding upgrade 与 backfill 都必须明确目标 state key；缺少 rename/delete/merge 映射、目标 snapshot 不可解释、来源已改变或目标字段无法规范化时失败关闭。数据库触发器阻止绕过受控 Repository 直接改 current-state binding。
+- lifecycle event payload 固定 `eventSchemaVersion=1`，覆盖 action/state/initialization/binding change。`project.workflow.consumer-contract` v1 只验证公共最小 payload，不读取状态私表或生成通知/搜索正文；delivery receipt 负责幂等重放，未知 payload schema 分类为 permanent 并进入既有 dead-letter/replay 治理。
+- M3 不交付状态配置器、成员执行 UI 或真实浏览器闭环，这些仍属于 M4；也没有创建 S09 node instance/token、串并行、汇聚或会签事实。
+
+### 24.11 S08-M4 已实现与 Stage 收口边界
+
+- 项目空间设置现提供状态、动作、转换和 guard 编辑器，覆盖永久 key、分类/排序、连接、授权角色、required field、声明式 guard、diagnostics、preview、diff、compatibility、发布确认、rollback 入口和显式 backfill。企业管理后台不承载日常状态配置。
+- WorkItem 详情只展示服务端 `availableActions`，并提供 current state、required field 提示、原子字段 patch、不可变 history 与 owner/admin correction。caller-stable request ID 和输入在 409/422/timeout/offline 后保留，刷新以后端 state/history 为准。
+- publication 在服务端重新计算 compatibility：`blocked` 无条件拒绝，`migration_required` 必须显式危险确认；确认只允许创建新版本，不迁移旧绑定。发布后的新 active draft 从完整 current published snapshot 继承 `stateFlow`，不再从 live 配置重建并丢失草稿专属定义。
+- 真实隔离 route-final 覆盖 owner、space-admin、member、guest、non-member、enterprise-admin，配置/发布、显式 backfill、forward/reopen/terminate/restore/correction、双浏览器并发 one-winner、离线保留、键盘、长名称及 1366/820。PostgreSQL 16/Flyway V001-V092、非空实例和失败恢复证据同时通过。
+- S08 四个 Milestone、48 个 Task 完成；当前 Stage 置 `none`。该结论不授权生产切流、容量/长稳、S14 看板或 S17 自动化，也不激活 S09。
+
+## 25. Revision 24 冻结的 S09 工程准入包
+
+S09 的目标是复杂节点流定义与运行时。它可以在 S08 已验证的不可变 configuration snapshot、WorkItem aggregate version、持久化 request receipt、authorization/guard decision、activity/audit/outbox envelope 和公共 `availableActions`/workflow event 形状上扩展，但必须建立自己的节点图和运行权威。
+
+### 25.1 可共享 SPI
+
+- 版本化 `WorkflowCommand` envelope、caller-stable request ID/canonical hash、expected WorkItem version 和同聚合并发语义。
+- 空间/参与者授权入口、声明式 guard registry 的安全 operator/operand 约束，以及最小披露 reason/error code。
+- activity、audit、transactional outbox、event schema/version、consumer receipt/dead-letter/replay 和平台对象 `work_item` identity。
+- 用户侧动作投影的公共外形；具体节点负责人、会签进度、分支和交付物必须由 S09 自己授权、解释和投影。
+
+### 25.2 禁止复用与失败关闭
+
+- 禁止把 `project_work_item_current_states`、`project_work_item_workflow_commands/history` 或 `project_work_item_state_backfill_*` 作为 node instance、active token、join、vote、node task 或 artifact 权威。
+- 禁止把多 token 图折叠写回 S08 单一 current state，或用 S08 state key 猜测节点完成、分支汇聚和会签结果；跨运行时统一展示只能是可重建 summary。
+- S09 的 graph definition 可以进入后续 snapshot schema，但不得让既有 schema v1/v2 被静默解释为节点流；未知 schema、缺失图闭包、无映射运行实例一律失败关闭。
+- S09 激活前必须独立归档 S08 completed 路线、提升 Program revision、生成唯一当前路线，并以 ArchUnit、table-owner/schema 和真实并发测试证明两套私表无读写串线。

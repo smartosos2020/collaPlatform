@@ -187,6 +187,8 @@ S07-M4 迁移不会引入新的对象类型。每个迁移目标仍注册为唯�
 
 S07-M5 已把 canonical `work_item` 作为用户页面唯一对象身份。列表、详情、评论、附件、活动和分享链接均使用 `/project-spaces/{spaceId}/work-items/{workItemId}`；旧 `/issues/{legacyIssueId}` 只在 resolver 确认显式 active map 后重定向。未迁移对象保留兼容只读入口，已回滚/跨 workspace/无权对象不暴露 map、canonical ID、标题或迁移状态。
 
+S08 的 StateDefinition、ActionDefinition、TransitionDefinition、GuardDefinition，以及 V091-V092 current-state/receipt/history/backfill 行仍属于 `work_item` 聚合的内部配置、运行或恢复事实，不注册 `work_item_state`、`workflow_action`、`workflow_history`、`workflow_backfill` 等新 objectType，不生成独立 deep link、收藏、关系或搜索 identity。current/history/action/correction/binding-upgrade/backfill API 均在既有空间/WorkItem 用户边界重新检查成员与 owner/admin 权限；公共 workflow 事件仍以 aggregateType `work_item` 定位，不把状态、动作或恢复批次提升为可独立枚举对象。
+
 S04 Stage 收口后，`FieldDefinition`、`FieldOption`、规则和复杂类型配置的对象归属保持不变：它们都是工作项类型内部的配置图，不具备独立分享、收藏、搜索、关系或平台对象解析能力。S05 的布局只能通过稳定 `fieldId + fieldKey` 引用该图，S06 只能把经校验的图物化进新的不可变类型版本；两者都不能把字段配置提升为独立平台对象。S07-M1 的 `work_item` resolver 只解析真实规范实例，不解析字段或布局配置。
 
 S05-M1-M4 交付的 `WorkItemLayout`、布局节点、条件规则和字段访问策略同样只是 `WorkItemTypeDefinition` 内部配置，不注册 `work_item_layout`、`work_item_field_policy` 或其他平台 objectType。配置预览和成员样本只能投影 synthetic 值与安全选项摘要，不得生成收藏、最近访问、对象链接或搜索索引事实。S07-M1 新增的 `work_item` 必须显式绑定不可变 `type_version_id + config_hash`，发布新配置版本不会改变既有对象解释。

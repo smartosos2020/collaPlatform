@@ -22,6 +22,8 @@ public interface WorkItemRepository {
 
     Optional<WorkItem> find(UUID workspaceId, UUID spaceId, UUID workItemId);
 
+    Optional<WorkItem> lock(UUID workspaceId, UUID spaceId, UUID workItemId);
+
     Optional<UUID> findSpaceId(UUID workspaceId, UUID workItemId);
 
     List<WorkItem> list(UUID workspaceId, UUID spaceId, UUID typeId, UUID cursor, int limit);
@@ -31,6 +33,28 @@ public interface WorkItemRepository {
         UUID spaceId,
         UUID workItemId,
         String title,
+        JsonNode fieldValues,
+        UUID actorId,
+        long expectedVersion
+    );
+
+    int workflowUpdate(
+        UUID workspaceId,
+        UUID spaceId,
+        UUID workItemId,
+        JsonNode fieldValues,
+        UUID actorId,
+        long expectedVersion
+    );
+
+    int workflowBindingUpdate(
+        UUID workspaceId,
+        UUID spaceId,
+        UUID workItemId,
+        UUID expectedTypeVersionId,
+        String expectedConfigHash,
+        UUID targetTypeVersionId,
+        String targetConfigHash,
         JsonNode fieldValues,
         UUID actorId,
         long expectedVersion

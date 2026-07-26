@@ -9,7 +9,11 @@ import org.junit.jupiter.api.Test;
 class WorkItemConfigurationValidatorTests {
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final WorkItemConfigurationValidator validator = new WorkItemConfigurationValidator(
-        new WorkItemConfigurationSnapshotCanonicalizer(objectMapper)
+        new WorkItemConfigurationSnapshotCanonicalizer(objectMapper),
+        new WorkItemStateFlowValidator(
+            new WorkItemStateFlowGuardRegistry(),
+            new WorkItemStateFlowSideEffectRegistry()
+        )
     );
 
     @Test

@@ -53,9 +53,56 @@ class WorkItemConfigurationSnapshotCanonicalizerTests {
         WorkItemConfigurationException exception = assertThrows(
             WorkItemConfigurationException.class,
             () -> canonicalizer.canonicalize(objectMapper.readTree(
-                "{\"snapshotSchemaVersion\":2,\"typeDefinition\":{},\"fields\":[],\"layouts\":[]}"
+                "{\"snapshotSchemaVersion\":3,\"typeDefinition\":{},\"fields\":[],\"layouts\":[]}"
             ))
         );
         assertEquals("UNSUPPORTED_SNAPSHOT_SCHEMA", exception.code());
+    }
+
+    @Test
+    void stateFlowCollectionsUseSemanticKeysAndIgnoreInputOrder() throws Exception {
+        var first = canonicalizer.canonicalize(objectMapper.readTree("""
+            {
+              "snapshotSchemaVersion":2,
+              "typeDefinition":{"typeKey":"task"},
+              "fields":[],
+              "layouts":[],
+              "stateFlow":{
+                "states":[
+                  {"stateKey":"done","sortOrder":200},
+                  {"stateKey":"open","sortOrder":100}
+                ],
+                "actions":[
+                  {"actionKey":"complete","sortOrder":200,"authorizedRoles":["member","admin"]},
+                  {"actionKey":"start","sortOrder":100,"authorizedRoles":["admin","member"]}
+                ],
+                "transitions":[],
+                "guards":[]
+              }
+            }
+            """));
+        var second = canonicalizer.canonicalize(objectMapper.readTree("""
+            {
+              "layouts":[],
+              "stateFlow":{
+                "guards":[],
+                "transitions":[],
+                "actions":[
+                  {"authorizedRoles":["member","admin"],"sortOrder":100,"actionKey":"start"},
+                  {"authorizedRoles":["admin","member"],"sortOrder":200,"actionKey":"complete"}
+                ],
+                "states":[
+                  {"sortOrder":100,"stateKey":"open"},
+                  {"sortOrder":200,"stateKey":"done"}
+                ]
+              },
+              "fields":[],
+              "typeDefinition":{"typeKey":"task"},
+              "snapshotSchemaVersion":2
+            }
+            """));
+
+        assertEquals(first.payload(), second.payload());
+        assertEquals(first.configHash(), second.configHash());
     }
 }

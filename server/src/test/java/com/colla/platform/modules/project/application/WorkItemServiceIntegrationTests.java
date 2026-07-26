@@ -10,8 +10,12 @@ import com.colla.platform.modules.project.application.WorkItemCompatibilityServi
 import com.colla.platform.shared.auth.CurrentUser;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -42,6 +46,629 @@ class WorkItemServiceIntegrationTests {
     private TransactionTemplate transactionTemplate;
 
     @Test
+    void workflowUsesBoundSnapshotAndCommitsReceiptHistoryActivityAuditAndEventsOnce() throws Exception {
+        Fixture fixture = fixture("workflow", true);
+        WorkItemView created = service.create(
+            fixture.owner(), fixture.spaceId(), fixture.typeId(), "Stateful",
+            objectMapper.readTree("{}"), "workflow-create"
+        );
+
+        assertThat(created.runtime().path("snapshot").has("stateFlow")).isFalse();
+        assertThat(created.runtime().path("workflow").path("capability").asText()).isEqualTo("available");
+        assertThat(created.runtime().path("workflow").path("currentStateKey").asText()).isEqualTo("open");
+        assertThat(created.runtime().path("workflow").path("availableActions")
+            .findValuesAsText("actionKey")).containsExactly("start_progress", "terminate");
+
+        var executed = service.executeWorkflowAction(
+            fixture.owner(), fixture.spaceId(), created.item().id(), "start_progress",
+            "open", 0, objectMapper.readTree("{}"), "workflow-forward"
+        );
+        var replayed = service.executeWorkflowAction(
+            fixture.owner(), fixture.spaceId(), created.item().id(), "start_progress",
+            "open", 0, objectMapper.readTree("{}"), "workflow-forward"
+        );
+
+        assertThat(replayed).isEqualTo(executed);
+        assertThat(executed.toStateKey()).isEqualTo("in_progress");
+        assertThat(executed.workItemVersion()).isEqualTo(1);
+        assertThat(service.workflow(
+            fixture.owner(), fixture.spaceId(), created.item().id()
+        ).availableActions()).extracting("actionKey").containsExactly("complete", "terminate");
+        assertThat(countWhere(
+            "project_work_item_workflow_commands",
+            "workspace_id=? and work_item_id=? and operation='execute'",
+            WORKSPACE_ID, created.item().id()
+        )).isEqualTo(1);
+        assertThat(countWhere(
+            "project_work_item_workflow_history",
+            "workspace_id=? and work_item_id=?",
+            WORKSPACE_ID, created.item().id()
+        )).isEqualTo(2);
+        assertThat(countWhere(
+            "domain_events",
+            "workspace_id=? and aggregate_id=? and event_type like 'workflow.%'",
+            WORKSPACE_ID, created.item().id()
+        )).isEqualTo(2);
+        assertThat(jdbcTemplate.queryForObject(
+            "select work_item_version from project_work_item_current_states where work_item_id=?",
+            Long.class, created.item().id()
+        )).isEqualTo(1L);
+
+        assertThatThrownBy(() -> service.executeWorkflowAction(
+            fixture.owner(), fixture.spaceId(), created.item().id(), "complete",
+            "open", 0, objectMapper.readTree("{}"), "workflow-stale"
+        )).isInstanceOf(WorkItemRuntimeException.class)
+            .extracting(exception -> ((WorkItemRuntimeException) exception).code())
+            .isEqualTo("WORKFLOW_VERSION_CONFLICT");
+        assertThat(countWhere(
+            "project_work_item_workflow_commands",
+            "workspace_id=? and request_id='workflow-stale'",
+            WORKSPACE_ID
+        )).isZero();
+    }
+
+    @Test
+    void workflowPermissionAndCrossSpaceBoundariesFailClosed() throws Exception {
+        Fixture fixture = fixture("workflow-access", true);
+        Fixture outside = fixture("workflow-outside", true);
+        CurrentUser guest = addMember(fixture, "guest");
+        WorkItemView created = service.create(
+            fixture.owner(), fixture.spaceId(), fixture.typeId(), "Protected flow",
+            objectMapper.readTree("{\"secret\":\"hidden-guard-input\"}"), "workflow-access-create"
+        );
+
+        assertThat(service.workflow(
+            guest, fixture.spaceId(), created.item().id()
+        ).availableActions()).isEmpty();
+        assertThatThrownBy(() -> service.executeWorkflowAction(
+            guest, fixture.spaceId(), created.item().id(), "start_progress",
+            "open", 0, objectMapper.readTree("{}"), "workflow-guest"
+        )).isInstanceOf(WorkItemRuntimeException.class)
+            .extracting(exception -> ((WorkItemRuntimeException) exception).code())
+            .isEqualTo("FORBIDDEN");
+        assertHidden(() -> service.workflow(
+            outside.owner(), fixture.spaceId(), created.item().id()
+        ));
+        assertThat(service.workflowHistory(
+            fixture.owner(), fixture.spaceId(), created.item().id(), null, 20
+        ).toString()).doesNotContain("hidden-guard-input");
+    }
+
+    @Test
+    void concurrentWorkflowCommandsProduceOneTransitionAndOneLoser() throws Exception {
+        Fixture fixture = fixture("workflow-concurrent", true);
+        WorkItemView created = service.create(
+            fixture.owner(), fixture.spaceId(), fixture.typeId(), "Concurrent flow",
+            objectMapper.readTree("{}"), "workflow-concurrent-create"
+        );
+        CountDownLatch start = new CountDownLatch(1);
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var first = executor.submit(() -> {
+                start.await();
+                return executeOutcome(fixture, created, "workflow-concurrent-a");
+            });
+            var second = executor.submit(() -> {
+                start.await();
+                return executeOutcome(fixture, created, "workflow-concurrent-b");
+            });
+            start.countDown();
+            assertThat(java.util.List.of(
+                first.get(15, TimeUnit.SECONDS),
+                second.get(15, TimeUnit.SECONDS)
+            )).containsExactlyInAnyOrder("success", "WORKFLOW_VERSION_CONFLICT");
+        }
+        assertThat(countWhere(
+            "project_work_item_workflow_history",
+            "workspace_id=? and work_item_id=?",
+            WORKSPACE_ID, created.item().id()
+        )).isEqualTo(2);
+        assertThat(countWhere(
+            "domain_events",
+            "workspace_id=? and aggregate_id=? and event_type like 'workflow.%'",
+            WORKSPACE_ID, created.item().id()
+        )).isEqualTo(2);
+    }
+
+    @Test
+    void outboxFaultRollsBackStateHistoryActivityAndReceipt() throws Exception {
+        Fixture fixture = fixture("workflow-fault", true);
+        WorkItemView created = service.create(
+            fixture.owner(), fixture.spaceId(), fixture.typeId(), "Fault flow",
+            objectMapper.readTree("{}"), "workflow-fault-create"
+        );
+        jdbcTemplate.execute("""
+            create function test_fail_workflow_event() returns trigger language plpgsql as $$
+            begin
+              if new.event_type like 'workflow.%' then
+                raise exception 'injected workflow outbox failure';
+              end if;
+              return new;
+            end;
+            $$
+            """);
+        jdbcTemplate.execute("""
+            create trigger test_fail_workflow_event before insert on domain_events
+            for each row execute function test_fail_workflow_event()
+            """);
+        try {
+            assertThatThrownBy(() -> service.executeWorkflowAction(
+                fixture.owner(), fixture.spaceId(), created.item().id(), "start_progress",
+                "open", 0, objectMapper.readTree("{}"), "workflow-fault-forward"
+            )).isInstanceOf(RuntimeException.class);
+        } finally {
+            jdbcTemplate.execute("drop trigger test_fail_workflow_event on domain_events");
+            jdbcTemplate.execute("drop function test_fail_workflow_event()");
+        }
+
+        assertThat(service.workflow(
+            fixture.owner(), fixture.spaceId(), created.item().id()
+        ).currentStateKey()).isEqualTo("open");
+        assertThat(countWhere(
+            "project_work_item_workflow_history",
+            "workspace_id=? and work_item_id=?",
+            WORKSPACE_ID, created.item().id()
+        )).isEqualTo(1);
+        assertThat(countWhere(
+            "project_work_item_workflow_commands",
+            "workspace_id=? and request_id='workflow-fault-forward'",
+            WORKSPACE_ID
+        )).isZero();
+        assertThat(countWhere(
+            "project_work_item_activities",
+            "workspace_id=? and work_item_id=? and activity_type='workflow.action_executed'",
+            WORKSPACE_ID, created.item().id()
+        )).isZero();
+    }
+
+    @Test
+    void returnReopenTerminateRestoreAndArchiveLifecycleStayExplicit() throws Exception {
+        Fixture fixture = fixture("workflow-return-lifecycle", true);
+        WorkItemView created = service.create(
+            fixture.owner(), fixture.spaceId(), fixture.typeId(), "Lifecycle flow",
+            objectMapper.createObjectNode(), "workflow-lifecycle-create"
+        );
+
+        service.executeWorkflowAction(
+            fixture.owner(), fixture.spaceId(), created.item().id(), "start_progress",
+            "open", 0, objectMapper.createObjectNode(), "workflow-lifecycle-start-1"
+        );
+        service.executeWorkflowAction(
+            fixture.owner(), fixture.spaceId(), created.item().id(), "send_back",
+            "in_progress", 1, objectMapper.createObjectNode(), "workflow-lifecycle-return"
+        );
+        service.executeWorkflowAction(
+            fixture.owner(), fixture.spaceId(), created.item().id(), "start_progress",
+            "open", 2, objectMapper.createObjectNode(), "workflow-lifecycle-start-2"
+        );
+        service.executeWorkflowAction(
+            fixture.owner(), fixture.spaceId(), created.item().id(), "complete",
+            "in_progress", 3, objectMapper.createObjectNode(), "workflow-lifecycle-complete"
+        );
+        service.executeWorkflowAction(
+            fixture.owner(), fixture.spaceId(), created.item().id(), "reopen",
+            "done", 4, objectMapper.createObjectNode(), "workflow-lifecycle-reopen"
+        );
+        service.executeWorkflowAction(
+            fixture.owner(), fixture.spaceId(), created.item().id(), "terminate",
+            "open", 5, objectMapper.createObjectNode(), "workflow-lifecycle-terminate"
+        );
+        service.executeWorkflowAction(
+            fixture.owner(), fixture.spaceId(), created.item().id(), "restore",
+            "canceled", 6, objectMapper.createObjectNode(), "workflow-lifecycle-restore"
+        );
+
+        assertThat(service.workflow(
+            fixture.owner(), fixture.spaceId(), created.item().id()
+        ).currentStateKey()).isEqualTo("open");
+        assertThat(jdbcTemplate.queryForList(
+            """
+                select action_kind from project_work_item_workflow_history
+                 where work_item_id=? and action_kind<>'initialize'
+                 order by sequence_number
+                """,
+            String.class, created.item().id()
+        )).containsExactly(
+            "forward", "return", "forward", "forward", "reopen", "terminate", "restore"
+        );
+
+        service.transition(
+            fixture.owner(), fixture.spaceId(), created.item().id(),
+            "archived", 7, "workflow-lifecycle-archive"
+        );
+        var archivedWorkflow = service.workflow(
+            fixture.owner(), fixture.spaceId(), created.item().id()
+        );
+        assertThat(archivedWorkflow.currentStateKey()).isEqualTo("open");
+        assertThat(archivedWorkflow.aggregateVersion()).isEqualTo(7);
+        assertThat(archivedWorkflow.availableActions()).isEmpty();
+
+        service.transition(
+            fixture.owner(), fixture.spaceId(), created.item().id(),
+            "active", 8, "workflow-lifecycle-object-restore"
+        );
+        var restoredWorkflow = service.workflow(
+            fixture.owner(), fixture.spaceId(), created.item().id()
+        );
+        assertThat(restoredWorkflow.currentStateKey()).isEqualTo("open");
+        assertThat(restoredWorkflow.aggregateVersion()).isEqualTo(7);
+        assertThat(restoredWorkflow.availableActions())
+            .extracting("actionKey").contains("start_progress");
+    }
+
+    @Test
+    void controlledCorrectionRequiresSpaceManagerReasonVersionAndConfirmation() throws Exception {
+        Fixture fixture = fixture("workflow-correction", true);
+        CurrentUser member = addMember(fixture, "member");
+        WorkItemView created = service.create(
+            fixture.owner(), fixture.spaceId(), fixture.typeId(), "Correction flow",
+            objectMapper.createObjectNode(), "workflow-correction-create"
+        );
+
+        assertThatThrownBy(() -> service.correctWorkflowState(
+            member, fixture.spaceId(), created.item().id(), "done", 0,
+            "Member must not correct workflow state", "CORRECT_WORKFLOW_STATE",
+            "workflow-correction-member"
+        )).isInstanceOf(WorkItemRuntimeException.class)
+            .extracting(exception -> ((WorkItemRuntimeException) exception).code())
+            .isEqualTo("FORBIDDEN");
+        assertThatThrownBy(() -> service.correctWorkflowState(
+            fixture.owner(), fixture.spaceId(), created.item().id(), "done", 0,
+            "Owner correction with missing confirmation", "wrong",
+            "workflow-correction-confirm"
+        )).isInstanceOf(WorkItemRuntimeException.class)
+            .extracting(exception -> ((WorkItemRuntimeException) exception).code())
+            .isEqualTo("DANGEROUS_CONFIRMATION_REQUIRED");
+
+        var corrected = service.correctWorkflowState(
+            fixture.owner(), fixture.spaceId(), created.item().id(), "done", 0,
+            "Recover item after verified operational incident", "CORRECT_WORKFLOW_STATE",
+            "workflow-correction-owner"
+        );
+        var replayed = service.correctWorkflowState(
+            fixture.owner(), fixture.spaceId(), created.item().id(), "done", 0,
+            "Recover item after verified operational incident", "CORRECT_WORKFLOW_STATE",
+            "workflow-correction-owner"
+        );
+
+        assertThat(replayed).isEqualTo(corrected);
+        assertThat(corrected.toStateKey()).isEqualTo("done");
+        assertThat(service.workflow(
+            fixture.owner(), fixture.spaceId(), created.item().id()
+        ).currentStateCategory()).isEqualTo("terminal");
+        assertThat(jdbcTemplate.queryForObject(
+            """
+                select jsonb_exists(public_payload, 'reasonHash')
+                  from project_work_item_workflow_history
+                 where work_item_id=? and action_kind='correction'
+                """,
+            Boolean.class, created.item().id()
+        )).isTrue();
+        assertThat(service.workflowHistory(
+            fixture.owner(), fixture.spaceId(), created.item().id(), null, 20
+        ).toString()).doesNotContain("operational incident");
+    }
+
+    @Test
+    void concurrentCorrectionsCommitExactlyOneCompleteRecoveryFact() throws Exception {
+        Fixture fixture = fixture("workflow-correction-concurrent", true);
+        WorkItemView created = service.create(
+            fixture.owner(), fixture.spaceId(), fixture.typeId(), "Concurrent correction",
+            objectMapper.createObjectNode(), "workflow-correction-concurrent-create"
+        );
+        CountDownLatch start = new CountDownLatch(1);
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var first = executor.submit(() -> {
+                start.await();
+                return correctionOutcome(
+                    fixture, created, "done", "workflow-correction-concurrent-a"
+                );
+            });
+            var second = executor.submit(() -> {
+                start.await();
+                return correctionOutcome(
+                    fixture, created, "canceled", "workflow-correction-concurrent-b"
+                );
+            });
+            start.countDown();
+            assertThat(java.util.List.of(
+                first.get(15, TimeUnit.SECONDS),
+                second.get(15, TimeUnit.SECONDS)
+            )).containsExactlyInAnyOrder("success", "WORKFLOW_VERSION_CONFLICT");
+        }
+        assertThat(countWhere(
+            "project_work_item_workflow_history",
+            "workspace_id=? and work_item_id=?",
+            WORKSPACE_ID, created.item().id()
+        )).isEqualTo(2);
+        assertThat(countWhere(
+            "project_work_item_workflow_commands",
+            "workspace_id=? and work_item_id=? and operation='correct'",
+            WORKSPACE_ID, created.item().id()
+        )).isEqualTo(1);
+        assertThat(countWhere(
+            "domain_events",
+            "workspace_id=? and aggregate_id=? and event_type like 'workflow.%'",
+            WORKSPACE_ID, created.item().id()
+        )).isEqualTo(2);
+    }
+
+    @Test
+    void bindingUpgradeRequiresExplicitTargetStateMappingAndKeepsHistory() throws Exception {
+        Fixture fixture = fixture("workflow-upgrade", true);
+        WorkItemView created = service.create(
+            fixture.owner(), fixture.spaceId(), fixture.typeId(), "Upgrade flow",
+            objectMapper.createObjectNode(), "workflow-upgrade-create"
+        );
+        TargetVersion target = addStateFlowVersion(fixture, "queued");
+
+        assertThatThrownBy(() -> service.upgradeWorkflowBinding(
+            fixture.owner(), fixture.spaceId(), created.item().id(), target.versionId(),
+            "open", 0, "Upgrade requires an explicit semantic state map",
+            "UPGRADE_WORKFLOW_BINDING", "workflow-upgrade-missing-map"
+        )).isInstanceOf(WorkItemRuntimeException.class)
+            .extracting(exception -> ((WorkItemRuntimeException) exception).code())
+            .isEqualTo("WORKFLOW_STATE_MAPPING_REQUIRED");
+
+        var upgraded = service.upgradeWorkflowBinding(
+            fixture.owner(), fixture.spaceId(), created.item().id(), target.versionId(),
+            "queued", 0, "Map the old open state to the new queued state",
+            "UPGRADE_WORKFLOW_BINDING", "workflow-upgrade-explicit-map"
+        );
+        var replayed = service.upgradeWorkflowBinding(
+            fixture.owner(), fixture.spaceId(), created.item().id(), target.versionId(),
+            "queued", 0, "Map the old open state to the new queued state",
+            "UPGRADE_WORKFLOW_BINDING", "workflow-upgrade-explicit-map"
+        );
+
+        assertThat(replayed).isEqualTo(upgraded);
+        assertThat(upgraded.fromTypeVersionId()).isEqualTo(fixture.versionId());
+        assertThat(upgraded.toTypeVersionId()).isEqualTo(target.versionId());
+        WorkItemView view = service.get(
+            fixture.owner(), fixture.spaceId(), created.item().id()
+        );
+        assertThat(view.item().typeVersionId()).isEqualTo(target.versionId());
+        assertThat(view.item().configHash()).isEqualTo(target.configHash());
+        assertThat(view.runtime().path("workflow").path("currentStateKey").asText())
+            .isEqualTo("queued");
+        assertThat(jdbcTemplate.queryForList(
+            """
+                select type_version_id from project_work_item_workflow_history
+                 where work_item_id=? order by sequence_number
+                """,
+            UUID.class, created.item().id()
+        )).containsExactly(fixture.versionId(), target.versionId());
+    }
+
+    @Test
+    void explicitBackfillFreezesManifestInitializesSystemHistoryAndVerifies() throws Exception {
+        Fixture fixture = fixture("workflow-backfill");
+        WorkItemView created = service.create(
+            fixture.owner(), fixture.spaceId(), fixture.typeId(), "Legacy binding",
+            objectMapper.createObjectNode(), "workflow-backfill-create"
+        );
+        assertThat(service.workflow(
+            fixture.owner(), fixture.spaceId(), created.item().id()
+        ).capability()).isEqualTo("not_configured");
+        TargetVersion target = addStateFlowVersion(fixture, "open");
+
+        var batch = service.createWorkflowBackfill(
+            fixture.owner(), fixture.spaceId(), fixture.typeId(), target.versionId(),
+            "open", java.util.List.of(created.item().id()),
+            "Explicitly initialize the reviewed pre-S08 work item",
+            "INITIALIZE_EXISTING_WORKFLOW_STATES", "workflow-backfill-batch"
+        );
+        var replayed = service.createWorkflowBackfill(
+            fixture.owner(), fixture.spaceId(), fixture.typeId(), target.versionId(),
+            "open", java.util.List.of(created.item().id()),
+            "Explicitly initialize the reviewed pre-S08 work item",
+            "INITIALIZE_EXISTING_WORKFLOW_STATES", "workflow-backfill-batch"
+        );
+        var verification = service.verifyWorkflowBackfill(
+            fixture.owner(), fixture.spaceId(), batch.id()
+        );
+
+        assertThat(replayed).isEqualTo(batch);
+        assertThat(batch.status()).isEqualTo("completed");
+        assertThat(batch.manifestHash()).hasSize(64);
+        assertThat(verification.status()).isEqualTo("verified");
+        assertThat(verification.verifiedCount()).isEqualTo(1);
+        assertThat(verification.failures()).isEmpty();
+        WorkItemView view = service.get(
+            fixture.owner(), fixture.spaceId(), created.item().id()
+        );
+        assertThat(view.item().typeVersionId()).isEqualTo(target.versionId());
+        assertThat(view.runtime().path("workflow").path("currentStateKey").asText())
+            .isEqualTo("open");
+        assertThat(jdbcTemplate.queryForObject(
+            """
+                select actor_class from project_work_item_workflow_history
+                 where work_item_id=? and action_kind='initialize'
+                """,
+            String.class, created.item().id()
+        )).isEqualTo("system");
+        assertThat(jdbcTemplate.queryForObject(
+            """
+                select public_payload->>'provenance'
+                  from project_work_item_workflow_history
+                 where work_item_id=? and action_kind='initialize'
+                """,
+            String.class, created.item().id()
+        )).isEqualTo("explicit_backfill");
+    }
+
+    @Test
+    void backfillOutboxFailureRollsBackEachUnitThenResumesAndVerifies() throws Exception {
+        Fixture fixture = fixture("workflow-backfill-resume");
+        WorkItemView first = service.create(
+            fixture.owner(), fixture.spaceId(), fixture.typeId(), "Legacy first",
+            objectMapper.createObjectNode(), "workflow-backfill-resume-create-1"
+        );
+        WorkItemView second = service.create(
+            fixture.owner(), fixture.spaceId(), fixture.typeId(), "Legacy second",
+            objectMapper.createObjectNode(), "workflow-backfill-resume-create-2"
+        );
+        TargetVersion target = addStateFlowVersion(fixture, "open");
+        jdbcTemplate.execute("""
+            create function test_fail_backfill_workflow_event() returns trigger language plpgsql as $$
+            begin
+              if new.event_type like 'workflow.%' then
+                raise exception 'injected backfill outbox failure';
+              end if;
+              return new;
+            end;
+            $$
+            """);
+        jdbcTemplate.execute("""
+            create trigger test_fail_backfill_workflow_event before insert on domain_events
+            for each row execute function test_fail_backfill_workflow_event()
+            """);
+
+        com.colla.platform.modules.project.domain.WorkItemStateRuntimeModels.StateBackfillBatch failed;
+        try {
+            failed = service.createWorkflowBackfill(
+                fixture.owner(), fixture.spaceId(), fixture.typeId(), target.versionId(),
+                "open", java.util.List.of(first.item().id(), second.item().id()),
+                "Rehearse resumable explicit initialization after injected failure",
+                "INITIALIZE_EXISTING_WORKFLOW_STATES", "workflow-backfill-resume-batch"
+            );
+        } finally {
+            jdbcTemplate.execute(
+                "drop trigger test_fail_backfill_workflow_event on domain_events"
+            );
+            jdbcTemplate.execute("drop function test_fail_backfill_workflow_event()");
+        }
+
+        assertThat(failed.status()).isEqualTo("partial_failed");
+        assertThat(failed.failedCount()).isEqualTo(2);
+        assertThat(countWhere(
+            "project_work_item_current_states",
+            "workspace_id=? and space_id=? and work_item_id in (?, ?)",
+            WORKSPACE_ID, fixture.spaceId(), first.item().id(), second.item().id()
+        )).isZero();
+        assertThat(countWhere(
+            "project_work_item_workflow_history",
+            "workspace_id=? and space_id=? and work_item_id in (?, ?)",
+            WORKSPACE_ID, fixture.spaceId(), first.item().id(), second.item().id()
+        )).isZero();
+
+        var resumed = service.resumeWorkflowBackfill(
+            fixture.owner(), fixture.spaceId(), failed.id(),
+            "RESUME_WORKFLOW_STATE_BACKFILL"
+        );
+        var verification = service.verifyWorkflowBackfill(
+            fixture.owner(), fixture.spaceId(), failed.id()
+        );
+
+        assertThat(resumed.status()).isEqualTo("completed");
+        assertThat(resumed.completedCount()).isEqualTo(2);
+        assertThat(resumed.failedCount()).isZero();
+        assertThat(verification.status()).isEqualTo("verified");
+        assertThat(verification.verifiedCount()).isEqualTo(2);
+        assertThat(verification.failures()).isEmpty();
+        assertThat(jdbcTemplate.queryForList(
+            """
+                select attempt_count from project_work_item_state_backfill_units
+                 where batch_id=? order by work_item_id
+                """,
+            Integer.class, failed.id()
+        )).containsExactly(2, 2);
+    }
+
+    @Test
+    void representativeWorkflowProjectionUsesBoundedIndexAndLatencyBudget() throws Exception {
+        Fixture fixture = fixture("workflow-plan", true);
+        WorkItemView anchor = service.create(
+            fixture.owner(), fixture.spaceId(), fixture.typeId(), "Plan anchor",
+            objectMapper.readTree("{}"), "workflow-plan-create"
+        );
+        for (int index = 0; index < 250; index++) {
+            UUID itemId = UUID.randomUUID();
+            long number = index + 2L;
+            jdbcTemplate.update(
+                """
+                    insert into project_work_items (
+                        id, workspace_id, space_id, type_definition_id, type_version_id,
+                        config_hash, item_number, display_key, title, field_values, status,
+                        version, created_by, created_at, updated_by, updated_at
+                    ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, '{}'::jsonb, 'active', 0, ?, now(), ?, now())
+                    """,
+                itemId, WORKSPACE_ID, fixture.spaceId(), fixture.typeId(), fixture.versionId(),
+                fixture.configHash(), number, "TASK-" + number, "Workflow row " + index,
+                fixture.owner().id(), fixture.owner().id()
+            );
+            jdbcTemplate.update(
+                """
+                    insert into project_work_item_current_states (
+                        workspace_id, space_id, work_item_id, type_definition_id, type_version_id,
+                        config_hash, current_state_key, work_item_version, aggregate_version,
+                        initialized_by, initialized_at, updated_by, updated_at
+                    ) values (?, ?, ?, ?, ?, ?, 'open', 0, 0, ?, now(), ?, now())
+                    """,
+                WORKSPACE_ID, fixture.spaceId(), itemId, fixture.typeId(), fixture.versionId(),
+                fixture.configHash(), fixture.owner().id(), fixture.owner().id()
+            );
+        }
+
+        String plan = transactionTemplate.execute(status -> {
+            jdbcTemplate.execute("set local enable_seqscan = off");
+            return String.join("\n", jdbcTemplate.query(
+                """
+                    explain (analyze, buffers, format text)
+                    select work_item_id
+                      from project_work_item_current_states
+                     where workspace_id=? and space_id=? and type_definition_id=?
+                       and current_state_key='open'
+                     order by work_item_id
+                     limit 50
+                    """,
+                (row, number) -> row.getString(1),
+                WORKSPACE_ID, fixture.spaceId(), fixture.typeId()
+            ));
+        });
+        long started = System.nanoTime();
+        var page = service.list(fixture.owner(), fixture.spaceId(), fixture.typeId(), null, 50);
+        long elapsedMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started);
+
+        assertThat(plan).contains("idx_project_work_item_current_states_projection");
+        assertThat(page.items()).hasSize(50);
+        assertThat(page.items()).allSatisfy(item ->
+            assertThat(item.runtime().path("workflow").path("availableActions").size()).isEqualTo(2)
+        );
+        assertThat(elapsedMillis).isLessThan(5_000);
+        assertThat(anchor.item().id()).isNotNull();
+    }
+
+    private String executeOutcome(Fixture fixture, WorkItemView created, String requestId) {
+        try {
+            service.executeWorkflowAction(
+                fixture.owner(), fixture.spaceId(), created.item().id(), "start_progress",
+                "open", 0, objectMapper.createObjectNode(), requestId
+            );
+            return "success";
+        } catch (WorkItemRuntimeException exception) {
+            return exception.code();
+        }
+    }
+
+    private String correctionOutcome(
+        Fixture fixture,
+        WorkItemView created,
+        String targetStateKey,
+        String requestId
+    ) {
+        try {
+            service.correctWorkflowState(
+                fixture.owner(), fixture.spaceId(), created.item().id(), targetStateKey, 0,
+                "Resolve one reviewed concurrent recovery decision",
+                "CORRECT_WORKFLOW_STATE", requestId
+            );
+            return "success";
+        } catch (WorkItemRuntimeException exception) {
+            return exception.code();
+        }
+    }
+
+    @Test
     void createBindsSnapshotAppliesDefaultsAndReplaysTheExactReceipt() throws Exception {
         Fixture fixture = fixture("create");
         JsonNode values = objectMapper.readTree("""
@@ -65,7 +692,9 @@ class WorkItemServiceIntegrationTests {
             "create-exact"
         );
 
-        assertThat(replayed).isEqualTo(created);
+        JsonNode replayedJson = objectMapper.valueToTree(replayed);
+        JsonNode createdJson = objectMapper.valueToTree(created);
+        assertThat(firstJsonDifference(replayedJson, createdJson, "$")).isEmpty();
         assertThat(created.item().typeVersionId()).isEqualTo(fixture.versionId());
         assertThat(created.item().configHash()).isEqualTo(fixture.configHash());
         assertThat(created.item().displayKey()).isEqualTo("TASK-1");
@@ -808,6 +1437,10 @@ class WorkItemServiceIntegrationTests {
     }
 
     private Fixture fixture(String label) throws Exception {
+        return fixture(label, false);
+    }
+
+    private Fixture fixture(String label, boolean stateFlow) throws Exception {
         UUID userId = UUID.randomUUID();
         UUID spaceId = UUID.randomUUID();
         UUID memberId = UUID.randomUUID();
@@ -898,6 +1531,36 @@ class WorkItemServiceIntegrationTests {
                 UUID.randomUUID(),
                 UUID.randomUUID()
             ));
+        if (stateFlow) {
+            ObjectNode stateful = (ObjectNode) snapshot;
+            stateful.put("snapshotSchemaVersion", 2);
+            JsonNode flow = new WorkItemStateFlowPresetCatalog(objectMapper)
+                .stateFlowFor("task")
+                .orElseThrow();
+            if (label.contains("return")) {
+                ObjectNode action = ((ObjectNode) flow).withArray("actions").addObject();
+                action.put("actionKey", "send_back");
+                action.put("label", "Send back");
+                action.put("description", "");
+                action.put("kind", "return");
+                action.putArray("authorizedRoles").add("owner").add("member");
+                action.putArray("requiredFieldKeys");
+                action.putObject("fieldPatch");
+                action.putArray("sideEffectKeys");
+                action.put("sortOrder", 250);
+                ObjectNode transition = ((ObjectNode) flow).withArray("transitions").addObject();
+                transition.put("transitionKey", "in_progress_send_back");
+                transition.put("actionKey", "send_back");
+                transition.put("fromStateKey", "in_progress");
+                transition.put("toStateKey", "open");
+                transition.putNull("guardKey");
+                transition.put("sortOrder", 250);
+            }
+            stateful.set(
+                "stateFlow",
+                flow
+            );
+        }
         var canonical = snapshotCanonicalizer.canonicalize(snapshot);
 
         jdbcTemplate.update(
@@ -974,7 +1637,7 @@ class WorkItemServiceIntegrationTests {
                         id, workspace_id, space_id, type_definition_id, version_number,
                         config_hash, status, config, created_by, created_at, published_by,
                         published_at, snapshot_schema_version
-                    ) values (?, ?, ?, ?, 1, ?, 'published', ?::jsonb, ?, now(), ?, now(), 1)
+                    ) values (?, ?, ?, ?, 1, ?, 'published', ?::jsonb, ?, now(), ?, now(), ?)
                     """,
                 versionId,
                 WORKSPACE_ID,
@@ -983,7 +1646,8 @@ class WorkItemServiceIntegrationTests {
                 canonical.configHash(),
                 canonical.payload().toString(),
                 userId,
-                userId
+                userId,
+                stateFlow ? 2 : 1
             );
         });
 
@@ -1058,6 +1722,79 @@ class WorkItemServiceIntegrationTests {
         );
     }
 
+    private TargetVersion addStateFlowVersion(
+        Fixture fixture,
+        String targetInitialStateKey
+    ) throws Exception {
+        ObjectNode snapshot = (ObjectNode) objectMapper.readTree(
+            jdbcTemplate.queryForObject(
+                """
+                    select config::text from project_work_item_type_versions
+                     where workspace_id=? and space_id=? and id=?
+                    """,
+                String.class, WORKSPACE_ID, fixture.spaceId(), fixture.versionId()
+            )
+        );
+        snapshot.put("snapshotSchemaVersion", 2);
+        ObjectNode flow = (ObjectNode) new WorkItemStateFlowPresetCatalog(objectMapper)
+            .stateFlowFor("task")
+            .orElseThrow();
+        if (!"open".equals(targetInitialStateKey)) {
+            for (JsonNode state : flow.withArray("states")) {
+                if ("open".equals(state.path("stateKey").asText())) {
+                    ((ObjectNode) state).put("stateKey", targetInitialStateKey);
+                }
+            }
+            for (JsonNode transition : flow.withArray("transitions")) {
+                ObjectNode mutable = (ObjectNode) transition;
+                if ("open".equals(mutable.path("fromStateKey").asText())) {
+                    mutable.put("fromStateKey", targetInitialStateKey);
+                }
+                if ("open".equals(mutable.path("toStateKey").asText())) {
+                    mutable.put("toStateKey", targetInitialStateKey);
+                }
+            }
+        }
+        snapshot.set("stateFlow", flow);
+        var canonical = snapshotCanonicalizer.canonicalize(snapshot);
+        UUID targetVersionId = UUID.randomUUID();
+        transactionTemplate.executeWithoutResult(ignored -> {
+            jdbcTemplate.update(
+                """
+                    update project_work_item_type_versions
+                       set status='superseded'
+                     where workspace_id=? and space_id=? and id=?
+                    """,
+                WORKSPACE_ID, fixture.spaceId(), fixture.versionId()
+            );
+            jdbcTemplate.update(
+                """
+                    insert into project_work_item_type_versions (
+                        id, workspace_id, space_id, type_definition_id, version_number,
+                        config_hash, status, config, created_by, created_at, published_by,
+                        published_at, snapshot_schema_version
+                    ) values (?, ?, ?, ?, 2, ?, 'published', ?::jsonb, ?, now(), ?, now(), 2)
+                    """,
+                targetVersionId, WORKSPACE_ID, fixture.spaceId(), fixture.typeId(),
+                canonical.configHash(), canonical.payload().toString(),
+                fixture.owner().id(), fixture.owner().id()
+            );
+            jdbcTemplate.update(
+                """
+                    update project_work_item_types
+                       set current_version_id=?, aggregate_version=aggregate_version+1,
+                           updated_by=?, updated_at=now()
+                     where workspace_id=? and space_id=? and id=?
+                    """,
+                targetVersionId, fixture.owner().id(), WORKSPACE_ID,
+                fixture.spaceId(), fixture.typeId()
+            );
+        });
+        return new TargetVersion(
+            targetVersionId, canonical.configHash(), targetInitialStateKey
+        );
+    }
+
     private int count(String table, UUID spaceId) {
         return countWhere(table, "workspace_id=? and space_id=?", WORKSPACE_ID, spaceId);
     }
@@ -1068,6 +1805,47 @@ class WorkItemServiceIntegrationTests {
             Integer.class,
             arguments
         );
+    }
+
+    private String firstJsonDifference(JsonNode left, JsonNode right, String path) {
+        if (left.equals(right)) {
+            return "";
+        }
+        if (left.isNumber() && right.isNumber()
+            && left.decimalValue().compareTo(right.decimalValue()) == 0) {
+            return "";
+        }
+        if (left.isObject() && right.isObject()) {
+            var fields = new java.util.TreeSet<String>();
+            left.fieldNames().forEachRemaining(fields::add);
+            right.fieldNames().forEachRemaining(fields::add);
+            for (String field : fields) {
+                if (!left.has(field) || !right.has(field)) {
+                    return path + "." + field + " presence differs";
+                }
+                String difference = firstJsonDifference(
+                    left.get(field), right.get(field), path + "." + field
+                );
+                if (!difference.isEmpty()) {
+                    return difference;
+                }
+            }
+            return "";
+        } else if (left.isArray() && right.isArray()) {
+            if (left.size() != right.size()) {
+                return path + " array size differs: " + left.size() + " != " + right.size();
+            }
+            for (int index = 0; index < left.size(); index++) {
+                String difference = firstJsonDifference(
+                    left.get(index), right.get(index), path + "[" + index + "]"
+                );
+                if (!difference.isEmpty()) {
+                    return difference;
+                }
+            }
+            return "";
+        }
+        return path + " differs: " + left + " != " + right;
     }
 
     private void assertHidden(org.assertj.core.api.ThrowableAssert.ThrowingCallable operation) {
@@ -1083,6 +1861,13 @@ class WorkItemServiceIntegrationTests {
         UUID typeId,
         UUID versionId,
         String configHash
+    ) {
+    }
+
+    private record TargetVersion(
+        UUID versionId,
+        String configHash,
+        String initialStateKey
     ) {
     }
 }
