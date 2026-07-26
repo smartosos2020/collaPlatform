@@ -65,9 +65,11 @@ public final class PublishedSnapshotAdapter {
         return snapshotReader.findPublishedSnapshot(workspaceId, spaceId, typeId, versionId)
             .map(version -> new SnapshotAvailability(
                 version.supportedSnapshot()
-                    ? version.snapshot().path("stateFlow").isObject()
-                        ? "supported_with_state_flow"
-                        : "supported_without_state_flow"
+                    ? version.snapshot().path("nodeFlow").isObject()
+                        ? "supported_with_node_flow_definition"
+                        : version.snapshot().path("stateFlow").isObject()
+                            ? "supported_with_state_flow"
+                            : "supported_without_workflow"
                     : version.completeSnapshot() ? "unsupported" : "legacy_partial",
                 version.snapshotSchemaVersion(),
                 version.configHash()
@@ -89,6 +91,14 @@ public final class PublishedSnapshotAdapter {
 
         public String stateFlowAvailability() {
             return hasStateFlow() ? "available" : "not_configured";
+        }
+
+        public boolean hasNodeFlowDefinition() {
+            return snapshot.path("nodeFlow").isObject();
+        }
+
+        public String nodeFlowAvailability() {
+            return hasNodeFlowDefinition() ? "available" : "not_configured";
         }
     }
 

@@ -1,7 +1,7 @@
 ---
 title: 工作项配置兼容矩阵
 status: active
-last_code_check: 2026-07-26
+last_code_check: 2026-07-27
 owner: project
 ---
 
@@ -45,6 +45,13 @@ owner: project
 | 动作 | 删除 action 或改变授权/必填/patch/副作用 | review_required | `action_removed` / `action_behavior_changed` | 复核客户端、角色和存量流程 |
 | 转换 | 删除或重定向 from/to/action | review_required | `transition_removed` / `transition_changed` | 复核可达性并显式迁移受影响状态 |
 | Guard | 删除、替换或收紧声明式 guard | migration_required | `guard_removed` / `guard_changed` | 重新校验存量实例；未知 operator 失败关闭 |
+| 节点流 | 无节点流版本新增节点流 | migration_required | `node_flow_added` | 旧实例保持 capability missing，使用显式 manifest backfill |
+| 节点流 | 删除整个节点流 | blocked | `node_flow_removed` | 保持旧绑定，或发布可解释目标版本后显式终止/升级 |
+| 节点 | 删除、改 kind 或永久 node key | migration_required | `node_removed` / `node_kind_changed` | 对全部 active source node 提供显式 one-to-one/split/merge map |
+| 边/阶段 | 删除、重定向边或移动阶段改变可达语义 | review_required | `edge_removed` / `edge_changed` / `stage_changed` | 复核 active token 与后续路径，不能按 label 自动映射 |
+| 分支/汇聚 | mode、条件、优先级、join policy/quorum 改变 | migration_required | `branch_changed` / `join_changed` | 对非空实例进行映射与并发闭包校验 |
+| 节点任务 | assignment/form/artifact/schedule 收紧或移除 | migration_required | `node_task_policy_changed` | 重新校验处理人、必填字段、交付物和到期事实 |
+| 恢复/补偿 | 删除恢复命令、改变来源/目标/授权/确认或补偿顺序 | review_required | `node_recovery_changed` | 复核运维入口与 runbook；既有 history/ledger 不改写 |
 | 引用 | 字段、选项、节点、策略引用悬空 | blocked | `dangling_reference` | 修复快照闭包，禁止猜测绑定 |
 | 模板 | base/upstream/local 无冲突 additive 变化 | compatible | `template_additive_merge` | 可自动合并到草稿 |
 | 模板 | 同一稳定 key 双方修改或删改冲突 | review_required | `template_merge_conflict` | 管理员逐项选择 local/upstream |
@@ -90,3 +97,9 @@ S08-M4 已把同一矩阵接入空间配置 UI 和 publication service：`blocke
 - backfill/upgrade 提交后不提供“删除历史并恢复旧绑定”的自动回退。若目标语义错误，使用新的显式 binding upgrade/correction 追加补偿事实；生产操作另需备份、观测和变更批准。
 - archive/restore 只改变 WorkItem 对象生命周期并保留 current state；terminate/restore 才改变 canceled 业务状态。两类恢复不可互相替代。
 - S09 只能消费公共 command/event SPI；本 runbook 不授权创建 node token、并行分支、汇聚、会签或节点交付物。
+
+## 6. S09 节点恢复与升级
+
+S09-M4 使用同一兼容分析作为实例升级前置，但分析结果不代替 node map。只有目标 snapshot 可解释且总体影响不是 `blocked` 时，owner/admin 才能用覆盖全部 active source node 的显式 `one_to_one`、`split` 或 `merge` map 执行升级；缺失、额外、重复或指向非 executable node 的映射全部失败关闭。
+
+pre-S09 WorkItem 不按“当前类型版本”静默启动节点实例，只能用冻结 source binding/version 的显式 manifest backfill。return/jump/terminate/correct 只执行绑定 snapshot 声明的 recovery command；补偿只运行注册动作。完整操作、停止、续跑、验证和回退边界见 `docs/05-runbooks/project-platform-s09-node-workflow-recovery.md`。

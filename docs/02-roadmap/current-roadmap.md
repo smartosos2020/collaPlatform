@@ -1,150 +1,154 @@
 ---
-title: PROJECT-PLATFORM-S09 复杂节点流定义与运行时当前执行路线
+title: PROJECT-PLATFORM-S10 工作项关系、层级和依赖当前执行路线
 status: active
-route: PROJECT-PLATFORM-S09
+route: PROJECT-PLATFORM-S10
 program: PROJECT-PLATFORM
 program_doc: docs/00-product/initiatives/project-platform-program.md
-program_revision: 25
-stage: PROJECT-PLATFORM-S09
-stage_final_milestone: PROJECT-PLATFORM-S09-M5
+program_revision: 27
+stage: PROJECT-PLATFORM-S10
+stage_final_milestone: PROJECT-PLATFORM-S10-M5
 last_code_check: 2026-07-27
 source_rule: 本文件是唯一执行路线入口；长期专项只提供 Stage 索引，不直接执行。
 ---
 
-# PROJECT-PLATFORM-S09 复杂节点流定义与运行时
+# PROJECT-PLATFORM-S10 工作项关系、层级和依赖
 
 ## 1. Stage 目标
 
-在 S08 轻量状态流已经归档的基础上，交付适用于审批、交付和多参与方协作的版本化复杂节点流。空间管理员可以在唯一配置草稿中定义节点、边、阶段、分支、汇聚、处理人、表单、交付物和时限，经 S06 发布后由绑定该不可变版本的 WorkItem 运行；空间成员可以围绕服务端分配的节点任务完成单人、任一人、多人会签和自动节点，并获得可追溯的 token、投票、交付物、历史和恢复能力。
+在 S09 复杂节点流已经完成并归档的基础上，为规范 `work_item` 建立独立、可配置、可审计的关系权威。空间管理员可以定义普通、父子、依赖和阻塞关系的方向、反向名称、适用类型、基数与删除策略；空间成员可以在服务端授权下建立、理解、调整和撤销关系，并通过层级导航、反向引用和有界影响分析识别上下游协作。
 
-S09 的完成标准不是把 S08 状态转换包装成流程图。复杂节点流必须拥有独立的 workflow instance、active token、node task、vote 和 join 权威，只能通过已经冻结的 command/event SPI 与 WorkItem、活动、审计和 outbox 协作；不得读写 S08 current-state 私表。运行实例必须解释自身绑定的完整 configuration snapshot，分支/汇聚、回退/跳转/终止/补偿和版本升级必须具备确定语义、幂等、并发控制、故障原子性和不可变历史。
+S10 的完成标准不是把 legacy `issue_relations` 换表，也不是把 S09 流程 edge 解释为工作项关系。关系定义必须进入唯一版本化配置发布链路，关系实例、不可变历史和层级投影必须拥有独立权威；父子与依赖环、并发写入、删除/归档、跨空间、最小披露、存量映射和恢复必须具备确定语义。S10 不实现 S11 细粒度数据权限、S13 全局树形/保存视图、S14 甘特/关键路径、S17 自动化或 S18 跨空间同步。
 
 ## 2. 固定输入与当前事实
 
-- S08 完成路线已归档；当前数据库 schema 为 V092，S09 尚未创建 workflow instance、node token、node task、vote 或 join 运行时权威。
-- WorkItem 显式绑定 `type_definition_id + type_version_id + config_hash`；节点流运行时只能经 `PublishedSnapshotAdapter` 解释该绑定版本，不回读 active draft、最新类型版本或 live 配置表。
-- S06 提供唯一配置草稿、校验、不可变发布、diff、rollback、模板 lineage 和兼容矩阵；节点图定义必须扩展完整 snapshot，不能建立第二套发布权威。
-- S07 提供规范 WorkItem、expected version、持久化 command receipt、活动序列、审计/outbox 和用户侧竖切；S09 只能复用已经冻结的公共 command/event SPI。
-- S08 轻量状态流只保存单一 current state；S09 节点流保存 workflow instance 与 active token。两类运行时不得共享私有运行表、Repository 或以同步双写维持一致。
-- owner、space-admin、member、guest、non-member、enterprise-admin 六身份继续使用空间与内容边界；企业管理员不因治理角色自动获得节点定义、任务或交付物权限。
-- S09 前已经存在的 WorkItem 不得被静默初始化或升级；启动、版本映射、backfill、失败清单、续跑和回退必须显式并可审计。
-- S09 不提前实现 S10 关系引擎、S14 高级视图、S16 工作量/工时、S17 自动化编排，也不把基础性能证据表述为生产容量结论。
+- S09 完成路线已归档；当前 schema 为 V096，规范 WorkItem、轻量状态流和复杂节点流均已交付，但尚无规范 WorkItem↔WorkItem 关系权威。
+- legacy `issue_relations` 只以 `issue_id + target_type + target_id` 保存软删除关系，缺少规范关系类型版本、双端 WorkItem 约束、反向语义、父子一致性和依赖环保护；它只能作为显式迁移输入。
+- S07 的迁移 manifest 已记录 legacy relation，但没有把它转换成 S10 事实；任何迁移必须显式生成映射、失败清单、续跑和 verify，不得读取路径静默补写。
+- 关系定义只能进入 S06 唯一配置草稿、校验、不可变发布、diff、compatibility、rollback 和模板链路，不建立 live relation-definition 双权威。
+- 关系实例只能引用规范 WorkItem identity、space/type binding 和已发布关系定义；不得外键耦合或读取 S08 current-state/history/backfill 与 S09 instance/token/task/vote/join/history/backfill 私表。
+- 流程 edge 是同一 workflow instance 内的执行路径，node token lineage/join correlation 也不是 WorkItem 业务关系；关系变化不得反向推进任何流程。
+- owner、space-admin、member、guest、non-member、enterprise-admin 六身份继续使用空间与内容边界；企业管理员不因治理角色自动获得关系端点内容访问。
+- 平台对象 resolver 可以用于目标摘要和深链，但 resolver 的 `forbidden/deleted/missing` 状态不能绕过源、目标 WorkItem 的关系授权。
 
 ## 3. 执行规则
 
 1. 每轮只推进一个 Milestone；每个 Task 必须有唯一 Verification Contract、fresh Acceptance Evidence 和执行报告行。
-2. 节点、边、阶段、分支、汇聚及节点配置必须位于同一完整 snapshot；任何从 live repository 或前端文本补算运行语义的实现均为阻断。
-3. 图元素、节点任务、投票和事件使用永久 semantic key；展示名可变，运行历史与升级映射不得依赖展示文本定位。
-4. workflow instance、token、task、vote、join 和 history 是 S09 独立权威；只能调用公共 SPI，不得查询或写入 S08 私表。
-5. 节点命令在同一事务提交 WorkItem aggregate version、token/task/vote/join、历史、活动、审计、outbox 和 receipt；失败不得产生半推进。
-6. `availableActions`、任务分配和真实执行必须调用同一服务端决策；列表投影可批量计算，但不能成为授权事实源。
-7. 分支、汇聚、回退、跳转、终止、补偿和版本升级必须声明式、确定、可审计；任意代码、动态 SQL 和无限自动推进禁止进入基础合同。
+2. 关系类型使用永久 semantic key；显示名、正反向文案可变，已创建边不得依赖展示文本解释方向和语义。
+3. 普通、父子、依赖和阻塞关系共享规范 relation envelope，但父子与依赖拥有独立结构约束；不得用 UI 展开树代替服务端一致性。
+4. 关系命令必须使用 expected WorkItem/relation version、caller-stable request ID、持久 receipt、审计、活动和事务 outbox；失败不得产生单端边、半历史或陈旧投影。
+5. 父子环、依赖环、基数和重复边在服务端事务内失败关闭；并发胜者唯一，败者返回稳定冲突事实。
+6. 正向、反向、层级和影响投影只能从规范关系权威重建；缓存或 closure/path 表不得成为第二套可写事实源。
+7. 列表、详情、选择器、反向引用和影响分析必须逐端点应用空间与内容授权；不可见端点不泄露标题、类型、层级位置或关系数量。
 8. M1-M4 使用影响范围门禁；M5 执行完整 Flyway、后端、前端、协作、架构、安全、六身份真实隔离浏览器和 `route-final`。
 
 ## 4. Milestone 总览
 
 | Milestone | 目标 | 依赖 | 执行报告 | 状态 |
 | --- | --- | --- | --- | --- |
-| PROJECT-PLATFORM-S09-M1 | 节点图、分支汇聚与版本化定义底座 | S08 归档；Program revision 25 | `docs/90-reports/project-platform-s09-m1-execution-report.md` | Pending |
-| PROJECT-PLATFORM-S09-M2 | 节点 token 运行时、会签、并发与历史 | M1 | `docs/90-reports/project-platform-s09-m2-execution-report.md` | Pending |
-| PROJECT-PLATFORM-S09-M3 | 节点任务、表单、交付物与时限协作 | M1-M2 | `docs/90-reports/project-platform-s09-m3-execution-report.md` | Pending |
-| PROJECT-PLATFORM-S09-M4 | 回退、跳转、终止、补偿与版本升级恢复 | M1-M3 | `docs/90-reports/project-platform-s09-m4-execution-report.md` | Pending |
-| PROJECT-PLATFORM-S09-M5 | 可视化设计器、成员执行 UI、综合验收与 Stage 收口 | M1-M4 | `docs/90-reports/project-platform-s09-m5-execution-report.md` | Pending |
+| PROJECT-PLATFORM-S10-M1 | 关系定义、版本化配置与持久化底座 | S09 归档；Program revision 27 | `docs/90-reports/project-platform-s10-m1-execution-report.md` | Pending |
+| PROJECT-PLATFORM-S10-M2 | 关系实例、并发一致性、循环与生命周期 | M1 | `docs/90-reports/project-platform-s10-m2-execution-report.md` | Pending |
+| PROJECT-PLATFORM-S10-M3 | 自定义层级、子项拆解、查询与一致性恢复 | M1-M2 | `docs/90-reports/project-platform-s10-m3-execution-report.md` | Pending |
+| PROJECT-PLATFORM-S10-M4 | 关系控件、反向引用、影响分析与存量承接 | M1-M3 | `docs/90-reports/project-platform-s10-m4-execution-report.md` | Pending |
+| PROJECT-PLATFORM-S10-M5 | 配置与成员 UI、真实验收及 Stage 收口 | M1-M4 | `docs/90-reports/project-platform-s10-m5-execution-report.md` | Pending |
 
 ## 5. 详细任务
 
-### PROJECT-PLATFORM-S09-M1 节点图、分支汇聚与版本化定义底座
+### PROJECT-PLATFORM-S10-M1 关系定义、版本化配置与持久化底座
 
 | 任务 | 内容 | 验收标准 | 状态 |
 | --- | --- | --- | --- |
-| PROJECT-PLATFORM-S09-M1-T01 | 审计 S06-S08 snapshot、WorkItem、command/event SPI、状态私表和现有审批语义 | 可复用端口、调用方、存量数据、迁移风险和禁止依赖可定位；无未经证实的图运行假设 | Pending |
-| PROJECT-PLATFORM-S09-M1-T02 | 冻结 NodeDefinition、EdgeDefinition、StageDefinition、BranchDefinition 和 JoinDefinition 领域合同 | 永久 key、节点类型、入口/出口、边优先级、阶段、分支和汇聚错误语义无歧义 | Pending |
-| PROJECT-PLATFORM-S09-M1-T03 | 扩展完整 configuration snapshot schema 承载复杂节点流 | snapshot/hash/canonicalizer 覆盖节点图；旧 schema、无节点流类型和未来 schema 行为明确 | Pending |
-| PROJECT-PLATFORM-S09-M1-T04 | 设计 workflow instance、token、task、vote、join、receipt 和不可变 history Flyway schema | workspace/space/workItem/version 边界、唯一性、FK、索引、清理闭包和不可变保护完整 | Pending |
-| PROJECT-PLATFORM-S09-M1-T05 | 把节点流编辑接入 S06 唯一配置草稿与 Repository/DTO | 定义只存在于草稿 snapshot；不建立 live/published 双写表；乐观版本与幂等沿用现有合同 | Pending |
-| PROJECT-PLATFORM-S09-M1-T06 | 实现图结构校验：单一入口、受控出口、可达性、悬空边、非法环和死路 | 非法图产生稳定 diagnostics；校验确定、顺序无关且不静默修复用户定义 | Pending |
-| PROJECT-PLATFORM-S09-M1-T07 | 实现节点类型、处理策略和扩展能力注册表 | auto/single/any/multi 能力可版本化发现；未知类型、重复 key 和未注册扩展失败关闭 | Pending |
-| PROJECT-PLATFORM-S09-M1-T08 | 实现声明式分支条件、边优先级和汇聚策略 canonicalizer | operator/operand 白名单、exclusive/parallel 分支与 all/any/quorum 汇聚语义稳定；不执行任意代码 | Pending |
-| PROJECT-PLATFORM-S09-M1-T09 | 把节点图变化接入配置 diff、兼容矩阵、发布和 rollback | 删除/重定向节点、分支、汇聚及任务配置变化分级稳定；blocked/migration_required 不可绕过 | Pending |
-| PROJECT-PLATFORM-S09-M1-T10 | 为系统预置类型提供确定性节点流草稿/模板输入 | 重复安装/升级 hash 稳定；不覆盖 workspace 本地修改；不以隐藏默认值猜测运行语义 | Pending |
-| PROJECT-PLATFORM-S09-M1-T11 | 完成 schema、图校验、草稿、发布、兼容和跨空间负向自动化测试 | 空库/升级、并发、幂等、不可变、越权、未知扩展及 S08 私表隔离均通过 | Pending |
-| PROJECT-PLATFORM-S09-M1-T12 | 同步目标/当前架构、模块/对象/事件合同并完成 M1 checkpoint | 文档只声明定义底座；runtime 尚未激活，M2 输入、证据和剩余风险清晰 | Pending |
+| PROJECT-PLATFORM-S10-M1-T01 | 审计规范 WorkItem、配置 snapshot、resolver、legacy `issue_relations`、S08/S09 私表和现有关系 UI | 可复用端口、调用方、存量形态、迁移风险和禁止依赖可定位；无未经证实的关系语义 | Pending |
+| PROJECT-PLATFORM-S10-M1-T02 | 冻结 RelationDefinition 与 normal/parent-child/dependency/blocking 领域合同 | 永久 key、方向、反向名称、端点角色、基数、重复和删除策略无歧义 | Pending |
+| PROJECT-PLATFORM-S10-M1-T03 | 扩展完整 configuration snapshot 承载关系定义和类型适用矩阵 | 定义进入唯一草稿/发布权威；旧 schema、无关系定义和未来 schema 行为明确 | Pending |
+| PROJECT-PLATFORM-S10-M1-T04 | 设计 relation、command receipt、不可变 history 与可重建投影 Flyway schema | workspace/space/双端 WorkItem/definition version 复合约束、索引和清理闭包完整 | Pending |
+| PROJECT-PLATFORM-S10-M1-T05 | 把关系定义编辑接入 S06 草稿 Repository、DTO、canonical hash 和乐观版本 | 不建立 live definition 表或 published 双写；跨空间/跨类型引用失败关闭 | Pending |
+| PROJECT-PLATFORM-S10-M1-T06 | 实现方向、反向、端点类型、基数、删除策略和保留规则校验 | 非法组合产生稳定 diagnostics；校验确定且不静默改写用户定义 | Pending |
+| PROJECT-PLATFORM-S10-M1-T07 | 接入配置 diff、compatibility、发布、rollback 和模板 lineage | 删除/改向/收紧基数/改变类型矩阵分级稳定；blocked/migration_required 不可绕过 | Pending |
+| PROJECT-PLATFORM-S10-M1-T08 | 提供普通、父子、依赖和阻塞的确定性系统预置 | 重复安装/升级 hash 稳定；不覆盖空间本地修改，不用隐藏默认值猜实例语义 | Pending |
+| PROJECT-PLATFORM-S10-M1-T09 | 冻结 legacy relation 分类、端点解析和显式迁移 manifest 合同 | issue/message/knowledge 等旧目标分流明确；不可映射项进入失败清单而非伪造 WorkItem | Pending |
+| PROJECT-PLATFORM-S10-M1-T10 | 冻结 relation command/event、resolver 和模块所有权公共合同 | 公共 payload 最小披露；消费者不得读关系私表或流程私表；未知版本失败关闭 | Pending |
+| PROJECT-PLATFORM-S10-M1-T11 | 完成 schema、定义校验、草稿、发布、兼容和边界自动化测试 | 空库/升级、幂等、不可变、越权、未知类型和 S08/S09 私表隔离均通过 | Pending |
+| PROJECT-PLATFORM-S10-M1-T12 | 同步目标/当前架构、模块/对象/事件合同并完成 M1 checkpoint | 文档只声明定义底座；实例写入尚未激活，M2 输入、证据和风险清晰 | Pending |
 
-### PROJECT-PLATFORM-S09-M2 节点 token 运行时、会签、并发与历史
-
-| 任务 | 内容 | 验收标准 | 状态 |
-| --- | --- | --- | --- |
-| PROJECT-PLATFORM-S09-M2-T01 | 复核 M1 定义、snapshot、schema、报告和未关闭阻断 | 12 项任务逐项可追溯；阻断项 Reopen，不以文档结论代替实现 | Pending |
-| PROJECT-PLATFORM-S09-M2-T02 | 实现绑定 snapshot 驱动的 NodeRuntimeAdapter 与实例启动决策 | 只解释 WorkItem 绑定版本/hash；无节点流返回显式能力缺失；不查询最新配置或 S08 私表 | Pending |
-| PROJECT-PLATFORM-S09-M2-T03 | 实现 workflow instance、active token Repository、行锁、乐观版本和原子初始化 | 单 WorkItem/绑定版本实例唯一；并发启动唯一；WorkItem/instance 版本不漂移 | Pending |
-| PROJECT-PLATFORM-S09-M2-T04 | 实现节点命令决策、`availableActions` 和任务候选服务端投影 | 投影与执行共享同一 decision；reason code、披露范围、策略版本和动作排序稳定 | Pending |
-| PROJECT-PLATFORM-S09-M2-T05 | 实现自动节点执行和有界内部推进 | 每步持久化可恢复；循环/步数上限和未知扩展失败关闭；无递归失控或未审计副作用 | Pending |
-| PROJECT-PLATFORM-S09-M2-T06 | 实现 single、any、all 和 quorum 多人处理/会签语义 | 候选、领取、投票、撤销、完成阈值和迟到命令确定；身份与重复投票受控 | Pending |
-| PROJECT-PLATFORM-S09-M2-T07 | 实现 exclusive/parallel token split 与 all/any/quorum join | token lineage、join correlation 和并发到达原子；不丢 token、不重复放行、不跨实例汇聚 | Pending |
-| PROJECT-PLATFORM-S09-M2-T08 | 接入持久化幂等回执、规范 request hash 和并发胜者合同 | 相同 request ID 精确重放；异载荷冲突；败者不重复任务、投票、历史、事件或副作用 | Pending |
-| PROJECT-PLATFORM-S09-M2-T09 | 实现不可变节点历史并接入活动、审计和事务 outbox | instance/token/node/task/vote/join 序列可追溯；事件 schema 可重放且不暴露私有策略 | Pending |
-| PROJECT-PLATFORM-S09-M2-T10 | 交付用户实例、当前 token、任务、投票、历史和命令 API/DTO | 用户路由不混入治理 API；404/403/409/422 稳定；DTO 不暴露表结构或隐藏分支输入 | Pending |
-| PROJECT-PLATFORM-S09-M2-T11 | 完成六身份、并发、重放、split/join、会签、故障注入和跨空间自动化测试 | stale command 更新零行；无双放行、半历史、越权枚举、重复事件或隐藏值泄漏 | Pending |
-| PROJECT-PLATFORM-S09-M2-T12 | 执行代表性实例推进/任务列表预算并完成 M2 checkpoint | SQL plan、批量上界和延迟可复现；不冒充生产容量或 S17 自动化结论 | Pending |
-
-### PROJECT-PLATFORM-S09-M3 节点任务、表单、交付物与时限协作
+### PROJECT-PLATFORM-S10-M2 关系实例、并发一致性、循环与生命周期
 
 | 任务 | 内容 | 验收标准 | 状态 |
 | --- | --- | --- | --- |
-| PROJECT-PLATFORM-S09-M3-T01 | 复核 M2 运行时、责任边界、文件合同和未关闭阻断 | 12 项任务逐项可追溯；节点协作不绕过 snapshot、权限、token 或公共 SPI | Pending |
-| PROJECT-PLATFORM-S09-M3-T02 | 冻结节点表单、字段可见/可编辑/必填策略和提交合同 | 字段策略进入 snapshot；hidden 字段零披露；节点提交与 WorkItem patch 语义无歧义 | Pending |
-| PROJECT-PLATFORM-S09-M3-T03 | 实现处理人解析：显式参与者、空间角色、字段参与者和受控动态规则 | 解析基于绑定 snapshot 与当前可见事实；空候选、离场成员和未知规则失败可恢复 | Pending |
-| PROJECT-PLATFORM-S09-M3-T04 | 实现 node task 候选、领取、转交、委派、完成和关闭生命周期 | task/token 版本一致；授权与可见性统一；并发领取、转交和完成只有一个事实结果 | Pending |
-| PROJECT-PLATFORM-S09-M3-T05 | 接入节点交付物与公开文件/对象端口 | 交付物类型、数量、必填和引用可版本化；不读取文件私表，不把临时上传冒充已提交产物 | Pending |
-| PROJECT-PLATFORM-S09-M3-T06 | 实现节点计划时间、到期时间和超时状态合同 | 时区、日历输入、暂停/恢复与展示稳定；不提前实现 S16 工作量、工时或资源容量 | Pending |
-| PROJECT-PLATFORM-S09-M3-T07 | 实现表单 patch、交付物校验、投票/完成与 token 推进原子命令 | expected version、授权、字段、文件、task、vote、token、历史和 receipt 全提交或全回滚 | Pending |
-| PROJECT-PLATFORM-S09-M3-T08 | 接入任务/到期事件及通知、搜索消费者公共合同 | 事件最小披露、可去重重放；消费者不读节点私表；未知版本进入 dead letter | Pending |
-| PROJECT-PLATFORM-S09-M3-T09 | 交付成员任务箱、节点详情和处理上下文后端聚合 DTO | 列表无 N+1；表单、交付物、候选和动作只按服务端决策披露；分页/排序稳定 | Pending |
-| PROJECT-PLATFORM-S09-M3-T10 | 完成六身份、隐藏字段、文件越权、并发任务和故障原子性自动化测试 | 无跨空间交付物枚举、重复完成、孤儿文件引用、半 patch、半投票或半推进 | Pending |
-| PROJECT-PLATFORM-S09-M3-T11 | 执行任务箱、节点详情、表单/交付物提交代表性预算 | SQL plan、文件端口调用上界和延迟可复现；不以 mock 冒充真实对象权限 | Pending |
-| PROJECT-PLATFORM-S09-M3-T12 | 同步协作对象/事件/运维合同并完成 M3 checkpoint | 文档只声明已交付节点协作；恢复与升级仍属于 M4，视觉闭环仍属于 M5 | Pending |
+| PROJECT-PLATFORM-S10-M2-T01 | 复核 M1 定义、snapshot、schema、报告和未关闭阻断 | 12 项逐项可追溯；阻断项 Reopen，不以文档结论代替实现 | Pending |
+| PROJECT-PLATFORM-S10-M2-T02 | 实现 canonical endpoint、稳定方向、唯一活动边和 relation Repository | 相同语义边唯一；反向展示不复制事实；workspace/space/软删除边界正确 | Pending |
+| PROJECT-PLATFORM-S10-M2-T03 | 实现创建、撤销、恢复关系的原子命令与持久幂等回执 | expected 双端版本和 request hash 精确重放；异载荷、stale、并发败者不追加事实 | Pending |
+| PROJECT-PLATFORM-S10-M2-T04 | 实现双端 WorkItem、关系定义和操作授权的服务端统一决策 | projection 与 execute 共享决策；六身份和不可见端点使用稳定最小披露 | Pending |
+| PROJECT-PLATFORM-S10-M2-T05 | 实现普通有向/无向关系及正反向投影 | 单一事实可生成双方一致视图；重命名定义不改变历史方向；排序和分页稳定 | Pending |
+| PROJECT-PLATFORM-S10-M2-T06 | 实现父子关系基数、单/多父策略和服务端环检测 | 自环、祖先环、超基数和跨空间父子失败关闭；并发 reparent 只有一个结果 | Pending |
+| PROJECT-PLATFORM-S10-M2-T07 | 实现依赖/阻塞方向、重复归一和并发环检测 | dependency/blocking 反向语义一致；并发成环不能双成功；不计算 S14 关键路径 | Pending |
+| PROJECT-PLATFORM-S10-M2-T08 | 实现 WorkItem archive/restore/delete 与 relation 生命周期策略 | restrict/detach/retain-history 由定义决定；恢复不静默重建已撤销边 | Pending |
+| PROJECT-PLATFORM-S10-M2-T09 | 接入不可变关系历史、活动、审计和事务 outbox | 双端、定义版本、操作者、版本和结果可追溯；事件不泄露不可见端点正文 | Pending |
+| PROJECT-PLATFORM-S10-M2-T10 | 交付用户关系列表、正反向查询、命令和 capability API/DTO | 用户路由不混入治理 API；404/403/409/422 稳定；无 N+1 或表结构泄漏 | Pending |
+| PROJECT-PLATFORM-S10-M2-T11 | 完成六身份、跨空间、幂等、并发、父子/依赖环和故障原子性测试 | 无单端边、双成功、半历史、越权枚举、重复事件或陈旧反向投影 | Pending |
+| PROJECT-PLATFORM-S10-M2-T12 | 执行代表性关系写入、双向列表和环检测预算并完成 M2 checkpoint | SQL plan、锁范围、批量上界和延迟可复现；不冒充生产图规模结论 | Pending |
 
-### PROJECT-PLATFORM-S09-M4 回退、跳转、终止、补偿与版本升级恢复
-
-| 任务 | 内容 | 验收标准 | 状态 |
-| --- | --- | --- | --- |
-| PROJECT-PLATFORM-S09-M4-T01 | 冻结 return、jump、terminate、compensate、correct 和 upgrade 语义 | 每类命令的来源、目标、token/task/join 处理、授权和历史语义明确；不直接改表纠错 | Pending |
-| PROJECT-PLATFORM-S09-M4-T02 | 实现显式回退与节点重做语义 | 只允许 snapshot 声明的回退；目标、表单、交付物和处理人重新校验；旧历史不删除 | Pending |
-| PROJECT-PLATFORM-S09-M4-T03 | 实现受控跳转与跳过边界 | 目标必须合法且可映射；未完成 token/task/join 有确定关闭语义；禁止跨实例或任意节点写入 | Pending |
-| PROJECT-PLATFORM-S09-M4-T04 | 实现流程终止、取消及 WorkItem archive/restore 生命周期协同 | archive 不伪装业务终止；终止原子关闭活动任务/token；恢复不自动猜测流程位置 | Pending |
-| PROJECT-PLATFORM-S09-M4-T05 | 实现声明式补偿动作注册、执行和失败恢复 | 补偿白名单、顺序、幂等和审计明确；不执行任意代码；部分失败可安全续跑 | Pending |
-| PROJECT-PLATFORM-S09-M4-T06 | 实现实例配置版本升级的节点/边/阶段映射与兼容阻断 | 删除、拆分、合并和重命名使用显式 map；blocked 变化失败关闭；旧绑定仍可运行 | Pending |
-| PROJECT-PLATFORM-S09-M4-T07 | 实现 pre-S09 WorkItem 显式启动与批量 backfill | manifest、目标版本、入口节点、失败清单、幂等和校验可追溯；不静默修改旧实例 | Pending |
-| PROJECT-PLATFORM-S09-M4-T08 | 实现空间管理员受控恢复、纠错和 dead-letter 续跑入口 | 仅 owner/admin 可执行；需要原因、expected version、危险确认与审计；企业管理员不自动可见内容 | Pending |
-| PROJECT-PLATFORM-S09-M4-T09 | 完善恢复失败、并发纠错、补偿及消费者重放原子性 | instance/token/task/vote/join/history/activity/audit/outbox/receipt 全回滚或全提交 | Pending |
-| PROJECT-PLATFORM-S09-M4-T10 | 完成回退/跳转/终止/补偿/升级/纠错六身份与故障自动化测试 | stale、重复、越权、跨空间、映射缺失、补偿失败和恢复负例完整 | Pending |
-| PROJECT-PLATFORM-S09-M4-T11 | 执行 V001 至最新迁移、非空实例升级和 backfill/recovery rehearsal | 空库、历史基线、重复 migrate、失败续跑、映射校验和恢复结果通过 | Pending |
-| PROJECT-PLATFORM-S09-M4-T12 | 交付复杂节点流恢复 runbook、兼容矩阵并完成 M4 checkpoint | 操作步骤、停止条件、回退边界和 M5 输入清晰；不宣称视觉闭环已完成 | Pending |
-
-### PROJECT-PLATFORM-S09-M5 可视化设计器、成员执行 UI、综合验收与 Stage 收口
+### PROJECT-PLATFORM-S10-M3 自定义层级、子项拆解、查询与一致性恢复
 
 | 任务 | 内容 | 验收标准 | 状态 |
 | --- | --- | --- | --- |
-| PROJECT-PLATFORM-S09-M5-T01 | 审计 M1-M4 实现、报告、迁移、边界和未关闭 gap | 48 个任务逐项可追溯；阻断项 Reopen，不以 Remaining Gap 弱化完成标准 | Pending |
-| PROJECT-PLATFORM-S09-M5-T02 | 交付空间配置侧节点、边、阶段、分支和汇聚可视化设计器 | 创建、连接、移动、删除、诊断、缩放和键盘操作可用；不进入企业管理后台 | Pending |
-| PROJECT-PLATFORM-S09-M5-T03 | 交付处理人、表单、交付物、时限、回退和补偿配置面板 | 配置与图选中态一致；未知扩展和非法组合即时诊断；不以 UI 默认值替代 snapshot 事实 | Pending |
-| PROJECT-PLATFORM-S09-M5-T04 | 交付配置预览、diff、兼容提示、发布阻断和 rollback 交互 | 草稿/发布边界清晰；blocked/migration_required 不可绕过；失败保留图与表单输入 | Pending |
-| PROJECT-PLATFORM-S09-M5-T05 | 交付成员实例图、当前 token、任务、动作和不可变历史执行 UI | 只展示服务端事实；刷新后一致；409/422/超时/离线可恢复且不静默覆盖 | Pending |
-| PROJECT-PLATFORM-S09-M5-T06 | 交付会签、表单、交付物、转交和到期交互 | 投票阈值、候选/已处理、必填/隐藏、上传状态和错误可理解且不泄露不可见信息 | Pending |
-| PROJECT-PLATFORM-S09-M5-T07 | 完成长名称、空态、密集图、键盘、焦点、窄屏和无障碍交互 | 1440/1366/820 关键视口可用；图与表格可替代导航；焦点与错误关联完整 | Pending |
-| PROJECT-PLATFORM-S09-M5-T08 | 执行 owner/admin/member/guest/non-member/enterprise-admin 真实隔离浏览器验收 | 配置、任务、投票、交付物、恢复和最小披露符合服务端决策 | Pending |
-| PROJECT-PLATFORM-S09-M5-T09 | 执行 split/join、会签、并发、离线、回退、补偿、升级和 backfill 真实浏览器验收 | 无丢 token/重复放行；冲突不丢输入；刷新后 instance/task/history/activity 一致 | Pending |
-| PROJECT-PLATFORM-S09-M5-T10 | 执行完整 PostgreSQL/Flyway、后端、前端、协作、架构、安全和生成物门禁 | full gate 无阻断；非空恢复和日志 fresh 可复现；mock 不冒充真实浏览器/数据库证据 | Pending |
-| PROJECT-PLATFORM-S09-M5-T11 | 同步当前架构、Program、专项索引、模块/事件/运维合同并复核 S10 准入 | 文档只声明已实现事实；S10 关系引擎边界与禁止复用项冻结 | Pending |
-| PROJECT-PLATFORM-S09-M5-T12 | 给出 S09 Go/Reopen，完成 route-final 并把当前 Stage 置 none | 五份报告、工作上下文、60 Task 和文档一致；仅无阻断时 Completed，S10 保持 Planned | Pending |
+| PROJECT-PLATFORM-S10-M3-T01 | 复核 M2 关系权威、并发合同、投影和未关闭阻断 | 12 项逐项可追溯；层级能力不绕过关系定义、双端授权或一致性约束 | Pending |
+| PROJECT-PLATFORM-S10-M3-T02 | 实现由父子关系权威重建的 hierarchy path/closure 投影 | 投影可丢弃重建且不可直接写；relation edge 始终是唯一结构事实 | Pending |
+| PROJECT-PLATFORM-S10-M3-T03 | 实现 attach、detach、reparent 与原子子工作项创建 | 子项创建/绑定、字段写入、关系、活动、审计、outbox 和 receipt 全成或全败 | Pending |
+| PROJECT-PLATFORM-S10-M3-T04 | 实现发布定义驱动的跨类型层级规则 | source/target type version、允许层级和最大深度稳定；live 配置变化不破坏旧事实 | Pending |
+| PROJECT-PLATFORM-S10-M3-T05 | 实现祖先、子孙、同级和局部树的有界查询 | 深度/节点硬上限、稳定游标和批量摘要无 N+1；超限返回明确 continuation | Pending |
+| PROJECT-PLATFORM-S10-M3-T06 | 交付面包屑、父项、子项、同级和局部层级导航 DTO | 每个端点独立授权；不可见祖先不泄露标题/类型且导航退化可解释 | Pending |
+| PROJECT-PLATFORM-S10-M3-T07 | 实现受控子项拆解模板和字段继承 | 只复制白名单字段与可见值；不复制状态/node token、任务、历史或隐藏字段 | Pending |
+| PROJECT-PLATFORM-S10-M3-T08 | 实现归档、恢复、类型版本升级对层级和查询投影的影响 | 结构保留/脱离策略确定；旧绑定可解释；失败不留下孤儿 projection | Pending |
+| PROJECT-PLATFORM-S10-M3-T09 | 实现层级一致性扫描、rebuild、dry-run、失败清单和续跑 | 可检测缺边、错 path、环、越界与漂移；修复只重建投影，不改规范边 | Pending |
+| PROJECT-PLATFORM-S10-M3-T10 | 交付层级查询、拆解、reparent 和恢复 API/DTO | expected version、危险确认和错误码稳定；治理入口与成员入口分层 | Pending |
+| PROJECT-PLATFORM-S10-M3-T11 | 完成跨类型、深层、并发 reparent、权限截断和 rebuild 故障测试 | 无环、孤儿、越权祖先、重复子项、半拆解或错误修复规范边 | Pending |
+| PROJECT-PLATFORM-S10-M3-T12 | 执行代表性深度/宽度层级预算并完成 M3 checkpoint | SQL plan、节点/深度上限和恢复时长可复现；不提前实现 S13 全局树视图 | Pending |
+
+### PROJECT-PLATFORM-S10-M4 关系控件、反向引用、影响分析与存量承接
+
+| 任务 | 内容 | 验收标准 | 状态 |
+| --- | --- | --- | --- |
+| PROJECT-PLATFORM-S10-M4-T01 | 复核 M1-M3 定义、实例、层级、权限和未关闭阻断 | 36 项逐项可追溯；UI/迁移不创建旁路关系事实或弱化循环约束 | Pending |
+| PROJECT-PLATFORM-S10-M4-T02 | 把关系控件配置接入 create/detail layout 与字段访问投影 | 控件引用永久 relation key；显示/编辑能力由服务端决定，不把关系伪装普通字段 JSON | Pending |
+| PROJECT-PLATFORM-S10-M4-T03 | 实现基于 WorkItem resolver/受权搜索的关系目标选择器合同 | 类型/空间/归档过滤稳定；不可见目标不进入候选、计数或错误正文 | Pending |
+| PROJECT-PLATFORM-S10-M4-T04 | 实现正向/反向引用批量摘要与详情聚合 | 双向文案、类型、状态、删除态与深链一致；列表硬限且无 N+1 | Pending |
+| PROJECT-PLATFORM-S10-M4-T05 | 实现依赖上下游、直接/传递阻塞和有界影响分析 | 路径方向、截断、环失败与权限裁剪可解释；不计算工期、关键路径或自动流转 | Pending |
+| PROJECT-PLATFORM-S10-M4-T06 | 实现关系变更预览、冲突刷新和输入保留合同 | 409/422/timeout/offline 不丢目标选择和原因；刷新后以服务端事实为准 | Pending |
+| PROJECT-PLATFORM-S10-M4-T07 | 实现层级局部树、折叠、替代列表和键盘导航合同 | 只承载当前 WorkItem 局部层级；不提前实现 S13 保存/共享全局树视图 | Pending |
+| PROJECT-PLATFORM-S10-M4-T08 | 实现反向引用与影响分析的最小披露、缓存失效和校准事件 | relation event 仅触发校准；消费者经 resolver/API 重读，不读取关系私表 | Pending |
+| PROJECT-PLATFORM-S10-M4-T09 | 实现 legacy `issue_relations` 显式 backfill、verify、resume 和 rollback 边界 | manifest 锚定旧事实与 WorkItem map；非 WorkItem 目标分流保留，不伪造规范边 | Pending |
+| PROJECT-PLATFORM-S10-M4-T10 | 交付 owner/admin 的迁移失败清单、重试与一致性恢复入口 | 需要原因、expected version 和危险确认；企业管理员不自动获得内容可见性 | Pending |
+| PROJECT-PLATFORM-S10-M4-T11 | 完成关系控件、反向引用、影响裁剪和 legacy backfill 自动化测试 | 无隐藏端点泄漏、陈旧计数、无限图遍历、重复迁移或不可回退污染 | Pending |
+| PROJECT-PLATFORM-S10-M4-T12 | 同步对象/事件/迁移/runbook 合同并完成 M4 checkpoint | 文档只声明后端与交互合同；真实配置/成员 UI 和 Stage 结论仍属于 M5 | Pending |
+
+### PROJECT-PLATFORM-S10-M5 配置与成员 UI、真实验收及 Stage 收口
+
+| 任务 | 内容 | 验收标准 | 状态 |
+| --- | --- | --- | --- |
+| PROJECT-PLATFORM-S10-M5-T01 | 审计 M1-M4 实现、报告、迁移、边界和未关闭 gap | 48 个任务逐项可追溯；阻断项 Reopen，不以 Remaining Gap 弱化完成标准 | Pending |
+| PROJECT-PLATFORM-S10-M5-T02 | 交付空间配置侧关系定义、方向、反向、类型矩阵、基数和删除策略 UI | 草稿/发布/兼容/rollback 边界清晰；未知定义与非法组合即时诊断 | Pending |
+| PROJECT-PLATFORM-S10-M5-T03 | 交付成员详情侧关系查看、选择、创建、撤销和冲突恢复 UI | 只执行服务端 capability；刷新一致；失败保留目标与原因，不泄露不可见端点 | Pending |
+| PROJECT-PLATFORM-S10-M5-T04 | 交付父子导航、局部树、拆解和 reparent UI | 面包屑/父子/同级、折叠、替代列表和危险确认可用；服务端拒绝环和超基数 | Pending |
+| PROJECT-PLATFORM-S10-M5-T05 | 交付依赖/阻塞、反向引用和有界影响分析 UI | 方向、截断、权限裁剪和删除态可理解；不呈现未实现的关键路径/工期结论 | Pending |
+| PROJECT-PLATFORM-S10-M5-T06 | 交付 legacy backfill、失败清单、续跑、verify 和恢复 UI | owner/admin 操作显式且可审计；非 WorkItem 目标保留原语义，不静默丢弃 | Pending |
+| PROJECT-PLATFORM-S10-M5-T07 | 完成长名称、密集关系、键盘、焦点、窄屏和无障碍交互 | 1440/1366/820 关键视口可用；树与列表可替代导航；错误关联完整 | Pending |
+| PROJECT-PLATFORM-S10-M5-T08 | 执行 owner/admin/member/guest/non-member/enterprise-admin 真实隔离浏览器验收 | 定义、关系、层级、反向、影响和最小披露符合服务端决策 | Pending |
+| PROJECT-PLATFORM-S10-M5-T09 | 执行并发建边/reparent、环、删除、离线和 backfill 真实浏览器验收 | 无单端边、双成功、非法环、输入丢失；刷新后关系/历史/活动一致 | Pending |
+| PROJECT-PLATFORM-S10-M5-T10 | 执行完整 PostgreSQL/Flyway、后端、前端、协作、架构、安全和生成物门禁 | full gate 无阻断；迁移/恢复日志 fresh；mock 不冒充真实浏览器/数据库证据 | Pending |
+| PROJECT-PLATFORM-S10-M5-T11 | 同步当前架构、Program、专项索引、模块/对象/事件/运维合同并复核 S11 准入 | 文档只声明已实现事实；S11 权限边界与禁止提前项冻结 | Pending |
+| PROJECT-PLATFORM-S10-M5-T12 | 给出 S10 Go/Reopen，完成 route-final 并把当前 Stage 置 none | 五份报告、工作上下文、60 Task 和文档一致；仅无阻断时 Completed | Pending |
 
 ## 6. Stage 验收
 
-- 节点、边、阶段、分支、汇聚、处理人、表单、交付物和时限进入完整不可变 configuration snapshot，并经过草稿、校验、diff、发布、rollback 和模板链路。
-- 节点运行时只解释 WorkItem 绑定的 type version/config hash，拥有独立 workflow instance、token、task、vote 和 join 权威，不读写 S08 current-state 私表。
-- single、any、all、quorum、auto、exclusive/parallel split 与 all/any/quorum join 具备确定并发和幂等语义。
-- 命令决策、`availableActions`、候选任务和执行使用同一服务端授权；六身份、跨 workspace/space、hidden 字段和文件最小披露通过。
-- 节点推进具备 expected version、持久化 receipt、不可变 history、活动、审计和事务 outbox；故障不产生半 token、半投票、半交付物或重复放行。
-- 回退、跳转、终止、补偿、纠错、pre-S09 backfill 和版本升级均为显式命令/manifest，具备映射、失败清单、续跑、验证和回退边界。
-- 空间配置设计器与成员执行 UI 完成真实闭环；企业管理后台不承载日常节点配置或执行。
-- S09 不实现 S10 关系引擎、S14 高级视图、S16 工作量/工时或 S17 自动化编排，也不把基础预算表述为生产容量。
+- 关系定义进入唯一不可变 configuration snapshot 和草稿/校验/diff/发布/rollback/template 链路，永久 key、方向、反向、端点类型、基数和删除策略稳定。
+- 规范 relation edge、命令回执和不可变历史拥有独立权威；正向、反向、层级 path/closure 和影响投影均可从边重建，不读写流程私表。
+- 普通、父子、依赖和阻塞关系具备 expected version、幂等、并发单赢家、重复归一、父子/依赖环检测和确定生命周期。
+- 双端授权和最小披露覆盖六身份、跨 workspace/space、归档/删除端点、反向引用、层级截断和影响分析。
+- 子项拆解、attach/detach/reparent、局部层级导航、一致性扫描/rebuild 和恢复具备原子、可审计、可续跑语义。
+- legacy `issue_relations` 通过显式 manifest/backfill/verify 承接；非 WorkItem 目标保留原对象关系语义，不被伪造成 WorkItem 边。
+- 空间配置 UI 与成员关系/层级/影响 UI 完成真实闭环；企业管理后台不承载日常关系配置或内容操作。
+- S10 不实现 S11 细粒度权限、S13 全局树/保存视图、S14 甘特/关键路径、S17 自动化或 S18 跨空间同步，也不把基础预算表述为生产容量。
+
+## 7. 当前起点
+
+S09 路线已归档，S10 在 Program revision 27 激活为唯一当前 Stage。首个允许推进的任务是 `PROJECT-PLATFORM-S10-M1-T01`；本次激活只建立五个 Milestone、60 个 Task 的执行与验收合同，不声明任何 S10 关系 schema、API、迁移或 UI 已实现。

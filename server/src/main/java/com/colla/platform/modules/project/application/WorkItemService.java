@@ -27,6 +27,16 @@ import com.colla.platform.modules.project.domain.WorkItemStateRuntimeModels.Work
 import com.colla.platform.modules.project.domain.WorkItemStateRuntimeModels.WorkflowBindingCommandResult;
 import com.colla.platform.modules.project.domain.WorkItemStateRuntimeModels.WorkflowHistoryEntry;
 import com.colla.platform.modules.project.domain.WorkItemStateRuntimeModels.WorkflowPresentation;
+import com.colla.platform.modules.project.domain.WorkItemNodeRuntimeModels.NodeCommandResult;
+import com.colla.platform.modules.project.domain.WorkItemNodeRuntimeModels.NodeArtifactInput;
+import com.colla.platform.modules.project.domain.WorkItemNodeRuntimeModels.NodeHistoryEntry;
+import com.colla.platform.modules.project.domain.WorkItemNodeRuntimeModels.NodeTaskContext;
+import com.colla.platform.modules.project.domain.WorkItemNodeRuntimeModels.NodeTaskInboxPage;
+import com.colla.platform.modules.project.domain.WorkItemNodeRuntimeModels.NodeWorkflowPresentation;
+import com.colla.platform.modules.project.domain.WorkItemNodeRuntimeModels.NodeRecoveryResult;
+import com.colla.platform.modules.project.domain.WorkItemNodeRuntimeModels.NodeBackfillBatch;
+import com.colla.platform.modules.project.domain.WorkItemNodeRuntimeModels.NodeBackfillVerification;
+import com.colla.platform.modules.project.domain.WorkItemNodeRuntimeModels.NodeCompensationRun;
 import com.colla.platform.modules.project.domain.WorkItemStateRuntimeModels.StateBackfillBatch;
 import com.colla.platform.modules.project.domain.WorkItemStateRuntimeModels.StateBackfillVerification;
 import com.colla.platform.modules.project.application.WorkItemFieldValueCodec.CanonicalValues;
@@ -70,7 +80,9 @@ public class WorkItemService {
     private final FileAccess fileAccess;
     private final WorkItemTypeConfigCanonicalizer canonicalizer;
     private final WorkItemStateFlowService stateFlowService;
+    private final WorkItemNodeWorkflowService nodeWorkflowService;
     private final WorkItemStateBackfillService stateBackfillService;
+    private final WorkItemNodeBackfillService nodeBackfillService;
     private final PlatformObjectCommands objectCommands;
     private final AuditLog auditLog;
     private final TransactionalOutbox outbox;
@@ -87,7 +99,9 @@ public class WorkItemService {
         FileAccess fileAccess,
         WorkItemTypeConfigCanonicalizer canonicalizer,
         WorkItemStateFlowService stateFlowService,
+        WorkItemNodeWorkflowService nodeWorkflowService,
         WorkItemStateBackfillService stateBackfillService,
+        WorkItemNodeBackfillService nodeBackfillService,
         PlatformObjectCommands objectCommands,
         AuditLog auditLog,
         TransactionalOutbox outbox,
@@ -103,7 +117,9 @@ public class WorkItemService {
         this.fileAccess = fileAccess;
         this.canonicalizer = canonicalizer;
         this.stateFlowService = stateFlowService;
+        this.nodeWorkflowService = nodeWorkflowService;
         this.stateBackfillService = stateBackfillService;
+        this.nodeBackfillService = nodeBackfillService;
         this.objectCommands = objectCommands;
         this.auditLog = auditLog;
         this.outbox = outbox;
@@ -189,6 +205,9 @@ public class WorkItemService {
             activityPayload(0, "active")
         );
         stateFlowService.initializeForNewItem(
+            user, requireItem(user, spaceId, workItemId)
+        );
+        nodeWorkflowService.initializeForNewItem(
             user, requireItem(user, spaceId, workItemId)
         );
         WorkItemView result = view(user, space, requireItem(user, spaceId, workItemId));
@@ -292,6 +311,7 @@ public class WorkItemService {
             throw failure("WORK_ITEM_VERSION_CONFLICT", "Work item changed or is no longer editable");
         }
         stateFlowService.alignWorkItemVersion(user, current, expectedVersion, expectedVersion + 1);
+        nodeWorkflowService.alignWorkItemVersion(user, current, expectedVersion, expectedVersion + 1);
         repository.replaceFieldProjections(
             user.workspaceId(), spaceId, workItemId, values.projections()
         );
@@ -357,6 +377,7 @@ public class WorkItemService {
             throw failure("WORK_ITEM_VERSION_CONFLICT", "Work item changed or cannot transition");
         }
         stateFlowService.alignWorkItemVersion(user, current, expectedVersion, expectedVersion + 1);
+        nodeWorkflowService.alignWorkItemVersion(user, current, expectedVersion, expectedVersion + 1);
         repository.appendActivity(
             UUID.randomUUID(),
             user.workspaceId(),
@@ -445,6 +466,7 @@ public class WorkItemService {
             throw failure("WORK_ITEM_VERSION_CONFLICT", "Work item changed or is no longer editable");
         }
         stateFlowService.alignWorkItemVersion(user, current, expectedVersion, expectedVersion + 1);
+        nodeWorkflowService.alignWorkItemVersion(user, current, expectedVersion, expectedVersion + 1);
         if (remove) {
             repository.removeParticipant(
                 user.workspaceId(), spaceId, workItemId, participantUserId
@@ -560,6 +582,7 @@ public class WorkItemService {
             throw failure("WORK_ITEM_VERSION_CONFLICT", "Work item changed or is no longer editable");
         }
         stateFlowService.alignWorkItemVersion(user, current, expectedVersion, expectedVersion + 1);
+        nodeWorkflowService.alignWorkItemVersion(user, current, expectedVersion, expectedVersion + 1);
         UUID commentId = UUID.randomUUID();
         repository.insertComment(
             commentId, user.workspaceId(), spaceId, workItemId, user.id(), normalizedContent
@@ -644,6 +667,7 @@ public class WorkItemService {
             throw failure("WORK_ITEM_VERSION_CONFLICT", "Work item changed or is no longer editable");
         }
         stateFlowService.alignWorkItemVersion(user, current, expectedVersion, expectedVersion + 1);
+        nodeWorkflowService.alignWorkItemVersion(user, current, expectedVersion, expectedVersion + 1);
         if (repository.insertAttachment(
             UUID.randomUUID(), user.workspaceId(), spaceId, workItemId, fileId, user.id()
         ) != 1) {
@@ -796,6 +820,164 @@ public class WorkItemService {
         return stateFlowService.presentation(user, space, requireItem(user, spaceId, workItemId));
     }
 
+    public NodeWorkflowPresentation nodeWorkflow(
+        CurrentUser user,
+        UUID spaceId,
+        UUID workItemId
+    ) {
+        ProjectSpaceSummary space = requireMember(user, spaceId);
+        return nodeWorkflowService.presentation(
+            user, space, requireItem(user, spaceId, workItemId)
+        );
+    }
+
+    public List<NodeHistoryEntry> nodeWorkflowHistory(
+        CurrentUser user,
+        UUID spaceId,
+        UUID workItemId,
+        Long beforeSequence,
+        int limit
+    ) {
+        requireMember(user, spaceId);
+        return nodeWorkflowService.history(
+            user, requireItem(user, spaceId, workItemId), beforeSequence, limit
+        );
+    }
+
+    public NodeTaskContext nodeTaskContext(
+        CurrentUser user,
+        UUID spaceId,
+        UUID workItemId,
+        UUID taskId
+    ) {
+        ProjectSpaceSummary space = requireMember(user, spaceId);
+        return nodeWorkflowService.taskContext(
+            user, space, requireItem(user, spaceId, workItemId), taskId
+        );
+    }
+
+    public NodeTaskInboxPage nodeTaskInbox(
+        CurrentUser user,
+        UUID spaceId,
+        UUID cursor,
+        int limit
+    ) {
+        return nodeWorkflowService.taskInbox(user, requireMember(user, spaceId), cursor, limit);
+    }
+
+    public int processDueNodeTasks(CurrentUser user, UUID spaceId, int limit) {
+        return nodeWorkflowService.processDueTasks(
+            user, requireWritableMember(user, spaceId), limit
+        );
+    }
+
+    public NodeCommandResult startNodeWorkflow(
+        CurrentUser user,
+        UUID spaceId,
+        UUID workItemId,
+        long expectedWorkItemVersion,
+        String requestId
+    ) {
+        requireWritableMember(user, spaceId);
+        return nodeWorkflowService.start(
+            user, requireItem(user, spaceId, workItemId), expectedWorkItemVersion, requestId
+        );
+    }
+
+    public NodeCommandResult executeNodeTask(
+        CurrentUser user,
+        UUID spaceId,
+        UUID workItemId,
+        UUID taskId,
+        String operation,
+        String decision,
+        UUID targetAssigneeId,
+        long expectedWorkItemVersion,
+        long expectedInstanceVersion,
+        String requestId
+    ) {
+        return executeNodeTask(
+            user, spaceId, workItemId, taskId, operation, decision, targetAssigneeId,
+            null, List.of(), expectedWorkItemVersion, expectedInstanceVersion, requestId
+        );
+    }
+
+    public NodeRecoveryResult recoverNodeWorkflow(
+        CurrentUser user,
+        UUID spaceId,
+        UUID workItemId,
+        String commandKey,
+        String reason,
+        String confirmation,
+        long expectedWorkItemVersion,
+        long expectedInstanceVersion,
+        String requestId
+    ) {
+        ProjectSpaceSummary space = requireWritableMember(user, spaceId);
+        return nodeWorkflowService.recover(
+            user, space, requireItem(user, spaceId, workItemId), commandKey,
+            reason, confirmation, expectedWorkItemVersion, expectedInstanceVersion, requestId
+        );
+    }
+
+    public NodeCommandResult upgradeNodeWorkflow(
+        CurrentUser user,
+        UUID spaceId,
+        UUID workItemId,
+        UUID targetTypeVersionId,
+        JsonNode nodeMap,
+        String reason,
+        String confirmation,
+        long expectedWorkItemVersion,
+        long expectedInstanceVersion,
+        String requestId
+    ) {
+        ProjectSpaceSummary space = requireWritableMember(user, spaceId);
+        return nodeWorkflowService.upgrade(
+            user, space, requireItem(user, spaceId, workItemId), targetTypeVersionId,
+            nodeMap, reason, confirmation, expectedWorkItemVersion,
+            expectedInstanceVersion, requestId
+        );
+    }
+
+    public NodeCompensationRun resumeNodeCompensation(
+        CurrentUser user,
+        UUID spaceId,
+        UUID workItemId,
+        UUID runId,
+        String reason,
+        String confirmation
+    ) {
+        ProjectSpaceSummary space = requireWritableMember(user, spaceId);
+        return nodeWorkflowService.resumeCompensation(
+            user, space, requireItem(user, spaceId, workItemId),
+            runId, reason, confirmation
+        );
+    }
+
+    public NodeCommandResult executeNodeTask(
+        CurrentUser user,
+        UUID spaceId,
+        UUID workItemId,
+        UUID taskId,
+        String operation,
+        String decision,
+        UUID targetAssigneeId,
+        JsonNode fieldPatch,
+        List<NodeArtifactInput> artifacts,
+        long expectedWorkItemVersion,
+        long expectedInstanceVersion,
+        String requestId
+    ) {
+        ProjectSpaceSummary space = requireWritableMember(user, spaceId);
+        return nodeWorkflowService.taskCommand(
+            user, space, requireItem(user, spaceId, workItemId), taskId, operation,
+            decision, targetAssigneeId, fieldPatch, artifacts,
+            expectedWorkItemVersion, expectedInstanceVersion,
+            requestId
+        );
+    }
+
     public List<WorkflowHistoryEntry> workflowHistory(
         CurrentUser user,
         UUID spaceId,
@@ -896,6 +1078,43 @@ public class WorkItemService {
     ) {
         ProjectSpaceSummary space = requireWorkflowManager(user, spaceId);
         return stateBackfillService.verify(user, space, batchId);
+    }
+
+    public NodeBackfillBatch createNodeWorkflowBackfill(
+        CurrentUser user,
+        UUID spaceId,
+        UUID typeDefinitionId,
+        UUID targetTypeVersionId,
+        String targetEntryNodeKey,
+        List<UUID> workItemIds,
+        String reason,
+        String confirmation,
+        String requestId
+    ) {
+        ProjectSpaceSummary space = requireWorkflowManager(user, spaceId);
+        return nodeBackfillService.createAndExecute(
+            user, space, typeDefinitionId, targetTypeVersionId, targetEntryNodeKey,
+            workItemIds, reason, confirmation, requestId
+        );
+    }
+
+    public NodeBackfillBatch resumeNodeWorkflowBackfill(
+        CurrentUser user,
+        UUID spaceId,
+        UUID batchId,
+        String confirmation
+    ) {
+        ProjectSpaceSummary space = requireWorkflowManager(user, spaceId);
+        return nodeBackfillService.resume(user, space, batchId, confirmation);
+    }
+
+    public NodeBackfillVerification verifyNodeWorkflowBackfill(
+        CurrentUser user,
+        UUID spaceId,
+        UUID batchId
+    ) {
+        ProjectSpaceSummary space = requireWorkflowManager(user, spaceId);
+        return nodeBackfillService.verify(user, space, batchId);
     }
 
     private RuntimeConfiguration configuration(CurrentUser user, WorkItem item) {

@@ -15,6 +15,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.colla.platform.modules.project.application.WorkItemNodeFlowPresetCatalog;
 import com.colla.platform.modules.project.application.WorkItemStateFlowPresetCatalog;
 import com.colla.platform.modules.project.application.WorkItemTypeDefinitionService;
 import com.colla.platform.modules.project.domain.WorkItemTypeModels.CreateWorkItemType;
@@ -174,7 +175,7 @@ class WorkItemTypeConfigurationControllerIntegrationTests {
                 .header("Authorization", bearer(owner.token())))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.status").value("editing"))
-            .andExpect(jsonPath("$.snapshotSchemaVersion").value(2))
+            .andExpect(jsonPath("$.snapshotSchemaVersion").value(3))
             .andExpect(jsonPath("$.aggregateVersion").value(0))
             .andExpect(jsonPath("$.snapshot.stateFlow").doesNotExist())
             .andExpect(jsonPath("$.availableActions", contains("save", "validate", "abandon")))
@@ -279,6 +280,83 @@ class WorkItemTypeConfigurationControllerIntegrationTests {
     }
 
     @Test
+    void nodeFlowUsesTheExistingDraftValidateAndPublishContractWithoutActivatingRuntime() throws Exception {
+        TestUser root = root("wicn-root");
+        TestUser owner = member(root.token(), "wicnowner");
+        UUID spaceId = createSpace(owner.token(), "wicn-space");
+        JsonNode type = createType(
+            owner.token(), spaceId, "wicn_project", "Node Project", 10, "wicn-create-" + suffix()
+        );
+        String typeId = type.get("id").asText();
+        String base = configPath(spaceId) + "/" + typeId;
+        String draftPath = base + "/draft";
+
+        JsonNode initial = json(mockMvc.perform(get(draftPath)
+                .header("Authorization", bearer(owner.token())))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.snapshotSchemaVersion").value(3))
+            .andExpect(jsonPath("$.snapshot.nodeFlow").doesNotExist())
+            .andReturn());
+
+        ObjectNode requestedSnapshot = initial.path("snapshot").deepCopy();
+        requestedSnapshot.set(
+            "nodeFlow",
+            new WorkItemNodeFlowPresetCatalog(objectMapper).nodeFlowFor("project").orElseThrow()
+        );
+        ObjectNode saveBody = objectMapper.createObjectNode()
+            .put("expectedAggregateVersion", initial.get("aggregateVersion").asLong());
+        saveBody.set("snapshot", requestedSnapshot);
+        JsonNode saved = json(mockMvc.perform(put(draftPath)
+                .header("Authorization", bearer(owner.token()))
+                .header("X-Colla-Request-Id", "wicn-node-flow-save-" + suffix())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(saveBody)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.snapshot.stateFlow").doesNotExist())
+            .andExpect(jsonPath("$.snapshot.nodeFlow.nodes[*].nodeKey", hasItem("delivery_split")))
+            .andExpect(jsonPath("$.snapshot.nodeFlow.joins[*].joinKey", hasItem("delivery_all")))
+            .andReturn());
+
+        JsonNode valid = json(mockMvc.perform(post(draftPath + ":validate")
+                .header("Authorization", bearer(owner.token()))
+                .header("X-Colla-Request-Id", "wicn-validate-" + suffix())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"expectedAggregateVersion\":" + saved.get("aggregateVersion").asLong() + "}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.status").value("valid"))
+            .andReturn());
+
+        JsonNode published = json(mockMvc.perform(post(base + "/draft:publish")
+                .header("Authorization", bearer(owner.token()))
+                .header("X-Colla-Request-Id", "wicn-publish-" + suffix())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"expectedDraftAggregateVersion":%d,"breakingConfirmed":true}
+                    """.formatted(valid.get("aggregateVersion").asLong())))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.version.snapshotSchemaVersion").value(3))
+            .andReturn());
+        JsonNode publishedSnapshot = objectMapper.readTree(jdbcTemplate.queryForObject(
+            "select config::text from project_work_item_type_versions where id=?",
+            String.class,
+            UUID.fromString(published.at("/version/id").asText())
+        ));
+        assertTrue(
+            publishedSnapshot.path("nodeFlow").path("nodes").findValuesAsText("nodeKey")
+                .contains("delivery_split")
+        );
+
+        assertEquals(
+            0,
+            jdbcTemplate.queryForObject(
+                "select count(*) from project_node_workflow_instances where type_definition_id=?",
+                Integer.class,
+                UUID.fromString(typeId)
+            )
+        );
+    }
+
+    @Test
     void publishesImmutableSnapshotsReplaysAndRollsBackThroughANewHigherVersion() throws Exception {
         TestUser root = root("wicp-root");
         TestUser owner = member(root.token(), "wicpowner");
@@ -317,7 +395,7 @@ class WorkItemTypeConfigurationControllerIntegrationTests {
                 .content(publishBody))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.version.versionNumber").value(2))
-            .andExpect(jsonPath("$.version.snapshotSchemaVersion").value(2))
+            .andExpect(jsonPath("$.version.snapshotSchemaVersion").value(3))
             .andExpect(jsonPath("$.version.completeSnapshot").value(true))
             .andReturn());
         String version2Id = published.at("/version/id").asText();
@@ -796,6 +874,15 @@ class WorkItemTypeConfigurationControllerIntegrationTests {
         assertTrue(openApi.path("paths").has("/api/project-spaces/{spaceId}/configuration/types/{typeId}:retire"));
         assertTrue(openApi.path("paths").has("/api/project-spaces/{spaceId}/configuration/types:reorder"));
         assertTrue(openApi.path("paths").has("/api/project-spaces/{spaceId}/work-item-types"));
+        assertTrue(openApi.path("paths").has(
+            "/api/project-spaces/{spaceId}/work-items/{workItemId}/node-workflow"
+        ));
+        assertTrue(openApi.path("paths").has(
+            "/api/project-spaces/{spaceId}/work-items/{workItemId}/node-workflow/history"
+        ));
+        assertTrue(openApi.path("paths").has(
+            "/api/project-spaces/{spaceId}/work-items/{workItemId}/node-workflow/tasks/{taskId}/actions/{operation}"
+        ));
         assertTrue(openApi.path("paths").has("/api/admin/project-spaces/{spaceId}"));
         assertFalse(openApi.path("paths").has("/api/work-items"));
         openApi.path("paths").fieldNames()

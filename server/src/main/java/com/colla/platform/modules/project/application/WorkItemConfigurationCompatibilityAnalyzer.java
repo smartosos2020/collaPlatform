@@ -33,6 +33,7 @@ public class WorkItemConfigurationCompatibilityAnalyzer {
         compareKeyedArray("$.fields", "fieldKey", before.path("fields"), after.path("fields"), findings);
         compareKeyedArray("$.layouts", "layoutKind", before.path("layouts"), after.path("layouts"), findings);
         compareStateFlow(before.get("stateFlow"), after.get("stateFlow"), findings);
+        compareNodeFlow(before.get("nodeFlow"), after.get("nodeFlow"), findings);
         findings.sort(Comparator.comparing(CompatibilityFinding::keyPath)
             .thenComparing(CompatibilityFinding::reasonCode));
         if (findings.size() > MAX_FINDINGS) {
@@ -103,6 +104,43 @@ public class WorkItemConfigurationCompatibilityAnalyzer {
             findings
         );
         compareKeyedArray("$.stateFlow.guards", "guardKey", before.path("guards"), after.path("guards"), findings);
+    }
+
+    private void compareNodeFlow(
+        JsonNode before,
+        JsonNode after,
+        List<CompatibilityFinding> findings
+    ) {
+        if (before == null && after == null) {
+            return;
+        }
+        if (before == null) {
+            findings.add(new CompatibilityFinding(
+                "$.nodeFlow",
+                CompatibilityImpact.migration_required,
+                "node_flow_added",
+                "Start existing work items through an explicit node-flow manifest",
+                null,
+                copy(after)
+            ));
+            return;
+        }
+        if (after == null) {
+            findings.add(new CompatibilityFinding(
+                "$.nodeFlow",
+                CompatibilityImpact.blocked,
+                "node_flow_removed",
+                "Retain the node flow or explicitly terminate or migrate every bound instance",
+                copy(before),
+                null
+            ));
+            return;
+        }
+        compareKeyedArray("$.nodeFlow.stages", "stageKey", before.path("stages"), after.path("stages"), findings);
+        compareKeyedArray("$.nodeFlow.nodes", "nodeKey", before.path("nodes"), after.path("nodes"), findings);
+        compareKeyedArray("$.nodeFlow.edges", "edgeKey", before.path("edges"), after.path("edges"), findings);
+        compareKeyedArray("$.nodeFlow.branches", "branchKey", before.path("branches"), after.path("branches"), findings);
+        compareKeyedArray("$.nodeFlow.joins", "joinKey", before.path("joins"), after.path("joins"), findings);
     }
 
     private void compareObject(
@@ -223,6 +261,30 @@ public class WorkItemConfigurationCompatibilityAnalyzer {
         if (path.contains("$.stateFlow.actions")
             && (path.contains(".authorizedRoles") || path.contains(".requiredFieldKeys"))) {
             return migration("action_contract_changed", "Revalidate authorization and required-field coverage");
+        }
+        if (path.matches("^\\$\\.nodeFlow\\.nodes\\[[^]]+]$") && removed) {
+            return migration("node_removed", "Provide an explicit node mapping for every active token and task");
+        }
+        if (path.matches("^\\$\\.nodeFlow\\.stages\\[[^]]+]$") && removed) {
+            return migration("stage_removed", "Map nodes and active tokens before removing a stage");
+        }
+        if (path.matches("^\\$\\.nodeFlow\\.edges\\[[^]]+]$") && removed) {
+            return migration("edge_removed", "Revalidate active branches, joins, and upgrade mappings");
+        }
+        if (path.contains("$.nodeFlow.nodes") && path.endsWith(".nodeKey")) {
+            return blocked("node_key_changed", "Node semantic keys are immutable; use an explicit upgrade mapping");
+        }
+        if (path.contains("$.nodeFlow.edges") && path.endsWith(".edgeKey")) {
+            return blocked("edge_key_changed", "Edge semantic keys are immutable");
+        }
+        if (path.contains("$.nodeFlow.branches") || path.contains("$.nodeFlow.joins")) {
+            return migration("routing_contract_changed", "Revalidate branch and join state for bound instances");
+        }
+        if (path.contains("$.nodeFlow.nodes")
+            && (path.endsWith(".processingStrategy")
+                || path.contains(".candidateRoles")
+                || path.endsWith(".quorumCount"))) {
+            return migration("node_assignment_contract_changed", "Revalidate active tasks and votes before upgrade");
         }
         if (path.matches("^\\$\\.fields\\[[^]]+]$") && removed) {
             return migration("field_removed", "Map or retire values before upgrading existing work items");

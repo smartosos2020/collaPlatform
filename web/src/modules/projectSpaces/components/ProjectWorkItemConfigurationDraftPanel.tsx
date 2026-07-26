@@ -29,6 +29,8 @@ import {
 import { workItemTypeKeys } from '../api/workItemTypesApi'
 import { errorMessage, formatTime } from '../projectSpaceView'
 import { ProjectWorkItemConfigurationTemplatePanel } from './ProjectWorkItemConfigurationTemplatePanel'
+import { ProjectWorkItemNodeBackfillPanel } from './ProjectWorkItemNodeBackfillPanel'
+import { ProjectWorkItemNodeFlowDesigner } from './ProjectWorkItemNodeFlowDesigner'
 import { ProjectWorkItemStateFlowEditor } from './ProjectWorkItemStateFlowEditor'
 import { ProjectWorkItemStateBackfillPanel } from './ProjectWorkItemStateBackfillPanel'
 
@@ -279,20 +281,41 @@ export function ProjectWorkItemConfigurationDraftPanel({
           description="前端和服务端都不会提供普通绕过入口；请保留旧绑定或另行完成受控恢复方案。"
         />
       ) : null}
-      <ProjectWorkItemStateFlowEditor
-        key={`${draft.id}:${draft.aggregateVersion}`}
-        spaceId={spaceId}
-        typeId={typeId}
-        readOnly={readOnly || draft.status === 'abandoned'}
-        draft={draft}
-        onDraftSaved={updateCachedDraft}
-      />
-      <ProjectWorkItemStateBackfillPanel
-        spaceId={spaceId}
-        typeId={typeId}
-        currentVersion={currentVersion}
-        readOnly={readOnly}
-      />
+      {hasNodeFlow(draft.snapshot) ? (
+        <>
+          <ProjectWorkItemNodeFlowDesigner
+            key={`${draft.id}:${draft.aggregateVersion}`}
+            spaceId={spaceId}
+            typeId={typeId}
+            readOnly={readOnly || draft.status === 'abandoned'}
+            draft={draft}
+            onDraftSaved={updateCachedDraft}
+          />
+          <ProjectWorkItemNodeBackfillPanel
+            spaceId={spaceId}
+            typeId={typeId}
+            currentVersion={currentVersion}
+            readOnly={readOnly}
+          />
+        </>
+      ) : (
+        <>
+          <ProjectWorkItemStateFlowEditor
+            key={`${draft.id}:${draft.aggregateVersion}`}
+            spaceId={spaceId}
+            typeId={typeId}
+            readOnly={readOnly || draft.status === 'abandoned'}
+            draft={draft}
+            onDraftSaved={updateCachedDraft}
+          />
+          <ProjectWorkItemStateBackfillPanel
+            spaceId={spaceId}
+            typeId={typeId}
+            currentVersion={currentVersion}
+            readOnly={readOnly}
+          />
+        </>
+      )}
       <ProjectWorkItemConfigurationTemplatePanel
         spaceId={spaceId}
         typeId={typeId}
@@ -405,6 +428,15 @@ export function ProjectWorkItemConfigurationDraftPanel({
         )}
       />
     </section>
+  )
+}
+
+function hasNodeFlow(snapshot: unknown) {
+  return Boolean(
+    snapshot
+    && typeof snapshot === 'object'
+    && !Array.isArray(snapshot)
+    && (snapshot as Record<string, unknown>).nodeFlow,
   )
 }
 

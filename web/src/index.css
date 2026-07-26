@@ -8,6 +8,106 @@ body,
   overflow: hidden;
 }
 
+.node-flow-designer,
+.node-workflow-panel {
+  margin-top: 16px;
+}
+
+.node-flow-toolbar {
+  margin: 12px 0;
+}
+
+.node-flow-canvas {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(210px, 1fr);
+  gap: 12px;
+  min-width: max-content;
+  padding: 12px;
+  overflow: auto;
+  border: 1px solid var(--ant-color-border-secondary, #e5e7eb);
+  border-radius: 12px;
+  background: var(--ant-color-fill-quaternary, #f8fafc);
+  transition: transform 120ms ease;
+}
+
+.node-flow-stage,
+.node-runtime-column {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 190px;
+  padding: 12px;
+  border: 1px solid var(--ant-color-border-secondary, #e5e7eb);
+  border-radius: 10px;
+  background: var(--ant-color-bg-container, #fff);
+}
+
+.node-flow-node,
+.node-runtime-task {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 100%;
+  padding: 10px;
+  color: inherit;
+  text-align: left;
+  border: 1px solid var(--ant-color-border, #d9d9d9);
+  border-radius: 8px;
+  background: var(--ant-color-bg-container, #fff);
+  cursor: pointer;
+}
+
+.node-flow-node:hover,
+.node-flow-node.selected,
+.node-flow-node:focus-visible,
+.node-runtime-task:hover,
+.node-runtime-task.selected,
+.node-runtime-task:focus-visible {
+  border-color: var(--ant-color-primary, #1677ff);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ant-color-primary, #1677ff) 18%, transparent);
+  outline: none;
+}
+
+.node-flow-edge-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 14px 0;
+}
+
+.node-flow-edge-list .ant-input,
+.node-flow-edge-list .ant-select {
+  width: 180px;
+}
+
+.node-runtime-graph {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 12px;
+  overflow-x: auto;
+}
+
+.node-task-execution,
+.node-command-form {
+  width: 100%;
+}
+
+@media (max-width: 820px) {
+  .node-flow-canvas {
+    grid-auto-columns: minmax(180px, 85vw);
+  }
+
+  .node-flow-edge-list .ant-space {
+    width: 100%;
+  }
+
+  .node-flow-edge-list .ant-input,
+  .node-flow-edge-list .ant-select {
+    width: min(100%, 240px);
+  }
+}
+
 body {
   background: #f5f7fb;
 }

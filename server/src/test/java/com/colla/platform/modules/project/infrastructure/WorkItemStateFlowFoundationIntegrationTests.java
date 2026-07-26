@@ -40,7 +40,7 @@ class WorkItemStateFlowFoundationIntegrationTests {
     }
 
     @Test
-    void enforcesScopedSingleCurrentStateAndKeepsNodeRuntimeAbsent() throws Exception {
+    void enforcesScopedSingleCurrentStateAndKeepsNodeRuntimeSeparate() throws Exception {
         Fixture first = fixture("flow_a");
         Fixture second = fixture("flow_b");
 
@@ -68,17 +68,27 @@ class WorkItemStateFlowFoundationIntegrationTests {
             USER_ID,
             USER_ID
         ));
-        assertEquals(0, jdbc.queryForObject(
+        assertEquals(8, jdbc.queryForObject(
             """
                 select count(*) from information_schema.tables
                  where table_schema='public'
                    and table_name in (
-                       'project_workflow_instances',
-                       'project_workflow_node_tokens',
-                       'project_node_instances'
+                       'project_node_workflow_instances',
+                       'project_node_workflow_tokens',
+                       'project_node_workflow_tasks',
+                       'project_node_workflow_votes',
+                       'project_node_workflow_joins',
+                       'project_node_workflow_join_arrivals',
+                       'project_node_workflow_commands',
+                       'project_node_workflow_history'
                    )
                 """,
             Integer.class
+        ));
+        assertEquals(0, jdbc.queryForObject(
+            "select count(*) from project_node_workflow_instances where work_item_id=?",
+            Integer.class,
+            first.workItemId()
         ));
     }
 
@@ -165,8 +175,208 @@ class WorkItemStateFlowFoundationIntegrationTests {
     }
 
     @Test
-    void migratesHistoricalBaselinesToV092Repeatably() {
-        for (String baseline : new String[]{"001", "061", "078", "085", "090"}) {
+    void nodeFoundationScopesIndependentRuntimeFactsAndFreezesReceiptsAndHistory() throws Exception {
+        Fixture fixture = fixture("node_flow");
+        Fixture other = fixture("node_other");
+        UUID instanceId = UUID.randomUUID();
+        jdbc.update(
+            """
+                insert into project_node_workflow_instances (
+                    id, workspace_id, space_id, work_item_id, type_definition_id,
+                    type_version_id, config_hash, status, work_item_version,
+                    aggregate_version, started_by, started_at, updated_by, updated_at
+                ) values (?, ?, ?, ?, ?, ?, ?, 'active', 0, 0, ?, now(), ?, now())
+                """,
+            instanceId,
+            WORKSPACE_ID,
+            fixture.spaceId(),
+            fixture.workItemId(),
+            fixture.typeId(),
+            fixture.versionId(),
+            "a".repeat(64),
+            USER_ID,
+            USER_ID
+        );
+        assertEquals(0, jdbc.queryForObject(
+            "select count(*) from project_work_item_current_states where work_item_id=?",
+            Integer.class,
+            fixture.workItemId()
+        ));
+        assertThrows(DataIntegrityViolationException.class, () -> jdbc.update(
+            """
+                insert into project_node_workflow_instances (
+                    id, workspace_id, space_id, work_item_id, type_definition_id,
+                    type_version_id, config_hash, status, work_item_version,
+                    aggregate_version, started_by, started_at, updated_by, updated_at
+                ) values (?, ?, ?, ?, ?, ?, ?, 'active', 0, 0, ?, now(), ?, now())
+                """,
+            UUID.randomUUID(),
+            WORKSPACE_ID,
+            other.spaceId(),
+            fixture.workItemId(),
+            other.typeId(),
+            other.versionId(),
+            "a".repeat(64),
+            USER_ID,
+            USER_ID
+        ));
+
+        UUID tokenId = UUID.randomUUID();
+        jdbc.update(
+            """
+                insert into project_node_workflow_tokens (
+                    id, workspace_id, space_id, instance_id, node_key, stage_key,
+                    status, correlation_key, aggregate_version, entered_at
+                ) values (?, ?, ?, ?, 'review', 'delivery', 'active', 'correlation-1', 0, now())
+                """,
+            tokenId, WORKSPACE_ID, fixture.spaceId(), instanceId
+        );
+        UUID taskId = UUID.randomUUID();
+        jdbc.update(
+            """
+                insert into project_node_workflow_tasks (
+                    id, workspace_id, space_id, instance_id, token_id, node_key,
+                    assignment_strategy, candidate_roles, status, aggregate_version, created_at
+                ) values (?, ?, ?, ?, ?, 'review', 'single', '["member"]'::jsonb, 'pending', 0, now())
+                """,
+            taskId, WORKSPACE_ID, fixture.spaceId(), instanceId, tokenId
+        );
+        UUID voteId = UUID.randomUUID();
+        jdbc.update(
+            """
+                insert into project_node_workflow_votes (
+                    id, workspace_id, space_id, instance_id, task_id, token_id,
+                    node_key, voter_id, decision, sequence_number, occurred_at
+                ) values (?, ?, ?, ?, ?, ?, 'review', ?, 'approve', 1, now())
+                """,
+            voteId, WORKSPACE_ID, fixture.spaceId(), instanceId, taskId, tokenId, USER_ID
+        );
+        assertThrows(DataIntegrityViolationException.class, () -> jdbc.update(
+            "update project_node_workflow_votes set decision='reject' where id=?",
+            voteId
+        ));
+        UUID withdrawalId = UUID.randomUUID();
+        jdbc.update(
+            """
+                insert into project_node_workflow_votes (
+                    id, workspace_id, space_id, instance_id, task_id, token_id,
+                    node_key, voter_id, decision, supersedes_vote_id,
+                    sequence_number, occurred_at
+                ) values (?, ?, ?, ?, ?, ?, 'review', ?, 'withdraw', ?, 2, now())
+                """,
+            withdrawalId, WORKSPACE_ID, fixture.spaceId(), instanceId, taskId, tokenId,
+            USER_ID, voteId
+        );
+        assertThrows(DataIntegrityViolationException.class, () -> jdbc.update(
+            """
+                insert into project_node_workflow_votes (
+                    id, workspace_id, space_id, instance_id, task_id, token_id,
+                    node_key, voter_id, decision, supersedes_vote_id,
+                    sequence_number, occurred_at
+                ) values (?, ?, ?, ?, ?, ?, 'review', ?, 'withdraw', ?, 3, now())
+                """,
+            UUID.randomUUID(), WORKSPACE_ID, fixture.spaceId(), instanceId, taskId, tokenId,
+            USER_ID, voteId
+        ));
+
+        UUID joinId = UUID.randomUUID();
+        jdbc.update(
+            """
+                insert into project_node_workflow_joins (
+                    id, workspace_id, space_id, instance_id, join_key, node_key,
+                    correlation_key, policy, expected_count, arrived_count, status,
+                    aggregate_version, created_at
+                ) values (?, ?, ?, ?, 'delivery_all', 'review', 'correlation-1',
+                          'all', 1, 0, 'waiting', 0, now())
+                """,
+            joinId, WORKSPACE_ID, fixture.spaceId(), instanceId
+        );
+        UUID arrivalId = UUID.randomUUID();
+        jdbc.update(
+            """
+                insert into project_node_workflow_join_arrivals (
+                    id, workspace_id, space_id, instance_id, join_id, token_id, arrived_at
+                ) values (?, ?, ?, ?, ?, ?, now())
+                """,
+            arrivalId, WORKSPACE_ID, fixture.spaceId(), instanceId, joinId, tokenId
+        );
+        assertThrows(DataIntegrityViolationException.class, () -> jdbc.update(
+            "update project_node_workflow_join_arrivals set arrived_at=now() where id=?",
+            arrivalId
+        ));
+        assertThrows(DataIntegrityViolationException.class, () -> jdbc.update(
+            """
+                insert into project_node_workflow_join_arrivals (
+                    id, workspace_id, space_id, instance_id, join_id, token_id, arrived_at
+                ) values (?, ?, ?, ?, ?, ?, now())
+                """,
+            UUID.randomUUID(), WORKSPACE_ID, fixture.spaceId(), instanceId, joinId, tokenId
+        ));
+
+        UUID commandId = UUID.randomUUID();
+        jdbc.update(
+            """
+                insert into project_node_workflow_commands (
+                    id, workspace_id, space_id, work_item_id, instance_id, operation,
+                    node_key, expected_work_item_version, expected_instance_version,
+                    request_id, request_hash, status, response_schema_version,
+                    created_by, created_at
+                ) values (?, ?, ?, ?, ?, 'vote', 'review', 0, 0, 'request-node-1',
+                          ?, 'pending', 1, ?, now())
+                """,
+            commandId,
+            WORKSPACE_ID,
+            fixture.spaceId(),
+            fixture.workItemId(),
+            instanceId,
+            "d".repeat(64),
+            USER_ID
+        );
+        jdbc.update(
+            """
+                update project_node_workflow_commands
+                   set status='completed', response_payload='{"status":"active"}'::jsonb,
+                       completed_at=now()
+                 where id=?
+                """,
+            commandId
+        );
+        assertThrows(DataIntegrityViolationException.class, () -> jdbc.update(
+            "update project_node_workflow_commands set response_payload='{}'::jsonb where id=?",
+            commandId
+        ));
+
+        UUID historyId = UUID.randomUUID();
+        jdbc.update(
+            """
+                insert into project_node_workflow_history (
+                    id, workspace_id, space_id, instance_id, work_item_id, sequence_number,
+                    type_definition_id, type_version_id, config_hash, event_kind, node_key,
+                    token_id, task_id, actor_id, actor_class, correlation_id, occurred_at
+                ) values (?, ?, ?, ?, ?, 1, ?, ?, ?, 'voted', 'review', ?, ?, ?,
+                          'user', 'correlation-node-1', now())
+                """,
+            historyId,
+            WORKSPACE_ID,
+            fixture.spaceId(),
+            instanceId,
+            fixture.workItemId(),
+            fixture.typeId(),
+            fixture.versionId(),
+            "a".repeat(64),
+            tokenId,
+            taskId,
+            USER_ID
+        );
+        assertThrows(DataIntegrityViolationException.class, () -> jdbc.update(
+            "delete from project_node_workflow_history where id=?",
+            historyId
+        ));
+    }
+
+    @Test
+    void migratesHistoricalBaselinesToV096Repeatably() {
+        for (String baseline : new String[]{"001", "061", "078", "085", "090", "093", "095"}) {
             Flyway latest = Flyway.configure()
                 .dataSource(dataSource())
                 .cleanDisabled(false)
@@ -174,7 +384,7 @@ class WorkItemStateFlowFoundationIntegrationTests {
             latest.clean();
             Flyway.configure().dataSource(dataSource()).target(baseline).load().migrate();
             latest.migrate();
-            assertEquals("092", latest.info().current().getVersion().getVersion());
+            assertEquals("096", latest.info().current().getVersion().getVersion());
             assertEquals(0, latest.migrate().migrationsExecuted);
         }
     }
@@ -183,13 +393,17 @@ class WorkItemStateFlowFoundationIntegrationTests {
     void recoverySchemaFreezesManifestsAndBlocksDirectBindingChanges() throws Exception {
         Fixture fixture = fixture("flow_recovery");
         insertCurrentState(fixture, "open");
-        assertEquals(2, jdbc.queryForObject(
+        assertEquals(6, jdbc.queryForObject(
             """
                 select count(*) from information_schema.tables
                  where table_schema='public'
                    and table_name in (
                        'project_work_item_state_backfill_batches',
-                       'project_work_item_state_backfill_units'
+                       'project_work_item_state_backfill_units',
+                       'project_node_workflow_compensation_runs',
+                       'project_node_workflow_compensation_steps',
+                       'project_node_workflow_backfill_batches',
+                       'project_node_workflow_backfill_units'
                    )
                 """,
             Integer.class
@@ -201,6 +415,22 @@ class WorkItemStateFlowFoundationIntegrationTests {
                  where workspace_id=? and space_id=? and work_item_id=?
                 """,
             "b".repeat(64), WORKSPACE_ID, fixture.spaceId(), fixture.workItemId()
+        ));
+        UUID instanceId = UUID.randomUUID();
+        jdbc.update(
+            """
+                insert into project_node_workflow_instances (
+                    id, workspace_id, space_id, work_item_id, type_definition_id,
+                    type_version_id, config_hash, status, work_item_version,
+                    aggregate_version, started_by, started_at, updated_by, updated_at
+                ) values (?, ?, ?, ?, ?, ?, ?, 'active', 0, 0, ?, now(), ?, now())
+                """,
+            instanceId, WORKSPACE_ID, fixture.spaceId(), fixture.workItemId(),
+            fixture.typeId(), fixture.versionId(), "a".repeat(64), USER_ID, USER_ID
+        );
+        assertThrows(DataIntegrityViolationException.class, () -> jdbc.update(
+            "update project_node_workflow_instances set config_hash=? where id=?",
+            "b".repeat(64), instanceId
         ));
     }
 

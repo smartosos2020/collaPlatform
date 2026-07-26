@@ -109,8 +109,36 @@ public class WorkItemConfigurationSnapshotCanonicalizer {
         if ("guards".equals(fieldName)) {
             return java.util.Optional.of(Comparator.comparing(value -> value.path("guardKey").asText()));
         }
+        if ("stages".equals(fieldName)) {
+            return java.util.Optional.of(byOrderThenKey("stageKey"));
+        }
+        if ("edges".equals(fieldName)) {
+            return java.util.Optional.of(
+                Comparator.comparing((JsonNode value) -> value.path("fromNodeKey").asText())
+                    .thenComparingInt(value -> value.path("priority").asInt())
+                    .thenComparing(value -> value.path("edgeKey").asText())
+            );
+        }
+        if ("branches".equals(fieldName)) {
+            return java.util.Optional.of(Comparator.comparing(value -> value.path("branchKey").asText()));
+        }
+        if ("joins".equals(fieldName)) {
+            return java.util.Optional.of(Comparator.comparing(value -> value.path("joinKey").asText()));
+        }
+        if ("recoveryCommands".equals(fieldName)) {
+            return java.util.Optional.of(Comparator.comparing(value -> value.path("commandKey").asText()));
+        }
+        if ("compensations".equals(fieldName)) {
+            return java.util.Optional.of(
+                Comparator.comparing((JsonNode value) -> value.path("commandKey").asText())
+                    .thenComparingInt(value -> value.path("sortOrder").asInt())
+                    .thenComparing(value -> value.path("compensationKey").asText())
+            );
+        }
         if (List.of(
-            "authorizedRoles", "requiredFieldKeys", "sideEffectKeys", "spaceRoles", "guardKeys"
+            "authorizedRoles", "requiredFieldKeys", "sideEffectKeys", "spaceRoles", "guardKeys",
+            "candidateRoles", "explicitUserIds", "participantRoles", "fieldParticipantKeys",
+            "objectTypes", "edgeKeys", "inboundEdgeKeys", "fromNodeKeys"
         ).contains(fieldName)) {
             return java.util.Optional.of(Comparator.comparing(JsonNode::asText));
         }

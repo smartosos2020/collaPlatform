@@ -13,7 +13,8 @@ class WorkItemConfigurationValidatorTests {
         new WorkItemStateFlowValidator(
             new WorkItemStateFlowGuardRegistry(),
             new WorkItemStateFlowSideEffectRegistry()
-        )
+        ),
+        new WorkItemNodeFlowValidator(new WorkItemNodeTypeRegistry())
     );
 
     @Test

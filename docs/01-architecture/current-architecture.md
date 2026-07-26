@@ -1,7 +1,7 @@
 ---
 title: 当前技术架构
 status: active
-last_code_check: 2026-07-26
+last_code_check: 2026-07-27
 ---
 
 # 当前技术架构
@@ -14,7 +14,7 @@ Colla Platform 当前是模块化单体：
 
 - 后端：单个 Spring Boot 应用，按业务模块分包。
 - 前端：单个 React SPA，用户工作台和管理后台使用独立 Shell、导航和路由边界。
-- 数据库：单个 PostgreSQL schema，通过 Flyway V001-V092 演进。
+- 数据库：单个 PostgreSQL schema，通过 Flyway V001-V096 演进。
 - 基础设施：Redis、MinIO、WebSocket、平台对象、权限、事件、审计和搜索由模块共享。
 - 交付：本地 Docker 依赖；生产基线是 maintenance、双 API、Worker、Event Gateway、双协作节点的 Docker Compose + Nginx。
 
@@ -52,7 +52,7 @@ Colla Platform 当前是模块化单体：
 
 该历史快照只描述当时的依赖和访问事实，不代表当前计数、边界合格或容量承诺。table owner、允许例外和公共 contract 在 S01-M2 冻结，自动失败门禁在 S01-M3 交付。
 
-S01-M2 已接受 `platform-module-contracts.md`，并以 `platform-modules.json`、`platform-table-owners.json`、`platform-boundary-exceptions.json` 和 `pnpm architecture:contracts` 建立模块、table owner、精确只读例外及 identity/file/platform/event/audit/IM 公共合同。2026-07-26 在 V001-V092 基线执行当前工具确认 15 个后端模块、125 张当前有效表、93 条精确例外和 23 个公共合同文件。125 张表在 owner manifest 中全部唯一归属，重复与 ownerless 均为 0；源码与跨模块候选数量以每次 fresh inventory 报告为准。
+S01-M2 已接受 `platform-module-contracts.md`，并以 `platform-modules.json`、`platform-table-owners.json`、`platform-boundary-exceptions.json` 和 `pnpm architecture:contracts` 建立模块、table owner、精确只读例外及 identity/file/platform/event/audit/IM 公共合同。2026-07-27 在 V001-V096 基线执行当前工具确认 15 个后端模块、138 张当前有效表、93 条精确例外和 26 个公共合同文件。138 张表在 owner manifest 中全部唯一归属，重复与 ownerless 均为 0；源码与跨模块候选数量以每次 fresh inventory 报告为准。
 
 ## 前端模块与路由
 
@@ -119,7 +119,7 @@ S01-M2 已接受 `platform-module-contracts.md`，并以 `platform-modules.json`
 
 ## 数据库迁移
 
-当前 Flyway 版本为 V092。历史迁移文件不可修改。
+当前 Flyway 版本为 V096。历史迁移文件不可修改。
 
 知识库最后四个迁移：
 
@@ -172,6 +172,10 @@ S01-M2 已接受 `platform-module-contracts.md`，并以 `platform-modules.json`
 | V090 | 允许系统预置类型通过既有完整配置发布事务推进 current version，同时保持系统身份不可改 |
 | V091 | 建立状态流 current state、持久命令回执与不可变 workflow history 的 workspace/space/WorkItem 复合边界；不创建节点实例或 token 表 |
 | V092 | 建立显式状态 backfill batch/unit、不可变 manifest/source binding、失败续跑与 verify 事实，并以受控会话触发器保护 current-state binding upgrade；不创建节点实例或 token 表 |
+| V093 | 建立节点流独立 instance、token、task、vote、join、command receipt 和不可变 history 基础表；只提供 schema 权威与保护，不激活节点运行命令、Repository、API 或 UI |
+| V094 | 激活节点运行时的不可变 vote supersession/withdrawal 链、join arrival 事实、任务候选与开放任务查询索引，并扩展命令操作约束；不复用 S08 状态流私表 |
+| V095 | 冻结节点 task 的候选用户、表单、交付物与 UTC elapsed 时间合同，建立不可变 task artifact、收件箱/到期索引及 transfer/submit/timeout 历史和命令约束 |
+| V096 | 建立节点恢复补偿 run/step、显式 backfill batch/unit、instance recovery 水位与受控 binding upgrade；冻结 manifest/source binding，保护实例身份并禁止绕过升级命令直接改绑定 |
 
 数据库规则：
 
@@ -273,13 +277,13 @@ PLATFORM-SCALE-S01-S04 已完成并归档。S03 交付版本化 envelope、聚�
 
 PLATFORM-SCALE-S01 把模块边界从文档约定升级为机器门禁。2026-07-26 的当前可重复清单为：
 
-- 15 个后端模块、374 个 Java 文件、248 条后端跨模块 import。
+- 15 个后端模块、398 个 Java 文件、256 条后端跨模块 import。
 - 前端有 64 条跨 feature import。
-- V001-V092 形成 125 张当前有效表，每张表有唯一 owner；跨 owner SQL 候选由精确例外治理，foreign write 仍为禁止项。
-- 23 个公开 contract 文件受合同门禁约束；`pnpm architecture:contracts` 同时检查模块、table owner、例外和公共合同来源。
+- V001-V095 形成 134 张当前有效表，每张表有唯一 owner；跨 owner SQL 候选由精确例外治理，foreign write 仍为禁止项。
+- 25 个公开 contract 文件受合同门禁约束；`pnpm architecture:contracts` 同时检查模块、table owner、例外和公共合同来源。
 - S02 收口复核确认 93 条只读例外不属于运行隔离交付范围，退出 Stage 已重新批准为 PLATFORM-SCALE-S05，其中 project 9 条；因 S05-M2-M5 Deferred，例外清理尚未完成，现有精确条目仍不能扩张，修改相关文件时只能保持或减少。
 
-以上数字来自当前 inventory/config，而不是沿用 S03 历史快照。S02 已实现双 API 和独立运行角色，S03 已交付 Worker 多实例 lease、逐 Handler 可靠消费和恢复门槛，S04 已交付双 Event Gateway fanout、业务信号迁移、前端重连校准、旧 Spring 协同退出和双 Hocuspocus 节点恢复。基础设施集群高可用与正式容量承诺仍未交付；PLATFORM-SCALE-S05 的 M2-M5 已 Deferred。PROJECT-PLATFORM-S07 与 S08 均已完成并归档；S08 交付四个 Milestone、48 个 Task。现有轻量状态流包括 snapshot v2 定义、绑定版本驱动的单一 current-state runtime、forward/return/reopen/terminate/restore/correction、显式 backfill/binding upgrade、空间配置器、成员执行 UI 和六身份真实隔离 route-final。S09 已在 Program revision 25 激活为唯一当前 Stage，路线包含五个 Milestone、60 个 Task，并从 M1-T01 开始；激活不代表运行时已实现，当前代码仍没有 node instance/token/task/vote/join、串并行、汇聚或会签权威。
+以上数字来自当前 inventory/config，而不是沿用 S03 历史快照。S02 已实现双 API 和独立运行角色，S03 已交付 Worker 多实例 lease、逐 Handler 可靠消费和恢复门槛，S04 已交付双 Event Gateway fanout、业务信号迁移、前端重连校准、旧 Spring 协同退出和双 Hocuspocus 节点恢复。基础设施集群高可用与正式容量承诺仍未交付；PLATFORM-SCALE-S05 的 M2-M5 已 Deferred。PROJECT-PLATFORM-S07、S08 与 S09 均已完成并归档。复杂节点流当前包括 snapshot v3 阶段/节点/边/分支/汇聚/恢复/补偿定义，V093-V096 独立 instance/token/task/artifact/vote/join/receipt/history/backfill 权威，single/any/all/quorum、split/join、表单/交付物/时限、恢复/补偿/升级、空间设计器、成员实例/任务/历史 UI 和六身份真实隔离 route-final。它不读写 S08 current-state/history/backfill 私表。S10 已在 Program revision 27 激活为唯一当前 Stage，路线包含五个 Milestone、60 个 Task 并从 M1-T01 开始；激活不代表关系能力已实现，当前代码仍只有 legacy `issue_relations`，尚无规范 WorkItem relation edge/history、父子/依赖环控制、层级投影或 S10 用户 UI。
 
 ## 项目模块当前事实
 
@@ -343,6 +347,21 @@ PROJECT-PLATFORM-S01 于 2026-07-18 完成项目模块当前事实审计、目�
 - V092 的 `project_work_item_state_backfill_batches/units` 冻结 manifest、target binding、source binding/version、reason hash、attempt 和稳定 failure。每个单元以 `REQUIRES_NEW` 提交 WorkItem binding/字段投影/current state/system history/activity/audit/outbox；失败完整回滚后单独记 failure，可显式 resume 并通过 verify 检测漂移。
 - `WorkItemWorkflowConsumerContractHandler` 订阅 action/state/initialized/binding-changed v1，只校验 `eventSchemaVersion=1` 的公共最小 payload，不读取状态私表、不生成通知或搜索正文。既有 delivery receipt/replay 去重；未知 payload schema 分类为 permanent，由通用 Worker 进入 dead letter。
 - S08-M4 已在空间配置页交付状态/动作/转换/guard 编辑、diagnostics、preview/diff/compatibility、发布确认、rollback 与显式 backfill；WorkItem 详情只消费服务端 `availableActions`，并支持原子 required-field patch、历史和受控 correction。服务端发布拒绝 `blocked`，`migration_required` 要求显式确认，发布后的 active draft 从完整 current published snapshot 保留 `stateFlow`。
+- S09-M1 把复杂节点流作为完整 configuration snapshot schema v3 的可选部分。stage/node/edge/branch/join、节点类型与 single/any/all/quorum/automatic 处理策略使用永久 semantic key；validator 对单一入口、终点、可达性、终点路径、非法环、悬空边、分支/汇聚闭包、声明式条件、候选角色和 quorum 失败关闭。schema v1/v2 继续可解释，未知未来 schema 拒绝。
+- `nodeFlow` 复用 S06 唯一 draft、canonical hash、diff、compatibility、publish、rollback 和模板链路；同一 snapshot 不允许同时激活 `stateFlow` 与 `nodeFlow`。已发布或 active draft 的流程定义在 live 配置刷新时被完整保留，project/release 的确定性平台模板使用显式节点图，未知类型不猜默认流程。
+- V093 的 `project_node_workflow_instances/tokens/tasks/votes/joins/commands/history` 与 S08 表族完全分离，V094 增加不可变 join-arrival 与 vote supersession/withdrawal 链及有界查询索引。M2 的 `WorkItemNodeRuntimeAdapter` 只解释 WorkItem 绑定的不可变 snapshot/version/hash；独立 Repository 以 WorkItem 行锁、instance/token/task/join 行锁、双版本 CAS 和 request ID/hash 事务运行，不读取或写入 S08 current-state/history/backfill 私表。
+- M2 新建绑定 schema v3 nodeFlow 的 WorkItem 时原子初始化 instance 与 start token；自动节点以非递归 128 步上限推进，manual 节点支持 single/any/all/quorum 的 claim/delegate/complete/vote/withdraw。exclusive/parallel 分支使用内部 correlation，all/any/quorum join 使用不可变 arrival；提前汇聚会原子取消未完成分支任务/token，避免 stranded branch。
+- 用户节点入口固定为 `/api/project-spaces/{spaceId}/work-items/{workItemId}/node-workflow`、`/history`、`:start` 和 `/tasks/{taskId}/actions/{operation}`。presentation 与命令共享同一授权/候选决策，只公开可操作 task/token/action、版本和最小 reason；候选角色、条件正文、quorum 配置、父 token、split/join/correlation 不出用户 DTO。
+- 成功节点命令在同一事务推进 WorkItem/instance version，完成 receipt，追加不可变 history、WorkItem activity、audit 和 `node_workflow.changed` v1 outbox；相同 request ID/hash 精确重放，异载荷、stale 或并发败者不追加完成事实。开放任务按 `(node_key,id)` 稳定排序并硬限 200，active token 硬限 256，代表性 PostgreSQL 查询命中开放任务索引。
+- S09-M3 在 task 创建时冻结 explicit user、space role、participant role 与 field participant 解析后的 active member 集合；后续入组/离场不改变 all/quorum 阈值。空候选保留 `assignment_empty` 恢复事实，空间 owner/admin 可通过 transfer 恢复，不以动态私表读取补算候选。
+- 节点 form 的 hidden/read/write/required、artifact kind/count/required/object type 与 planned/due instant 均进入 task 冻结事实。`submit` 在单一事务执行字段 patch/canonical projection、FileAccess/PlatformObjectRegistry 公共鉴权、不可变 artifact、task/token/instance/WorkItem、history/activity/audit/outbox/receipt；任何一步失败整体回滚。
+- 成员后端入口新增空间级 `/node-tasks` 收件箱与 `:process-due`，以及 WorkItem node-workflow task context。列表按 `(created_at,id)` 游标和 200 硬上限查询，详情只返回服务端允许的 form/value/artifact/action；原始 `nodeFlow`、hidden 字段、候选身份和文件私有元数据不进入 runtime。
+- `NodeTaskLifecycleEvent` 发布 `node_task.lifecycle` v1 最小到期事实；`NodeTaskConsumerContractHandler` 与既有节点事件共用 durable delivery/replay/dead-letter 机制，只校验公共载荷，不读取节点私表。
+- S09-M4 把 return、jump、terminate、correct、compensation 声明冻结进绑定 snapshot；恢复命令只接受 snapshot 明示来源/目标、owner/admin、双 expected version、10-500 字原因 hash、精确危险确认和 caller-stable request ID。旧 task/token/join 原子关闭，旧 history 永不删除，archive/restore 仍只改变 WorkItem 对象生命周期。
+- 节点 binding upgrade 只接受 published/superseded 目标 snapshot 和覆盖全部 active source node 的显式 one-to-one/split/merge map；`blocked` 兼容变化、缺失/多余映射、非可执行目标或版本漂移均失败关闭。成功时 WorkItem binding/field projection、instance binding、mapped token、history/activity/audit/outbox/receipt 同事务提交。
+- V096 的 compensation run/step 只执行已注册的 `record_audit_marker`、`close_open_work`，按顺序和 step 状态幂等续跑；空间 owner/admin 使用精确确认恢复 pending/failed ledger，不允许任意代码或直接改表纠错。
+- pre-S09 实例只能通过 1-500 项显式 manifest backfill。batch 冻结目标 snapshot/hash/entry、source binding/version、reason/request hash；每个 unit 使用独立事务，失败完整回滚并记录稳定 failure，排除根因后显式 resume，verify 校验 WorkItem/instance binding、hash 和版本水位。
+- 用户恢复入口固定在既有 WorkItem/空间边界的 `/node-workflow/recoveries/{commandKey}`、`/node-workflow:upgrade`、`/node-workflow/compensations/{runId}:resume` 与空间级 `/node-workflow-backfills`；企业管理员不会因后台角色自动获得空间内容可见性。M5 视觉闭环仍未实现。
 - M4 真实隔离浏览器覆盖六身份、并发单赢家、离线保留、终态重开、业务恢复、backfill/verify、键盘、长名称与 1366/820；PostgreSQL 16 上 V001-V092 和非空实例恢复复验通过。这是功能与恢复证据，不是生产 cutover、容量或 HA 承诺。
 - 每个 legacy project 是一个独立 `REQUIRES_NEW` 单元，覆盖 project/issue、成员/参与者、评论、附件、活动与 provenance。执行使用批次 lease、token、递增 fencing、heartbeat、限速、暂停和同批次 resume；失败单元完整回滚，兄弟单元继续，failure/provenance/verification 只追加。
 - batch verification 固定针对原 manifest；workspace convergence verification 独立追加，不改写历史结论。pre-cutover rollback 删除本批次规范目标、链接和有效 map，但保留 rolled-back map、provenance、failure、manifest、verification 与审计；canonical-write 后拒绝删除并启用 kill switch，要求显式补偿。

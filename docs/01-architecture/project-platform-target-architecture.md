@@ -2,11 +2,11 @@
 title: 项目协作平台目标架构
 status: target
 program: PROJECT-PLATFORM
-program_revision: 25
+program_revision: 27
 domain_contract_version: 1
 domain_contract_status: frozen-s01-m3
 migration_contract_version: 1
-stage_review_status: s08-archived-s09-active
+stage_review_status: s09-archived-s10-active
 updated_at: 2026-07-27
 ---
 
@@ -1024,3 +1024,67 @@ S09 的目标是复杂节点流定义与运行时。它可以在 S08 已验证�
 - S09 当前路线固定为五个 Milestone、60 个 Task：M1 节点图与版本化定义，M2 token/会签运行时，M3 节点任务/表单/交付物/时限，M4 回退/跳转/终止/补偿/升级恢复，M5 可视化设计器、成员执行 UI 与 `route-final`。
 - 激活点是 `PROJECT-PLATFORM-S09-M1-T01`。激活仅建立执行授权和验收合同，不声明 workflow instance、token、task、vote、join、API 或 UI 已实现。
 - S09 只能扩展完整不可变 configuration snapshot，并通过公共 command/event SPI 协作；S08 current-state/history/backfill 私表、S10 关系引擎、S14 高级视图、S16 工作量/工时和 S17 自动化均不在本次激活事实内。
+
+### 25.4 S09-M1 已实现边界
+
+- 完整 configuration snapshot 当前支持 schema v1-v3：v1/v2 保持原解释，v3 可选承载 stage/node/edge/branch/join 节点图；同一 snapshot 不允许同时激活 `stateFlow` 和 `nodeFlow`，未知未来 schema 失败关闭。
+- 节点图使用永久 semantic key、注册节点类型与 automatic/single/any/all/quorum 处理策略。结构校验覆盖唯一 start、至少一个 end、可达性、终点路径、非法环、边优先级、branch/join 闭包、候选角色、quorum 和声明式条件；任意代码、未知 operator、隐藏/失效字段依赖失败关闭。
+- nodeFlow 已接入唯一 active draft、canonical hash、diff、compatibility、publish、rollback 和平台模板链路。project/release 使用确定性显式预置，未知类型不猜节点图；live 刷新保留 active/published 流程定义，不产生第二套 definition 表。
+- V093 只建立独立 `project_node_workflow_instances/tokens/tasks/votes/joins/commands/history` schema、复合隔离约束、索引与不可变保护，并登记唯一 project table owner。M1 不启动实例、不创建 token/task/vote/join 事实、不发节点事件，也不提供运行 Repository、命令、API 或 UI；M2 必须从绑定 snapshot 实现 NodeRuntimeAdapter 与事务运行时。
+
+### 25.5 S09-M2 已实现边界
+
+- `WorkItemNodeRuntimeAdapter` 只消费 `PublishedSnapshotAdapter.requireComplete` 返回的绑定 snapshot/version/hash，不读取 active draft 或当前类型版本猜配置。节点 Repository 与 S08 current-state/history/backfill 私表保持 ArchUnit 和 SQL 双重隔离。
+- 新 WorkItem 原子初始化唯一 node instance/start token；普通 WorkItem mutation 对齐 instance 的 WorkItem version。命令使用 WorkItem、instance、token、task、join 行锁与双版本 CAS，caller-stable request ID/canonical hash 支持精确重放，异载荷、stale 和并发败者失败关闭。
+- 自动节点使用最多 128 步的迭代队列；manual 节点支持 single/any/all/quorum claim、delegate、complete、vote 和 immutable withdraw/supersession。exclusive/parallel split 使用内部嵌套 correlation；all/any/quorum join 使用不可变 arrival，any/quorum 提前释放时同步取消未完成分支，合并 token 恢复父 correlation。
+- 成功节点命令与 WorkItem/instance version、token/task/vote/join、history、activity、audit、completed receipt 和 `node_workflow.changed` v1 outbox 同事务。公共 payload 与用户 DTO 不包含候选角色、条件正文、quorum 配置、token lineage、split/join correlation、字段值或原因正文。
+- 用户 API 提供 node-workflow presentation/history/start/task action。projection 与 execute 共享同一候选/授权决策；open task 按稳定键排序并硬限 200，active token 硬限 256。真实 PostgreSQL 16 测试覆盖 all/any join、会签撤票重投、六身份可见性边界、命令重放、并发单赢家、正常 mutation 版本对齐及代表性索引计划。M3 节点表单、交付物、时限、升级与异步能力未在 M2 提前实现。
+
+### 25.6 S09-M3 已实现边界
+
+- manual node 可以在绑定 snapshot 声明 form、assignment、artifact 与 schedule；发布校验只接受受控角色/显式用户/字段参与者、hidden/read/write/required、file/object 类型与 UTC elapsed 时间。未知动态规则、日历或 pause/resume 策略失败关闭；S16 工作量、工时和容量没有提前实现。
+- V095 在 task 创建时冻结 active candidate user、form/artifact policy 与 planned/due instant，新增不可变 artifact 事实。后续成员变化不会漂移投票阈值；空候选以可审计事实交给 owner/admin transfer 恢复。
+- `submit` 把 node form patch、规范字段投影、公共文件/对象授权、artifact、task/token/instance/WorkItem、history/activity/audit/outbox/receipt 放在同一事务和 expected-version 合同中。用户 runtime 不返回原始 nodeFlow 或 hidden 字段。
+- 空间级 inbox、task context 与 due sweep 均硬限 200，使用稳定游标、聚合 SQL 和公开 DTO。`node_task.lifecycle` v1 与 replay-safe consumer contract 只携带最小到期事实。
+
+### 25.7 S09-M4 已实现边界
+
+- schema v3 的 `recoveryCommands` 与 `compensations` 冻结 return/jump/terminate/correct 的合法来源、目标、owner/admin 授权、关闭策略、精确危险确认和白名单补偿；运行时不按 label、最近历史或任意输入猜恢复位置。
+- 恢复命令以 WorkItem/instance 双 expected version 和持久 receipt 原子关闭开放 task/token/join，追加新 token 或终止 instance，并提交不可变 history、activity、audit 与最小 outbox。archive/restore 只改变对象生命周期，不能替代业务 terminate，也不会自动恢复流程位置。
+- binding upgrade 要求 published/superseded 目标 snapshot、兼容分析非 blocked，以及覆盖全部 active source node 的显式 one-to-one/split/merge map。WorkItem binding/field projection、instance binding、mapped token 与审计链同事务更新；旧 snapshot 仍可继续驱动未升级实例。
+- V096 建立 compensation run/step 和 node backfill batch/unit 私有账本。补偿只运行注册动作并可按 step 状态显式续跑；pre-S09 backfill 冻结 1-500 项 manifest、目标 entry/binding 与每项 source binding/version，以独立事务记录成功或稳定 failure，resume 后必须 verify。
+- recovery/upgrade/compensation/backfill 入口只属于既有空间/WorkItem 用户边界。owner/admin 可执行，member/guest 拒绝，non-member 与仅 enterprise-admin 身份保持隐藏；原因只保留 hash，映射、补偿步骤和 manifest 不进入公共事件。
+- PostgreSQL 16 证据覆盖 V001-V096、非空实例 upgrade、缺失 map、outbox 故障全回滚、backfill 注入失败/失败清单/管理员续跑/verify 与命令精确重放。M5 可视化设计器和成员执行 UI 尚未实现，因此 M4 不声明视觉闭环。
+
+### 25.8 S09-M5 收口与 S10 准入
+
+- 空间配置页已交付 stage/node/edge 画布、branch/join/recovery/compensation 配置、缩放、键盘、诊断和显式 backfill；所有保存仍进入 S06 唯一草稿、校验、diff、compatibility、发布和 rollback，不进入企业后台或第二套发布权威。
+- WorkItem 详情通过服务端 capability 选择轻量状态流或复杂节点流，不从字段/布局投影猜运行时类型。节点执行面只呈现服务端 token/task/action/history/context，支持表单 patch、vote/withdraw、transfer、artifact manifest、时限、恢复和显式升级；409/422/timeout/offline 保留输入并重新读取权威事实。
+- 真实隔离浏览器覆盖独立 PostgreSQL/Flyway、六个动态身份、长名称、1440/1366/820、键盘、离线、最小披露和分页历史；split/join、会签、并发、恢复/补偿/升级/backfill 继续由同一真实 PostgreSQL 服务集成测试闭环，不用 route mock 代替。
+- S09 五个 Milestone、60 个 Task 完成，Go。该结论不构成生产容量、基础设施 HA 或自动化编排承诺。
+- S10 只能为规范 `work_item` 建立普通、父子、依赖和阻塞关系；关系边、反向索引、循环检测和层级一致性必须拥有独立权威。它可以复用 WorkItem identity、ProjectSpace 授权、expected version、receipt、audit/outbox 和 resolver 公共 SPI，但不得读取或外键耦合 S08 current-state/history/backfill 或 S09 instance/token/task/vote/join/history/backfill 私表。
+- 流程 edge 表示同一实例内的执行路径，不是两个 WorkItem 之间的业务关系；S10 不得把 node edge、token lineage、join correlation 或 task assignment 复制成关系事实，也不得用关系图反向推进流程。
+
+## 26. Revision 27 激活的 S10 工程边界
+
+S09 完成路线已经独立归档，S10 在 Program revision 27 激活为唯一当前 Stage。激活仅建立关系、层级和依赖的执行授权与验收合同，不声明任何 S10 schema、API、迁移或 UI 已实现。
+
+### 26.1 权威与可共享边界
+
+- 规范 relation edge、持久 command receipt 和不可变 relation history 是唯一可写关系事实；正向/反向摘要、hierarchy path/closure 和影响投影必须可丢弃重建，不能成为第二套边权威。
+- S10 可以复用规范 WorkItem identity/type binding、ProjectSpace/参与者授权、expected aggregate version、caller-stable request hash、activity/audit/transactional outbox 和平台对象 resolver 公共 SPI。
+- 关系定义进入 S06 唯一 configuration snapshot 草稿、校验、diff、不可变发布、compatibility、rollback 和模板链路；不得建立 live relation-definition 表与 published snapshot 双写。
+- `issue_relations` 只作为 legacy manifest 输入。message/knowledge 等非 WorkItem 目标必须保留原对象引用语义，不得为了迁移计数伪造成 WorkItem relation。
+
+### 26.2 失败关闭与禁止复用
+
+- 普通、父子、依赖和阻塞关系必须使用永久 semantic key、稳定方向/反向语义、端点类型矩阵、基数和删除策略；显示名变化不得改变既有边解释。
+- 父子环、依赖环、重复边、超基数、跨 workspace/space 和不可见端点在服务端事务内失败关闭；并发写入必须只有一个胜者且不得留下单端边或半历史。
+- 禁止读取、外键耦合或复制 S08 current-state/history/backfill 与 S09 instance/token/task/vote/join/history/backfill 私表。流程 edge、token lineage、join correlation 和 task assignment 不能充当或驱动 WorkItem 关系。
+- S10 不实现 S11 细粒度数据权限、S13 全局树/保存视图、S14 甘特/关键路径、S17 自动化或 S18 跨空间同步；局部层级和影响分析必须有硬深度/节点上限。
+
+### 26.3 Revision 27 激活范围
+
+- S10 当前路线固定为五个 Milestone、60 个 Task：M1 关系定义/版本化配置/持久化底座，M2 关系实例/并发/循环/生命周期，M3 自定义层级/拆解/查询/恢复，M4 关系控件/反向/影响/legacy 承接，M5 配置与成员 UI、真实验收和 `route-final`。
+- 激活点是 `PROJECT-PLATFORM-S10-M1-T01`。M1 必须先审计当前 WorkItem、snapshot、resolver、legacy relation 和 S08/S09 私表边界，不能从 UI 或历史表名倒推目标语义。
+- S10 最终证据必须覆盖 PostgreSQL/Flyway、六身份、跨空间、并发建边/reparent、父子/依赖环、归档/删除、离线冲突、legacy backfill/verify、响应式/键盘和完整 route-final。

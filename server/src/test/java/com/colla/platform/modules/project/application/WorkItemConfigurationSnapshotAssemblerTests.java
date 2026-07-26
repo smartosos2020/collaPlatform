@@ -58,11 +58,12 @@ class WorkItemConfigurationSnapshotAssemblerTests {
             options,
             layouts,
             new WorkItemStateFlowPresetCatalog(objectMapper),
+            new WorkItemNodeFlowPresetCatalog(objectMapper),
             new WorkItemConfigurationSnapshotCanonicalizer(objectMapper),
             objectMapper
         ).assemble(workspaceId, spaceId, typeId);
 
-        assertEquals(2, snapshot.schemaVersion());
+        assertEquals(3, snapshot.schemaVersion());
         assertEquals("task", snapshot.payload().path("typeDefinition").path("typeKey").asText());
         assertEquals("priority", snapshot.payload().path("fields").get(0).path("fieldKey").asText());
         assertEquals("high", snapshot.payload().path("fields").get(0).path("options").get(0).path("optionKey").asText());

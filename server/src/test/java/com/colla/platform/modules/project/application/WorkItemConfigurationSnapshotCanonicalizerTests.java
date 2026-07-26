@@ -53,7 +53,7 @@ class WorkItemConfigurationSnapshotCanonicalizerTests {
         WorkItemConfigurationException exception = assertThrows(
             WorkItemConfigurationException.class,
             () -> canonicalizer.canonicalize(objectMapper.readTree(
-                "{\"snapshotSchemaVersion\":3,\"typeDefinition\":{},\"fields\":[],\"layouts\":[]}"
+                "{\"snapshotSchemaVersion\":4,\"typeDefinition\":{},\"fields\":[],\"layouts\":[]}"
             ))
         );
         assertEquals("UNSUPPORTED_SNAPSHOT_SCHEMA", exception.code());

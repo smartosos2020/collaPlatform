@@ -1,8 +1,8 @@
 ---
 title: 事件副作用与 Handler 矩阵
 status: current
-updated_at: 2026-07-26
-stage: none
+updated_at: 2026-07-27
+stage: PROJECT-PLATFORM-S09
 ---
 
 # 事件副作用与 Handler 矩阵
@@ -54,6 +54,8 @@ Search 事件不携带 ACL 快照或供无权消费者直接展示的标题。�
 | 工作项配置发布 | `project_work_item_type_versions` + `work_item_configuration.published` | 当前不生成 realtime signal | N/A | published version id；类型行锁内单调 version number | version/type/space id；`GET /api/project-spaces/{spaceId}/work-item-types/{typeId}/configuration/versions` | 从未直接发送 |
 | 工作项配置模板创建/安装/升级/解绑 | `project_work_item_configuration_templates`、installation/upgrade history + `work_item_configuration.template_*` | 当前不生成 realtime signal | N/A | template/installation id；命令回执与 aggregate version | template/type/space id、来源版本/hash 与冲突摘要；配置模板 API | 从未直接发送 |
 | S08 状态流定义与 M2 forward 运行时 | configuration snapshot + `project_work_item_current_states`/command receipt/history/activity/audit + `workflow.action_executed`/`workflow.state_changed` | M2 不生成 realtime signal | N/A | WorkItem expected version + current-state aggregate version + request id/hash；列表批量投影 | 用户 workflow/current/history/action API；事件仅含绑定、semantic key 和版本 | 从未直接发送 |
+| S09 节点流 M2 运行时 | configuration snapshot + node instance/token/task/vote/join/arrival/receipt/history + activity/audit + `node_workflow.changed` | M2 不生成 realtime signal | N/A | WorkItem expected version + instance aggregate version + request id/hash；token/task/join 行锁与 CAS | 用户 node-workflow presentation/history/start/task-action API；事件仅含绑定、operation/node、状态和版本 | 从未直接发送 |
+| S09 节点流 M4 恢复/升级/backfill | 绑定 snapshot 的 recovery/compensation 定义 + node instance/token/task/join/compensation/backfill ledger + WorkItem binding/projection/history/activity/audit/receipt + `node_workflow.changed` | M4 不生成 realtime signal | N/A | owner/admin + 精确确认/原因 hash + WorkItem/instance expected version + request/manifest hash；backfill unit 独立事务 | 用户 recovery/upgrade/compensation-resume 与空间 backfill/resume/verify API；公共事件仍只含最小绑定/operation/node/version | 从未直接发送 |
 
 配置发布事件与不可变版本、current pointer、草稿关闭、审计和 publication receipt 同事务提交。payload 只包含 request、space/type/version、schema/hash/source draft 与 breaking 摘要，不复制完整 snapshot、隐藏字段或访问策略正文。
 
@@ -66,6 +68,10 @@ S07-M4 的迁移在单个 legacy project 单元事务中创建规范 WorkItem、
 S08-M1 只把声明式状态流定义纳入配置 snapshot，并预建运行事实 schema；保存、校验、发布与 rollback 仍只产生既有配置事件。S08-M2 按动作 request id/hash 激活 `forward`；S08-M3 扩展 `return/reopen/terminate/restore/correction`、binding upgrade 和 explicit backfill。current state、WorkItem version/binding、field projection、history、activity、audit、两个 outbox event 与 completed receipt/单元状态在各自事务中同成同败。公共 payload 固定 `eventSchemaVersion=1`，只含 space/type/version/hash、action/from/to、WorkItem/aggregate version 和 decision reference，不含标题、字段值、guard、参与者、原因正文或策略正文。
 
 S08-M4 的配置器、成员动作、correction 和 backfill UI 不增加浏览器推算事件或旁路副作用；所有事实仍由上述服务端事务产生。409/422/timeout/offline 只保留 caller-stable request 与用户输入，恢复后重新读取 current/history，不在客户端补写 history/activity/outbox。S09 若复用公共 envelope 必须使用新的明确 event type/version，禁止读取 S08 私表补全 node token、分支或会签事实。
+
+S09-M2 注册 `project.contract.WorkItemNodeWorkflowEvent`，固定 `node_workflow.changed` v1。节点命令成功时，WorkItem/instance version、token/task/vote/join、不可变 history、WorkItem activity、audit、completed receipt 与 outbox 在同一事务中成败；精确 request ID/hash 重放不重复追加。payload 只含 space/type definition/type version/config hash、operation、node key、WorkItem/instance version、instance status 和 decision reference，不含候选角色、条件、quorum、父 token、split/join/correlation、字段值或原因正文。当前不注册 realtime/search/notification Handler；消费者若后续接入只能经 `work_item` resolver/用户 API 校准，不能读取节点私表。
+
+S09-M4 的 return/jump/terminate/correct 与 binding upgrade 继续复用上述 v1 event，不扩充私有恢复原因、映射、补偿步骤或 backfill manifest。成功恢复/升级时 WorkItem、instance、旧开放 work 的关闭、新 token、history/activity/audit/receipt/outbox 同事务成败；outbox 故障回滚全部运行事实。backfill 以 unit 独立事务提交同一原子闭包，batch/failure/verify 只属于 project 私有运维账本；续跑不能伪造公共事件或直接把 failed 标为 completed。
 
 S08-M3 注册 `project.workflow.consumer-contract` v1，订阅 `workflow.action_executed/state_changed/initialized/binding_changed` v1。该 Handler 不读取 project 状态、命令、history 或 backfill 私表，也不直接创建通知正文或搜索索引；它只验证公共最小 payload，使 delivery receipt/replay 有稳定消费者身份，并把未知 payload schema 分类为 permanent/dead-letter。通知/搜索若后续选择产品投影，只能消费同一公共合同并经 `work_item` resolver/用户 API 重新授权校准，不能通过跨模块 SQL 补全状态事实。
 
@@ -106,6 +112,12 @@ workspace audience 只表示“该 workspace 的已连接客户端需要丢弃�
 - 评论与附件属于 WorkItem 聚合的用户协作子资源；其可见内容通过用户 API 重新鉴权，事件和 outbox 只携带最小对象引用。
 - legacy 解析、shadow compare、迁移 plan/verify/rollback 是治理事实，不伪装成用户业务事件。迁移成功后的 canonical 对象仍使用唯一 `work_item` identity。
 - hidden 字段不进入事件、活动差异、搜索、错误或浏览器投影；消费者不得读取 project 私表补全事件。
+
+## S09 Node task 事件边界
+
+- claim/delegate/transfer/complete/submit/vote/withdraw 成功后继续在业务事务内追加 `node_workflow.changed` v1；字段 patch、artifact、候选集合、条件、quorum 和 token correlation 不复制到事件。
+- 到期扫描使用 `FOR UPDATE SKIP LOCKED` 和 `timed_out_at is null` 产生单一 timeout 事实，并在同一事务追加 `node_task.lifecycle` v1。稳定幂等键为 `node-task:timed-out:{taskId}`。
+- `project.node-task.consumer-contract` 只验证公共 v1 envelope，依赖 durable delivery receipt 去重；未知 schema 永久失败并由通用 Worker 进入 dead letter。通知/搜索正文若后续启用，必须经 `work_item` resolver/用户 API 重新授权，不得读取 node task/artifact 私表。
 
 ### 5.1 客户端消费与校准
 

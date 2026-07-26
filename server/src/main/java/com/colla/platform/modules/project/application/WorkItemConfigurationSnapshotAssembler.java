@@ -32,6 +32,7 @@ public class WorkItemConfigurationSnapshotAssembler {
     private final WorkItemFieldOptionRepository optionRepository;
     private final WorkItemLayoutRepository layoutRepository;
     private final WorkItemStateFlowPresetCatalog stateFlowPresetCatalog;
+    private final WorkItemNodeFlowPresetCatalog nodeFlowPresetCatalog;
     private final WorkItemConfigurationSnapshotCanonicalizer canonicalizer;
     private final ObjectMapper objectMapper;
 
@@ -41,6 +42,7 @@ public class WorkItemConfigurationSnapshotAssembler {
         WorkItemFieldOptionRepository optionRepository,
         WorkItemLayoutRepository layoutRepository,
         WorkItemStateFlowPresetCatalog stateFlowPresetCatalog,
+        WorkItemNodeFlowPresetCatalog nodeFlowPresetCatalog,
         WorkItemConfigurationSnapshotCanonicalizer canonicalizer,
         ObjectMapper objectMapper
     ) {
@@ -49,6 +51,7 @@ public class WorkItemConfigurationSnapshotAssembler {
         this.optionRepository = optionRepository;
         this.layoutRepository = layoutRepository;
         this.stateFlowPresetCatalog = stateFlowPresetCatalog;
+        this.nodeFlowPresetCatalog = nodeFlowPresetCatalog;
         this.canonicalizer = canonicalizer;
         this.objectMapper = objectMapper;
     }
@@ -76,8 +79,12 @@ public class WorkItemConfigurationSnapshotAssembler {
             .filter(java.util.Objects::nonNull)
             .forEach(layout -> layouts.add(layoutJson(workspaceId, layout)));
         if (type.system()) {
-            stateFlowPresetCatalog.stateFlowFor(type.typeKey())
-                .ifPresent(stateFlow -> root.set("stateFlow", stateFlow));
+            nodeFlowPresetCatalog.nodeFlowFor(type.typeKey())
+                .ifPresentOrElse(
+                    nodeFlow -> root.set("nodeFlow", nodeFlow),
+                    () -> stateFlowPresetCatalog.stateFlowFor(type.typeKey())
+                        .ifPresent(stateFlow -> root.set("stateFlow", stateFlow))
+                );
         }
         return canonicalizer.canonicalize(root);
     }

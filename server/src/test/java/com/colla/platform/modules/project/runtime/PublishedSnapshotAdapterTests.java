@@ -86,7 +86,7 @@ class PublishedSnapshotAdapterTests {
         var repository = mock(PublishedSnapshotReader.class);
         var canonicalizer = new WorkItemConfigurationSnapshotCanonicalizer(objectMapper);
         var snapshot = objectMapper.readTree("""
-            {"snapshotSchemaVersion":3,"typeDefinition":{"typeKey":"future"},"fields":[],"layouts":[]}
+            {"snapshotSchemaVersion":4,"typeDefinition":{"typeKey":"future"},"fields":[],"layouts":[]}
             """);
         UUID workspaceId = UUID.randomUUID();
         UUID spaceId = UUID.randomUUID();
@@ -94,7 +94,7 @@ class PublishedSnapshotAdapterTests {
         UUID versionId = UUID.randomUUID();
         when(repository.findPublishedSnapshot(workspaceId, spaceId, typeId, versionId))
             .thenReturn(Optional.of(version(
-                workspaceId, spaceId, typeId, versionId, 3, "c".repeat(64), snapshot
+                workspaceId, spaceId, typeId, versionId, 4, "c".repeat(64), snapshot
             )));
 
         WorkItemConfigurationException unsupported = assertThrows(
@@ -134,6 +134,37 @@ class PublishedSnapshotAdapterTests {
 
         assertTrue(result.hasStateFlow());
         assertEquals("available", result.stateFlowAvailability());
+    }
+
+    @Test
+    void exposesSchemaV3NodeFlowDefinitionWithoutClaimingRuntimeActivation() throws Exception {
+        var repository = mock(PublishedSnapshotReader.class);
+        var canonicalizer = new WorkItemConfigurationSnapshotCanonicalizer(objectMapper);
+        var snapshot = objectMapper.readTree("""
+            {
+              "snapshotSchemaVersion":3,
+              "typeDefinition":{"typeKey":"project"},
+              "fields":[],
+              "layouts":[],
+              "nodeFlow":{"stages":[],"nodes":[],"edges":[],"branches":[],"joins":[]}
+            }
+            """);
+        var canonical = canonicalizer.canonicalize(snapshot);
+        UUID workspaceId = UUID.randomUUID();
+        UUID spaceId = UUID.randomUUID();
+        UUID typeId = UUID.randomUUID();
+        UUID versionId = UUID.randomUUID();
+        when(repository.findPublishedSnapshot(workspaceId, spaceId, typeId, versionId))
+            .thenReturn(Optional.of(version(
+                workspaceId, spaceId, typeId, versionId, 3, canonical.configHash(), snapshot
+            )));
+
+        var result = new PublishedSnapshotAdapter(repository, canonicalizer)
+            .requireComplete(workspaceId, spaceId, typeId, versionId);
+
+        assertTrue(result.hasNodeFlowDefinition());
+        assertEquals("available", result.nodeFlowAvailability());
+        assertFalse(result.hasStateFlow());
     }
 
     private PublishedConfigurationVersion version(

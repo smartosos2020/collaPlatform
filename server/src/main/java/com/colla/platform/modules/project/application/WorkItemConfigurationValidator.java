@@ -27,13 +27,16 @@ import org.springframework.stereotype.Component;
 public class WorkItemConfigurationValidator {
     private final WorkItemConfigurationSnapshotCanonicalizer canonicalizer;
     private final WorkItemStateFlowValidator stateFlowValidator;
+    private final WorkItemNodeFlowValidator nodeFlowValidator;
 
     public WorkItemConfigurationValidator(
         WorkItemConfigurationSnapshotCanonicalizer canonicalizer,
-        WorkItemStateFlowValidator stateFlowValidator
+        WorkItemStateFlowValidator stateFlowValidator,
+        WorkItemNodeFlowValidator nodeFlowValidator
     ) {
         this.canonicalizer = canonicalizer;
         this.stateFlowValidator = stateFlowValidator;
+        this.nodeFlowValidator = nodeFlowValidator;
     }
 
     public ValidationResult validate(JsonNode requested) {
@@ -121,8 +124,32 @@ public class WorkItemConfigurationValidator {
                 "State flow definitions require snapshot schema version 2"
             );
         }
+        if (snapshot.path("nodeFlow").isObject()
+            && snapshot.path("snapshotSchemaVersion").asInt() < 3) {
+            error(
+                diagnostics,
+                "node_flow_requires_schema_v3",
+                "$.nodeFlow",
+                "Node flow definitions require snapshot schema version 3"
+            );
+        }
+        if (snapshot.path("stateFlow").isObject() && snapshot.path("nodeFlow").isObject()) {
+            error(
+                diagnostics,
+                "multiple_workflow_authorities",
+                "$",
+                "A configuration snapshot cannot activate stateFlow and nodeFlow together"
+            );
+        }
         stateFlowValidator.validate(
             snapshot.path("stateFlow"),
+            fieldKeys,
+            activeFieldKeys,
+            hiddenFieldKeys,
+            diagnostics
+        );
+        nodeFlowValidator.validate(
+            snapshot.path("nodeFlow"),
             fieldKeys,
             activeFieldKeys,
             hiddenFieldKeys,

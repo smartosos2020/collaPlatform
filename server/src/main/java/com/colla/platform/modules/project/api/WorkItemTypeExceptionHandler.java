@@ -30,7 +30,9 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
     AdminProjectSpaceController.class,
     UserWorkItemController.class,
     UserWorkItemStateFlowController.class,
+    UserWorkItemNodeWorkflowController.class,
     UserWorkItemStateBackfillController.class,
+    UserWorkItemNodeBackfillController.class,
     WorkItemCompatibilityController.class,
     ProjectController.class
 })
@@ -112,7 +114,12 @@ public class WorkItemTypeExceptionHandler {
                  "SPACE_NOT_FOUND", "NOT_FOUND_OR_HIDDEN" -> HttpStatus.NOT_FOUND;
             case "FORBIDDEN" -> HttpStatus.FORBIDDEN;
             case "WORKFLOW_GUARD_REJECTED", "WORKFLOW_REQUIRED_FIELDS_MISSING",
-                 "WORKFLOW_ACTION_UNAVAILABLE", "WORKFLOW_STATE_MAPPING_REQUIRED" ->
+                 "WORKFLOW_ACTION_UNAVAILABLE", "WORKFLOW_STATE_MAPPING_REQUIRED",
+                 "NODE_ACTION_UNAVAILABLE", "NODE_RECOVERY_UNAVAILABLE",
+                 "NODE_RECOVERY_SOURCE_MISMATCH", "NODE_RECOVERY_TARGET_MISSING",
+                 "NODE_COMPENSATION_ACTION_UNREGISTERED", "NODE_UPGRADE_BLOCKED",
+                 "NODE_UPGRADE_MAPPING_REQUIRED", "NODE_UPGRADE_MAPPING_INVALID",
+                 "NODE_BACKFILL_ENTRY_INVALID" ->
                 HttpStatus.UNPROCESSABLE_ENTITY;
             case "INVALID_TYPE_KEY", "INVALID_NAME", "INVALID_ICON", "INVALID_DESCRIPTION",
                  "INVALID_SORT_ORDER", "INVALID_STATUS", "INVALID_REORDER", "INVALID_REQUEST_ID",
@@ -139,7 +146,8 @@ public class WorkItemTypeExceptionHandler {
                  "FIELD_VALIDATION_FAILED", "REQUIRED_FIELD_MISSING", "INVALID_QUERY_VALUE",
                  "QUERY_CAPABILITY_UNAVAILABLE", "INVALID_PARTICIPANT_ROLE",
                  "INVALID_RECOVERY_REASON", "DANGEROUS_CONFIRMATION_REQUIRED",
-                 "INVALID_BACKFILL_MANIFEST" ->
+                 "INVALID_BACKFILL_MANIFEST", "INVALID_NODE_VOTE",
+                 "NODE_TASK_ASSIGNEE_INVALID" ->
                 HttpStatus.BAD_REQUEST;
             default -> HttpStatus.CONFLICT;
         };

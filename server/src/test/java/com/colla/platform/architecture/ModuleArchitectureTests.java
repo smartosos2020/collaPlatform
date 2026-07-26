@@ -89,6 +89,7 @@ class ModuleArchitectureTests {
         noClasses()
             .that().haveSimpleNameStartingWith("WorkItemRuntime")
             .or().haveSimpleName("WorkItemService")
+            .or().haveSimpleName("WorkItemNodeWorkflowService")
             .or().haveSimpleName("WorkItemFieldValueCodec")
             .should().dependOnClassesThat().haveNameMatching(
                 ".*\\.(WorkItemTypeRepository|WorkItemFieldRepository|WorkItemFieldOptionRepository|"
@@ -100,4 +101,15 @@ class ModuleArchitectureTests {
                     + "WorkItemFieldDefinitionService|WorkItemLayoutConfigurationService)"
             )
             .because("work item commands and projections must only interpret the bound published snapshot");
+
+    @ArchTest
+    static final ArchRule NODE_WORKFLOW_MUST_NOT_REUSE_STATE_FLOW_PRIVATE_AUTHORITY =
+        noClasses()
+            .that().haveSimpleName("WorkItemNodeWorkflowService")
+            .or().haveSimpleName("JdbcWorkItemNodeWorkflowRepository")
+            .should().dependOnClassesThat().haveNameMatching(
+                ".*\\.(WorkItemStateFlowRepository|JdbcWorkItemStateFlowRepository|"
+                    + "WorkItemStateRuntimeModels|WorkItemStateRuntimeAdapter)"
+            )
+            .because("S09 may reuse shared command/event SPI but must own independent node runtime facts");
 }

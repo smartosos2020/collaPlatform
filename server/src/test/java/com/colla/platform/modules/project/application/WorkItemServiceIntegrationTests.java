@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.colla.platform.modules.project.domain.WorkItemModels.WorkItemRuntimeException;
 import com.colla.platform.modules.project.domain.WorkItemModels.WorkItemView;
 import com.colla.platform.modules.project.domain.WorkItemCompatibilityModels.ReadStage;
+import com.colla.platform.modules.project.domain.WorkItemNodeRuntimeModels.NodeArtifactInput;
 import com.colla.platform.modules.project.application.WorkItemCompatibilityService.LegacyWriteClosedException;
 import com.colla.platform.shared.auth.CurrentUser;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -105,6 +106,682 @@ class WorkItemServiceIntegrationTests {
             "workspace_id=? and request_id='workflow-stale'",
             WORKSPACE_ID
         )).isZero();
+    }
+
+    @Test
+    void nodeWorkflowRunsBoundSnapshotThroughSplitJoinVotingAndIdempotentCompletion() throws Exception {
+        Fixture fixture = fixture("node-runtime", false, true);
+        WorkItemView created = service.create(
+            fixture.owner(), fixture.spaceId(), fixture.typeId(), "Node delivery",
+            objectMapper.readTree("{}"), "node-create"
+        );
+
+        var initial = service.nodeWorkflow(
+            fixture.owner(), fixture.spaceId(), created.item().id()
+        );
+        assertThat(initial.capability()).isEqualTo("available");
+        assertThat(initial.aggregateVersion()).isEqualTo(1);
+        assertThat(initial.tasks()).extracting("nodeKey").containsExactly("plan");
+        assertThat(initial.availableActions()).extracting("actionKey").containsExactly("claim");
+        CurrentUser guest = addMember(fixture, "guest");
+        assertThat(service.nodeWorkflow(
+            guest, fixture.spaceId(), created.item().id()
+        ).tasks()).isEmpty();
+        Fixture outsider = fixture("node-outsider");
+        assertHidden(() -> service.nodeWorkflow(
+            outsider.owner(), fixture.spaceId(), created.item().id()
+        ));
+        assertThat(countWhere(
+            "project_work_item_current_states", "work_item_id=?", created.item().id()
+        )).isZero();
+
+        UUID planTask = initial.tasks().get(0).id();
+        service.executeNodeTask(
+            fixture.owner(), fixture.spaceId(), created.item().id(), planTask,
+            "claim", null, null, 0, 1, "node-plan-claim"
+        );
+        service.executeNodeTask(
+            fixture.owner(), fixture.spaceId(), created.item().id(), planTask,
+            "complete", null, null, 1, 2, "node-plan-complete"
+        );
+
+        var parallel = service.nodeWorkflow(
+            fixture.owner(), fixture.spaceId(), created.item().id()
+        );
+        assertThat(parallel.tasks()).extracting("nodeKey")
+            .containsExactly("primary_delivery", "quality_review");
+        UUID primaryTask = parallel.tasks().stream()
+            .filter(task -> "primary_delivery".equals(task.nodeKey()))
+            .findFirst().orElseThrow().id();
+        UUID qualityTask = parallel.tasks().stream()
+            .filter(task -> "quality_review".equals(task.nodeKey()))
+            .findFirst().orElseThrow().id();
+
+        service.executeNodeTask(
+            fixture.owner(), fixture.spaceId(), created.item().id(), primaryTask,
+            "vote", "approve", null, 2, 3, "node-primary-vote"
+        );
+        service.executeNodeTask(
+            fixture.owner(), fixture.spaceId(), created.item().id(), qualityTask,
+            "claim", null, null, 3, 4, "node-quality-claim"
+        );
+        CurrentUser member = addMember(fixture, "member");
+        service.executeNodeTask(
+            fixture.owner(), fixture.spaceId(), created.item().id(), qualityTask,
+            "complete", null, null, 4, 5, "node-quality-complete"
+        );
+
+        var acceptance = service.nodeWorkflow(
+            fixture.owner(), fixture.spaceId(), created.item().id()
+        );
+        assertThat(acceptance.tasks()).extracting("nodeKey")
+            .containsExactly("acceptance_review");
+        UUID acceptanceTask = acceptance.tasks().get(0).id();
+        service.executeNodeTask(
+            fixture.owner(), fixture.spaceId(), created.item().id(), acceptanceTask,
+            "vote", "approve", null, 5, 6, "node-acceptance-owner"
+        );
+        service.executeNodeTask(
+            fixture.owner(), fixture.spaceId(), created.item().id(), acceptanceTask,
+            "withdraw", null, null, 6, 7, "node-acceptance-owner-withdraw"
+        );
+        service.executeNodeTask(
+            fixture.owner(), fixture.spaceId(), created.item().id(), acceptanceTask,
+            "vote", "approve", null, 7, 8, "node-acceptance-owner-revote"
+        );
+        var completed = service.executeNodeTask(
+            member, fixture.spaceId(), created.item().id(), acceptanceTask,
+            "vote", "approve", null, 8, 9, "node-acceptance-member"
+        );
+        var replayed = service.executeNodeTask(
+            member, fixture.spaceId(), created.item().id(), acceptanceTask,
+            "vote", "approve", null, 8, 9, "node-acceptance-member"
+        );
+
+        assertThat(completed.instanceStatus()).isEqualTo("completed");
+        assertThat(completed.workItemVersion()).isEqualTo(9);
+        assertThat(completed.aggregateVersion()).isEqualTo(10);
+        assertThat(replayed.replayed()).isTrue();
+        assertThat(service.nodeWorkflow(
+            fixture.owner(), fixture.spaceId(), created.item().id()
+        ).activeTokens()).isEmpty();
+        assertThat(countWhere(
+            "project_node_workflow_join_arrivals", "workspace_id=? and instance_id=?",
+            WORKSPACE_ID, completed.instanceId()
+        )).isEqualTo(2);
+        assertThat(countWhere(
+            "project_node_workflow_votes", "workspace_id=? and instance_id=?",
+            WORKSPACE_ID, completed.instanceId()
+        )).isEqualTo(5);
+        assertThat(countWhere(
+            "project_node_workflow_commands", "workspace_id=? and work_item_id=?",
+            WORKSPACE_ID, created.item().id()
+        )).isEqualTo(9);
+        assertThat(countWhere(
+            "domain_events",
+            "workspace_id=? and aggregate_id=? and event_type='node_workflow.changed'",
+            WORKSPACE_ID, created.item().id()
+        )).isEqualTo(10);
+    }
+
+    @Test
+    void nodeWorkflowSixIdentityProjectionUsesSpaceMembershipAndCandidateRoles() throws Exception {
+        Fixture fixture = fixture("node-identities", false, true);
+        CurrentUser spaceAdmin = addMember(fixture, "admin");
+        CurrentUser member = addMember(fixture, "member");
+        CurrentUser guest = addMember(fixture, "guest");
+        Fixture outsider = fixture("node-identity-outsider");
+        CurrentUser enterpriseAdmin = new CurrentUser(
+            outsider.owner().id(), WORKSPACE_ID, UUID.randomUUID(),
+            outsider.owner().username(), outsider.owner().displayName(),
+            Set.of("admin"), Set.of("project.manage")
+        );
+        WorkItemView created = service.create(
+            fixture.owner(), fixture.spaceId(), fixture.typeId(), "Node identities",
+            objectMapper.readTree("{}"), "node-identities-create"
+        );
+
+        assertThat(service.nodeWorkflow(
+            fixture.owner(), fixture.spaceId(), created.item().id()
+        ).tasks()).extracting("nodeKey").containsExactly("plan");
+        assertThat(service.nodeWorkflow(
+            spaceAdmin, fixture.spaceId(), created.item().id()
+        ).tasks()).extracting("nodeKey").containsExactly("plan");
+        assertThat(service.nodeWorkflow(
+            member, fixture.spaceId(), created.item().id()
+        ).tasks()).extracting("nodeKey").containsExactly("plan");
+        assertThat(service.nodeWorkflow(
+            guest, fixture.spaceId(), created.item().id()
+        ).tasks()).isEmpty();
+        assertHidden(() -> service.nodeWorkflow(
+            outsider.owner(), fixture.spaceId(), created.item().id()
+        ));
+        assertHidden(() -> service.nodeWorkflow(
+            enterpriseAdmin, fixture.spaceId(), created.item().id()
+        ));
+    }
+
+    @Test
+    void nodeWorkflowConcurrentClaimHasOneWinnerAndNoDuplicateReceipt() throws Exception {
+        Fixture fixture = fixture("node-claim-race", false, true);
+        WorkItemView created = service.create(
+            fixture.owner(), fixture.spaceId(), fixture.typeId(), "Claim race",
+            objectMapper.readTree("{}"), "node-race-create"
+        );
+        var initial = service.nodeWorkflow(
+            fixture.owner(), fixture.spaceId(), created.item().id()
+        );
+        CurrentUser member = addMember(fixture, "member");
+        UUID planTask = initial.tasks().get(0).id();
+        service.executeNodeTask(
+            fixture.owner(), fixture.spaceId(), created.item().id(), planTask,
+            "claim", null, null, 0, 1, "node-race-plan-claim"
+        );
+        service.executeNodeTask(
+            fixture.owner(), fixture.spaceId(), created.item().id(), planTask,
+            "complete", null, null, 1, 2, "node-race-plan-complete"
+        );
+        UUID qualityTask = service.nodeWorkflow(
+            fixture.owner(), fixture.spaceId(), created.item().id()
+        ).tasks().stream()
+            .filter(task -> "quality_review".equals(task.nodeKey()))
+            .findFirst().orElseThrow().id();
+
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch go = new CountDownLatch(1);
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var ownerAttempt = executor.submit(() -> {
+                ready.countDown();
+                go.await();
+                return claimOutcome(
+                    fixture.owner(), fixture, created.item().id(), qualityTask, "owner"
+                );
+            });
+            var memberAttempt = executor.submit(() -> {
+                ready.countDown();
+                go.await();
+                return claimOutcome(
+                    member, fixture, created.item().id(), qualityTask, "member"
+                );
+            });
+            assertThat(ready.await(10, TimeUnit.SECONDS)).isTrue();
+            go.countDown();
+            assertThat(java.util.List.of(ownerAttempt.get(), memberAttempt.get()))
+                .containsExactlyInAnyOrder("won", "NODE_WORKFLOW_VERSION_CONFLICT");
+        }
+
+        assertThat(countWhere(
+            "project_node_workflow_commands",
+            "workspace_id=? and work_item_id=? and operation='claim' and status='completed'",
+            WORKSPACE_ID, created.item().id()
+        )).isEqualTo(2);
+        assertThat(countWhere(
+            "project_node_workflow_tasks",
+            "workspace_id=? and id=? and status='claimed'",
+            WORKSPACE_ID, qualityTask
+        )).isEqualTo(1);
+    }
+
+    @Test
+    void nodeTaskCollaborationFreezesPolicyAndSubmitsFieldsAndObjectsAtomically() throws Exception {
+        Fixture fixture = fixture("node-collab", false, true);
+        WorkItemView created = service.create(
+            fixture.owner(), fixture.spaceId(), fixture.typeId(), "Collaboration",
+            objectMapper.readTree("{}"), "node-collab-create"
+        );
+        var workflow = service.nodeWorkflow(
+            fixture.owner(), fixture.spaceId(), created.item().id()
+        );
+        UUID taskId = workflow.tasks().get(0).id();
+
+        var context = service.nodeTaskContext(
+            fixture.owner(), fixture.spaceId(), created.item().id(), taskId
+        );
+        assertThat(context.form().path("fields").findValuesAsText("fieldKey"))
+            .containsExactly("priority");
+        assertThat(context.values().has("secret")).isFalse();
+        assertThat(service.nodeTaskInbox(
+            fixture.owner(), fixture.spaceId(), null, 20
+        ).items()).extracting("taskId").contains(taskId);
+        assertThat(service.processDueNodeTasks(fixture.owner(), fixture.spaceId(), 20))
+            .isEqualTo(1);
+
+        service.executeNodeTask(
+            fixture.owner(), fixture.spaceId(), created.item().id(), taskId,
+            "claim", null, null, 0, 1, "node-collab-claim"
+        );
+        NodeArtifactInput artifact = new NodeArtifactInput(
+            "context", "object", null, "project_space", fixture.spaceId()
+        );
+        var submitted = service.executeNodeTask(
+            fixture.owner(), fixture.spaceId(), created.item().id(), taskId,
+            "submit", null, null, objectMapper.readTree("{\"priority\":\"high\"}"),
+            java.util.List.of(artifact), 1, 2, "node-collab-submit"
+        );
+        var replayed = service.executeNodeTask(
+            fixture.owner(), fixture.spaceId(), created.item().id(), taskId,
+            "submit", null, null, objectMapper.readTree("{\"priority\":\"high\"}"),
+            java.util.List.of(artifact), 1, 2, "node-collab-submit"
+        );
+
+        assertThat(submitted.replayed()).isFalse();
+        assertThat(replayed.replayed()).isTrue();
+        assertThat(service.get(
+            fixture.owner(), fixture.spaceId(), created.item().id()
+        ).item().fieldValues().path("priority").asText()).isEqualTo("high");
+        assertThat(countWhere(
+            "project_node_workflow_task_artifacts", "workspace_id=? and task_id=?",
+            WORKSPACE_ID, taskId
+        )).isEqualTo(1);
+        assertThat(countWhere(
+            "domain_events", "workspace_id=? and event_type='node_task.lifecycle'",
+            WORKSPACE_ID
+        )).isGreaterThanOrEqualTo(1);
+    }
+
+    @Test
+    void nodeRecoveryKeepsArchiveSeparateAndClosesOldRuntimeAtomically() throws Exception {
+        Fixture fixture = fixture("node-recovery", false, true);
+        CurrentUser spaceAdmin = addMember(fixture, "admin");
+        CurrentUser member = addMember(fixture, "member");
+        CurrentUser guest = addMember(fixture, "guest");
+        Fixture outsider = fixture("node-recovery-outsider");
+        CurrentUser enterpriseAdmin = new CurrentUser(
+            outsider.owner().id(), WORKSPACE_ID, UUID.randomUUID(),
+            outsider.owner().username(), outsider.owner().displayName(),
+            Set.of("admin"), Set.of("project.manage")
+        );
+        WorkItemView created = service.create(
+            fixture.owner(), fixture.spaceId(), fixture.typeId(), "Recovery",
+            objectMapper.readTree("{}"), "node-recovery-create"
+        );
+        var initial = service.nodeWorkflow(
+            fixture.owner(), fixture.spaceId(), created.item().id()
+        );
+        UUID oldTaskId = initial.tasks().getFirst().id();
+
+        assertThatThrownBy(() -> service.recoverNodeWorkflow(
+            member, fixture.spaceId(), created.item().id(), "correct_to_plan",
+            "Member must not recover this workflow", "CORRECT_NODE_WORKFLOW",
+            0, 1, "node-recovery-member"
+        )).isInstanceOf(WorkItemRuntimeException.class)
+            .extracting(exception -> ((WorkItemRuntimeException) exception).code())
+            .isEqualTo("FORBIDDEN");
+        assertThatThrownBy(() -> service.recoverNodeWorkflow(
+            guest, fixture.spaceId(), created.item().id(), "correct_to_plan",
+            "Guest must not recover this workflow", "CORRECT_NODE_WORKFLOW",
+            0, 1, "node-recovery-guest"
+        )).isInstanceOf(WorkItemRuntimeException.class)
+            .extracting(exception -> ((WorkItemRuntimeException) exception).code())
+            .isEqualTo("FORBIDDEN");
+        assertHidden(() -> service.recoverNodeWorkflow(
+            outsider.owner(), fixture.spaceId(), created.item().id(), "correct_to_plan",
+            "Outsider must not enumerate this workflow", "CORRECT_NODE_WORKFLOW",
+            0, 1, "node-recovery-outsider"
+        ));
+        assertHidden(() -> service.recoverNodeWorkflow(
+            enterpriseAdmin, fixture.spaceId(), created.item().id(), "correct_to_plan",
+            "Enterprise admin must not enumerate content", "CORRECT_NODE_WORKFLOW",
+            0, 1, "node-recovery-enterprise-admin"
+        ));
+        assertThatThrownBy(() -> service.recoverNodeWorkflow(
+            fixture.owner(), fixture.spaceId(), created.item().id(), "correct_to_plan",
+            "Exact dangerous confirmation is mandatory", "WRONG_CONFIRMATION",
+            0, 1, "node-recovery-confirmation"
+        )).isInstanceOf(WorkItemRuntimeException.class)
+            .extracting(exception -> ((WorkItemRuntimeException) exception).code())
+            .isEqualTo("DANGEROUS_CONFIRMATION_REQUIRED");
+
+        service.transition(
+            fixture.owner(), fixture.spaceId(), created.item().id(),
+            "archived", 0, "node-recovery-archive"
+        );
+        assertThat(jdbcTemplate.queryForObject(
+            "select status from project_node_workflow_instances where work_item_id=?",
+            String.class, created.item().id()
+        )).isEqualTo("active");
+        service.transition(
+            fixture.owner(), fixture.spaceId(), created.item().id(),
+            "active", 1, "node-recovery-restore"
+        );
+        assertThat(service.nodeWorkflow(
+            fixture.owner(), fixture.spaceId(), created.item().id()
+        ).tasks()).extracting("id").containsExactly(oldTaskId);
+
+        var corrected = service.recoverNodeWorkflow(
+            fixture.owner(), fixture.spaceId(), created.item().id(), "correct_to_plan",
+            "Correct the workflow to the declared plan node", "CORRECT_NODE_WORKFLOW",
+            2, 1, "node-recovery-correct"
+        );
+        var replayed = service.recoverNodeWorkflow(
+            fixture.owner(), fixture.spaceId(), created.item().id(), "correct_to_plan",
+            "Correct the workflow to the declared plan node", "CORRECT_NODE_WORKFLOW",
+            2, 1, "node-recovery-correct"
+        );
+
+        assertThat(corrected.command().operation()).isEqualTo("correct");
+        assertThat(corrected.command().workItemVersion()).isEqualTo(3);
+        assertThat(corrected.command().aggregateVersion()).isEqualTo(2);
+        assertThat(replayed.command().replayed()).isTrue();
+        assertThat(jdbcTemplate.queryForObject(
+            "select status from project_node_workflow_tasks where id=?",
+            String.class, oldTaskId
+        )).isEqualTo("canceled");
+        assertThat(service.nodeWorkflow(
+            fixture.owner(), fixture.spaceId(), created.item().id()
+        ).tasks()).extracting("id").doesNotContain(oldTaskId);
+
+        var terminated = service.recoverNodeWorkflow(
+            spaceAdmin, fixture.spaceId(), created.item().id(), "terminate_delivery",
+            "Terminate the workflow with an auditable reason", "TERMINATE_NODE_WORKFLOW",
+            3, 2, "node-recovery-terminate"
+        );
+        assertThat(terminated.command().instanceStatus()).isEqualTo("terminated");
+        assertThat(terminated.compensationRunId()).isNotNull();
+        assertThat(countWhere(
+            "project_node_workflow_compensation_runs",
+            "workspace_id=? and instance_id=? and status='completed'",
+            WORKSPACE_ID, terminated.command().instanceId()
+        )).isEqualTo(1);
+        assertThat(countWhere(
+            "project_node_workflow_history",
+            "workspace_id=? and instance_id=? and event_kind in ('corrected','terminated')",
+            WORKSPACE_ID, terminated.command().instanceId()
+        )).isEqualTo(2);
+        assertThat(countWhere(
+            "project_node_workflow_tasks",
+            "workspace_id=? and instance_id=? and status in ('pending','claimed')",
+            WORKSPACE_ID, terminated.command().instanceId()
+        )).isZero();
+    }
+
+    @Test
+    void nodeRecoveryOutboxFailureRollsBackRuntimeHistoryActivityAndReceipt() throws Exception {
+        Fixture fixture = fixture("node-recovery-fault", false, true);
+        WorkItemView created = service.create(
+            fixture.owner(), fixture.spaceId(), fixture.typeId(), "Recovery fault",
+            objectMapper.readTree("{}"), "node-recovery-fault-create"
+        );
+        var before = service.nodeWorkflow(
+            fixture.owner(), fixture.spaceId(), created.item().id()
+        );
+        UUID taskId = before.tasks().getFirst().id();
+        int historyCount = countWhere(
+            "project_node_workflow_history", "workspace_id=? and instance_id=?",
+            WORKSPACE_ID, before.instanceId()
+        );
+        jdbcTemplate.execute("""
+            create function test_fail_node_recovery_event() returns trigger language plpgsql as $$
+            begin
+              if new.event_type='node_workflow.changed' then
+                raise exception 'injected node recovery outbox failure';
+              end if;
+              return new;
+            end;
+            $$
+            """);
+        jdbcTemplate.execute("""
+            create trigger test_fail_node_recovery_event before insert on domain_events
+            for each row execute function test_fail_node_recovery_event()
+            """);
+        try {
+            assertThatThrownBy(() -> service.recoverNodeWorkflow(
+                fixture.owner(), fixture.spaceId(), created.item().id(), "correct_to_plan",
+                "Inject a failure after all runtime mutations", "CORRECT_NODE_WORKFLOW",
+                0, 1, "node-recovery-outbox-fault"
+            )).isInstanceOf(RuntimeException.class);
+        } finally {
+            jdbcTemplate.execute("drop trigger test_fail_node_recovery_event on domain_events");
+            jdbcTemplate.execute("drop function test_fail_node_recovery_event()");
+        }
+
+        var after = service.nodeWorkflow(
+            fixture.owner(), fixture.spaceId(), created.item().id()
+        );
+        assertThat(after.workItemVersion()).isZero();
+        assertThat(after.aggregateVersion()).isEqualTo(1);
+        assertThat(after.tasks()).extracting("id").containsExactly(taskId);
+        assertThat(countWhere(
+            "project_node_workflow_history", "workspace_id=? and instance_id=?",
+            WORKSPACE_ID, before.instanceId()
+        )).isEqualTo(historyCount);
+        assertThat(countWhere(
+            "project_node_workflow_commands",
+            "workspace_id=? and request_id='node-recovery-outbox-fault'",
+            WORKSPACE_ID
+        )).isZero();
+        assertThat(countWhere(
+            "project_work_item_activities",
+            "workspace_id=? and work_item_id=? and activity_type='node_workflow.correct'",
+            WORKSPACE_ID, created.item().id()
+        )).isZero();
+    }
+
+    @Test
+    void nodeUpgradeAndExplicitBackfillUseMappingsManifestsAndReplay() throws Exception {
+        Fixture upgradeFixture = fixture("node-upgrade", false, true);
+        WorkItemView upgradeItem = service.create(
+            upgradeFixture.owner(), upgradeFixture.spaceId(), upgradeFixture.typeId(),
+            "Upgrade", objectMapper.readTree("{}"), "node-upgrade-create"
+        );
+        UUID oldTaskId = service.nodeWorkflow(
+            upgradeFixture.owner(), upgradeFixture.spaceId(), upgradeItem.item().id()
+        ).tasks().getFirst().id();
+        NodeTargetVersion upgradeTarget = addNodeFlowVersion(
+            upgradeFixture, "Upgraded node flow"
+        );
+        JsonNode nodeMap = objectMapper.readTree("""
+            {
+              "mappings":[
+                {
+                  "fromNodeKey":"plan",
+                  "toNodeKeys":["plan"],
+                  "mode":"one_to_one"
+                }
+              ]
+            }
+            """);
+        assertThatThrownBy(() -> service.upgradeNodeWorkflow(
+            upgradeFixture.owner(), upgradeFixture.spaceId(), upgradeItem.item().id(),
+            upgradeTarget.versionId(), objectMapper.readTree("{\"mappings\":[]}"),
+            "Reject an upgrade without an explicit active-node mapping",
+            "UPGRADE_NODE_WORKFLOW_BINDING", 0, 1, "node-upgrade-missing-map"
+        )).isInstanceOf(WorkItemRuntimeException.class)
+            .extracting(exception -> ((WorkItemRuntimeException) exception).code())
+            .isEqualTo("NODE_UPGRADE_MAPPING_REQUIRED");
+        assertThat(countWhere(
+            "project_node_workflow_commands",
+            "workspace_id=? and request_id='node-upgrade-missing-map'",
+            WORKSPACE_ID
+        )).isZero();
+        Fixture upgradeOutsider = fixture("node-upgrade-outsider");
+        assertHidden(() -> service.upgradeNodeWorkflow(
+            upgradeOutsider.owner(), upgradeFixture.spaceId(), upgradeItem.item().id(),
+            upgradeTarget.versionId(), nodeMap, "Outsider must not enumerate upgrades",
+            "UPGRADE_NODE_WORKFLOW_BINDING", 0, 1, "node-upgrade-outsider"
+        ));
+        var upgraded = service.upgradeNodeWorkflow(
+            upgradeFixture.owner(), upgradeFixture.spaceId(), upgradeItem.item().id(),
+            upgradeTarget.versionId(), nodeMap, "Upgrade with an explicit node mapping",
+            "UPGRADE_NODE_WORKFLOW_BINDING", 0, 1, "node-upgrade-command"
+        );
+        var replayedUpgrade = service.upgradeNodeWorkflow(
+            upgradeFixture.owner(), upgradeFixture.spaceId(), upgradeItem.item().id(),
+            upgradeTarget.versionId(), nodeMap, "Upgrade with an explicit node mapping",
+            "UPGRADE_NODE_WORKFLOW_BINDING", 0, 1, "node-upgrade-command"
+        );
+        assertThat(upgraded.operation()).isEqualTo("upgrade");
+        assertThat(replayedUpgrade.replayed()).isTrue();
+        assertThat(service.get(
+            upgradeFixture.owner(), upgradeFixture.spaceId(), upgradeItem.item().id()
+        ).item().typeVersionId()).isEqualTo(upgradeTarget.versionId());
+        assertThat(jdbcTemplate.queryForObject(
+            "select status from project_node_workflow_tasks where id=?",
+            String.class, oldTaskId
+        )).isEqualTo("canceled");
+        assertThat(service.nodeWorkflow(
+            upgradeFixture.owner(), upgradeFixture.spaceId(), upgradeItem.item().id()
+        ).tasks()).extracting("nodeKey").containsExactly("plan");
+
+        Fixture backfillFixture = fixture("node-backfill");
+        CurrentUser backfillAdmin = addMember(backfillFixture, "admin");
+        WorkItemView legacy = service.create(
+            backfillFixture.owner(), backfillFixture.spaceId(), backfillFixture.typeId(),
+            "Pre-S09", objectMapper.readTree("{}"), "node-backfill-create"
+        );
+        assertThat(countWhere(
+            "project_node_workflow_instances", "workspace_id=? and work_item_id=?",
+            WORKSPACE_ID, legacy.item().id()
+        )).isZero();
+        NodeTargetVersion backfillTarget = addNodeFlowVersion(
+            backfillFixture, "Backfill node flow"
+        );
+        jdbcTemplate.execute("""
+            create function test_fail_node_backfill_instance() returns trigger language plpgsql as $$
+            begin
+              raise exception 'injected node backfill instance failure';
+            end;
+            $$
+            """);
+        jdbcTemplate.execute("""
+            create trigger test_fail_node_backfill_instance before insert
+            on project_node_workflow_instances
+            for each row execute function test_fail_node_backfill_instance()
+            """);
+        com.colla.platform.modules.project.domain.WorkItemNodeRuntimeModels.NodeBackfillBatch
+            failedBatch;
+        try {
+            failedBatch = service.createNodeWorkflowBackfill(
+                backfillFixture.owner(), backfillFixture.spaceId(), backfillFixture.typeId(),
+                backfillTarget.versionId(), "plan", java.util.List.of(legacy.item().id()),
+                "Initialize the explicit pre-S09 manifest",
+                "INITIALIZE_EXISTING_NODE_WORKFLOWS", "node-backfill-batch"
+            );
+        } finally {
+            jdbcTemplate.execute(
+                "drop trigger test_fail_node_backfill_instance on project_node_workflow_instances"
+            );
+            jdbcTemplate.execute("drop function test_fail_node_backfill_instance()");
+        }
+        assertThat(failedBatch.status()).isEqualTo("partial");
+        assertThat(service.verifyNodeWorkflowBackfill(
+            backfillFixture.owner(), backfillFixture.spaceId(), failedBatch.id()
+        ).failures()).singleElement().satisfies(failure ->
+            assertThat(failure.code()).isEqualTo("NODE_BACKFILL_UNIT_FAILED")
+        );
+        var batch = service.resumeNodeWorkflowBackfill(
+            backfillAdmin, backfillFixture.spaceId(), failedBatch.id(),
+            "RESUME_NODE_WORKFLOW_BACKFILL"
+        );
+        var replayedBatch = service.createNodeWorkflowBackfill(
+            backfillFixture.owner(), backfillFixture.spaceId(), backfillFixture.typeId(),
+            backfillTarget.versionId(), "plan", java.util.List.of(legacy.item().id()),
+            "Initialize the explicit pre-S09 manifest", "INITIALIZE_EXISTING_NODE_WORKFLOWS",
+            "node-backfill-batch"
+        );
+        var verification = service.verifyNodeWorkflowBackfill(
+            backfillFixture.owner(), backfillFixture.spaceId(), batch.id()
+        );
+        assertThat(batch.status())
+            .withFailMessage("backfill failures: %s", verification.failures())
+            .isEqualTo("completed");
+        assertThat(replayedBatch.id()).isEqualTo(batch.id());
+        assertThat(verification.status()).isEqualTo("verified");
+        assertThat(verification.verifiedCount()).isEqualTo(1);
+        assertThat(service.nodeWorkflow(
+            backfillFixture.owner(), backfillFixture.spaceId(), legacy.item().id()
+        ).tasks()).extracting("nodeKey").containsExactly("plan");
+        assertThat(countWhere(
+            "project_node_workflow_commands",
+            "workspace_id=? and work_item_id=? and operation='backfill' and status='completed'",
+            WORKSPACE_ID, legacy.item().id()
+        )).isEqualTo(1);
+    }
+
+    @Test
+    void nodeWorkflowAnyJoinCancelsStrandedBranchBeforeContinuing() throws Exception {
+        Fixture fixture = fixture("node-any-join", false, true);
+        WorkItemView created = service.create(
+            fixture.owner(), fixture.spaceId(), fixture.typeId(), "Any join",
+            objectMapper.readTree("{}"), "node-any-create"
+        );
+        var initial = service.nodeWorkflow(
+            fixture.owner(), fixture.spaceId(), created.item().id()
+        );
+        UUID planTask = initial.tasks().get(0).id();
+        service.executeNodeTask(
+            fixture.owner(), fixture.spaceId(), created.item().id(), planTask,
+            "claim", null, null, 0, 1, "node-any-plan-claim"
+        );
+        service.executeNodeTask(
+            fixture.owner(), fixture.spaceId(), created.item().id(), planTask,
+            "complete", null, null, 1, 2, "node-any-plan-complete"
+        );
+        var parallel = service.nodeWorkflow(
+            fixture.owner(), fixture.spaceId(), created.item().id()
+        );
+        UUID qualityTask = parallel.tasks().stream()
+            .filter(task -> "quality_review".equals(task.nodeKey()))
+            .findFirst().orElseThrow().id();
+        UUID strandedTask = parallel.tasks().stream()
+            .filter(task -> "primary_delivery".equals(task.nodeKey()))
+            .findFirst().orElseThrow().id();
+        service.executeNodeTask(
+            fixture.owner(), fixture.spaceId(), created.item().id(), qualityTask,
+            "claim", null, null, 2, 3, "node-any-quality-claim"
+        );
+        service.executeNodeTask(
+            fixture.owner(), fixture.spaceId(), created.item().id(), qualityTask,
+            "complete", null, null, 3, 4, "node-any-quality-complete"
+        );
+
+        var acceptance = service.nodeWorkflow(
+            fixture.owner(), fixture.spaceId(), created.item().id()
+        );
+        assertThat(acceptance.tasks()).extracting("nodeKey")
+            .containsExactly("acceptance_review");
+        assertThat(jdbcTemplate.queryForObject(
+            "select status from project_node_workflow_tasks where id=?",
+            String.class, strandedTask
+        )).isEqualTo("canceled");
+        assertThat(jdbcTemplate.queryForObject(
+            """
+                select count(*) from project_node_workflow_tokens
+                 where instance_id=? and correlation_key like '%|split:%'
+                   and status in ('active','waiting')
+                """,
+            Integer.class, acceptance.instanceId()
+        )).isZero();
+    }
+
+    @Test
+    void normalWorkItemMutationKeepsNodeInstanceVersionAligned() throws Exception {
+        Fixture fixture = fixture("node-version-align", false, true);
+        WorkItemView created = service.create(
+            fixture.owner(), fixture.spaceId(), fixture.typeId(), "Aligned node",
+            objectMapper.readTree("{}"), "node-align-create"
+        );
+        service.update(
+            fixture.owner(), fixture.spaceId(), created.item().id(), "Updated node",
+            objectMapper.readTree("{\"priority\":\"high\"}"), 0, "node-align-update"
+        );
+
+        var aligned = service.nodeWorkflow(
+            fixture.owner(), fixture.spaceId(), created.item().id()
+        );
+        assertThat(aligned.workItemVersion()).isEqualTo(1);
+        assertThat(aligned.aggregateVersion()).isEqualTo(1);
+        service.executeNodeTask(
+            fixture.owner(), fixture.spaceId(), created.item().id(),
+            aligned.tasks().get(0).id(), "claim", null, null,
+            1, 1, "node-align-claim"
+        );
+        assertThat(service.nodeWorkflow(
+            fixture.owner(), fixture.spaceId(), created.item().id()
+        )).satisfies(projection -> {
+            assertThat(projection.workItemVersion()).isEqualTo(2);
+            assertThat(projection.aggregateVersion()).isEqualTo(2);
+        });
     }
 
     @Test
@@ -636,6 +1313,68 @@ class WorkItemServiceIntegrationTests {
         );
         assertThat(elapsedMillis).isLessThan(5_000);
         assertThat(anchor.item().id()).isNotNull();
+    }
+
+    @Test
+    void representativeNodeTaskProjectionUsesIndexAndHardBatchBounds() throws Exception {
+        Fixture fixture = fixture("node-plan", false, true);
+        WorkItemView anchor = service.create(
+            fixture.owner(), fixture.spaceId(), fixture.typeId(), "Node plan anchor",
+            objectMapper.readTree("{}"), "node-plan-create"
+        );
+        UUID instanceId = jdbcTemplate.queryForObject(
+            "select id from project_node_workflow_instances where work_item_id=?",
+            UUID.class, anchor.item().id()
+        );
+        for (int index = 0; index < 249; index++) {
+            UUID tokenId = UUID.randomUUID();
+            jdbcTemplate.update(
+                """
+                    insert into project_node_workflow_tokens (
+                        id, workspace_id, space_id, instance_id, node_key, stage_key, status,
+                        correlation_key, aggregate_version, entered_at
+                    ) values (?, ?, ?, ?, 'plan', 'intake', 'waiting', ?, 0, now())
+                    """,
+                tokenId, WORKSPACE_ID, fixture.spaceId(), instanceId, "budget:" + index
+            );
+            jdbcTemplate.update(
+                """
+                    insert into project_node_workflow_tasks (
+                        id, workspace_id, space_id, instance_id, token_id, node_key,
+                        assignment_strategy, candidate_roles, status, aggregate_version, created_at
+                    ) values (?, ?, ?, ?, ?, 'plan', 'single', '["owner"]'::jsonb,
+                              'pending', 0, now())
+                    """,
+                UUID.randomUUID(), WORKSPACE_ID, fixture.spaceId(), instanceId, tokenId
+            );
+        }
+
+        String plan = transactionTemplate.execute(status -> {
+            jdbcTemplate.execute("set local enable_seqscan = off");
+            return String.join("\n", jdbcTemplate.query(
+                """
+                    explain (analyze, buffers, format text)
+                    select id
+                      from project_node_workflow_tasks
+                     where workspace_id=? and space_id=? and instance_id=?
+                       and status in ('pending','claimed')
+                     order by node_key, id
+                     limit 200
+                    """,
+                (row, number) -> row.getString(1),
+                WORKSPACE_ID, fixture.spaceId(), instanceId
+            ));
+        });
+        long started = System.nanoTime();
+        var projection = service.nodeWorkflow(
+            fixture.owner(), fixture.spaceId(), anchor.item().id()
+        );
+        long elapsedMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started);
+
+        assertThat(plan).contains("idx_project_node_workflow_tasks_open");
+        assertThat(projection.tasks()).hasSize(200);
+        assertThat(projection.activeTokens()).hasSize(250);
+        assertThat(elapsedMillis).isLessThan(5_000);
     }
 
     private String executeOutcome(Fixture fixture, WorkItemView created, String requestId) {
@@ -1441,6 +2180,10 @@ class WorkItemServiceIntegrationTests {
     }
 
     private Fixture fixture(String label, boolean stateFlow) throws Exception {
+        return fixture(label, stateFlow, false);
+    }
+
+    private Fixture fixture(String label, boolean stateFlow, boolean nodeFlow) throws Exception {
         UUID userId = UUID.randomUUID();
         UUID spaceId = UUID.randomUUID();
         UUID memberId = UUID.randomUUID();
@@ -1560,6 +2303,49 @@ class WorkItemServiceIntegrationTests {
                 "stateFlow",
                 flow
             );
+        } else if (nodeFlow) {
+            ObjectNode nodeBased = (ObjectNode) snapshot;
+            nodeBased.put("snapshotSchemaVersion", 3);
+            JsonNode flow = new WorkItemNodeFlowPresetCatalog(objectMapper)
+                .nodeFlowFor("project")
+                .orElseThrow();
+            if (label.contains("any-join")) {
+                ((ObjectNode) flow.withArray("joins").get(0)).put("policy", "any");
+            }
+            if (label.contains("node-collab")) {
+                for (JsonNode node : flow.path("nodes")) {
+                    if (!"plan".equals(node.path("nodeKey").asText())) {
+                        continue;
+                    }
+                    ObjectNode configuration = ((ObjectNode) node).withObject("/configuration");
+                    var formFields = configuration.putObject("form").putArray("fields");
+                    formFields.addObject()
+                        .put("fieldKey", "priority")
+                        .put("mode", "write")
+                        .put("required", true)
+                        .put("sortOrder", 0);
+                    formFields.addObject()
+                        .put("fieldKey", "secret")
+                        .put("mode", "hidden")
+                        .put("required", false)
+                        .put("sortOrder", 1);
+                    configuration.putArray("artifacts").addObject()
+                        .put("artifactKey", "context")
+                        .put("kind", "object")
+                        .put("required", true)
+                        .put("maxCount", 1)
+                        .putArray("objectTypes").add("project_space");
+                    ((ObjectNode) configuration.path("artifacts").get(0)).put("sortOrder", 0);
+                    configuration.putObject("schedule")
+                        .put("plannedDelayMinutes", 0)
+                        .put("dueAfterMinutes", 0)
+                        .put("escalationAfterMinutes", 0);
+                }
+            }
+            nodeBased.set(
+                "nodeFlow",
+                flow
+            );
         }
         var canonical = snapshotCanonicalizer.canonicalize(snapshot);
 
@@ -1647,7 +2433,7 @@ class WorkItemServiceIntegrationTests {
                 canonical.payload().toString(),
                 userId,
                 userId,
-                stateFlow ? 2 : 1
+                stateFlow ? 2 : nodeFlow ? 3 : 1
             );
         });
 
@@ -1795,8 +2581,85 @@ class WorkItemServiceIntegrationTests {
         );
     }
 
+    private NodeTargetVersion addNodeFlowVersion(
+        Fixture fixture,
+        String description
+    ) throws Exception {
+        ObjectNode snapshot = (ObjectNode) objectMapper.readTree(
+            jdbcTemplate.queryForObject(
+                """
+                    select config::text from project_work_item_type_versions
+                     where workspace_id=? and space_id=? and id=?
+                    """,
+                String.class, WORKSPACE_ID, fixture.spaceId(), fixture.versionId()
+            )
+        );
+        snapshot.put("snapshotSchemaVersion", 3);
+        snapshot.withObject("/typeDefinition").put("description", description);
+        snapshot.remove("stateFlow");
+        snapshot.set(
+            "nodeFlow",
+            new WorkItemNodeFlowPresetCatalog(objectMapper)
+                .nodeFlowFor("project")
+                .orElseThrow()
+        );
+        var canonical = snapshotCanonicalizer.canonicalize(snapshot);
+        UUID targetVersionId = UUID.randomUUID();
+        transactionTemplate.executeWithoutResult(ignored -> {
+            jdbcTemplate.update(
+                """
+                    update project_work_item_type_versions
+                       set status='superseded'
+                     where workspace_id=? and space_id=? and id=?
+                    """,
+                WORKSPACE_ID, fixture.spaceId(), fixture.versionId()
+            );
+            jdbcTemplate.update(
+                """
+                    insert into project_work_item_type_versions (
+                        id, workspace_id, space_id, type_definition_id, version_number,
+                        config_hash, status, config, created_by, created_at, published_by,
+                        published_at, snapshot_schema_version
+                    ) values (?, ?, ?, ?, 2, ?, 'published', ?::jsonb, ?, now(), ?, now(), 3)
+                    """,
+                targetVersionId, WORKSPACE_ID, fixture.spaceId(), fixture.typeId(),
+                canonical.configHash(), canonical.payload().toString(),
+                fixture.owner().id(), fixture.owner().id()
+            );
+            jdbcTemplate.update(
+                """
+                    update project_work_item_types
+                       set current_version_id=?, aggregate_version=aggregate_version+1,
+                           updated_by=?, updated_at=now()
+                     where workspace_id=? and space_id=? and id=?
+                    """,
+                targetVersionId, fixture.owner().id(), WORKSPACE_ID,
+                fixture.spaceId(), fixture.typeId()
+            );
+        });
+        return new NodeTargetVersion(targetVersionId, canonical.configHash());
+    }
+
     private int count(String table, UUID spaceId) {
         return countWhere(table, "workspace_id=? and space_id=?", WORKSPACE_ID, spaceId);
+    }
+
+    private String claimOutcome(
+        CurrentUser actor,
+        Fixture fixture,
+        UUID workItemId,
+        UUID taskId,
+        String requestSuffix
+    ) {
+        try {
+            service.executeNodeTask(
+                actor, fixture.spaceId(), workItemId, taskId, "claim", null, null,
+                2, 3, "node-race-quality-" + requestSuffix
+            );
+            return "won";
+        } catch (WorkItemRuntimeException exception) {
+            return exception.code();
+        }
     }
 
     private int countWhere(String table, String predicate, Object... arguments) {
@@ -1869,5 +2732,8 @@ class WorkItemServiceIntegrationTests {
         String configHash,
         String initialStateKey
     ) {
+    }
+
+    private record NodeTargetVersion(UUID versionId, String configHash) {
     }
 }

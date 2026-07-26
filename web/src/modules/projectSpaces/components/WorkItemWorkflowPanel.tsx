@@ -177,6 +177,7 @@ export function WorkItemWorkflowPanel({
     )
   }
   if (workflow.capability !== 'available') {
+    if (workflow.capability === 'not_configured') return null
     return (
       <Alert
         className="work-item-workflow-capability"

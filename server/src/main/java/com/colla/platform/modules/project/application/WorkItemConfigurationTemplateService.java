@@ -59,6 +59,7 @@ public class WorkItemConfigurationTemplateService {
     private final WorkItemTypeRepository typeRepository;
     private final WorkItemTypePresetCatalog presetCatalog;
     private final WorkItemStateFlowPresetCatalog stateFlowPresetCatalog;
+    private final WorkItemNodeFlowPresetCatalog nodeFlowPresetCatalog;
     private final WorkItemConfigurationSnapshotCanonicalizer canonicalizer;
     private final WorkItemConfigurationValidator validator;
     private final WorkItemConfigurationThreeWayMerge mergeEngine;
@@ -75,6 +76,7 @@ public class WorkItemConfigurationTemplateService {
         WorkItemTypeRepository typeRepository,
         WorkItemTypePresetCatalog presetCatalog,
         WorkItemStateFlowPresetCatalog stateFlowPresetCatalog,
+        WorkItemNodeFlowPresetCatalog nodeFlowPresetCatalog,
         WorkItemConfigurationSnapshotCanonicalizer canonicalizer,
         WorkItemConfigurationValidator validator,
         WorkItemConfigurationThreeWayMerge mergeEngine,
@@ -90,6 +92,7 @@ public class WorkItemConfigurationTemplateService {
         this.typeRepository = typeRepository;
         this.presetCatalog = presetCatalog;
         this.stateFlowPresetCatalog = stateFlowPresetCatalog;
+        this.nodeFlowPresetCatalog = nodeFlowPresetCatalog;
         this.canonicalizer = canonicalizer;
         this.validator = validator;
         this.mergeEngine = mergeEngine;
@@ -608,8 +611,12 @@ public class WorkItemConfigurationTemplateService {
             layout.putArray("nodes");
             layout.putArray("policies");
         }
-        stateFlowPresetCatalog.stateFlowFor(preset)
-            .ifPresent(stateFlow -> root.set("stateFlow", stateFlow));
+        nodeFlowPresetCatalog.nodeFlowFor(preset)
+            .ifPresentOrElse(
+                nodeFlow -> root.set("nodeFlow", nodeFlow),
+                () -> stateFlowPresetCatalog.stateFlowFor(preset)
+                    .ifPresent(stateFlow -> root.set("stateFlow", stateFlow))
+            );
         return root;
     }
 

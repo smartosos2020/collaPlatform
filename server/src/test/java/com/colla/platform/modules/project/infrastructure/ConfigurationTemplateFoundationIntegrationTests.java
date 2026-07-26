@@ -26,7 +26,7 @@ class ConfigurationTemplateFoundationIntegrationTests {
             flyway.migrate();
             assertEquals(0, flyway.migrate().migrationsExecuted);
             JdbcTemplate jdbc = new JdbcTemplate(dataSource);
-            assertEquals("092", jdbc.queryForObject(
+            assertEquals("096", jdbc.queryForObject(
                 "select max(version) from flyway_schema_history",
                 String.class
             ));

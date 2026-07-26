@@ -167,6 +167,7 @@ public class WorkItemRuntimeProjection {
         // State-flow guards, authorization rules, patches, and transition targets are
         // server-side policy. User runtime endpoints expose only a decision projection.
         visible.remove("stateFlow");
+        visible.remove("nodeFlow");
         return visible;
     }
 

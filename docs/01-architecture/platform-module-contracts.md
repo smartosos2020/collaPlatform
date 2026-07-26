@@ -108,7 +108,7 @@ contract 只允许 JDK 类型、同 contract 包类型或另一个经过批准�
 
 ## 6. Table Owner
 
-V001-V092 当前 125 张有效表在 `platform-table-owners.json` 中恰好归属一个 owner。规则如下：
+V001-V095 当前 134 张有效表在 `platform-table-owners.json` 中恰好归属一个 owner。规则如下：
 
 - `foreignWrite = forbidden`：foreign write 没有例外通道。
 - foreign read 必须匹配精确文件、精确表、read 模式和有效退出 Stage。
@@ -223,9 +223,12 @@ M2 不实现 Worker lease、dead-letter、replay、handler registry 或独立进
 - 用户协作命令固定从 `/api/project-spaces/{spaceId}/work-items` 进入；管理端 `/api/admin/project-migrations` 只拥有迁移 plan/execute/verify/rollback 与审计，不因企业管理员身份自动获得空间内容读取。
 - 管理迁移 plan 可选显式 `projectIds` 作为批次范围；未提供时为 workspace 全量。范围过滤只影响冻结 manifest，不改变 workspace 授权、published snapshot 前置条件或失败关闭语义。
 - S08 的 State/Action/Transition/Guard Definition 是 WorkItemType configuration snapshot 内部配置，不是公共合同或共享表。`project_work_item_current_states`、`project_work_item_workflow_commands`、`project_work_item_workflow_history`、`project_work_item_state_backfill_batches/units` 均由 project owner 持有；用户 API 只暴露安全 current/action/history/recovery DTO，其他模块没有私表读写入口。
+- S09 的 Stage/Node/Edge/Branch/Join/Recovery/Compensation Definition 同样只存在于 WorkItemType configuration snapshot。`project_node_workflow_instances/tokens/tasks/task_artifacts/votes/joins/join_arrivals/commands/history/compensation_runs/compensation_steps/backfill_batches/backfill_units` 均由 project owner 独占；用户入口只返回授权后的 node workflow presentation/history/inbox/context/action/recovery/backfill DTO，其他模块没有私表读写入口，也不得借用 S08 current-state/history/backfill 私表。
+- `project.contract.WorkItemNodeWorkflowEvent` 是节点运行时唯一公共增量合同，固定 `eventType=node_workflow.changed`、`eventVersion=1`、`aggregateType=work_item`。payload 只含 space/type binding、operation/node、WorkItem/instance version、instance status 与 decision reference；不得增加候选角色、条件、quorum、token lineage、split/join correlation、字段值或原因正文。消费者必须经 `work_item` resolver/用户 API 校准。
+- `project.contract.NodeTaskLifecycleEvent` 是任务到期的最小公共合同，固定 `eventType=node_task.lifecycle`、`eventVersion=1`、`aggregateType=work_item`，只携带 space/task/work-item identity、event kind、node key 与 due instant。通知/搜索消费者通过 `project.node-task.consumer-contract` 的 delivery receipt 去重，不得读取 task/artifact 私表补全正文。
 - `project.contract.WorkItemWorkflowEvent` 发布最小的 `workflow.action_executed/state_changed/initialized/binding_changed` v1 envelope。`project.workflow.consumer-contract` 只校验公共 payload schema 并依赖 delivery receipt 去重；未知 payload schema 永久失败。通知、搜索或协作若选择订阅，只能使用该 payload 再经 resolver/用户 API 校准，不得读取状态、回填、命令、history 私表或 active draft 补算事实。
 - S08-M4 的状态配置器、成员执行 UI 和 backfill 管理只调用上述 project 用户/空间配置 API，没有新增跨模块端口、共享表或企业后台内容入口。
-- S09 只能共享版本化 command/event、authorization/guard、aggregate-version、receipt/outbox SPI，不能复用 current-state、workflow history 或 backfill 私表作为 node-instance/token/join/vote 权威。
+- S09 只能共享版本化 command/event、authorization/guard、aggregate-version、receipt/outbox SPI，不能复用 current-state、workflow history 或 backfill 私表作为 node-instance/token/join/vote 权威。节点恢复、补偿、binding upgrade 和 backfill 仍以 `work_item` 为 aggregate identity；compensation/backfill ledger 不升级为公共对象或跨模块查询表。
 
 ## 15. 非目标
 
@@ -243,7 +246,7 @@ M2 不实现 Worker lease、dead-letter、replay、handler registry 或独立进
 `pnpm architecture:contracts` 必须验证：
 
 1. 代码中的 15 个模块与 manifest 完全一致，未知模块失败。
-2. 125 张当前有效表与 owner manifest 完全一致，重复、缺失、未知 owner 或 ownerless 失败。
+2. 138 张当前有效表与 owner manifest 完全一致，重复、缺失、未知 owner 或 ownerless 失败。
 3. 例外没有通配符、foreign write、缺失 owner/Stage/决定或未知模块。
 4. contract Java 源文件不 import provider 私有包。
 5. 本文保留全部必要决策词和非目标。

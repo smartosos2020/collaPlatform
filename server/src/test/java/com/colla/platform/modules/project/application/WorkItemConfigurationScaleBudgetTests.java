@@ -74,6 +74,7 @@ class WorkItemConfigurationScaleBudgetTests {
         var canonicalizer = new WorkItemConfigurationSnapshotCanonicalizer(objectMapper);
         var assembler = new WorkItemConfigurationSnapshotAssembler(
             types, fields, options, layouts, new WorkItemStateFlowPresetCatalog(objectMapper),
+            new WorkItemNodeFlowPresetCatalog(objectMapper),
             canonicalizer, objectMapper
         );
 

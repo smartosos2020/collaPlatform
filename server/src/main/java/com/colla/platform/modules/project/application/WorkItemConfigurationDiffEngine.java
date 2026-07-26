@@ -157,6 +157,18 @@ public class WorkItemConfigurationDiffEngine {
         if (path.endsWith(".guards")) {
             return "guardKey";
         }
+        if (path.endsWith(".stages")) {
+            return "stageKey";
+        }
+        if (path.endsWith(".edges")) {
+            return "edgeKey";
+        }
+        if (path.endsWith(".branches")) {
+            return "branchKey";
+        }
+        if (path.endsWith(".joins")) {
+            return "joinKey";
+        }
         return null;
     }
 

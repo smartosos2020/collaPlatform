@@ -219,7 +219,7 @@ public class WorkItemConfigurationDraftService {
     ) {
         ConfigurationDraft active = draftRepository.lockActive(workspaceId, spaceId, typeId).orElse(null);
         ConfigurationSnapshot snapshot = preserveDraftOnlyConfiguration(
-            preservePublishedStateFlow(
+            preservePublishedWorkflowDefinition(
                 assembler.assemble(workspaceId, spaceId, typeId),
                 workspaceId,
                 spaceId,
@@ -243,15 +243,23 @@ public class WorkItemConfigurationDraftService {
         ConfigurationSnapshot assembled,
         ConfigurationDraft active
     ) {
-        if (active == null || !active.snapshot().path("stateFlow").isObject()) {
+        if (active == null
+            || (!active.snapshot().path("stateFlow").isObject()
+                && !active.snapshot().path("nodeFlow").isObject())) {
             return assembled;
         }
         ObjectNode merged = assembled.payload().deepCopy();
-        merged.set("stateFlow", active.snapshot().path("stateFlow").deepCopy());
+        merged.remove(List.of("stateFlow", "nodeFlow"));
+        if (active.snapshot().path("stateFlow").isObject()) {
+            merged.set("stateFlow", active.snapshot().path("stateFlow").deepCopy());
+        }
+        if (active.snapshot().path("nodeFlow").isObject()) {
+            merged.set("nodeFlow", active.snapshot().path("nodeFlow").deepCopy());
+        }
         return canonicalizer.canonicalize(merged);
     }
 
-    private ConfigurationSnapshot preservePublishedStateFlow(
+    private ConfigurationSnapshot preservePublishedWorkflowDefinition(
         ConfigurationSnapshot assembled,
         UUID workspaceId,
         UUID spaceId,
@@ -264,13 +272,19 @@ public class WorkItemConfigurationDraftService {
         var current = publicationRepository.findVersion(
             workspaceId, spaceId, typeId, type.currentVersionId()
         ).orElse(null);
-        if (current == null
-            || !current.completeSnapshot()
-            || !current.snapshot().path("stateFlow").isObject()) {
+        if (current == null || !current.completeSnapshot()
+            || (!current.snapshot().path("stateFlow").isObject()
+                && !current.snapshot().path("nodeFlow").isObject())) {
             return assembled;
         }
         ObjectNode merged = assembled.payload().deepCopy();
-        merged.set("stateFlow", current.snapshot().path("stateFlow").deepCopy());
+        merged.remove(List.of("stateFlow", "nodeFlow"));
+        if (current.snapshot().path("stateFlow").isObject()) {
+            merged.set("stateFlow", current.snapshot().path("stateFlow").deepCopy());
+        }
+        if (current.snapshot().path("nodeFlow").isObject()) {
+            merged.set("nodeFlow", current.snapshot().path("nodeFlow").deepCopy());
+        }
         return canonicalizer.canonicalize(merged);
     }
 
@@ -284,7 +298,7 @@ public class WorkItemConfigurationDraftService {
         if (active != null) {
             return active;
         }
-        ConfigurationSnapshot snapshot = preservePublishedStateFlow(
+        ConfigurationSnapshot snapshot = preservePublishedWorkflowDefinition(
             assembler.assemble(workspaceId, spaceId, typeId),
             workspaceId,
             spaceId,

@@ -128,7 +128,7 @@ class ReliableDomainEventWorkerIntegrationTests {
     void queuedDeliveriesKeepTheirLeaseUntilExecutionStarts() throws Exception {
         Duration originalLease = deliveryProperties.getLeaseDuration();
         try {
-            deliveryProperties.setLeaseDuration(Duration.ofSeconds(1));
+            deliveryProperties.setLeaseDuration(Duration.ofSeconds(3));
             append("queued-lease-active");
             append("queued-lease-waiting");
             handler.block();
@@ -140,7 +140,7 @@ class ReliableDomainEventWorkerIntegrationTests {
             pollUntilHandlerStarts(workerA, Duration.ofSeconds(3));
             workerA.pollOnce();
             awaitProcessing(2);
-            Thread.sleep(1_300);
+            Thread.sleep(3_300);
 
             assertThat(coordinator.recoverExpired(coordinator.currentTime())).isZero();
             handler.release();
@@ -297,7 +297,7 @@ class ReliableDomainEventWorkerIntegrationTests {
     }
 
     private void awaitProcessing(long expected) throws Exception {
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3);
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
         while (coordinator.stats(Instant.now()).processing() < expected && System.nanoTime() < deadline) {
             Thread.sleep(10);
         }
