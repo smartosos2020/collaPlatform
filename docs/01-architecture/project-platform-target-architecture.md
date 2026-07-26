@@ -828,3 +828,14 @@ S05 的表单和详情页是“配置与渲染合同”，不是已经可创建�
 - publication service 先取得类型行锁，再在锁内创建/读取幂等回执、重读 active draft、分配版本号并执行版本插入、旧 current supersede、pointer 切换、草稿关闭、审计、outbox 和回执完成；任一失败全部回滚。
 - 版本列表允许展示 legacy partial 历史，但 diff、rollback 和未来 S07 adapter 只接受完整 schema v1 snapshot。rollback 只创建带 lineage 的新草稿，再走普通发布产生更高版本。
 - 当前 diff 输出稳定 key path、前后值、影响等级和摘要；它只解释配置变化，不预测或迁移尚不存在的 WorkItem 实例。
+
+### 22.9 S06-M3 已实现模板事实
+
+- `project_work_item_configuration_templates` 区分 platform 与 workspace 来源；模板版本保存完整规范 snapshot/schema/hash 并受数据库不可变触发器保护，撤回模板只关闭后续安装，不删除历史版本或 installation lineage。
+- `WorkItemTypePresetCatalog` 只作为平台模板的确定性导入源。导入按稳定 template key、版本号和 snapshot hash 幂等落库，模板目录、版本、安装和升级读取均以数据库为运行时权威。
+- workspace 模板只能从调用空间中完整 published configuration version 创建；legacy partial、跨空间来源、隐藏版本和冲突 key 均被拒绝。模板版本不查询 live 类型、字段、布局或策略表补齐内容。
+- 安装在目标类型 active draft 中复制并重绑定 snapshot；类型、字段、选项、布局节点和访问策略身份由目标 UUID 加稳定 semantic key 生成，不携带来源空间 UUID，也不建立上游 live 引用。
+- installation 保存 base template version/hash、当前 upstream、local draft hash、状态和 aggregate version。升级预览只做 base/upstream/local 三方比较，不写 draft；无冲突 additive 变化可自动合并，冲突必须逐项选择 local/upstream 后才能原子 apply。
+- install、apply-upgrade 和 detach 使用持久化 command receipt、payload hash、乐观版本、审计和 outbox；相同 request ID 精确重放首次响应，异载荷重放和并发败者返回受控冲突。
+- detach 保留当前 draft、hash 和最后 lineage 摘要，仅把 installation 标记为 detached；后续不再宣称与上游同步。重新安装是新的显式命令。
+- 这些模板能力仍属于配置编排。S07 运行实例必须只消费 M4 冻结的 `PublishedSnapshotAdapter`；任何 runtime 对 S04/S05 live repository 或 active draft 的依赖都属于架构违规。

@@ -107,6 +107,8 @@ UI-SPLIT-M12 冻结“双 UI v1”：当前不拆服务、不拆仓库，但用�
 - S06-M1 将 S03-S05 的类型、字段、选项、规则、布局和字段访问策略组装为 schema v1 完整快照；同一类型只有一个 active `ConfigurationDraft`，写入口在同事务刷新草稿，保存、校验、放弃使用 aggregate version 和持久化命令回执。
 - S06-M2 在类型行锁内分配单调版本号，原子完成完整 snapshot 插入、旧版本 supersede、current pointer 切换、草稿关闭、审计、outbox 和发布回执。published/superseded 行受数据库触发器保护；同 request ID 精确重放，失败注入不留下半版本。
 - 版本历史和 draft/current、version/version 语义 diff 已覆盖 additive/behavioral/conditional/breaking；rollback 只把历史完整快照复制为新 active draft，重新校验并发布更高版本，不倒退指针或改写历史。legacy partial v1 可列出但不能 diff/rollback。
+- S06-M3 已提供平台/workspace 配置模板、不可变模板版本、安装 lineage、三方升级和解绑。安装把完整 snapshot 复制并重绑定到目标 active draft，不建立 live 引用；升级按 base/upstream/local 比较，冲突必须逐项选择，解绑保留本地草稿和最后 lineage。
+- 平台预置静态目录只承担确定性导入，模板运行时目录与版本权威在数据库；workspace 模板只能从完整 published snapshot 创建。模板命令具备乐观版本、精确回执、审计和 outbox，owner/admin 可操作，其他身份按最小披露返回 403/404。
 - 复杂字段配置只持久化规范 ID 或标量，不复制用户名称、部门名称、文件元数据、目标类型标题或 URL 凭据作为权限事实。跨 workspace、失效、已删除、不可访问或越界引用统一返回最小披露错误；审计继续只保存配置 hash 和数量摘要。当前没有字段值；工作项实例和值属于 S07，S07 前 work_item_reference 默认实例数组只能为空。
 - 新空间和 legacy 迁移空间在创建事务内安装 `development-v1` 六类研发预置 `project/requirement/task/bug/iteration/release`；既有 active 空间在启动时逐空间幂等补齐。自定义同 key 不被覆盖并进入明确冲突清单，重复和并发补齐不产生重复系统类型或审计事件。
 - 空间 owner/admin 使用 `/project-spaces/:spaceId/types` 配置类型；member/guest 只在空间执行首页看到 active 类型名称、key、图标和顺序。企业项目治理只读取类型状态计数，不获得空间配置写权限或内容访问权。

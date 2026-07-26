@@ -27,6 +27,7 @@ import {
 } from '../api/workItemConfigurationApi'
 import { workItemTypeKeys } from '../api/workItemTypesApi'
 import { errorMessage, formatTime } from '../projectSpaceView'
+import { ProjectWorkItemConfigurationTemplatePanel } from './ProjectWorkItemConfigurationTemplatePanel'
 
 export function ProjectWorkItemConfigurationDraftPanel({
   spaceId,
@@ -243,6 +244,13 @@ export function ProjectWorkItemConfigurationDraftPanel({
           当前快照没有诊断项
         </Typography.Text>
       )}
+      <ProjectWorkItemConfigurationTemplatePanel
+        spaceId={spaceId}
+        typeId={typeId}
+        readOnly={readOnly}
+        draft={draft}
+        currentVersion={currentVersion}
+      />
       <Divider className="work-item-version-divider" />
       <div className="work-item-version-heading">
         <Space>

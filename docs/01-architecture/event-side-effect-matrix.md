@@ -49,6 +49,7 @@ Search 事件不携带 ACL 快照或供无权消费者直接展示的标题。�
 | 角色、角色分配、资源授权变化 | permission owner 表 + `permission.security.changed` | `permission.invalidated` | workspace | changed permission object sequence | role/assignment id，或授权资源的 type/id；payload 指定 `/api/admin/...` 或 `/api/resource-permissions/...` | 已移除 |
 | 成员状态、部门和用户组变化 | identity owner 表 + `identity.security.changed` | `identity.invalidated` | workspace | changed identity object sequence | user/department/group id；payload 指定 `/api/admin/...` | 已移除 |
 | 工作项配置发布 | `project_work_item_type_versions` + `work_item_configuration.published` | 当前不生成 realtime signal | N/A | published version id；类型行锁内单调 version number | version/type/space id；`GET /api/project-spaces/{spaceId}/work-item-types/{typeId}/configuration/versions` | 从未直接发送 |
+| 工作项配置模板创建/安装/升级/解绑 | `project_work_item_configuration_templates`、installation/upgrade history + `work_item_configuration.template_*` | 当前不生成 realtime signal | N/A | template/installation id；命令回执与 aggregate version | template/type/space id、来源版本/hash 与冲突摘要；配置模板 API | 从未直接发送 |
 
 配置发布事件与不可变版本、current pointer、草稿关闭、审计和 publication receipt 同事务提交。payload 只包含 request、space/type/version、schema/hash/source draft 与 breaking 摘要，不复制完整 snapshot、隐藏字段或访问策略正文。S06 不为该事件注册运行时实例 Handler；S07 adapter 和迁移计划另行准入。
 

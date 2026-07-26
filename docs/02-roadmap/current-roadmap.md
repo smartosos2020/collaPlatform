@@ -47,7 +47,7 @@ S06 的核心不是增加一个“发布”按钮，而是消除 live 配置表�
 | --- | --- | --- | --- | --- |
 | PROJECT-PLATFORM-S06-M1 | 唯一配置草稿、完整快照和发布校验 | S05 归档；Program revision 19 | `docs/90-reports/project-platform-s06-m1-execution-report.md` | Done |
 | PROJECT-PLATFORM-S06-M2 | 不可变版本、原子发布、diff 和回滚 | M1 | `docs/90-reports/project-platform-s06-m2-execution-report.md` | Completed |
-| PROJECT-PLATFORM-S06-M3 | 配置模板版本、安装、同步、三方合并和解绑 | M1-M2 | `docs/90-reports/project-platform-s06-m3-execution-report.md` | Pending |
+| PROJECT-PLATFORM-S06-M3 | 配置模板版本、安装、同步、三方合并和解绑 | M1-M2 | `docs/90-reports/project-platform-s06-m3-execution-report.md` | Completed |
 | PROJECT-PLATFORM-S06-M4 | 兼容矩阵、S07 adapter、迁移/安全/体验和 Stage 收口 | M1-M3 | `docs/90-reports/project-platform-s06-m4-execution-report.md` | Pending |
 
 ## 5. 详细任务
@@ -91,18 +91,18 @@ S06 的核心不是增加一个“发布”按钮，而是消除 live 配置表�
 
 | 任务 | 内容 | 验收标准 | 状态 |
 | --- | --- | --- | --- |
-| PROJECT-PLATFORM-S06-M3-T01 | 冻结平台/workspace 模板、模板版本、installation、lineage、升级和 detach 合同 | 来源、可见性、版本、base/upstream/local、撤回和解绑语义无歧义 | Pending |
-| PROJECT-PLATFORM-S06-M3-T02 | 落地 template、template version、installation、upgrade history 和命令回执 schema | 完整 snapshot 不可变；复合隔离、唯一安装、索引、状态和 owner 完整 | Pending |
-| PROJECT-PLATFORM-S06-M3-T03 | 实现模板 Repository、不可变版本和授权查询 | 平台预置/workspace 模板分层；无跨空间枚举；撤回不删除历史版本 | Pending |
-| PROJECT-PLATFORM-S06-M3-T04 | 将 WorkItemTypePresetCatalog 转为平台模板导入源 | 导入可重复、版本/hash 稳定；静态 catalog 不再承担运行时模板权威 | Pending |
-| PROJECT-PLATFORM-S06-M3-T05 | 实现从 published configuration version 创建 workspace 模板 | 只复制完整 snapshot；名称/code 冲突、隐藏字段和来源授权严格校验 | Pending |
-| PROJECT-PLATFORM-S06-M3-T06 | 实现模板安装到目标类型 active draft | 安装复制而非 live 引用；记录 source version/hash；本地 draft 可继续编辑 | Pending |
-| PROJECT-PLATFORM-S06-M3-T07 | 实现 base/upstream/local 三方 diff 与冲突模型 | 无冲突 additive 变化可自动合并；重命名/删除/访问收窄等冲突显式呈现 | Pending |
-| PROJECT-PLATFORM-S06-M3-T08 | 实现 upgrade preview、选择性 apply 和幂等回执 | 预览不写入；apply 原子更新 draft/lineage；异载荷重放冲突 | Pending |
-| PROJECT-PLATFORM-S06-M3-T09 | 实现 detach 幂等命令 | 保留本地 draft、版本和最后 lineage 摘要；后续不再提示上游升级 | Pending |
-| PROJECT-PLATFORM-S06-M3-T10 | 实现模板目录、安装、升级冲突处理和解绑 UI | 来源/版本/本地覆盖清晰；冲突可逐项决策；危险操作可访问 | Pending |
-| PROJECT-PLATFORM-S06-M3-T11 | 完成模板撤回、跨空间、并发、冲突、detach 和六身份目标验证 | 无越权枚举、无 live 引用、无静默覆盖；API/浏览器正反例通过 | Pending |
-| PROJECT-PLATFORM-S06-M3-T12 | 同步产品/架构/模块合同并完成 M3 checkpoint | 模板 lineage 事实、限制和 S07 边界清晰，工作循环通过 | Pending |
+| PROJECT-PLATFORM-S06-M3-T01 | 冻结平台/workspace 模板、模板版本、installation、lineage、升级和 detach 合同 | 来源、可见性、版本、base/upstream/local、撤回和解绑语义无歧义 | Done |
+| PROJECT-PLATFORM-S06-M3-T02 | 落地 template、template version、installation、upgrade history 和命令回执 schema | 完整 snapshot 不可变；复合隔离、唯一安装、索引、状态和 owner 完整 | Done |
+| PROJECT-PLATFORM-S06-M3-T03 | 实现模板 Repository、不可变版本和授权查询 | 平台预置/workspace 模板分层；无跨空间枚举；撤回不删除历史版本 | Done |
+| PROJECT-PLATFORM-S06-M3-T04 | 将 WorkItemTypePresetCatalog 转为平台模板导入源 | 导入可重复、版本/hash 稳定；静态 catalog 不再承担运行时模板权威 | Done |
+| PROJECT-PLATFORM-S06-M3-T05 | 实现从 published configuration version 创建 workspace 模板 | 只复制完整 snapshot；名称/code 冲突、隐藏字段和来源授权严格校验 | Done |
+| PROJECT-PLATFORM-S06-M3-T06 | 实现模板安装到目标类型 active draft | 安装复制而非 live 引用；记录 source version/hash；本地 draft 可继续编辑 | Done |
+| PROJECT-PLATFORM-S06-M3-T07 | 实现 base/upstream/local 三方 diff 与冲突模型 | 无冲突 additive 变化可自动合并；重命名/删除/访问收窄等冲突显式呈现 | Done |
+| PROJECT-PLATFORM-S06-M3-T08 | 实现 upgrade preview、选择性 apply 和幂等回执 | 预览不写入；apply 原子更新 draft/lineage；异载荷重放冲突 | Done |
+| PROJECT-PLATFORM-S06-M3-T09 | 实现 detach 幂等命令 | 保留本地 draft、版本和最后 lineage 摘要；后续不再提示上游升级 | Done |
+| PROJECT-PLATFORM-S06-M3-T10 | 实现模板目录、安装、升级冲突处理和解绑 UI | 来源/版本/本地覆盖清晰；冲突可逐项决策；危险操作可访问 | Done |
+| PROJECT-PLATFORM-S06-M3-T11 | 完成模板撤回、跨空间、并发、冲突、detach 和六身份目标验证 | 无越权枚举、无 live 引用、无静默覆盖；API/浏览器正反例通过 | Done |
+| PROJECT-PLATFORM-S06-M3-T12 | 同步产品/架构/模块合同并完成 M3 checkpoint | 模板 lineage 事实、限制和 S07 边界清晰，工作循环通过 | Done |
 
 ### PROJECT-PLATFORM-S06-M4 兼容矩阵、S07 adapter、迁移/安全/体验和 Stage 收口
 
