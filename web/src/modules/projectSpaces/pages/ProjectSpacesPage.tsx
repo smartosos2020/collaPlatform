@@ -1,6 +1,7 @@
 import {
   AppstoreOutlined,
   EyeOutlined,
+  FileDoneOutlined,
   LockOutlined,
   InboxOutlined,
   LayoutOutlined,
@@ -48,6 +49,7 @@ import { ProjectWorkItemConfigurationDraftPanel } from '../components/ProjectWor
 import { ProjectWorkItemLayoutsPanel } from '../components/ProjectWorkItemLayoutsPanel'
 import { ProjectWorkItemLayoutSample } from '../components/ProjectWorkItemLayoutSample'
 import { ProjectWorkItemTypesPanel } from '../components/ProjectWorkItemTypesPanel'
+import { ProjectWorkItemsPanel } from '../components/ProjectWorkItemsPanel'
 import { listActiveWorkItemTypes, workItemTypeKeys } from '../api/workItemTypesApi'
 import { errorMessage, formatTime, roleLabel, statusLabel, visibilityLabel } from '../projectSpaceView'
 
@@ -59,7 +61,7 @@ type CreateSpaceForm = {
 }
 
 type SettingsForm = Pick<CreateSpaceForm, 'name' | 'description' | 'visibility'>
-type SpaceView = 'overview' | 'members' | 'settings' | 'types' | 'fields' | 'layouts' | 'sample'
+type SpaceView = 'overview' | 'work-items' | 'members' | 'settings' | 'types' | 'fields' | 'layouts' | 'sample'
 
 const recentStorageKey = 'colla.project-spaces.recent'
 
@@ -68,7 +70,7 @@ export function ProjectSpacesPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const queryClient = useQueryClient()
-  const { spaceId, typeId, fieldId } = useParams()
+  const { spaceId, typeId, fieldId, workItemId } = useParams()
   const [createOpen, setCreateOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [createForm] = Form.useForm<CreateSpaceForm>()
@@ -175,6 +177,7 @@ export function ProjectSpacesPage() {
             view={view}
             selectedTypeId={typeId}
             selectedFieldId={fieldId}
+            selectedWorkItemId={workItemId}
             onNavigate={(target) => navigate(`/project-spaces/${spaceQuery.data.id}${target === 'overview' ? '' : `/${target}`}`)}
             onSelectType={(selectedId) => navigate(`/project-spaces/${spaceQuery.data.id}/types/${selectedId}`)}
             onConfigureFields={(selectedId) => navigate(`/project-spaces/${spaceQuery.data.id}/types/${selectedId}/fields`)}
@@ -233,6 +236,7 @@ function ProjectSpaceShell({
   view,
   selectedTypeId,
   selectedFieldId,
+  selectedWorkItemId,
   onNavigate,
   onSelectType,
   onConfigureFields,
@@ -243,6 +247,7 @@ function ProjectSpaceShell({
   view: SpaceView
   selectedTypeId?: string
   selectedFieldId?: string
+  selectedWorkItemId?: string
   onNavigate: (view: SpaceView) => void
   onSelectType: (typeId: string) => void
   onConfigureFields: (typeId: string) => void
@@ -286,6 +291,7 @@ function ProjectSpaceShell({
 
       <nav className="project-space-tabs" aria-label="空间导航">
         <Button aria-label="协作概览" type={view === 'overview' ? 'primary' : 'text'} icon={<AppstoreOutlined />} onClick={() => onNavigate('overview')}>协作概览</Button>
+        <Button aria-label="工作项" type={view === 'work-items' ? 'primary' : 'text'} icon={<FileDoneOutlined />} onClick={() => onNavigate('work-items')}>工作项</Button>
         {canManage ? <Button aria-label="工作项类型" type={view === 'types' || view === 'fields' ? 'primary' : 'text'} icon={<TagsOutlined />} onClick={() => onNavigate('types')}>工作项类型</Button> : null}
         {canManage ? <Button aria-label="页面布局" type={view === 'layouts' ? 'primary' : 'text'} icon={<LayoutOutlined />} onClick={() => selectedTypeId ? onConfigureLayouts(selectedTypeId) : onNavigate('types')}>页面布局</Button> : null}
         {canManage ? <Button aria-label="成员" type={view === 'members' ? 'primary' : 'text'} icon={<TeamOutlined />} onClick={() => onNavigate('members')}>成员</Button> : null}
@@ -301,6 +307,7 @@ function ProjectSpaceShell({
       ) : null}
 
       {view === 'overview' ? <ProjectSpaceOverview space={space} /> : null}
+      {view === 'work-items' ? <ProjectWorkItemsPanel space={space} workItemId={selectedWorkItemId} /> : null}
       {view === 'types' && canManage ? (
         <ProjectWorkItemTypesPanel
           space={space}
@@ -331,7 +338,9 @@ function ProjectSpaceShell({
       ) : null}
       {view === 'members' && canManage ? <ProjectSpaceMembersPanel space={space} /> : null}
       {view === 'settings' && canManage ? <ProjectSpaceSettingsPanel space={space} /> : null}
-      {view !== 'overview' && !canManage ? <Alert type="error" showIcon message="无权访问空间设置" description="成员执行视角不展示成员治理和空间配置。" /> : null}
+      {['types', 'fields', 'layouts', 'members', 'settings'].includes(view) && !canManage
+        ? <Alert type="error" showIcon message="无权访问空间设置" description="成员执行视角不展示成员治理和空间配置。" />
+        : null}
     </div>
   )
 }
@@ -358,7 +367,7 @@ function ProjectSpaceOverview({ space }: { space: UserProjectSpace }) {
               type="button"
               className="project-space-active-type"
               key={type.id}
-              onClick={() => navigate(`/project-spaces/${space.id}/types/${type.id}/sample`)}
+              onClick={() => navigate(`/project-spaces/${space.id}/work-items?typeId=${type.id}&create=1`)}
             >
               <span className="work-item-type-glyph" aria-hidden="true">{(type.icon?.trim() || type.name.slice(0, 1)).slice(0, 2)}</span>
               <span><strong>{type.name}</strong><small>{type.typeKey}</small></span>
@@ -467,6 +476,7 @@ function ProjectSpaceLoadError({ error, onBack }: { error: Error; onBack: () => 
 }
 
 function resolveSpaceView(pathname: string): SpaceView {
+  if (/\/work-items(?:\/[^/]+)?$/.test(pathname)) return 'work-items'
   if (pathname.endsWith('/members')) return 'members'
   if (pathname.endsWith('/settings')) return 'settings'
   if (/\/types\/[^/]+\/fields(?:\/[^/]+)?$/.test(pathname)) return 'fields'

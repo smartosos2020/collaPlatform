@@ -81,14 +81,14 @@ class ProjectWorkItemFieldSchemaIntegrationTests {
             "select exists(select 1 from pg_trigger where tgname='trg_protect_project_work_item_field_option_identity' and not tgisinternal)",
             Boolean.class
         ));
-        assertEquals(0, jdbcTemplate.queryForObject(
+        assertEquals(1, jdbcTemplate.queryForObject(
             "select count(*) from information_schema.tables where table_schema='public' and table_name='project_work_items'",
             Integer.class
         ));
     }
 
     @Test
-    void schemaContainsScopedLayoutGraphPoliciesReceiptsAndNoWorkItemInstances() {
+    void schemaContainsScopedLayoutGraphPoliciesReceiptsAndCanonicalWorkItemTable() {
         assertEquals(4, jdbcTemplate.queryForObject(
             """
                 select count(*) from information_schema.tables
@@ -140,7 +140,7 @@ class ProjectWorkItemFieldSchemaIntegrationTests {
                 """,
             Integer.class
         ));
-        assertEquals(0, jdbcTemplate.queryForObject(
+        assertEquals(1, jdbcTemplate.queryForObject(
             "select count(*) from information_schema.tables where table_schema='public' and table_name='project_work_items'",
             Integer.class
         ));
@@ -477,7 +477,7 @@ class ProjectWorkItemFieldSchemaIntegrationTests {
                 Integer.class
             ));
             assertEquals(0, isolated.queryForObject(
-                "select count(*) from information_schema.tables where table_schema='public' and table_name='project_work_items'",
+                "select count(*) from project_work_items",
                 Integer.class
             ));
         } finally {

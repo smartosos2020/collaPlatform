@@ -47,6 +47,7 @@
     "pilot:initialize": "pnpm workbench pilot initialize",
     "pilot:simulate-kickoff": "pnpm workbench pilot simulate-kickoff",
     "pilot:readiness": "pnpm workbench pilot readiness",
+    "project:migrate-work-items": "node deploy/ops/project-work-item-migration.mjs",
     "web:dev": "pnpm --dir web dev",
     "web:build": "pnpm --dir web build",
     "web:lint": "pnpm --dir web lint",

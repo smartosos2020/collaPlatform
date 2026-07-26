@@ -701,7 +701,7 @@ class WorkItemLayoutConfigurationControllerIntegrationTests {
     }
 
     @Test
-    void openApiPublishesLayoutsWithoutIntroducingWorkItemInstances() throws Exception {
+    void openApiPublishesLayoutsWithoutLegacyWorkItemEndpoint() throws Exception {
         JsonNode openApi = json(mockMvc.perform(get("/v3/api-docs"))
             .andExpect(status().isOk())
             .andReturn());
@@ -727,7 +727,7 @@ class WorkItemLayoutConfigurationControllerIntegrationTests {
             "/api/project-spaces/{spaceId}/configuration/types/{typeId}/layout-workbench"
         ));
         assertFalse(openApi.path("paths").has("/api/work-items"));
-        assertEquals(0, jdbcTemplate.queryForObject(
+        assertEquals(1, jdbcTemplate.queryForObject(
             "select count(*) from information_schema.tables where table_schema='public' and table_name='project_work_items'",
             Integer.class
         ));

@@ -15,7 +15,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 
 @Testcontainers
 class WorkItemConfigurationMigrationMatrixIntegrationTests {
-    private static final String LATEST = "085";
+    private static final String LATEST = "090";
     private static final UUID WORKSPACE_ID =
         UUID.fromString("00000000-0000-0000-0000-000000000001");
     private static final UUID USER_ID =
@@ -38,8 +38,8 @@ class WorkItemConfigurationMigrationMatrixIntegrationTests {
     }
 
     @Test
-    void upgradesV001V061AndV065ToLatestRepeatably() {
-        for (String baseline : new String[]{"001", "061", "065"}) {
+    void upgradesV001V061V065AndV085ToLatestRepeatably() {
+        for (String baseline : new String[]{"001", "061", "065", "085"}) {
             cleanAndMigrateTo(baseline);
             Flyway latest = latest();
             assertTrue(latest.migrate().migrationsExecuted > 0);

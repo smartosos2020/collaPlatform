@@ -4,11 +4,14 @@ import com.colla.platform.modules.project.domain.WorkItemTypeModels.WorkItemType
 import com.colla.platform.modules.project.domain.WorkItemFieldModels.WorkItemFieldException;
 import com.colla.platform.modules.project.domain.WorkItemConfigurationModels.WorkItemConfigurationException;
 import com.colla.platform.modules.project.domain.WorkItemLayoutModels.WorkItemLayoutException;
+import com.colla.platform.modules.project.domain.WorkItemModels.WorkItemRuntimeException;
+import com.colla.platform.modules.project.application.WorkItemCompatibilityService.LegacyWriteClosedException;
 import com.colla.platform.shared.errors.ApiErrorResponse;
 import com.colla.platform.shared.errors.ApiErrorResponse.ApiError;
 import com.colla.platform.shared.request.RequestBoundaryContext;
 import java.util.Locale;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -24,7 +27,10 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
     WorkItemLayoutWorkbenchController.class,
     WorkItemLayoutAccessController.class,
     UserWorkItemTypeController.class,
-    AdminProjectSpaceController.class
+    AdminProjectSpaceController.class,
+    UserWorkItemController.class,
+    WorkItemCompatibilityController.class,
+    ProjectController.class
 })
 public class WorkItemTypeExceptionHandler {
     @ExceptionHandler(WorkItemTypeException.class)
@@ -50,6 +56,19 @@ public class WorkItemTypeExceptionHandler {
     public ResponseEntity<ApiErrorResponse> handleConfiguration(WorkItemConfigurationException exception) {
         String sourceCode = exception.code();
         return ResponseEntity.status(status(sourceCode)).body(response(apiCode(sourceCode), exception.getMessage()));
+    }
+
+    @ExceptionHandler(WorkItemRuntimeException.class)
+    public ResponseEntity<ApiErrorResponse> handleRuntime(WorkItemRuntimeException exception) {
+        String sourceCode = exception.code();
+        return ResponseEntity.status(status(sourceCode)).body(response(apiCode(sourceCode), exception.getMessage()));
+    }
+
+    @ExceptionHandler(LegacyWriteClosedException.class)
+    public ResponseEntity<ApiErrorResponse> handleLegacyWriteClosed(LegacyWriteClosedException exception) {
+        return ResponseEntity.status(HttpStatus.GONE)
+            .header(HttpHeaders.LOCATION, exception.canonicalLocation())
+            .body(response("legacy_write_closed", exception.getMessage()));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
@@ -110,7 +129,10 @@ public class WorkItemTypeExceptionHandler {
                  "INVALID_FIELD_ACCESS_CONTEXT", "LAYOUT_POLICY_LIMIT",
                  "INVALID_LAYOUT_VERSION", "INVALID_LAYOUT_GRAPH", "INVALID_LAYOUT_COMMAND",
                  "IMMUTABLE_LAYOUT_NODE_IDENTITY", "LAYOUT_COPY_FIELD_DUPLICATE",
-                 "INVALID_INPUT" -> HttpStatus.BAD_REQUEST;
+                 "INVALID_INPUT", "INVALID_WORK_ITEM_STATUS", "INVALID_WORK_ITEM_TITLE",
+                 "INVALID_FIELD_VALUES", "INVALID_FIELD_VALUE", "INVALID_FIELD_REFERENCE",
+                 "FIELD_VALIDATION_FAILED", "REQUIRED_FIELD_MISSING", "INVALID_QUERY_VALUE",
+                 "QUERY_CAPABILITY_UNAVAILABLE", "INVALID_PARTICIPANT_ROLE" -> HttpStatus.BAD_REQUEST;
             default -> HttpStatus.CONFLICT;
         };
     }

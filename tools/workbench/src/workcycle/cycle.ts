@@ -29,6 +29,13 @@ export interface WorkCycleOptions {
   force?: boolean
 }
 
+export function requiresTaskEvidence(
+  stage: WorkCycleOptions['stage'],
+  docMode: string,
+): boolean {
+  return stage === 'finish' && docMode !== 'archive-only'
+}
+
 const reportDir = join(repositoryRoot, '.local-reports')
 const contextPath = join(reportDir, 'work-cycle-current.json')
 
@@ -156,7 +163,7 @@ async function verify(options: WorkCycleOptions): Promise<void> {
   const hasSpecs = browserSpecs.length > 0
   const hasReason = Boolean(options.browserNotRequiredReason?.trim())
   assertFinishBrowserOptions(options, context.docMode)
-  if (options.stage === 'finish') {
+  if (requiresTaskEvidence(options.stage, context.docMode)) {
     const reportPath = context.requiredDocs.find((path) => path.startsWith('docs/90-reports/'))
     if (!reportPath) throw new Error('System evidence requires an execution report in requiredDocs')
     const report = readFileSync(join(repositoryRoot, reportPath), 'utf8')

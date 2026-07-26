@@ -252,6 +252,7 @@ public class ProjectService {
     private final TransactionalOutbox eventRepository;
     private final FileAccess fileAccess;
     private final AuditLog auditService;
+    private final WorkItemCompatibilityService workItemCompatibilityService;
 
     public ProjectService(
         ProjectRepository projectRepository,
@@ -260,7 +261,8 @@ public class ProjectService {
         PlatformObjectRegistry objectRegistry,
         TransactionalOutbox eventRepository,
         FileAccess fileAccess,
-        AuditLog auditService
+        AuditLog auditService,
+        WorkItemCompatibilityService workItemCompatibilityService
     ) {
         this.projectRepository = projectRepository;
         this.projectMessaging = projectMessaging;
@@ -269,6 +271,7 @@ public class ProjectService {
         this.eventRepository = eventRepository;
         this.fileAccess = fileAccess;
         this.auditService = auditService;
+        this.workItemCompatibilityService = workItemCompatibilityService;
     }
 
     public List<ProjectSummary> listProjects(CurrentUser currentUser) {
@@ -277,6 +280,7 @@ public class ProjectService {
 
     @Transactional
     public ProjectDetail createProject(CurrentUser currentUser, String projectKey, String name, String description, List<UUID> memberIds) {
+        workItemCompatibilityService.requireLegacyWorkspaceWrite(currentUser);
         String normalizedKey = normalizeProjectKey(projectKey, name);
         List<UUID> members = normalizeMembers(currentUser.id(), memberIds);
         UUID conversationId = projectMessaging.createProjectConversation(
@@ -333,6 +337,7 @@ public class ProjectService {
 
     @Transactional
     public ProjectDetail addProjectMembers(CurrentUser currentUser, UUID projectId, List<UUID> memberIds) {
+        workItemCompatibilityService.requireLegacyProjectWrite(currentUser, projectId);
         requireProjectEditor(currentUser, projectId);
         ProjectSummary project = projectRepository.findProjectById(currentUser.workspaceId(), projectId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Project not found"));
@@ -403,6 +408,7 @@ public class ProjectService {
         UUID assigneeId,
         LocalDate dueAt
     ) {
+        workItemCompatibilityService.requireLegacyProjectWrite(currentUser, projectId);
         requireProjectEditor(currentUser, projectId);
         if (assigneeId != null && !projectRepository.isProjectMember(currentUser.workspaceId(), projectId, assigneeId)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Assignee must be a project member");
@@ -460,6 +466,7 @@ public class ProjectService {
         UUID assigneeId,
         LocalDate dueAt
     ) {
+        workItemCompatibilityService.requireLegacyProjectWrite(currentUser, projectId);
         if (projectId == null || conversationId == null || messageId == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Project and source message are required");
         }
@@ -522,6 +529,7 @@ public class ProjectService {
         UUID assigneeId,
         LocalDate dueAt
     ) {
+        workItemCompatibilityService.requireLegacyIssueWrite(currentUser, issueId);
         IssueSummary before = requireIssueEditor(currentUser, issueId);
         if (assigneeId != null && !projectRepository.isProjectMember(currentUser.workspaceId(), before.projectId(), assigneeId)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Assignee must be a project member");
@@ -560,6 +568,7 @@ public class ProjectService {
         UUID targetIssueId,
         LocalDate dueAt
     ) {
+        workItemCompatibilityService.requireLegacyIssueWrite(currentUser, issueId);
         IssueSummary issue = requireIssueEditor(currentUser, issueId);
         WorkflowActionDefinition workflowAction = resolveWorkflowAction(issue, action, targetStatus);
         String normalizedReason = reason == null ? "" : reason.trim();
@@ -641,6 +650,7 @@ public class ProjectService {
 
     @Transactional
     public IssueDetail addComment(CurrentUser currentUser, UUID issueId, String content) {
+        workItemCompatibilityService.requireLegacyIssueWrite(currentUser, issueId);
         IssueSummary issue = requireIssueEditor(currentUser, issueId);
         if (content == null || content.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Comment content is required");
@@ -681,6 +691,7 @@ public class ProjectService {
 
     @Transactional
     public IssueDetail addAttachment(CurrentUser currentUser, UUID issueId, UUID fileId) {
+        workItemCompatibilityService.requireLegacyIssueWrite(currentUser, issueId);
         IssueSummary issue = requireIssueEditor(currentUser, issueId);
         var file = fileAccess.resolve(currentUser.workspaceId(), currentUser.id(), Set.of(fileId)).get(fileId);
         if (file == null || file.availability() != FileAccess.Availability.AVAILABLE) {
@@ -703,6 +714,7 @@ public class ProjectService {
         String reproductionSteps,
         String fixVersion
     ) {
+        workItemCompatibilityService.requireLegacyIssueWrite(currentUser, issueId);
         IssueSummary issue = requireIssueEditor(currentUser, issueId);
         if (!"bug".equals(issue.issueType())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Only bug issues can be verified");
@@ -764,6 +776,7 @@ public class ProjectService {
 
     @Transactional
     public IssueDetail addRelation(CurrentUser currentUser, UUID issueId, String targetType, UUID targetId) {
+        workItemCompatibilityService.requireLegacyIssueWrite(currentUser, issueId);
         IssueSummary issue = requireIssueEditor(currentUser, issueId);
         if (targetType == null || targetType.isBlank() || targetId == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Target object is required");

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "migrationRange": "V001-V084",
+  "migrationRange": "V001-V089",
   "defaultKind": "business",
   "owners": {
     "approval": ["approval_action_logs","approval_flow_nodes","approval_forms","approval_instances","approval_tasks"],
@@ -14,13 +14,13 @@
     "notification": ["notification_preferences","notifications"],
     "permission": ["permissions","resource_permission_requests","resource_permissions","role_assignments","role_permissions","roles","user_roles"],
     "platform": ["object_favorites","object_links","object_recent_accesses","object_type_rules"],
-    "project": ["issue_activity_logs","issue_attachments","issue_comments","issue_relations","issue_verification_logs","issues","iterations","project_legacy_space_maps","project_members","project_space_invitations","project_space_members","project_space_migration_batches","project_space_role_assignments","project_spaces","project_work_item_configuration_draft_commands","project_work_item_configuration_drafts","project_work_item_configuration_publication_commands","project_work_item_configuration_template_commands","project_work_item_configuration_template_installations","project_work_item_configuration_template_upgrade_history","project_work_item_configuration_template_versions","project_work_item_configuration_templates","project_work_item_field_access_policies","project_work_item_field_commands","project_work_item_field_definitions","project_work_item_field_options","project_work_item_layout_commands","project_work_item_layout_nodes","project_work_item_layouts","project_work_item_legacy_draft_diagnostics","project_work_item_type_commands","project_work_item_type_versions","project_work_item_types","projects"],
+    "project": ["issue_activity_logs","issue_attachments","issue_comments","issue_relations","issue_verification_logs","issues","iterations","project_legacy_space_maps","project_legacy_work_item_maps","project_members","project_space_invitations","project_space_members","project_space_migration_batches","project_space_role_assignments","project_spaces","project_work_item_activities","project_work_item_attachments","project_work_item_commands","project_work_item_comments","project_work_item_configuration_draft_commands","project_work_item_configuration_drafts","project_work_item_configuration_publication_commands","project_work_item_configuration_template_commands","project_work_item_configuration_template_installations","project_work_item_configuration_template_upgrade_history","project_work_item_configuration_template_versions","project_work_item_configuration_templates","project_work_item_counters","project_work_item_cutovers","project_work_item_field_access_policies","project_work_item_field_commands","project_work_item_field_definitions","project_work_item_field_options","project_work_item_field_projections","project_work_item_layout_commands","project_work_item_layout_nodes","project_work_item_layouts","project_work_item_legacy_draft_diagnostics","project_work_item_migration_batches","project_work_item_migration_failures","project_work_item_migration_manifests","project_work_item_migration_provenance","project_work_item_migration_units","project_work_item_migration_verifications","project_work_item_participants","project_work_item_shadow_samples","project_work_item_type_commands","project_work_item_type_versions","project_work_item_types","project_work_items","projects"],
     "search": ["search_index_entries","search_projection_versions"]
   },
   "specialTreatment": {
     "technical": ["audit_logs","domain_event_delivery_replays","domain_event_handler_deliveries","domain_event_handler_receipts","domain_events","realtime_signals","search_index_entries","search_projection_versions"],
-    "mapping": ["knowledge_content_migration_batches","knowledge_content_migration_items","project_legacy_space_maps","project_space_migration_batches"],
-    "history": ["approval_action_logs","base_record_activity_logs","issue_activity_logs","issue_verification_logs","knowledge_content_versions"],
+    "mapping": ["knowledge_content_migration_batches","knowledge_content_migration_items","project_legacy_space_maps","project_legacy_work_item_maps","project_space_migration_batches","project_work_item_migration_batches","project_work_item_migration_provenance","project_work_item_migration_units"],
+    "history": ["approval_action_logs","base_record_activity_logs","issue_activity_logs","issue_verification_logs","knowledge_content_versions","project_work_item_migration_failures","project_work_item_migration_manifests","project_work_item_migration_provenance","project_work_item_migration_verifications","project_work_item_shadow_samples"],
     "shared": [],
     "ownerless": [],
     "retired": []

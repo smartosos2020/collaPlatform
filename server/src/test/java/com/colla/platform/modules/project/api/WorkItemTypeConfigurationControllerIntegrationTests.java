@@ -782,8 +782,9 @@ class WorkItemTypeConfigurationControllerIntegrationTests {
             Integer.class
         ));
         assertEquals(0, jdbcTemplate.queryForObject(
-            "select count(*) from information_schema.tables where table_name='project_work_items'",
-            Integer.class
+            "select count(*) from project_work_items where space_id=?",
+            Integer.class,
+            spaceId
         ));
     }
 

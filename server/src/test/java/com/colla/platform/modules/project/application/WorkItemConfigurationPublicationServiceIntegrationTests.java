@@ -109,6 +109,28 @@ class WorkItemConfigurationPublicationServiceIntegrationTests {
         }
     }
 
+    @Test
+    void systemPresetCanPublishACompleteConfigurationWithoutLosingIdentityProtection() throws Exception {
+        Fixture fixture = fixture("system-preset", true);
+
+        var published = service.publish(
+            fixture.user(),
+            fixture.spaceId(),
+            fixture.typeId(),
+            0,
+            true,
+            "system-preset-" + UUID.randomUUID()
+        );
+
+        assertEquals(2, published.version().versionNumber());
+        assertEquals(published.version().id(), currentVersion(fixture));
+        assertTrue(jdbcTemplate.queryForObject(
+            "select is_system from project_work_item_types where id=?",
+            Boolean.class,
+            fixture.typeId()
+        ));
+    }
+
     private Object publishAfterBarrier(
         Fixture fixture,
         CountDownLatch ready,
@@ -132,6 +154,10 @@ class WorkItemConfigurationPublicationServiceIntegrationTests {
     }
 
     private Fixture fixture(String label) throws Exception {
+        return fixture(label, false);
+    }
+
+    private Fixture fixture(String label, boolean system) throws Exception {
         UUID userId = UUID.randomUUID();
         UUID spaceId = UUID.randomUUID();
         UUID memberId = UUID.randomUUID();
@@ -216,11 +242,12 @@ class WorkItemConfigurationPublicationServiceIntegrationTests {
                         id, workspace_id, space_id, type_key, name, icon, description,
                         sort_order, status, is_system, current_version_id, created_by,
                         created_at, updated_by, updated_at, aggregate_version
-                    ) values (?, ?, ?, 'task', 'Task', '', '', 0, 'active', false, ?, ?, now(), ?, now(), 0)
-                    """,
+                ) values (?, ?, ?, 'task', 'Task', '', '', 0, 'active', ?, ?, ?, now(), ?, now(), 0)
+                """,
                 typeId,
                 WORKSPACE_ID,
                 spaceId,
+                system,
                 versionId,
                 userId,
                 userId

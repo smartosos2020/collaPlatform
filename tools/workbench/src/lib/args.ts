@@ -16,7 +16,9 @@ export function parseCliArgs(values: string[]): { positionals: string[]; options
       positionals.push(value)
       continue
     }
-    const [rawName, inlineValue] = value.split('=', 2)
+    const separator = value.indexOf('=')
+    const rawName = separator < 0 ? value : value.slice(0, separator)
+    const inlineValue = separator < 0 ? undefined : value.slice(separator + 1)
     const name = optionName(rawName)
     const next = values[index + 1]
     const parsedValue = inlineValue ?? (next && !next.startsWith('-') ? values[++index] : true)

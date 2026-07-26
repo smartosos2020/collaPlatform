@@ -2,7 +2,7 @@
 title: 项目协作平台长期专项规划
 status: active
 program: PROJECT-PLATFORM
-revision: 20
+revision: 22
 updated_at: 2026-07-26
 planning_mode: rolling
 current_stage: none
@@ -18,7 +18,7 @@ target_architecture_doc: docs/01-architecture/project-platform-target-architectu
 
 规划采用滚动维护：当前 Stage 细化到 Task，下一 Stage 细化到 Milestone，后续 Stage 只冻结目标、依赖和退出证据。新调研、技术验证、代码事实或真实用户反馈可以修改未来规划，但不得静默改写已完成 Stage 的历史结论，也不得在没有变更记录的情况下改变正在执行 Stage 的目标。
 
-`PROJECT-PLATFORM-S06` 已完成，当前没有活动 Stage。S06 已建立唯一可变 `ConfigurationDraft`、自包含不可变发布快照、原子发布、差异/回滚、模板 lineage、兼容矩阵和冻结 snapshot adapter；S07 已通过准入评审但保持 Planned，必须经独立路线激活后才能创建规范工作项实例或迁移 legacy 数据。`PLATFORM-SCALE-S01-S04` 已建立模块边界门禁、公共合同、双 API、可靠双 Worker、双 Event Gateway、统一客户端校准和唯一知识协同协议；`PLATFORM-SCALE-S05-M1` 只建立容量验证环境、确定性种子和四类加载器，M2-M5 继续 Deferred，不构成生产容量或基础设施 HA 承诺。
+`PROJECT-PLATFORM-S07` 已完成统一规范 WorkItem 运行时、动态值与活动账本、legacy 显式映射、可恢复迁移和第一条用户侧完整竖切；当前没有活动 Stage。`PROJECT-PLATFORM-S08` 已满足规范实例身份、不可变版本绑定、命令与活动合同等工程准入，但保持 Planned，必须在独立归档/激活动作后才成为当前执行路线。`PLATFORM-SCALE-S01-S04` 已建立模块边界门禁、公共合同、双 API、可靠双 Worker、双 Event Gateway、统一客户端校准和唯一知识协同协议；`PLATFORM-SCALE-S05-M1` 只建立容量验证环境、确定性种子和四类加载器，M2-M5 继续 Deferred，不构成生产容量或基础设施 HA 承诺。
 
 ## 2. 专项目标
 
@@ -71,7 +71,7 @@ target_architecture_doc: docs/01-architecture/project-platform-target-architectu
 | PROJECT-PLATFORM-S04 | 动态字段、选项和校验规则 | S03 | Completed | 字段类型注册、定义、选项、默认值、结构化规则、复杂类型、配置 UI、六身份验收与 S05/S06 准入已交付 |
 | PROJECT-PLATFORM-S05 | 表单、详情页布局和字段权限 | S04；PLATFORM-SCALE-S01-S04 | Completed | create/detail 布局图、稳定节点、条件显示、字段访问策略、六身份投影、配置预览、迁移复验和 route-final 已交付 |
 | PROJECT-PLATFORM-S06 | 配置草稿、发布、版本和模板复用 | S03-S05 | Completed | 唯一草稿、不可变发布、diff/回滚、模板 lineage、兼容矩阵与 snapshot adapter 已交付 |
-| PROJECT-PLATFORM-S07 | 统一工作项运行时与第一阶段迁移 | S03-S06 | Planned | 规范实例 API、旧项目读取适配和迁移校验 |
+| PROJECT-PLATFORM-S07 | 统一工作项运行时与第一阶段迁移 | S03-S06 | Completed | 规范实例 API、动态值与活动账本、显式 legacy 映射、可恢复迁移、用户侧完整竖切和 route-final 已交付 |
 | PROJECT-PLATFORM-S08 | 轻量状态流定义与运行时 | S06-S07 | Planned | 状态、动作、守卫、回退、终止和历史 |
 | PROJECT-PLATFORM-S09 | 节点流定义与运行时 | S06-S08 | Planned | 串并行、分支汇聚、会签、交付物和节点任务 |
 | PROJECT-PLATFORM-S10 | 工作项关系、层级和依赖 | S07-S09 | Planned | 普通/父子/依赖关系、层级树和关系一致性 |
@@ -338,6 +338,8 @@ S02 固定输入见目标架构 17：落 `project_spaces`、成员、角色分�
 | 18 | 2026-07-26 | S05 五个 Milestone、57 个 Task 完成；补齐 V078 不可变命令响应回执、V065/空库升级复验、隐藏字段零泄漏、120 字段/2400 选项配置预算、六身份真实隔离浏览器和 S06/S07 准入合同 | M5 审计发现历史回执不能精确重放、样本隐藏值仍参与条件、迁移/规模/键盘/离线证据不完整，均按阻断修复并重新验证；S05 仍只交付配置，不冒充发布版本、实例或容量承诺 | S05 Completed；`current_stage` 置 none；Go S06 但保持 Planned，必须先归档 S05 并生成独立 S06 当前路线 |
 | 19 | 2026-07-26 | 归档 S05 完成路线并激活 S06；将草稿/校验、不可变发布/diff/回滚、模板 lineage/三方合并、兼容矩阵/route-final 细化为 4 个 Milestone、48 个 Task | S06 同时改变配置权威、发布事务、版本不可变性和模板来源，必须先消除 live 配置与 draft 双权威，再允许 S07 只消费 published snapshot | S06 Active；当前执行入口切换为 PROJECT-PLATFORM-S06-M1；S07 保持 Planned |
 | 20 | 2026-07-26 | S06 四个 Milestone、48 个 Task 完成；冻结兼容矩阵与 PublishedSnapshotAdapter，完成 V001/V061/V065/V078 至 V085、规模、安全和统一真实浏览器 route-final | S07 运行实例必须只解释显式绑定的不可变 snapshot；未来 schema、legacy partial、live 配置回读和跨空间枚举均需在进入实例阶段前失败关闭 | S06 Completed；`current_stage` 置 none；Go S07 但保持 Planned，需独立归档/激活流程 |
+| 21 | 2026-07-26 | 归档 S06 完成路线并激活 S07；将规范 WorkItem、动态值/参与者/活动、legacy resolver/切流、迁移恢复和用户侧竖切细化为 5 个 Milestone、60 个 Task | S07 同时建立新实例权威并迁移仍在使用的 legacy 事实，必须把 snapshot 绑定、禁止双写、不可变 manifest、独立校验和真实用户闭环拆开验收 | S07 Active；当前执行入口切换为 PROJECT-PLATFORM-S07-M1；S08 保持 Planned |
+| 22 | 2026-07-26 | S07 五个 Milestone、60 个 Task 完成；交付规范 WorkItem、动态值/参与者/活动、公共解析器、显式 legacy map、可恢复迁移、用户侧完整竖切、V090 系统预置发布修复和 route-final | 真实 PostgreSQL/Flyway、多身份浏览器、MinIO 附件、冲突/离线、迁移 verify/rollback 和完整门禁证明 S07 范围闭环；生产切流仍需目标环境备份、观测窗口、容量和批准 | S07 Completed；`current_stage` 置 none；S08 工程准入满足但保持 Planned，等待独立归档/激活 |
 
 ## 10. 主要产品参考
 

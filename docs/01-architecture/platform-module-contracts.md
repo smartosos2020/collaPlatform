@@ -108,7 +108,7 @@ contract 只允许 JDK 类型、同 contract 包类型或另一个经过批准�
 
 ## 6. Table Owner
 
-V001-V082 当前 98 张有效表在 `platform-table-owners.json` 中恰好归属一个 owner。规则如下：
+V001-V089 当前 120 张有效表在 `platform-table-owners.json` 中恰好归属一个 owner。规则如下：
 
 - `foreignWrite = forbidden`：foreign write 没有例外通道。
 - foreign read 必须匹配精确文件、精确表、read 模式和有效退出 Stage。
@@ -211,6 +211,17 @@ M2 不实现 Worker lease、dead-letter、replay、handler registry 或独立进
 - 发送具有幂等键的系统消息。
 
 撤回时间通过最小 `MessageSnapshot` 返回；project 不读取 `messages`、`conversation_members` 或 `ImRepository`。项目创建时 IM 会话是同步必要步骤；活动广播是 best-effort 或异步，不得回滚已提交项目事实。消息转事项先通过可见消息 query 验证，再只在 project owner 表记录来源引用。
+
+### 14.1 Project WorkItem 运行时公共合同
+
+- `project.contract.WorkItemChangedEvent` 是规范工作项对搜索、通知和协作消费者开放的唯一增量事件载荷，固定 `eventType=work_item.changed`、`eventVersion=1` 和 `aggregateType=work_item`。
+- 载荷只含 space/type definition/type version/config hash、work item version、status 和 mutation；不得增加标题、字段值、参与者、访问策略或命令回执。
+- `project_work_item_field_projections`、`project_work_item_participants`、`project_work_item_activities` 均是 project 私表。其他模块不得直接读取；消费者需要详情时必须经平台对象 resolver 或用户 API 重新鉴权。
+- 字段投影是 `project_work_items.field_values` 的可重建派生数据，不是共享查询库。跨模块不得把投影延迟或缺失解释成工作项不存在。
+- 规范对象类型始终是 `work_item`；`issue`/`project` 仅是有限 legacy alias。跨模块消费者只能调用 `PlatformObjectRegistry`、resolver 或规范用户 API，不得读取 legacy map、cutover、manifest、failure 或 shadow 私表。
+- 旧链接先授权再查显式 map；map、cutover stage、冲突原因和 shadow 差异均不是可枚举业务信息。旧写关闭返回稳定 `legacy_write_closed` 与 canonical `Location`，不建立双写，也不允许 kill switch 恢复 legacy 写。
+- 用户协作命令固定从 `/api/project-spaces/{spaceId}/work-items` 进入；管理端 `/api/admin/project-migrations` 只拥有迁移 plan/execute/verify/rollback 与审计，不因企业管理员身份自动获得空间内容读取。
+- 管理迁移 plan 可选显式 `projectIds` 作为批次范围；未提供时为 workspace 全量。范围过滤只影响冻结 manifest，不改变 workspace 授权、published snapshot 前置条件或失败关闭语义。
 
 ## 15. 非目标
 

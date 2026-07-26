@@ -29,6 +29,7 @@ public interface FileAccess {
         UUID fileId,
         UUID workspaceId,
         FileState state,
+        String originalName,
         long size,
         String mimeType
     ) {

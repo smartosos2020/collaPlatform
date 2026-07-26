@@ -330,8 +330,9 @@ class WorkItemFieldConfigurationControllerIntegrationTests {
         assertTrue(openApi.path("paths").has("/api/project-spaces/{spaceId}/configuration/types/{typeId}/fields/{fieldId}:retire"));
         assertFalse(openApi.path("paths").has("/api/work-items"));
         assertEquals(0, jdbcTemplate.queryForObject(
-            "select count(*) from information_schema.tables where table_name='project_work_items'",
-            Integer.class
+            "select count(*) from project_work_items where space_id=?",
+            Integer.class,
+            spaceId
         ));
     }
 

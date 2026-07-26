@@ -72,6 +72,7 @@ const NotificationsPage = lazyRoute(
 )
 const ProjectsPage = lazyRoute(() => import('../modules/projects/pages/ProjectsPage'), 'ProjectsPage')
 const ProjectSpacesPage = lazyRoute(() => import('../modules/projectSpaces/pages/ProjectSpacesPage'), 'ProjectSpacesPage')
+const LegacyIssueRoute = lazyRoute(() => import('./LegacyIssueRoute'), 'LegacyIssueRoute')
 const SearchPage = lazyRoute(() => import('../modules/search/pages/SearchPage'), 'SearchPage')
 const UserSettingsPage = lazyRoute(() => import('../modules/auth/pages/UserSettingsPage'), 'UserSettingsPage')
 const AppErrorPage = lazyRoute(() => import('../shared/components/AppErrorPage'), 'AppErrorPage')
@@ -138,9 +139,11 @@ export const router = createBrowserRouter([
           { path: 'messages', element: <Navigate to="/im" replace /> },
           { path: 'projects', element: routeElement(<ProjectsPage />) },
           { path: 'projects/:projectId', element: routeElement(<ProjectsPage />) },
-          { path: 'issues/:issueId', element: routeElement(<ProjectsPage />) },
+          { path: 'issues/:issueId', element: routeElement(<LegacyIssueRoute />) },
           { path: 'project-spaces', element: routeElement(<ProjectSpacesPage />) },
           { path: 'project-spaces/:spaceId', element: routeElement(<ProjectSpacesPage />) },
+          { path: 'project-spaces/:spaceId/work-items', element: routeElement(<ProjectSpacesPage />) },
+          { path: 'project-spaces/:spaceId/work-items/:workItemId', element: routeElement(<ProjectSpacesPage />) },
           { path: 'project-spaces/:spaceId/members', element: routeElement(<ProjectSpacesPage />) },
           { path: 'project-spaces/:spaceId/settings', element: routeElement(<ProjectSpacesPage />) },
           { path: 'project-spaces/:spaceId/types', element: routeElement(<ProjectSpacesPage />) },

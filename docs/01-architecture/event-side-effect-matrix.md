@@ -2,7 +2,7 @@
 title: 事件副作用与 Handler 矩阵
 status: current
 updated_at: 2026-07-26
-stage: PROJECT-PLATFORM-S06
+stage: none
 ---
 
 # 事件副作用与 Handler 矩阵
@@ -46,12 +46,21 @@ Search 事件不携带 ACL 快照或供无权消费者直接展示的标题。�
 | 项目、成员和状态变化 | project owner 表 + `project.changed` | `project.changed` 或撤权时 `project.invalidated` | current project members + affected user | project object sequence | project id；`GET /api/projects/{id}` | 已移除 |
 | 工作项和评论变化 | issue owner 表 + `issue.changed` | `issue.changed` 或撤权时 `issue.invalidated` | current project members + affected user | issue object sequence | issue id；`GET /api/issues/{id}` | 已移除 |
 | 项目空间与成员变化 | project-space owner 表 + `project_space.changed` | `project_space.changed` 或撤权时 `project_space.invalidated` | current space members + affected user | project-space object sequence | space id；`GET /api/project-spaces/{id}` | 已移除 |
+| 规范工作项创建、更新、参与者、归档与恢复 | `project_work_items`、字段投影/参与者/活动 + `work_item.changed` | M2 当前不生成 realtime signal | N/A | work item version；命令 request id 参与 outbox 去重；活动按实例独立序号 | work item/space/type/version id；`GET /api/project-spaces/{spaceId}/work-items/{id}` | 从未直接发送 |
+| 工作项兼容读取与 shadow compare | 只读 legacy/canonical + `project_work_item_shadow_samples` | 不发送 realtime | N/A | source identity + sampledAt/id；只记录 hash/outcome/latency | 旧链接经公共 resolver 返回 canonical location；无业务 payload | 从未直接发送 |
+| 工作项 cutover/kill switch | `project_work_item_cutovers` + `work_item.cutover.changed` 审计 | 不发送 realtime | N/A | scope version 乐观并发；workspace/space 唯一 | 管理 API 返回 stage、write/kill switch、version；不返回对象内容 | 从未直接发送 |
 | 角色、角色分配、资源授权变化 | permission owner 表 + `permission.security.changed` | `permission.invalidated` | workspace | changed permission object sequence | role/assignment id，或授权资源的 type/id；payload 指定 `/api/admin/...` 或 `/api/resource-permissions/...` | 已移除 |
 | 成员状态、部门和用户组变化 | identity owner 表 + `identity.security.changed` | `identity.invalidated` | workspace | changed identity object sequence | user/department/group id；payload 指定 `/api/admin/...` | 已移除 |
 | 工作项配置发布 | `project_work_item_type_versions` + `work_item_configuration.published` | 当前不生成 realtime signal | N/A | published version id；类型行锁内单调 version number | version/type/space id；`GET /api/project-spaces/{spaceId}/work-item-types/{typeId}/configuration/versions` | 从未直接发送 |
 | 工作项配置模板创建/安装/升级/解绑 | `project_work_item_configuration_templates`、installation/upgrade history + `work_item_configuration.template_*` | 当前不生成 realtime signal | N/A | template/installation id；命令回执与 aggregate version | template/type/space id、来源版本/hash 与冲突摘要；配置模板 API | 从未直接发送 |
 
-配置发布事件与不可变版本、current pointer、草稿关闭、审计和 publication receipt 同事务提交。payload 只包含 request、space/type/version、schema/hash/source draft 与 breaking 摘要，不复制完整 snapshot、隐藏字段或访问策略正文。S06 不为该事件注册运行时实例 Handler；S07 adapter 和迁移计划另行准入。
+配置发布事件与不可变版本、current pointer、草稿关闭、审计和 publication receipt 同事务提交。payload 只包含 request、space/type/version、schema/hash/source draft 与 breaking 摘要，不复制完整 snapshot、隐藏字段或访问策略正文。
+
+S07-M2 的 `project.contract.WorkItemChangedEvent` 与实例、类型化投影、参与者命令、活动、命令回执、平台链接和审计在对应命令事务中同成同败。payload 只包含 space/type definition/type version/config hash、实例 version、status 和 mutation，不包含标题、动态字段值、参与者列表、访问策略或隐藏字段。当前未注册搜索、通知或 realtime Handler；后续消费者只能依赖该公共最小合同并经 resolver/API 校准，不能跨模块读取命令回执、投影或活动私表。
+
+S07-M3 的 shadow compare 是观测副作用，不是业务双写：主读结果先按调用身份授权，后台只比较安全指纹并追加 outcome/latency。cutover 变更写审计但不伪造工作项领域事件；旧写关闭不会因 kill switch 自动恢复。
+
+S07-M4 的迁移在单个 legacy project 单元事务中创建规范 WorkItem、平台对象链接、参与者、评论、附件、活动和来源 provenance；任一写失败时该单元全部回滚。迁移不伪造用户命令 receipt，也不对每条历史事实重发 `work_item.changed`，避免下游把历史导入误判为在线变更。plan、pause、execute、verify、convergence、rollback 和 post-cutover compensation-required 均写治理审计；审计只含 batch、计数、状态和稳定错误码，不复制 manifest 业务正文。
 
 workspace audience 只表示“该 workspace 的已连接客户端需要丢弃相关缓存并重新鉴权”，不携带
 角色、成员、ACL、标题或正文。被撤权用户也只能收到对象定位和失效提示，不能从 signal 恢复已
@@ -83,6 +92,13 @@ workspace audience 只表示“该 workspace 的已连接客户端需要丢弃�
   使用 v1 envelope，且关闭 legacy 不影响 IM、通知、项目、权限或身份校准。
 - 架构门禁禁止业务模块依赖 `WebSocketMessageSender`/
   `WebSocketSessionRegistry`。兼容实现只允许存在于 shared transport 边界。
+
+## S07 WorkItem 事件边界
+
+- 规范实例创建、字段更新、参与者变化、归档和恢复在业务事务内追加 `work_item.changed` v1；载荷只含 canonical identity、空间/类型/绑定版本、实例版本、状态和 mutation，不复制字段值、评论、附件或访问策略。
+- 评论与附件属于 WorkItem 聚合的用户协作子资源；其可见内容通过用户 API 重新鉴权，事件和 outbox 只携带最小对象引用。
+- legacy 解析、shadow compare、迁移 plan/verify/rollback 是治理事实，不伪装成用户业务事件。迁移成功后的 canonical 对象仍使用唯一 `work_item` identity。
+- hidden 字段不进入事件、活动差异、搜索、错误或浏览器投影；消费者不得读取 project 私表补全事件。
 
 ### 5.1 客户端消费与校准
 

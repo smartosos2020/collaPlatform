@@ -164,6 +164,11 @@ S01-M2 已接受 `platform-module-contracts.md`，并以 `platform-modules.json`
 | V080 | 建立完整配置草稿、草稿命令回执与 legacy 草稿诊断底座，并以不可变触发器保护终态草稿和回执 |
 | V081 | 退役 `project_work_item_type_versions` 的 legacy `draft` 状态，只保留不可变 published/superseded 历史版本 |
 | V082 | 扩展完整配置版本 lineage，新增原子发布命令回执并强化 published version、draft identity 和已完成回执不可变保护 |
+| V083-V085 | 建立配置模板版本、安装/升级历史并完成空间配置清理闭包 |
+| V086 | 建立规范工作项、类型计数器和持久命令回执 |
+| V087 | 建立类型化字段投影、参与者与不可变活动账本 |
+| V088 | 建立事项迁移 batch/unit/manifest/failure、显式 legacy map、cutover 与 shadow compare 控制面 |
+| V089 | 完成迁移 plan/lease/fencing、规范评论/附件、来源 provenance、独立 verification 与不可变迁移历史 |
 
 数据库规则：
 
@@ -267,8 +272,8 @@ PLATFORM-SCALE-S01 把模块边界从文档约定升级为机器门禁。2026-07
 
 - 15 个后端模块、326 个 Java 文件、225 条后端跨模块 import。
 - 前端有 64 条跨 feature import。
-- V001-V082 形成 98 张当前有效表，每张表有唯一 owner；跨 owner SQL 候选由精确例外治理，foreign write 仍为禁止项。
-- 22 个公开 contract 文件受合同门禁约束；`pnpm architecture:contracts` 同时检查模块、table owner、例外和公共合同来源。
+- V001-V089 形成 120 张当前有效表，每张表有唯一 owner；跨 owner SQL 候选由精确例外治理，foreign write 仍为禁止项。
+- 23 个公开 contract 文件受合同门禁约束；`pnpm architecture:contracts` 同时检查模块、table owner、例外和公共合同来源。
 - S02 收口复核确认 93 条只读例外不属于运行隔离交付范围，退出 Stage 已重新批准为 PLATFORM-SCALE-S05，其中 project 9 条；因 S05-M2-M5 Deferred，例外清理尚未完成，现有精确条目仍不能扩张，修改相关文件时只能保持或减少。
 
 以上数字来自当前 inventory/config，而不是沿用 S03 历史快照。S02 已实现双 API 和独立运行角色，S03 已交付 Worker 多实例 lease、逐 Handler 可靠消费和恢复门槛，S04 已交付双 Event Gateway fanout、业务信号迁移、前端重连校准、旧 Spring 协同退出和双 Hocuspocus 节点恢复。基础设施集群高可用与正式容量承诺仍未交付；PLATFORM-SCALE-S05 的 M2-M5 已 Deferred。PROJECT-PLATFORM-S05 已完成并给出 Go S06，当前等待路线归档与 S06 激活。
@@ -314,8 +319,22 @@ PROJECT-PLATFORM-S01 于 2026-07-18 完成项目模块当前事实审计、目�
 - S05-M5 已完成 V065 存量升级到 V079、空库迁移、幂等回执、权限最小披露、复杂布局、浏览器身份矩阵和文档准入的最终收口；V079 同时稳定 BUG 验证历史的最新优先顺序。M1-M4 的布局与字段访问能力已经完整复验，Stage 可归档并进入 S06。
 - S06 已交付唯一 active 配置草稿、完整规范快照、校验/hash、原子发布、不可变版本、版本历史、语义 diff、rollback-as-new-version、模板 lineage/三方合并和兼容分析。S04 字段与 S05 布局/策略 live 表只作为配置编排输入；发布物是自包含 snapshot，历史版本不回查 live 表。
 - `PublishedSnapshotReader` 与 `PublishedSnapshotAdapter` 已冻结：只读取精确 schema v1、完整且 hash 一致的 published/superseded snapshot；legacy partial、未来 schema 和完整性失败均拒绝。runtime 对 active draft、live 字段/选项/布局/策略及模板服务的依赖由架构测试禁止。
-- 当前仍没有 `project_work_items` 表、工作项实例 API、动态字段值或运行时流程。S07 必须显式绑定 `type_version_id + config_hash` 并经 adapter 消费 snapshot，不得读取 active draft 或 S04/S05 live repositories。
-- S04 的规模事实仅覆盖字段配置目录：真实 PostgreSQL 中 120 个字段、2400 个选项的 API 查询预算为 3 秒，并校验复合索引计划。10 万工作项、动态字段过滤和并发查询尚无运行时承载，归入 S07/S13，不作为当前性能事实。
+- S07-M1 已由 V086 建立 `project_work_items`、按空间/类型锁定的展示编号计数器和持久命令回执。每个实例显式保存 workspace、space、type definition、不可变 type version 与 config hash；复合外键、唯一编号/展示 key、乐观版本和清理闭包由数据库约束保护。
+- 用户协作实例 API 位于 `/api/project-spaces/{spaceId}/work-items`，支持创建、列表、详情、基础字段更新、归档和恢复。创建事务锁定类型当前版本，只经 `PublishedSnapshotAdapter` 解释完整 schema v1 快照；默认值、required/write/hidden 和详情最小披露均由绑定版本计算，ArchUnit 阻止实例命令或投影读取 active draft/live 配置。
+- 实例命令将规范实例、精确响应回执、平台对象链接、审计和 `work_item.changed` outbox 放在同一事务。相同 request id/载荷精确重放，异载荷复用、陈旧 expected version 和跨空间组合 ID 稳定拒绝；enterprise admin 不因治理角色自动获得空间内容访问。
+- S07-M2 已由 V087 建立 `project_work_item_field_projections`、`project_work_item_participants` 和不可变 `project_work_item_activities`。`project_work_items.field_values` 仍是动态值唯一权威；创建、更新时 snapshot codec 先规范 11 类注册值，再在同一事务替换可重建投影。unset 与显式 null 均表示删除，数组按集合去重排序，number/date/datetime/URL 采用稳定编码；未注册的 interval/computed 显式拒绝。
+- 动态查询只接受绑定 snapshot 发布的字段能力和受控 `eq` SQL 模板，按 config hash 隔离不同版本语义。类型化列承担 text/number/boolean/date/timestamp，集合/引用使用 canonical hash；不允许调用方提供列名、SQL 或未发布操作符。投影漂移可从权威 JSONB 重建，重建不会修改实例版本或活动历史。
+- 工作项创建者自动成为 owner。参与者角色限定 owner/assignee/collaborator/watcher；变更复用实例乐观版本、持久回执和用户 active 校验，最后一个 owner/assignee 不可移除。活动按实例单调序号追加且数据库禁止更新/删除；公共 payload 只含版本、状态或参与者定位，不保存动态字段前后值，因此 hidden 值不会进入活动、审计或事件。
+- S07-M2 的用户 API 增加参与者、活动和受控字段查询；`work_item.changed` 已提升为 `project.contract.WorkItemChangedEvent` 公共合同，搜索/通知/协作只能消费最小定位事件并经 resolver/API 校准，不能读取 project 私表。本里程碑不提前实现这些模块的产品投影或 realtime handler。
+- S07-M3 已由 V088 建立事项级 migration batch/unit、append-only manifest/failure、显式 `project_legacy_work_item_maps`、workspace/space cutover 和 shadow sample。UUID 可复用时仍写 map；占用时由确定性 resolver 生成新 ID 并记录 `uuid_conflict_remapped`，禁止靠 UUID 相同猜映射。
+- `WorkItemCompatibilityService` 在授权后按 legacy/shadow/canonical-read/canonical-write/complete 路由读取。未迁移对象仅由只读 legacy adapter 投影规范 DTO，不创建规范事实或伪造 snapshot；canonical 阶段缺 map 稳定失败，kill switch 只把读取切回 legacy，不恢复已关闭的旧写。
+- 旧 `issue` 平台对象 resolver 在 map 有效时返回规范 work item location/deep link；跨模块消费者继续只经平台公共 resolver/API 使用映射，不获得迁移私表读取权。shadow compare 只写 hash、结果与延迟，不写标题、字段值或授权细节。
+- legacy 项目/事项写入口由同一兼容服务检查 cutover。旧写关闭后返回 `410 legacy_write_closed` 和 `Location`；不双写，回退也不允许 legacy 覆盖 canonical 新事实。M3 只冻结和实施读取/切流控制，真实分批数据搬运、verify/resume/rollback 属于 M4，用户完整竖切属于 M5。
+- S07-M4 已由 V089 与 `WorkItemMigrationService` 落地真实分批搬运。plan 在单一 `REPEATABLE_READ` 快照中冻结 project 单元 manifest、目标 published snapshot binding、source/plan fingerprint 与预检清单；dry-run 只写迁移控制事实，不写 WorkItem、map 或平台对象。
+- 每个 legacy project 是一个独立 `REQUIRES_NEW` 单元，覆盖 project/issue、成员/参与者、评论、附件、活动与 provenance。执行使用批次 lease、token、递增 fencing、heartbeat、限速、暂停和同批次 resume；失败单元完整回滚，兄弟单元继续，failure/provenance/verification 只追加。
+- batch verification 固定针对原 manifest；workspace convergence verification 独立追加，不改写历史结论。pre-cutover rollback 删除本批次规范目标、链接和有效 map，但保留 rolled-back map、provenance、failure、manifest、verification 与审计；canonical-write 后拒绝删除并启用 kill switch，要求显式补偿。
+- 企业治理 API 与跨平台 Node CLI 提供 plan/execute/pause/status/failure download/verify/convergence/rollback。入口只接受 `project.manage` 或 enterprise admin，workspace 复合边界隐藏外部批次；生产 cutover 仍需要目标环境备份恢复、观测、操作批准和独立变更窗口。
+- 当前运行时查询预算只覆盖真实 PostgreSQL 中 251 个实例、单个 text `eq` 条件、limit 50，并证明命中 `idx_project_work_item_field_projection_text`。它不代表 10 万实例、组合 filter/group、复杂视图或生产容量；这些高级能力仍归 S13 和后续真实容量验证。
 - 成员治理以 `project_spaces` 行级悲观锁串行化同空间变更；成员唯一约束、活动角色唯一索引和邀请 pending 唯一索引承担最终数据库防线。直接加入、角色变化、移除、owner 转移和邀请状态变化均支持重复请求收敛。
 - 邀请 token 使用 32 字节安全随机输入并只持久化 SHA-256 哈希；API/通知/审计只传 invitation ID。邀请过期使用独立事务持久化，避免业务 409 回滚过期状态。
 - 身份模块停用用户前检查唯一 owner；离职流程通过显式 handover 在空间锁内转移唯一 owner，再停用原成员。企业操作人不被自动加入目标空间。
@@ -328,9 +347,9 @@ PROJECT-PLATFORM-S01 于 2026-07-18 完成项目模块当前事实审计、目�
 - 前端提供项目列表、事项看板/表格/抽屉和固定流程动作；项目成员、iteration、项目生命周期、附件上传及保存视图没有完整用户路径。
 - 本地数据有 33 个项目、34 条项目成员关系、2 个事项和 0 个 iteration；未发现孤儿关系，但有 31 条项目成员未出现在对应项目群中的同步漂移。
 
-以上是当前实现边界；动态字段的复杂类型配置与 UI、完整配置发布、统一 WorkItem 实例、流程版本、统一权限解释和可配置视图仍是目标架构能力，不得写成已交付。
+S07-M5 已完成用户侧规范 WorkItem 竖切：类型入口、列表、创建、详情、绑定 snapshot 动态值、参与者、活动、评论、真实附件上传/下载以及归档/恢复均走 `/api/project-spaces/{spaceId}/work-items`；旧 issue 路由只通过显式 map 解析或重定向，不恢复 legacy 写。隔离 route-final 已覆盖六身份、PostgreSQL/Redis/MinIO、离线、409 冲突、1366/820 视口、迁移 verify 和 pre-cutover rollback。流程版本和高级可配置视图仍是后续目标架构能力；隔离环境迁移演练不等于生产切流批准。
 
-S01 已确定未来使用 ProjectSpace + versioned WorkItemType + WorkItem、规范 JSONB + capability typed projection、显式 legacy ID map、canonical-only write cutover 和状态/节点双运行时。S02 已落地空间模型、API、成员治理、双 UI 和 legacy project -> space/member 映射执行与兼容入口；S03 已落地 versioned WorkItemType 定义底座。project/issue 迁移与旧写关闭属于 S07，不能因为类型配置上线而提前改变 legacy 写事实。
+S01 已确定 ProjectSpace + versioned WorkItemType + WorkItem、规范 JSONB + capability typed projection、显式 legacy ID map、canonical-only write cutover 和状态/节点双运行时。S02-S06 已落地空间、类型、字段、布局/字段权限和不可变发布配置；S07 已落地规范 WorkItem、兼容 resolver、受控切流边界和可恢复第一阶段迁移。生产 canonical write cutover 仍需目标环境画像、备份恢复、观测窗口、容量证据和批准，不能由本地 rehearsal 自动授权。
 
 ## 当前架构 Gap
 

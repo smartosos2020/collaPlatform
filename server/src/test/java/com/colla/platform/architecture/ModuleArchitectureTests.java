@@ -83,4 +83,21 @@ class ModuleArchitectureTests {
                     + "WorkItemTypePresetCatalog)"
             )
             .because("runtime configuration must be derived from the bound immutable snapshot");
+
+    @ArchTest
+    static final ArchRule WORK_ITEM_RUNTIME_MUST_NOT_READ_LIVE_OR_DRAFT_CONFIGURATION =
+        noClasses()
+            .that().haveSimpleNameStartingWith("WorkItemRuntime")
+            .or().haveSimpleName("WorkItemService")
+            .or().haveSimpleName("WorkItemFieldValueCodec")
+            .should().dependOnClassesThat().haveNameMatching(
+                ".*\\.(WorkItemTypeRepository|WorkItemFieldRepository|WorkItemFieldOptionRepository|"
+                    + "WorkItemLayoutRepository|ConfigurationDraftRepository|ConfigurationTemplateRepository|"
+                    + "ConfigurationPublicationRepository|WorkItemTypeCommandRepository|"
+                    + "WorkItemFieldCommandRepository|WorkItemLayoutCommandRepository|"
+                    + "WorkItemConfigurationDraftService|WorkItemConfigurationPublicationService|"
+                    + "WorkItemConfigurationTemplateService|WorkItemTypeDefinitionService|"
+                    + "WorkItemFieldDefinitionService|WorkItemLayoutConfigurationService)"
+            )
+            .because("work item commands and projections must only interpret the bound published snapshot");
 }

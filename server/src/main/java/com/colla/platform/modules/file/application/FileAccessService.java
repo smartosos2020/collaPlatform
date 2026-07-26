@@ -31,7 +31,14 @@ public class FileAccessService implements FileAccess {
                         fileId,
                         state == FileState.ACTIVE ? Availability.AVAILABLE : Availability.UNAVAILABLE,
                         state == FileState.ACTIVE
-                            ? new FileMetadata(fileId, workspaceId, state, file.sizeBytes(), file.contentType())
+                            ? new FileMetadata(
+                                fileId,
+                                workspaceId,
+                                state,
+                                file.originalName(),
+                                file.sizeBytes(),
+                                file.contentType()
+                            )
                             : null
                     );
                 })

@@ -34,6 +34,7 @@ last_code_check: 2026-07-26
 | --- | --- | --- | --- | --- |
 | `project` | project | `/projects/{id}` | `colla://project/{id}` | 项目对象选择、关系、最近和规范跳转；当前不进入用户全文搜索召回 |
 | `issue` | project | `/issues/{id}` | `colla://issue/{id}` | 事项卡片、搜索、通知、IM 链接 |
+| `work_item` | project | `/project-spaces/{spaceId}/work-items/{id}` | `colla://work-item/{id}` | S07 规范实例摘要、链接和统一对象 identity；搜索/通知消费尚未切流 |
 | `knowledge_content` | knowledge | `/knowledge-bases/{spaceId}/items/{id}` | `colla://knowledge-content/{id}?spaceId={spaceId}` | 知识内容卡片、搜索、通知、IM 链接和对象嵌入 |
 | `base` | base | `/bases/{id}` | `colla://base/{id}` | 表格空间卡片、最近访问、收藏 |
 | `base_table` | base | `/bases/{baseId}/tables/{id}` | `colla://base_table/{id}` | 数据表卡片 |
@@ -176,11 +177,19 @@ S04-M3 的 user、attachment 和 work_item_reference 配置保存的 UUID 只是
 
 S04-M4 为字段定义增加生产配置入口，但没有改变对象边界。字段深链始终是空间和类型内部路由 `/project-spaces/{spaceId}/types/{typeId}/fields/{fieldId}`；不能脱离 `spaceId + typeId` 解析，也不能收藏、搜索或作为跨模块对象嵌入。前端目录只投影服务端字段 capability、配置摘要和 `availableActions`，不会注册 `work_item_field` 平台对象或把 option、rule 当作关系节点。
 
-统一 `work_item` 平台对象只能在 S07 规范实例落地后注册；届时实例必须显式绑定不可变 `type_version_id`，resolver 才能基于实例、空间成员和版本事实返回摘要。S04 字段定义和 S06 配置版本不得提前伪造实例对象或复用 legacy `issue` resolver。
+S07-M1 已注册统一 `work_item` 平台对象。resolver 先按 workspace 定位实例所属空间，再复用空间成员边界和绑定版本事实返回摘要；非成员、跨 workspace、伪造空间组合和不存在对象均返回不可用摘要，不泄露标题。实例链接固定为 `/project-spaces/{spaceId}/work-items/{id}` 与 `colla://work-item/{id}`。
 
-S04 Stage 收口后，`FieldDefinition`、`FieldOption`、规则和复杂类型配置的对象归属保持不变：它们都是工作项类型内部的配置图，不具备独立分享、收藏、搜索、关系或平台对象解析能力。S05 的布局只能通过稳定 `fieldId + fieldKey` 引用该图，S06 只能把经校验的图物化进新的不可变类型版本；两者都不能把字段配置提升为独立平台对象。S07 创建规范 WorkItem 后才允许注册 `work_item` resolver。
+S07-M2 的动态值投影、participant 和 activity 是 `work_item` 聚合内部事实，不注册新的平台 objectType，也不生成独立收藏、关系或 deep link。跨模块消费者只能使用 `WorkItemChangedEvent` 的工作项 identity，再经现有 `work_item` resolver 或用户 API 校准；事件、活动与投影均不携带 hidden 字段值。
 
-S05-M1-M4 交付的 `WorkItemLayout`、布局节点、条件规则和字段访问策略同样只是 `WorkItemTypeDefinition` 内部配置，不注册 `work_item_layout`、`work_item_field_policy` 或其他平台 objectType。配置预览和成员样本只能投影 synthetic 值与安全选项摘要，不得生成收藏、最近访问、对象链接或搜索索引事实。当前仍不存在规范 WorkItem；只有 S07 实例落地并显式绑定不可变 `type_version_id` 后，才允许新增 `work_item` resolver。
+S07-M3 保留 `project`/`issue` 为有限迁移别名。旧 `issue` resolver 先执行 legacy 项目成员授权，再查显式 `project_legacy_work_item_maps`；映射目标存在时返回规范 `/project-spaces/{spaceId}/work-items/{workItemId}` 与 `colla://work-item/{workItemId}`，否则仍返回旧路径。别名不产生第二个规范对象 identity；跨 workspace、非成员、缺失 map 和目标缺失都不得通过标题、错误或映射元数据泄露对象。
+
+S07-M4 迁移不会引入新的对象类型。每个迁移目标仍注册为唯一 `work_item` identity；即使 legacy UUID 可复用也必须写显式 map，UUID 已占用时用确定性新 UUID 并记录 `uuid_conflict_remapped`。pre-cutover rollback 删除本批次创建的平台链接与规范目标但保留 rolled-back map/provenance；post-cutover 不得删除可能承载新写的对象。
+
+S07-M5 已把 canonical `work_item` 作为用户页面唯一对象身份。列表、详情、评论、附件、活动和分享链接均使用 `/project-spaces/{spaceId}/work-items/{workItemId}`；旧 `/issues/{legacyIssueId}` 只在 resolver 确认显式 active map 后重定向。未迁移对象保留兼容只读入口，已回滚/跨 workspace/无权对象不暴露 map、canonical ID、标题或迁移状态。
+
+S04 Stage 收口后，`FieldDefinition`、`FieldOption`、规则和复杂类型配置的对象归属保持不变：它们都是工作项类型内部的配置图，不具备独立分享、收藏、搜索、关系或平台对象解析能力。S05 的布局只能通过稳定 `fieldId + fieldKey` 引用该图，S06 只能把经校验的图物化进新的不可变类型版本；两者都不能把字段配置提升为独立平台对象。S07-M1 的 `work_item` resolver 只解析真实规范实例，不解析字段或布局配置。
+
+S05-M1-M4 交付的 `WorkItemLayout`、布局节点、条件规则和字段访问策略同样只是 `WorkItemTypeDefinition` 内部配置，不注册 `work_item_layout`、`work_item_field_policy` 或其他平台 objectType。配置预览和成员样本只能投影 synthetic 值与安全选项摘要，不得生成收藏、最近访问、对象链接或搜索索引事实。S07-M1 新增的 `work_item` 必须显式绑定不可变 `type_version_id + config_hash`，发布新配置版本不会改变既有对象解释。
 
 ## 事项对象摘要
 
