@@ -19,7 +19,8 @@ class DomainEventDatabaseOutageIntegrationTests {
 
     @Test
     void realPostgresOutageStopsClaimsDropsReadinessAndRecovers() throws Exception {
-        try (PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16")) {
+        try (PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16")
+            .withStartupTimeout(Duration.ofMinutes(2))) {
             postgres.start();
             Flyway.configure()
                 .dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())

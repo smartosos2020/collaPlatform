@@ -2,6 +2,7 @@ package com.colla.platform.modules.project.infrastructure;
 
 import com.colla.platform.modules.project.domain.WorkItemConfigurationModels.PublicationCommandReceipt;
 import com.colla.platform.modules.project.domain.WorkItemConfigurationModels.PublishedConfigurationVersion;
+import com.colla.platform.modules.project.runtime.PublishedSnapshotReader;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -16,7 +17,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 @Repository
-public class JdbcConfigurationPublicationRepository implements ConfigurationPublicationRepository {
+public class JdbcConfigurationPublicationRepository
+    implements ConfigurationPublicationRepository, PublishedSnapshotReader {
     private static final String VERSION_SELECT = """
         select id, workspace_id, space_id, type_definition_id, version_number,
                status, snapshot_schema_version, config_hash, config,
@@ -83,6 +85,7 @@ public class JdbcConfigurationPublicationRepository implements ConfigurationPubl
             return Optional.ofNullable(jdbcTemplate.queryForObject(
                 VERSION_SELECT + """
                      where workspace_id = ? and space_id = ? and type_definition_id = ? and id = ?
+                       and status in ('published', 'superseded')
                     """,
                 this::mapVersion,
                 workspaceId,
@@ -93,6 +96,16 @@ public class JdbcConfigurationPublicationRepository implements ConfigurationPubl
         } catch (EmptyResultDataAccessException exception) {
             return Optional.empty();
         }
+    }
+
+    @Override
+    public Optional<PublishedConfigurationVersion> findPublishedSnapshot(
+        UUID workspaceId,
+        UUID spaceId,
+        UUID typeId,
+        UUID versionId
+    ) {
+        return findVersion(workspaceId, spaceId, typeId, versionId);
     }
 
     @Override

@@ -14,6 +14,7 @@ import { Alert, App as AntdApp, Button, Divider, List, Skeleton, Space, Tag, Too
 
 import {
   abandonWorkItemConfigurationDraft,
+  getWorkItemConfigurationDraftCompatibility,
   getWorkItemConfigurationDraftDiff,
   getWorkItemConfigurationDraft,
   listWorkItemConfigurationVersions,
@@ -60,6 +61,17 @@ export function ProjectWorkItemConfigurationDraftPanel({
       draftQuery.data?.configHash ?? 'pending',
     ),
     queryFn: () => getWorkItemConfigurationDraftDiff(spaceId, typeId),
+    enabled: Boolean(draftQuery.data && versionsQuery.data?.[0]?.completeSnapshot),
+    retry: false,
+    refetchOnWindowFocus: false,
+  })
+  const compatibilityQuery = useQuery({
+    queryKey: workItemConfigurationVersionKeys.draftCompatibility(
+      spaceId,
+      typeId,
+      draftQuery.data?.configHash ?? 'pending',
+    ),
+    queryFn: () => getWorkItemConfigurationDraftCompatibility(spaceId, typeId),
     enabled: Boolean(draftQuery.data && versionsQuery.data?.[0]?.completeSnapshot),
     retry: false,
     refetchOnWindowFocus: false,
@@ -262,6 +274,12 @@ export function ProjectWorkItemConfigurationDraftPanel({
               草稿 diff {draftDiffQuery.data.items.length} 项
             </Tag>
           ) : null}
+          {compatibilityQuery.data ? (
+            <CompatibilityTag
+              impact={compatibilityQuery.data.overallImpact}
+              count={compatibilityQuery.data.findings.length}
+            />
+          ) : null}
         </Space>
       </div>
       <List
@@ -330,4 +348,26 @@ function DraftStatusTag({ status }: { status: WorkItemConfigurationDraft['status
     abandoned: 'default',
   }
   return <Tag color={colors[status]}>{labels[status]}</Tag>
+}
+
+function CompatibilityTag({
+  impact,
+  count,
+}: {
+  impact: 'compatible' | 'review_required' | 'migration_required' | 'blocked'
+  count: number
+}) {
+  const labels = {
+    compatible: '兼容',
+    review_required: '需复核',
+    migration_required: '需迁移',
+    blocked: '阻断',
+  } as const
+  const colors = {
+    compatible: 'success',
+    review_required: 'warning',
+    migration_required: 'orange',
+    blocked: 'error',
+  } as const
+  return <Tag color={colors[impact]}>兼容性 {labels[impact]} · {count} 项</Tag>
 }

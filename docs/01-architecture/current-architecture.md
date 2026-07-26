@@ -312,8 +312,9 @@ PROJECT-PLATFORM-S01 于 2026-07-18 完成项目模块当前事实审计、目�
 - 管理预览和用户样本复用 `WorkItemLayoutRenderer`。当前 S04 注册的 11 类字段均有显式编辑/只读映射；rich-text presentation 复用 text 的多行模式，附件和工作项引用只呈现规范占位而不创建上传或实例事实。interval/computed 尚未进入 S04 注册表，遇到未知类型时失败关闭并显示安全的不支持状态。
 - 布局配置基线在真实 PostgreSQL 中覆盖 120 字段与 2400 选项，集合读模型预算为 3 秒；冻结布局图最多 120 节点，因此合法最大渲染图为 1 个根 section 加 119 个字段节点。该结论只覆盖配置读取与合成渲染，不代表真实 WorkItem、动态值查询或平台容量。
 - S05-M5 已完成 V065 存量升级到 V079、空库迁移、幂等回执、权限最小披露、复杂布局、浏览器身份矩阵和文档准入的最终收口；V079 同时稳定 BUG 验证历史的最新优先顺序。M1-M4 的布局与字段访问能力已经完整复验，Stage 可归档并进入 S06。
-- S06-M1/M2 已交付唯一 active 配置草稿、完整规范快照、校验/hash、原子发布、不可变版本、版本历史、语义 diff 和 rollback-as-new-version。S04 字段与 S05 布局/策略 live 表仍只作为配置编排输入；发布物是自包含 snapshot，历史版本不回查 live 表。
-- 当前仍没有 `project_work_items` 表、工作项实例 API、动态字段值或运行时流程。S07 只能通过完整 published snapshot adapter 消费显式 `type_version_id`，不得读取 active draft 或 S04/S05 live repositories。
+- S06 已交付唯一 active 配置草稿、完整规范快照、校验/hash、原子发布、不可变版本、版本历史、语义 diff、rollback-as-new-version、模板 lineage/三方合并和兼容分析。S04 字段与 S05 布局/策略 live 表只作为配置编排输入；发布物是自包含 snapshot，历史版本不回查 live 表。
+- `PublishedSnapshotReader` 与 `PublishedSnapshotAdapter` 已冻结：只读取精确 schema v1、完整且 hash 一致的 published/superseded snapshot；legacy partial、未来 schema 和完整性失败均拒绝。runtime 对 active draft、live 字段/选项/布局/策略及模板服务的依赖由架构测试禁止。
+- 当前仍没有 `project_work_items` 表、工作项实例 API、动态字段值或运行时流程。S07 必须显式绑定 `type_version_id + config_hash` 并经 adapter 消费 snapshot，不得读取 active draft 或 S04/S05 live repositories。
 - S04 的规模事实仅覆盖字段配置目录：真实 PostgreSQL 中 120 个字段、2400 个选项的 API 查询预算为 3 秒，并校验复合索引计划。10 万工作项、动态字段过滤和并发查询尚无运行时承载，归入 S07/S13，不作为当前性能事实。
 - 成员治理以 `project_spaces` 行级悲观锁串行化同空间变更；成员唯一约束、活动角色唯一索引和邀请 pending 唯一索引承担最终数据库防线。直接加入、角色变化、移除、owner 转移和邀请状态变化均支持重复请求收敛。
 - 邀请 token 使用 32 字节安全随机输入并只持久化 SHA-256 哈希；API/通知/审计只传 invitation ID。邀请过期使用独立事务持久化，避免业务 409 回滚过期状态。

@@ -57,4 +57,30 @@ class ModuleArchitectureTests {
             .that().resideInAPackage("com.colla.platform.modules.knowledge..")
             .should().dependOnClassesThat().resideInAPackage("com.colla.platform.shared.websocket..")
             .because("knowledge editing is exclusively owned by the Hocuspocus/Yjs collaboration protocol");
+
+    @ArchTest
+    static final ArchRule PROJECT_RUNTIME_MUST_NOT_READ_LIVE_CONFIGURATION =
+        noClasses()
+            .that().resideInAPackage("com.colla.platform.modules.project.runtime..")
+            .should().dependOnClassesThat().haveNameMatching(
+                ".*\\.(WorkItemTypeRepository|WorkItemFieldRepository|WorkItemFieldOptionRepository|"
+                    + "WorkItemLayoutRepository|ConfigurationDraftRepository|ConfigurationTemplateRepository|"
+                    + "ConfigurationPublicationRepository|WorkItemTypeCommandRepository|"
+                    + "WorkItemFieldCommandRepository|WorkItemLayoutCommandRepository)"
+            )
+            .because("S07 runtime semantics must come from immutable published snapshots only");
+
+    @ArchTest
+    static final ArchRule PROJECT_RUNTIME_MUST_NOT_CALL_CONFIGURATION_SERVICES =
+        noClasses()
+            .that().resideInAPackage("com.colla.platform.modules.project.runtime..")
+            .should().dependOnClassesThat().haveNameMatching(
+                ".*\\.(WorkItemConfigurationDraftService|WorkItemConfigurationSnapshotAssembler|"
+                    + "WorkItemConfigurationPublicationService|WorkItemConfigurationTemplateService|"
+                    + "WorkItemTypeDefinitionService|WorkItemTypeConfigurationService|"
+                    + "WorkItemFieldDefinitionService|WorkItemFieldConfigurationService|"
+                    + "WorkItemLayoutConfigurationService|WorkItemLayoutAccessProjectionService|"
+                    + "WorkItemTypePresetCatalog)"
+            )
+            .because("runtime configuration must be derived from the bound immutable snapshot");
 }

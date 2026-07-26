@@ -125,6 +125,99 @@ public class JdbcProjectSpaceRepository implements ProjectSpaceRepository {
     public void deleteSpace(UUID workspaceId, UUID spaceId) {
         jdbcTemplate.execute("set local colla.project_space_cleanup = 'on'");
         jdbcTemplate.update(
+            "delete from project_work_item_configuration_template_upgrade_history where workspace_id = ? and space_id = ?",
+            workspaceId,
+            spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_work_item_configuration_template_commands where workspace_id = ? and space_id = ?",
+            workspaceId,
+            spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_work_item_configuration_template_installations where workspace_id = ? and space_id = ?",
+            workspaceId,
+            spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_work_item_configuration_publication_commands where workspace_id = ? and space_id = ?",
+            workspaceId,
+            spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_work_item_configuration_draft_commands where workspace_id = ? and space_id = ?",
+            workspaceId,
+            spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_work_item_legacy_draft_diagnostics where workspace_id = ? and space_id = ?",
+            workspaceId,
+            spaceId
+        );
+        jdbcTemplate.update(
+            """
+                update project_work_item_type_versions
+                   set source_draft_id = null, rollback_source_version_id = null
+                 where workspace_id = ? and space_id = ?
+                """,
+            workspaceId,
+            spaceId
+        );
+        jdbcTemplate.update(
+            """
+                update project_work_item_configuration_drafts
+                   set source_legacy_version_id = null, source_version_id = null
+                 where workspace_id = ? and space_id = ?
+                """,
+            workspaceId,
+            spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_work_item_configuration_drafts where workspace_id = ? and space_id = ?",
+            workspaceId,
+            spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_work_item_layout_commands where workspace_id = ? and space_id = ?",
+            workspaceId,
+            spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_work_item_field_access_policies where workspace_id = ? and space_id = ?",
+            workspaceId,
+            spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_work_item_layout_nodes where workspace_id = ? and space_id = ?",
+            workspaceId,
+            spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_work_item_layouts where workspace_id = ? and space_id = ?",
+            workspaceId,
+            spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_work_item_field_options where workspace_id = ? and space_id = ?",
+            workspaceId,
+            spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_work_item_field_commands where workspace_id = ? and space_id = ?",
+            workspaceId,
+            spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_work_item_field_definitions where workspace_id = ? and space_id = ?",
+            workspaceId,
+            spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_work_item_type_commands where workspace_id = ? and space_id = ?",
+            workspaceId,
+            spaceId
+        );
+        jdbcTemplate.update(
             "delete from project_work_item_type_versions where workspace_id = ? and space_id = ?",
             workspaceId,
             spaceId

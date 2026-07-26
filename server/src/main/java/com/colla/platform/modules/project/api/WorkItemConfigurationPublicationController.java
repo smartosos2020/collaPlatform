@@ -5,6 +5,7 @@ import com.colla.platform.modules.project.application.WorkItemConfigurationPubli
 import com.colla.platform.modules.project.application.WorkItemConfigurationPublicationService.RollbackPreparation;
 import com.colla.platform.modules.project.application.WorkItemConfigurationPublicationService.VersionDetail;
 import com.colla.platform.modules.project.domain.WorkItemConfigurationModels.ConfigurationDiff;
+import com.colla.platform.modules.project.domain.WorkItemConfigurationCompatibilityModels.CompatibilityReport;
 import com.colla.platform.shared.auth.CurrentUser;
 import com.colla.platform.shared.request.RequestBoundaryContext;
 import jakarta.validation.Valid;
@@ -85,6 +86,28 @@ public class WorkItemConfigurationPublicationController {
         Authentication authentication
     ) {
         return service.diffDraft(currentUser(authentication), spaceId, typeId);
+    }
+
+    @GetMapping("/versions:compatibility")
+    public CompatibilityReport compatibility(
+        @PathVariable UUID spaceId,
+        @PathVariable UUID typeId,
+        @RequestParam UUID fromVersionId,
+        @RequestParam UUID toVersionId,
+        Authentication authentication
+    ) {
+        return service.compatibilityVersions(
+            currentUser(authentication), spaceId, typeId, fromVersionId, toVersionId
+        );
+    }
+
+    @GetMapping("/draft:compatibility")
+    public CompatibilityReport draftCompatibility(
+        @PathVariable UUID spaceId,
+        @PathVariable UUID typeId,
+        Authentication authentication
+    ) {
+        return service.compatibilityDraft(currentUser(authentication), spaceId, typeId);
     }
 
     @PostMapping("/versions/{versionId}:prepare-rollback")

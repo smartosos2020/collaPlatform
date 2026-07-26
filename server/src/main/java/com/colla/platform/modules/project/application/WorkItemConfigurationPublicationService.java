@@ -12,6 +12,7 @@ import com.colla.platform.modules.project.domain.WorkItemConfigurationModels.Con
 import com.colla.platform.modules.project.domain.WorkItemConfigurationModels.PublicationCommandReceipt;
 import com.colla.platform.modules.project.domain.WorkItemConfigurationModels.PublishedConfigurationVersion;
 import com.colla.platform.modules.project.domain.WorkItemConfigurationModels.ValidationResult;
+import com.colla.platform.modules.project.domain.WorkItemConfigurationCompatibilityModels.CompatibilityReport;
 import com.colla.platform.modules.project.infrastructure.ConfigurationDraftRepository;
 import com.colla.platform.modules.project.infrastructure.ConfigurationDraftRepository.NewDraft;
 import com.colla.platform.modules.project.infrastructure.ConfigurationPublicationRepository;
@@ -44,6 +45,7 @@ public class WorkItemConfigurationPublicationService {
     private final WorkItemConfigurationSnapshotCanonicalizer canonicalizer;
     private final WorkItemConfigurationValidator validator;
     private final WorkItemConfigurationDiffEngine diffEngine;
+    private final WorkItemConfigurationCompatibilityAnalyzer compatibilityAnalyzer;
     private final WorkItemTypeConfigCanonicalizer requestCanonicalizer;
     private final AuditLog auditLog;
     private final TransactionalOutbox outbox;
@@ -57,6 +59,7 @@ public class WorkItemConfigurationPublicationService {
         WorkItemConfigurationSnapshotCanonicalizer canonicalizer,
         WorkItemConfigurationValidator validator,
         WorkItemConfigurationDiffEngine diffEngine,
+        WorkItemConfigurationCompatibilityAnalyzer compatibilityAnalyzer,
         WorkItemTypeConfigCanonicalizer requestCanonicalizer,
         AuditLog auditLog,
         TransactionalOutbox outbox,
@@ -69,6 +72,7 @@ public class WorkItemConfigurationPublicationService {
         this.canonicalizer = canonicalizer;
         this.validator = validator;
         this.diffEngine = diffEngine;
+        this.compatibilityAnalyzer = compatibilityAnalyzer;
         this.requestCanonicalizer = requestCanonicalizer;
         this.auditLog = auditLog;
         this.outbox = outbox;
@@ -235,6 +239,47 @@ public class WorkItemConfigurationPublicationService {
         return diffEngine.diff(current.configHash(), current.snapshot(), draft.configHash(), draft.snapshot());
     }
 
+    @Transactional(readOnly = true)
+    public CompatibilityReport compatibilityVersions(
+        CurrentUser user,
+        UUID spaceId,
+        UUID typeId,
+        UUID fromVersionId,
+        UUID toVersionId
+    ) {
+        requireManager(user, spaceId, typeId, false);
+        PublishedConfigurationVersion from = requireComplete(
+            requireVersion(user.workspaceId(), spaceId, typeId, fromVersionId)
+        );
+        PublishedConfigurationVersion to = requireComplete(
+            requireVersion(user.workspaceId(), spaceId, typeId, toVersionId)
+        );
+        return compatibilityAnalyzer.analyze(
+            from.configHash(), from.snapshot(), to.configHash(), to.snapshot()
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public CompatibilityReport compatibilityDraft(CurrentUser user, UUID spaceId, UUID typeId) {
+        requireManager(user, spaceId, typeId, false);
+        ConfigurationDraft draft = draftRepository.findActive(user.workspaceId(), spaceId, typeId)
+            .orElseThrow(() -> failure("NOT_FOUND_OR_HIDDEN", "Configuration draft is not available"));
+        PublishedConfigurationVersion current = requireComplete(requireVersion(
+            user.workspaceId(),
+            spaceId,
+            typeId,
+            typeRepository.findById(user.workspaceId(), spaceId, typeId)
+                .orElseThrow(() -> failure(
+                    "NOT_FOUND_OR_HIDDEN",
+                    "Configuration type is not available"
+                ))
+                .currentVersionId()
+        ));
+        return compatibilityAnalyzer.analyze(
+            current.configHash(), current.snapshot(), draft.configHash(), draft.snapshot()
+        );
+    }
+
     @Transactional
     public RollbackPreparation prepareRollback(
         CurrentUser user,
@@ -338,6 +383,9 @@ public class WorkItemConfigurationPublicationService {
     private PublishedConfigurationVersion requireComplete(PublishedConfigurationVersion version) {
         if (!version.completeSnapshot()) {
             throw failure("LEGACY_PARTIAL_SNAPSHOT", "Legacy partial snapshots cannot be compared or restored");
+        }
+        if (!version.supportedSnapshot()) {
+            throw failure("UNSUPPORTED_SNAPSHOT_SCHEMA", "Configuration snapshot schema is not supported");
         }
         return version;
     }

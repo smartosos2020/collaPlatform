@@ -711,13 +711,16 @@ public class WorkItemConfigurationTemplateService {
         UUID versionId
     ) {
         return templateRepository.findVersion(workspaceId, templateId, versionId)
-            .filter(value -> value.snapshotSchemaVersion() >= SNAPSHOT_SCHEMA_VERSION)
+            .filter(value -> value.snapshotSchemaVersion() == SNAPSHOT_SCHEMA_VERSION)
             .orElseThrow(() -> failure("NOT_FOUND_OR_HIDDEN", "Complete template version is not available"));
     }
 
     private PublishedConfigurationVersion requireComplete(PublishedConfigurationVersion version) {
         if (!version.completeSnapshot()) {
             throw failure("LEGACY_PARTIAL_SNAPSHOT", "Legacy partial snapshots cannot become templates");
+        }
+        if (!version.supportedSnapshot()) {
+            throw failure("UNSUPPORTED_SNAPSHOT_SCHEMA", "Configuration snapshot schema is not supported");
         }
         return version;
     }

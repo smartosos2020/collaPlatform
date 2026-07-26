@@ -8,7 +8,7 @@ last_code_check: 2026-07-26
 
 Colla Platform 当前是一个面向研发团队的轻量协同平台。产品形态以 Web 为主，IM 是核心入口，同时已经具备项目、知识库、表格、审批、通知、搜索和管理后台等模块的 MVP 能力。
 
-当前业务开发主线是 `PROJECT-PLATFORM`。S01-S05 已完成项目空间、类型、字段、create/detail 布局、条件显示、字段访问策略、六身份脱敏投影、配置工作台和成员样本体验；S06-M1/M2 已进一步交付唯一配置草稿、完整规范快照、原子发布、不可变版本、语义 diff 和 rollback-as-new-version。当前仍不创建规范 `WorkItem`、动态字段值或运行时流程；统一实例及实例迁移属于 S07。`PLATFORM-SCALE` S01-S04 已归档，S05 仅完成 M1 容量环境、确定性种子和加载器底座；M2-M5 的真实容量、长稳、故障恢复、发布扩缩容和 Go/No-Go 压测已明确 Deferred，待核心功能、接口、数据模型和负载模型稳定后恢复。知识库 `KB-PRODUCT` 工程候选已收口，但 3-5 名真实参与者试用尚未完成，当前按暂停状态归档并等待团队反馈。
+当前业务开发主线是 `PROJECT-PLATFORM`。S01-S06 已完成项目空间、类型、字段、create/detail 布局、字段访问策略，以及唯一配置草稿、完整不可变发布快照、diff/rollback、模板 lineage、兼容分析和冻结快照 adapter。S06 已通过 route-final，S07 具备准入条件但尚未激活；当前仍没有规范 `WorkItem`、动态字段值、实例迁移或运行时流程。`PLATFORM-SCALE` S01-S04 已归档，S05 仅完成 M1 容量环境、确定性种子和加载器底座；M2-M5 的真实容量、长稳、故障恢复、发布扩缩容和 Go/No-Go 压测已明确 Deferred，待核心功能、接口、数据模型和负载模型稳定后恢复。知识库 `KB-PRODUCT` 工程候选已收口，但 3-5 名真实参与者试用尚未完成，当前按暂停状态归档并等待团队反馈。
 
 ## 当前可用入口
 
@@ -109,6 +109,9 @@ UI-SPLIT-M12 冻结“双 UI v1”：当前不拆服务、不拆仓库，但用�
 - 版本历史和 draft/current、version/version 语义 diff 已覆盖 additive/behavioral/conditional/breaking；rollback 只把历史完整快照复制为新 active draft，重新校验并发布更高版本，不倒退指针或改写历史。legacy partial v1 可列出但不能 diff/rollback。
 - S06-M3 已提供平台/workspace 配置模板、不可变模板版本、安装 lineage、三方升级和解绑。安装把完整 snapshot 复制并重绑定到目标 active draft，不建立 live 引用；升级按 base/upstream/local 比较，冲突必须逐项选择，解绑保留本地草稿和最后 lineage。
 - 平台预置静态目录只承担确定性导入，模板运行时目录与版本权威在数据库；workspace 模板只能从完整 published snapshot 创建。模板命令具备乐观版本、精确回执、审计和 outbox，owner/admin 可操作，其他身份按最小披露返回 403/404。
+- S06-M4 已冻结字段、选项、规则、布局、访问策略和模板的兼容矩阵，并提供 version/version 与 draft/current 兼容分析 API。结果使用稳定 key path 和 `compatible/review_required/migration_required/blocked`，只说明配置影响，不冒充实例迁移计划。
+- `PublishedSnapshotAdapter` 只通过窄 `PublishedSnapshotReader` 消费精确 schema v1、完整且 hash 一致的 published/superseded snapshot；legacy partial、未来 schema 和完整性不一致均失败关闭。架构门禁禁止 runtime 依赖 active draft 或 S04/S05 live 配置 repository/service。
+- V001/V061/V065/V078 至 V085、重复 migrate、legacy draft 诊断和 `pg_dump/pg_restore` 恢复演练已通过；120 字段/2400 选项 snapshot/hash/兼容分析/模板合并保持 3 秒配置预算。该结论不代表实例查询容量、长稳或基础设施 HA。
 - 复杂字段配置只持久化规范 ID 或标量，不复制用户名称、部门名称、文件元数据、目标类型标题或 URL 凭据作为权限事实。跨 workspace、失效、已删除、不可访问或越界引用统一返回最小披露错误；审计继续只保存配置 hash 和数量摘要。当前没有字段值；工作项实例和值属于 S07，S07 前 work_item_reference 默认实例数组只能为空。
 - 新空间和 legacy 迁移空间在创建事务内安装 `development-v1` 六类研发预置 `project/requirement/task/bug/iteration/release`；既有 active 空间在启动时逐空间幂等补齐。自定义同 key 不被覆盖并进入明确冲突清单，重复和并发补齐不产生重复系统类型或审计事件。
 - 空间 owner/admin 使用 `/project-spaces/:spaceId/types` 配置类型；member/guest 只在空间执行首页看到 active 类型名称、key、图标和顺序。企业项目治理只读取类型状态计数，不获得空间配置写权限或内容访问权。

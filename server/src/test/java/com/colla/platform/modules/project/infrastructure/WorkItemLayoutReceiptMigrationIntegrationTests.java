@@ -79,6 +79,7 @@ class WorkItemLayoutReceiptMigrationIntegrationTests {
                 .migrate();
             Flyway latest = Flyway.configure()
                 .dataSource(container.getJdbcUrl(), container.getUsername(), container.getPassword())
+                .target("79")
                 .load();
 
             assertEquals(1, latest.migrate().migrationsExecuted);

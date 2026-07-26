@@ -1,10 +1,10 @@
 ---
 title: PROJECT-PLATFORM-S06 配置草稿、发布、版本和模板复用当前执行路线
-status: active
+status: completed
 route: PROJECT-PLATFORM-S06
 program: PROJECT-PLATFORM
 program_doc: docs/00-product/initiatives/project-platform-program.md
-program_revision: 19
+program_revision: 20
 stage: PROJECT-PLATFORM-S06
 stage_final_milestone: PROJECT-PLATFORM-S06-M4
 last_code_check: 2026-07-26
@@ -21,7 +21,7 @@ S06 的核心不是增加一个“发布”按钮，而是消除 live 配置表�
 
 ## 2. 固定输入与当前事实
 
-- S05 已归档，当前 schema 为 V081；S03 published v1 是 legacy partial 版本，不得伪装为完整 S06 snapshot。
+- S05 已归档，当前 schema 为 V085；S03 published v1 是 legacy partial 版本，不得伪装为完整 S06 snapshot。
 - 类型展示、字段、选项、规则、布局和访问策略当前仍由多个服务修改规范化 live 表，尚无统一 draft aggregate。
 - `project_work_item_type_versions` 仍允许 `draft` 状态；S06 必须迁移遗留值并收紧为 `published/superseded`。
 - 当前前端有类型、字段和布局配置入口，但无统一草稿状态、发布校验、版本历史、diff、回滚或模板入口。
@@ -48,7 +48,7 @@ S06 的核心不是增加一个“发布”按钮，而是消除 live 配置表�
 | PROJECT-PLATFORM-S06-M1 | 唯一配置草稿、完整快照和发布校验 | S05 归档；Program revision 19 | `docs/90-reports/project-platform-s06-m1-execution-report.md` | Done |
 | PROJECT-PLATFORM-S06-M2 | 不可变版本、原子发布、diff 和回滚 | M1 | `docs/90-reports/project-platform-s06-m2-execution-report.md` | Completed |
 | PROJECT-PLATFORM-S06-M3 | 配置模板版本、安装、同步、三方合并和解绑 | M1-M2 | `docs/90-reports/project-platform-s06-m3-execution-report.md` | Completed |
-| PROJECT-PLATFORM-S06-M4 | 兼容矩阵、S07 adapter、迁移/安全/体验和 Stage 收口 | M1-M3 | `docs/90-reports/project-platform-s06-m4-execution-report.md` | Pending |
+| PROJECT-PLATFORM-S06-M4 | 兼容矩阵、S07 adapter、迁移/安全/体验和 Stage 收口 | M1-M3 | `docs/90-reports/project-platform-s06-m4-execution-report.md` | Completed |
 
 ## 5. 详细任务
 
@@ -108,17 +108,17 @@ S06 的核心不是增加一个“发布”按钮，而是消除 live 配置表�
 
 | 任务 | 内容 | 验收标准 | 状态 |
 | --- | --- | --- | --- |
-| PROJECT-PLATFORM-S06-M4-T01 | 审计 M1-M3 全部实现、报告、迁移、边界和未关闭 gap | 每个任务可追溯到代码与 fresh evidence；阻断项 Reopen，不以 Remaining Gap 弱化 | Pending |
-| PROJECT-PLATFORM-S06-M4-T02 | 冻结字段/选项/规则/布局/访问策略/模板变化兼容矩阵 | 删除、变型、必填收紧、选项移除、访问收窄、入口移除、悬空引用和模板冲突均分类 | Pending |
-| PROJECT-PLATFORM-S06-M4-T03 | 实现配置兼容性分析服务和 API | 输出稳定影响等级、key path、原因和建议；不冒充 S07 实例迁移计划 | Pending |
-| PROJECT-PLATFORM-S06-M4-T04 | 冻结并实现 PublishedSnapshotAdapter | adapter 只消费完整不可变 snapshot；legacy partial 显式拒绝/降级；不查询 active draft/live 配置 | Pending |
-| PROJECT-PLATFORM-S06-M4-T05 | 增加静态边界守卫和负向架构测试 | 未来 runtime 不得注入 S04/S05 live repositories；foreign write/P0 不扩张 | Pending |
-| PROJECT-PLATFORM-S06-M4-T06 | 执行 V001/V061/V065/V078 至最新、legacy draft、重复 migrate 和回滚 rehearsal | 空库/升级路径稳定；published v1、legacy sentinel 和历史 hash 不被越界改写 | Pending |
-| PROJECT-PLATFORM-S06-M4-T07 | 执行 120 字段/2400 选项 snapshot/hash/diff/模板合并预算 | 配置预算达标且无 N+1；不扩张为工作项运行容量或基础设施 HA 声明 | Pending |
-| PROJECT-PLATFORM-S06-M4-T08 | 执行 owner/admin/member/guest/non-member/enterprise-admin API 安全矩阵 | draft/version/template/hidden field 均最小披露；跨空间 ID 负例稳定 | Pending |
-| PROJECT-PLATFORM-S06-M4-T09 | 执行统一配置、版本、diff、回滚和模板真实隔离浏览器体验验收 | 桌面/窄屏、键盘、错误恢复、离线和六身份入口/禁用状态符合合同 | Pending |
-| PROJECT-PLATFORM-S06-M4-T10 | 执行完整后端、迁移、前端、collaboration、架构、工作台、安全和生成物门禁 | full gate 无阻断；报告引用 fresh 日志；禁止 mock 冒充真实浏览器证据 | Pending |
-| PROJECT-PLATFORM-S06-M4-T11 | 同步 Program/索引/当前与目标架构，给出 S06 Go/Reopen 与 S07 准入并完成 route-final | 48 Task、四份报告、工作上下文和文档一致；唯一结论可执行 | Pending |
+| PROJECT-PLATFORM-S06-M4-T01 | 审计 M1-M3 全部实现、报告、迁移、边界和未关闭 gap | 每个任务可追溯到代码与 fresh evidence；阻断项 Reopen，不以 Remaining Gap 弱化 | Done |
+| PROJECT-PLATFORM-S06-M4-T02 | 冻结字段/选项/规则/布局/访问策略/模板变化兼容矩阵 | 删除、变型、必填收紧、选项移除、访问收窄、入口移除、悬空引用和模板冲突均分类 | Done |
+| PROJECT-PLATFORM-S06-M4-T03 | 实现配置兼容性分析服务和 API | 输出稳定影响等级、key path、原因和建议；不冒充 S07 实例迁移计划 | Done |
+| PROJECT-PLATFORM-S06-M4-T04 | 冻结并实现 PublishedSnapshotAdapter | adapter 只消费完整不可变 snapshot；legacy partial 显式拒绝/降级；不查询 active draft/live 配置 | Done |
+| PROJECT-PLATFORM-S06-M4-T05 | 增加静态边界守卫和负向架构测试 | 未来 runtime 不得注入 S04/S05 live repositories；foreign write/P0 不扩张 | Done |
+| PROJECT-PLATFORM-S06-M4-T06 | 执行 V001/V061/V065/V078 至最新、legacy draft、重复 migrate 和回滚 rehearsal | 空库/升级路径稳定；published v1、legacy sentinel 和历史 hash 不被越界改写 | Done |
+| PROJECT-PLATFORM-S06-M4-T07 | 执行 120 字段/2400 选项 snapshot/hash/diff/模板合并预算 | 配置预算达标且无 N+1；不扩张为工作项运行容量或基础设施 HA 声明 | Done |
+| PROJECT-PLATFORM-S06-M4-T08 | 执行 owner/admin/member/guest/non-member/enterprise-admin API 安全矩阵 | draft/version/template/hidden field 均最小披露；跨空间 ID 负例稳定 | Done |
+| PROJECT-PLATFORM-S06-M4-T09 | 执行统一配置、版本、diff、回滚和模板真实隔离浏览器体验验收 | 桌面/窄屏、键盘、错误恢复、离线和六身份入口/禁用状态符合合同 | Done |
+| PROJECT-PLATFORM-S06-M4-T10 | 执行完整后端、迁移、前端、collaboration、架构、工作台、安全和生成物门禁 | full gate 无阻断；报告引用 fresh 日志；禁止 mock 冒充真实浏览器证据 | Done |
+| PROJECT-PLATFORM-S06-M4-T11 | 同步 Program/索引/当前与目标架构，给出 S06 Go/Reopen 与 S07 准入并完成 route-final | 48 Task、四份报告、工作上下文和文档一致；唯一结论可执行 | Done |
 
 ## 6. Stage 验收
 

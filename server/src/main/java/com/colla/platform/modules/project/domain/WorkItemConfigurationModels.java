@@ -148,7 +148,11 @@ public final class WorkItemConfigurationModels {
         Instant publishedAt
     ) {
         public boolean completeSnapshot() {
-            return snapshotSchemaVersion >= SNAPSHOT_SCHEMA_VERSION;
+            return snapshotSchemaVersion > 0;
+        }
+
+        public boolean supportedSnapshot() {
+            return snapshotSchemaVersion == SNAPSHOT_SCHEMA_VERSION;
         }
     }
 

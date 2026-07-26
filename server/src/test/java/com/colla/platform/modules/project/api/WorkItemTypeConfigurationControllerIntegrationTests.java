@@ -367,15 +367,142 @@ class WorkItemTypeConfigurationControllerIntegrationTests {
             .andExpect(status().isNotFound())
             .andExpect(jsonPath("$.error.code").value("not_found_or_hidden"));
         assertEquals(2, jdbcTemplate.queryForObject(
-            "select count(*) from audit_logs where workspace_id=? and action='work_item_configuration.published'",
+            """
+                select count(*) from audit_logs
+                 where workspace_id=? and action='work_item_configuration.published'
+                   and target_id in (?, ?)
+                """,
             Integer.class,
-            owner.workspaceId()
+            owner.workspaceId(),
+            UUID.fromString(version2Id),
+            UUID.fromString(version3.at("/version/id").asText())
         ));
         assertEquals(2, jdbcTemplate.queryForObject(
-            "select count(*) from domain_events where workspace_id=? and event_type='work_item_configuration.published'",
+            """
+                select count(*) from domain_events
+                 where workspace_id=? and event_type='work_item_configuration.published'
+                   and aggregate_id in (?, ?)
+                """,
             Integer.class,
-            owner.workspaceId()
+            owner.workspaceId(),
+            UUID.fromString(version2Id),
+            UUID.fromString(version3.at("/version/id").asText())
         ));
+    }
+
+    @Test
+    void compatibilityApiEnforcesSixIdentityAndCrossSpaceBoundaries() throws Exception {
+        TestUser enterpriseAdmin = root("wic-compat-root");
+        TestUser owner = member(enterpriseAdmin.token(), "wiccompatowner");
+        TestUser spaceAdmin = member(enterpriseAdmin.token(), "wiccompatadmin");
+        TestUser member = member(enterpriseAdmin.token(), "wiccompatmember");
+        TestUser guest = member(enterpriseAdmin.token(), "wiccompatguest");
+        TestUser outsider = member(enterpriseAdmin.token(), "wiccompatoutside");
+        UUID spaceId = createSpace(owner.token(), "wic-compat-space");
+        addSpaceMember(spaceId, spaceAdmin.id(), "admin", owner.id());
+        addSpaceMember(spaceId, member.id(), "member", owner.id());
+        addSpaceMember(spaceId, guest.id(), "guest", owner.id());
+        JsonNode type = createType(
+            owner.token(), spaceId, "wic_compat_task", "Compatibility Task", 10,
+            "wic-compat-create-" + suffix()
+        );
+        String typeId = type.get("id").asText();
+        String base = configPath(spaceId) + "/" + typeId;
+        String draftPath = base + "/draft";
+
+        JsonNode draft = json(mockMvc.perform(get(draftPath)
+                .header("Authorization", bearer(owner.token())))
+            .andExpect(status().isOk())
+            .andReturn());
+        JsonNode valid = json(mockMvc.perform(post(draftPath + ":validate")
+                .header("Authorization", bearer(owner.token()))
+                .header("X-Colla-Request-Id", "wic-compat-validate-v2-" + suffix())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"expectedAggregateVersion\":" + draft.get("aggregateVersion").asLong() + "}"))
+            .andExpect(status().isOk())
+            .andReturn());
+        JsonNode version2 = json(mockMvc.perform(post(base + "/draft:publish")
+                .header("Authorization", bearer(owner.token()))
+                .header("X-Colla-Request-Id", "wic-compat-publish-v2-" + suffix())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"expectedDraftAggregateVersion":%d,"breakingConfirmed":false}
+                    """.formatted(valid.get("aggregateVersion").asLong())))
+            .andExpect(status().isOk())
+            .andReturn());
+
+        long currentTypeVersion = jdbcTemplate.queryForObject(
+            "select aggregate_version from project_work_item_types where id=?",
+            Long.class,
+            UUID.fromString(typeId)
+        );
+        mockMvc.perform(patch(configPath(spaceId) + "/" + typeId)
+                .header("Authorization", bearer(owner.token()))
+                .header("X-Colla-Request-Id", "wic-compat-edit-" + suffix())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"name":"Compatibility Task","description":"compatibility changed","aggregateVersion":%d}
+                    """.formatted(currentTypeVersion)))
+            .andExpect(status().isOk());
+        JsonNode changedDraft = json(mockMvc.perform(get(draftPath)
+                .header("Authorization", bearer(owner.token())))
+            .andExpect(status().isOk())
+            .andReturn());
+        JsonNode changedValid = json(mockMvc.perform(post(draftPath + ":validate")
+                .header("Authorization", bearer(owner.token()))
+                .header("X-Colla-Request-Id", "wic-compat-validate-v3-" + suffix())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"expectedAggregateVersion\":" + changedDraft.get("aggregateVersion").asLong() + "}"))
+            .andExpect(status().isOk())
+            .andReturn());
+        for (TestUser manager : List.of(owner, spaceAdmin)) {
+            mockMvc.perform(get(base + "/draft:compatibility")
+                    .header("Authorization", bearer(manager.token())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.overallImpact").isString());
+        }
+        JsonNode version3 = json(mockMvc.perform(post(base + "/draft:publish")
+                .header("Authorization", bearer(owner.token()))
+                .header("X-Colla-Request-Id", "wic-compat-publish-v3-" + suffix())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"expectedDraftAggregateVersion":%d,"breakingConfirmed":true}
+                    """.formatted(changedValid.get("aggregateVersion").asLong())))
+            .andExpect(status().isOk())
+            .andReturn());
+
+        String compatibilityPath = base + "/versions:compatibility?fromVersionId="
+            + version2.at("/version/id").asText() + "&toVersionId="
+            + version3.at("/version/id").asText();
+        for (TestUser manager : List.of(owner, spaceAdmin)) {
+            mockMvc.perform(get(compatibilityPath).header("Authorization", bearer(manager.token())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.overallImpact").isString())
+                .andExpect(jsonPath("$.fromHash").value(version2.at("/version/configHash").asText()))
+                .andExpect(jsonPath("$.toHash").value(version3.at("/version/configHash").asText()))
+                .andExpect(jsonPath("$.instanceMigrationRequired").isBoolean());
+        }
+        for (TestUser readonly : List.of(member, guest)) {
+            mockMvc.perform(get(compatibilityPath).header("Authorization", bearer(readonly.token())))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("forbidden"));
+        }
+        for (TestUser hidden : List.of(outsider, enterpriseAdmin)) {
+            mockMvc.perform(get(compatibilityPath).header("Authorization", bearer(hidden.token())))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.code").value("not_found_or_hidden"))
+                .andExpect(jsonPath("$.error.message", not(org.hamcrest.Matchers.containsString(
+                    version2.at("/version/configHash").asText()
+                ))));
+        }
+
+        UUID otherSpaceId = createSpace(owner.token(), "wic-compat-other");
+        mockMvc.perform(get(configPath(otherSpaceId) + "/" + typeId
+                + "/versions:compatibility?fromVersionId=" + version2.at("/version/id").asText()
+                + "&toVersionId=" + version3.at("/version/id").asText())
+                .header("Authorization", bearer(owner.token())))
+            .andExpect(status().isNotFound())
+            .andExpect(jsonPath("$.error.code").value("not_found_or_hidden"));
     }
 
     @Test

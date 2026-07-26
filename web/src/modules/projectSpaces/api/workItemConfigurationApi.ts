@@ -61,6 +61,24 @@ export type ConfigurationDiff = {
   breaking: boolean
 }
 
+export type ConfigurationCompatibilityFinding = {
+  keyPath: string
+  impact: 'compatible' | 'review_required' | 'migration_required' | 'blocked'
+  reasonCode: string
+  recommendation: string
+  beforeValue?: unknown
+  afterValue?: unknown
+}
+
+export type ConfigurationCompatibility = {
+  fromHash: string
+  toHash: string
+  overallImpact: ConfigurationCompatibilityFinding['impact']
+  findings: ConfigurationCompatibilityFinding[]
+  summary: Record<string, number>
+  instanceMigrationRequired: boolean
+}
+
 export type ConfigurationPublicationResult = {
   version: ConfigurationVersion
   diff: ConfigurationDiff
@@ -149,6 +167,8 @@ export const workItemConfigurationVersionKeys = {
     [...workItemConfigurationVersionKeys.all, spaceId, typeId] as const,
   draftDiff: (spaceId: string, typeId: string, hash: string) =>
     [...workItemConfigurationVersionKeys.list(spaceId, typeId), 'draft-diff', hash] as const,
+  draftCompatibility: (spaceId: string, typeId: string, hash: string) =>
+    [...workItemConfigurationVersionKeys.list(spaceId, typeId), 'draft-compatibility', hash] as const,
 }
 
 export const workItemConfigurationTemplateKeys = {
@@ -208,6 +228,12 @@ export function listWorkItemConfigurationVersions(spaceId: string, typeId: strin
 export function getWorkItemConfigurationDraftDiff(spaceId: string, typeId: string) {
   return apiGet<ConfigurationDiff>(
     `/project-spaces/${spaceId}/configuration/types/${typeId}/draft:diff`,
+  )
+}
+
+export function getWorkItemConfigurationDraftCompatibility(spaceId: string, typeId: string) {
+  return apiGet<ConfigurationCompatibility>(
+    `/project-spaces/${spaceId}/configuration/types/${typeId}/draft:compatibility`,
   )
 }
 

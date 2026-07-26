@@ -2,11 +2,11 @@
 title: 项目协作平台目标架构
 status: target
 program: PROJECT-PLATFORM
-program_revision: 19
+program_revision: 20
 domain_contract_version: 1
 domain_contract_status: frozen-s01-m3
 migration_contract_version: 1
-stage_review_status: s06-active
+stage_review_status: s06-completed
 updated_at: 2026-07-26
 ---
 
@@ -839,3 +839,14 @@ S05 的表单和详情页是“配置与渲染合同”，不是已经可创建�
 - install、apply-upgrade 和 detach 使用持久化 command receipt、payload hash、乐观版本、审计和 outbox；相同 request ID 精确重放首次响应，异载荷重放和并发败者返回受控冲突。
 - detach 保留当前 draft、hash 和最后 lineage 摘要，仅把 installation 标记为 detached；后续不再宣称与上游同步。重新安装是新的显式命令。
 - 这些模板能力仍属于配置编排。S07 运行实例必须只消费 M4 冻结的 `PublishedSnapshotAdapter`；任何 runtime 对 S04/S05 live repository 或 active draft 的依赖都属于架构违规。
+
+### 22.10 S06-M4 已冻结的兼容与 runtime adapter 合同
+
+- 配置兼容矩阵以稳定 semantic key 比较字段、选项、规则、布局、访问策略和模板变化，影响等级固定为 `compatible`、`review_required`、`migration_required`、`blocked`。完整矩阵见 `docs/01-architecture/project-work-item-configuration-compatibility-matrix.md`。
+- `GET .../versions:compatibility` 和 `GET .../draft:compatibility` 返回 from/to hash、总体影响、稳定 key path、原因码、建议、分类计数和实例迁移标记。该结果不创建值映射、回填或迁移批次。
+- `PublishedSnapshotReader` 是 S07 唯一允许注入的冻结版本读取端口；`PublishedSnapshotAdapter` 只接受精确 schema v1、published/superseded、完整且 canonical hash 一致的 snapshot。schema 0、未来 schema、边界不匹配和完整性失败均失败关闭。
+- runtime package 由 ArchUnit 禁止依赖 draft、字段、选项、布局、策略的 live repository/command repository，以及 publication/template/type/field/layout 配置服务。模板目录、preset catalog 和 installation lineage 也不是实例运行事实来源。
+- V001/V061/V065/V078 到 V085、重复 migrate、legacy draft 诊断、published sentinel/hash/current pointer 保留及真实 `pg_dump/pg_restore` 恢复演练已通过；V085 补齐配置草稿、回执、字段和布局的空间清理闭包。
+- 120 字段、2400 选项的 snapshot/hash/兼容分析/三方 merge 在 3 秒配置预算内，repository 调用保持批量上界。该预算不扩张为 S07 实例容量、生产长稳或基础设施 HA。
+- owner/space-admin 可读取配置兼容结果；member/guest 为 403，non-member/enterprise-admin 为统一 404，跨空间组合 ID 不披露存在性。真实浏览器统一覆盖发布、兼容提示、diff、回滚、模板安装/解绑、键盘、离线、1440/820 和六身份边界。
+- S06 已满足 S07 准入：S07 创建或迁移实例时必须显式绑定 `type_version_id + config_hash`，只经 adapter 解释 snapshot；任何实例升级仍需独立 migration plan、失败清单、幂等和回滚。
