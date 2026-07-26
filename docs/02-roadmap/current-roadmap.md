@@ -46,7 +46,7 @@ S06 的核心不是增加一个“发布”按钮，而是消除 live 配置表�
 | Milestone | 目标 | 依赖 | 执行报告 | 状态 |
 | --- | --- | --- | --- | --- |
 | PROJECT-PLATFORM-S06-M1 | 唯一配置草稿、完整快照和发布校验 | S05 归档；Program revision 19 | `docs/90-reports/project-platform-s06-m1-execution-report.md` | Done |
-| PROJECT-PLATFORM-S06-M2 | 不可变版本、原子发布、diff 和回滚 | M1 | `docs/90-reports/project-platform-s06-m2-execution-report.md` | Pending |
+| PROJECT-PLATFORM-S06-M2 | 不可变版本、原子发布、diff 和回滚 | M1 | `docs/90-reports/project-platform-s06-m2-execution-report.md` | Completed |
 | PROJECT-PLATFORM-S06-M3 | 配置模板版本、安装、同步、三方合并和解绑 | M1-M2 | `docs/90-reports/project-platform-s06-m3-execution-report.md` | Pending |
 | PROJECT-PLATFORM-S06-M4 | 兼容矩阵、S07 adapter、迁移/安全/体验和 Stage 收口 | M1-M3 | `docs/90-reports/project-platform-s06-m4-execution-report.md` | Pending |
 
@@ -73,19 +73,19 @@ S06 的核心不是增加一个“发布”按钮，而是消除 live 配置表�
 
 | 任务 | 内容 | 验收标准 | 状态 |
 | --- | --- | --- | --- |
-| PROJECT-PLATFORM-S06-M2-T01 | 冻结 published snapshot、current pointer、发布回执、diff 和 rollback 合同 | legacy partial 与完整 snapshot 可区分；版本号、schema、hash、操作者和时间语义稳定 | Pending |
-| PROJECT-PLATFORM-S06-M2-T02 | 扩展版本与发布回执 schema 并保护历史不可变 | published/superseded snapshot update/delete 由数据库拒绝；回执作用域和精确响应完整 | Pending |
-| PROJECT-PLATFORM-S06-M2-T03 | 实现类型行锁、锁内版本号分配、版本插入和 current pointer 切换 Repository | 并发发布无重复版本/丢失更新；旧 current 在同事务 supersede | Pending |
-| PROJECT-PLATFORM-S06-M2-T04 | 实现原子 publication service | validate、lock、version、pointer、draft、audit、outbox、receipt 全部成功或全部回滚 | Pending |
-| PROJECT-PLATFORM-S06-M2-T05 | 实现发布幂等、异载荷冲突和故障注入 | 同 request ID 精确重放首次响应；不同 hash 冲突；每个事务边界故障均无半发布 | Pending |
-| PROJECT-PLATFORM-S06-M2-T06 | 实现版本列表、详情和 published snapshot 最小披露 API | 无权身份不能枚举历史或隐藏配置；有权响应不依赖 live 表补齐 | Pending |
-| PROJECT-PLATFORM-S06-M2-T07 | 实现语义 diff engine 与稳定 key path | additive/behavioral/conditional/breaking 分类覆盖字段、选项、规则、布局和访问策略 | Pending |
-| PROJECT-PLATFORM-S06-M2-T08 | 实现版本对版本、draft 对 current diff API | 输入边界、schema 兼容、摘要计数、分页/预算和错误码稳定 | Pending |
-| PROJECT-PLATFORM-S06-M2-T09 | 实现 prepare rollback：历史 snapshot 生成新 active draft | 不移动 pointer、不修改历史；来源版本和新 draft lineage 可审计 | Pending |
-| PROJECT-PLATFORM-S06-M2-T10 | 实现 rollback draft 校验与再发布 | 回滚发布产生更高版本；breaking 变化需显式确认；同样经过原子发布 | Pending |
-| PROJECT-PLATFORM-S06-M2-T11 | 实现版本历史、diff、breaking 确认和回滚 UI | 键盘/响应式可用；危险动作信息充分；无权身份无入口 | Pending |
-| PROJECT-PLATFORM-S06-M2-T12 | 完成并发发布、不可变触发器、diff、回滚、审计/outbox 和浏览器目标验证 | 正反例、故障恢复、复合隔离和真实管理链路通过 | Pending |
-| PROJECT-PLATFORM-S06-M2-T13 | 同步当前架构/事件矩阵并完成 M2 checkpoint | 文档只声明已实现发布事实；S07 仍无实例运行能力 | Pending |
+| PROJECT-PLATFORM-S06-M2-T01 | 冻结 published snapshot、current pointer、发布回执、diff 和 rollback 合同 | legacy partial 与完整 snapshot 可区分；版本号、schema、hash、操作者和时间语义稳定 | Done |
+| PROJECT-PLATFORM-S06-M2-T02 | 扩展版本与发布回执 schema 并保护历史不可变 | published/superseded snapshot update/delete 由数据库拒绝；回执作用域和精确响应完整 | Done |
+| PROJECT-PLATFORM-S06-M2-T03 | 实现类型行锁、锁内版本号分配、版本插入和 current pointer 切换 Repository | 并发发布无重复版本/丢失更新；旧 current 在同事务 supersede | Done |
+| PROJECT-PLATFORM-S06-M2-T04 | 实现原子 publication service | validate、lock、version、pointer、draft、audit、outbox、receipt 全部成功或全部回滚 | Done |
+| PROJECT-PLATFORM-S06-M2-T05 | 实现发布幂等、异载荷冲突和故障注入 | 同 request ID 精确重放首次响应；不同 hash 冲突；每个事务边界故障均无半发布 | Done |
+| PROJECT-PLATFORM-S06-M2-T06 | 实现版本列表、详情和 published snapshot 最小披露 API | 无权身份不能枚举历史或隐藏配置；有权响应不依赖 live 表补齐 | Done |
+| PROJECT-PLATFORM-S06-M2-T07 | 实现语义 diff engine 与稳定 key path | additive/behavioral/conditional/breaking 分类覆盖字段、选项、规则、布局和访问策略 | Done |
+| PROJECT-PLATFORM-S06-M2-T08 | 实现版本对版本、draft 对 current diff API | 输入边界、schema 兼容、摘要计数、分页/预算和错误码稳定 | Done |
+| PROJECT-PLATFORM-S06-M2-T09 | 实现 prepare rollback：历史 snapshot 生成新 active draft | 不移动 pointer、不修改历史；来源版本和新 draft lineage 可审计 | Done |
+| PROJECT-PLATFORM-S06-M2-T10 | 实现 rollback draft 校验与再发布 | 回滚发布产生更高版本；breaking 变化需显式确认；同样经过原子发布 | Done |
+| PROJECT-PLATFORM-S06-M2-T11 | 实现版本历史、diff、breaking 确认和回滚 UI | 键盘/响应式可用；危险动作信息充分；无权身份无入口 | Done |
+| PROJECT-PLATFORM-S06-M2-T12 | 完成并发发布、不可变触发器、diff、回滚、审计/outbox 和浏览器目标验证 | 正反例、故障恢复、复合隔离和真实管理链路通过 | Done |
+| PROJECT-PLATFORM-S06-M2-T13 | 同步当前架构/事件矩阵并完成 M2 checkpoint | 文档只声明已实现发布事实；S07 仍无实例运行能力 | Done |
 
 ### PROJECT-PLATFORM-S06-M3 配置模板版本、安装、同步、三方合并和解绑
 

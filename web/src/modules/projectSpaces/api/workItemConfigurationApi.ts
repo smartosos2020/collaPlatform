@@ -18,6 +18,8 @@ export type WorkItemConfigurationDraft = {
   diagnostics: ConfigurationDiagnostic[]
   aggregateVersion: number
   sourceLegacyVersionId?: string | null
+  sourceVersionId?: string | null
+  lineageKind: 'live_edit' | 'legacy_import' | 'rollback'
   updatedBy: string
   updatedAt: string
   availableActions: Array<'save' | 'validate' | 'abandon'>
@@ -27,6 +29,59 @@ export const workItemConfigurationDraftKeys = {
   all: ['work-item-configuration-drafts'] as const,
   detail: (spaceId: string, typeId: string) =>
     [...workItemConfigurationDraftKeys.all, spaceId, typeId] as const,
+}
+
+export type ConfigurationVersion = {
+  id: string
+  versionNumber: number
+  status: 'published' | 'superseded'
+  snapshotSchemaVersion: number
+  completeSnapshot: boolean
+  configHash: string
+  snapshot: unknown
+  sourceDraftId?: string | null
+  rollbackSourceVersionId?: string | null
+  publishedBy: string
+  publishedAt: string
+}
+
+export type ConfigurationDiffItem = {
+  keyPath: string
+  changeType: 'added' | 'removed' | 'changed'
+  impact: 'additive' | 'behavioral' | 'conditional' | 'breaking'
+  beforeValue?: unknown
+  afterValue?: unknown
+}
+
+export type ConfigurationDiff = {
+  fromHash: string
+  toHash: string
+  items: ConfigurationDiffItem[]
+  summary: Record<string, number>
+  breaking: boolean
+}
+
+export type ConfigurationPublicationResult = {
+  version: ConfigurationVersion
+  diff: ConfigurationDiff
+  replayed: boolean
+}
+
+export type RollbackPreparation = {
+  draftId: string
+  draftAggregateVersion: number
+  draftStatus: WorkItemConfigurationDraft['status']
+  sourceVersionId: string
+  sourceVersionNumber: number
+  sourceConfigHash: string
+}
+
+export const workItemConfigurationVersionKeys = {
+  all: ['work-item-configuration-versions'] as const,
+  list: (spaceId: string, typeId: string) =>
+    [...workItemConfigurationVersionKeys.all, spaceId, typeId] as const,
+  draftDiff: (spaceId: string, typeId: string, hash: string) =>
+    [...workItemConfigurationVersionKeys.list(spaceId, typeId), 'draft-diff', hash] as const,
 }
 
 export function getWorkItemConfigurationDraft(spaceId: string, typeId: string) {
@@ -66,5 +121,41 @@ export function abandonWorkItemConfigurationDraft(
   return apiPost<WorkItemConfigurationDraft>(
     `/project-spaces/${spaceId}/configuration/types/${typeId}/draft:abandon`,
     { expectedAggregateVersion },
+  )
+}
+
+export function listWorkItemConfigurationVersions(spaceId: string, typeId: string) {
+  return apiGet<ConfigurationVersion[]>(
+    `/project-spaces/${spaceId}/configuration/types/${typeId}/versions`,
+  )
+}
+
+export function getWorkItemConfigurationDraftDiff(spaceId: string, typeId: string) {
+  return apiGet<ConfigurationDiff>(
+    `/project-spaces/${spaceId}/configuration/types/${typeId}/draft:diff`,
+  )
+}
+
+export function publishWorkItemConfigurationDraft(
+  spaceId: string,
+  typeId: string,
+  expectedDraftAggregateVersion: number,
+  breakingConfirmed: boolean,
+) {
+  return apiPost<ConfigurationPublicationResult>(
+    `/project-spaces/${spaceId}/configuration/types/${typeId}/draft:publish`,
+    { expectedDraftAggregateVersion, breakingConfirmed },
+  )
+}
+
+export function prepareWorkItemConfigurationRollback(
+  spaceId: string,
+  typeId: string,
+  versionId: string,
+  expectedDraftAggregateVersion: number,
+) {
+  return apiPost<RollbackPreparation>(
+    `/project-spaces/${spaceId}/configuration/types/${typeId}/versions/${versionId}:prepare-rollback`,
+    { expectedDraftAggregateVersion },
   )
 }

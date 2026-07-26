@@ -821,3 +821,10 @@ S05 的表单和详情页是“配置与渲染合同”，不是已经可创建�
 - `project_work_items`、字段值、实例命令、实例版本升级、legacy project/issue 数据迁移、运行查询容量和生产 cutover 仍属于 S07 及后续 Stage。S06 不得创建合成实例来提前宣称这些能力。
 - S06 Go 的最低条件是：唯一 active draft 约束和遗留状态迁移可回放；发布事务故障注入证明无半版本；相同 request id 返回首次 receipt；published version update/delete 被数据库拒绝；canonical hash、diff、rollback-as-new-version、模板三方差异和六类身份矩阵均有自动化证据。
 - S07 Go 的最低条件是：所有运行读取均可证明来自绑定的 published snapshot，静态依赖与负向测试阻止直接读取 live S04/S05 配置；在此之前不得激活规范 WorkItem 写入或 legacy cutover。
+
+### 22.8 S06-M2 已实现发布事实
+
+- V082 为完整发布版本记录 `snapshot_schema_version`、`source_draft_id` 和可选 `rollback_source_version_id`，并以数据库触发器拒绝 published/superseded update/delete。
+- publication service 先取得类型行锁，再在锁内创建/读取幂等回执、重读 active draft、分配版本号并执行版本插入、旧 current supersede、pointer 切换、草稿关闭、审计、outbox 和回执完成；任一失败全部回滚。
+- 版本列表允许展示 legacy partial 历史，但 diff、rollback 和未来 S07 adapter 只接受完整 schema v1 snapshot。rollback 只创建带 lineage 的新草稿，再走普通发布产生更高版本。
+- 当前 diff 输出稳定 key path、前后值、影响等级和摘要；它只解释配置变化，不预测或迁移尚不存在的 WorkItem 实例。

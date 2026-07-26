@@ -44,9 +44,9 @@ class ConfigurationDraftFoundationIntegrationTests {
             insertIdentityAndLegacyDraft(jdbc);
 
             Flyway latest = Flyway.configure().dataSource(dataSource).load();
-            assertEquals(2, latest.migrate().migrationsExecuted);
+            assertEquals(3, latest.migrate().migrationsExecuted);
             assertEquals(0, latest.migrate().migrationsExecuted);
-            assertEquals("081", jdbc.queryForObject("select max(version) from flyway_schema_history", String.class));
+            assertEquals("082", jdbc.queryForObject("select max(version) from flyway_schema_history", String.class));
             assertEquals("superseded", jdbc.queryForObject(
                 "select status from project_work_item_type_versions where id=?",
                 String.class,
@@ -109,11 +109,11 @@ class ConfigurationDraftFoundationIntegrationTests {
         var diagnostics = objectMapper.createArrayNode();
         assertTrue(repository.tryInsert(new NewDraft(
             draftId, WORKSPACE_ID, spaceId, typeId, "editing", 1,
-            "3".repeat(64), snapshot, diagnostics, USER_ID
+            "3".repeat(64), snapshot, diagnostics, null, "live_edit", USER_ID
         )));
         assertFalse(repository.tryInsert(new NewDraft(
             UUID.randomUUID(), WORKSPACE_ID, spaceId, typeId, "editing", 1,
-            "3".repeat(64), snapshot, diagnostics, USER_ID
+            "3".repeat(64), snapshot, diagnostics, null, "live_edit", USER_ID
         )));
         assertEquals(draftId, repository.findActive(WORKSPACE_ID, spaceId, typeId).orElseThrow().id());
         assertEquals(1, repository.update(new UpdateDraft(

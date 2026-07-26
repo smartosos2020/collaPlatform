@@ -266,6 +266,8 @@ public class WorkItemConfigurationDraftService {
             snapshot.configHash(),
             snapshot.payload(),
             objectMapper.valueToTree(diagnostics),
+            null,
+            "live_edit",
             actorId
         ));
         if (!inserted) {
@@ -442,6 +444,8 @@ public class WorkItemConfigurationDraftService {
             draft.diagnostics(),
             draft.aggregateVersion(),
             draft.sourceLegacyVersionId(),
+            draft.sourceVersionId(),
+            draft.lineageKind(),
             draft.updatedBy(),
             draft.updatedAt(),
             actions
@@ -467,6 +471,8 @@ public class WorkItemConfigurationDraftService {
         List<ConfigurationDiagnostic> diagnostics,
         long aggregateVersion,
         UUID sourceLegacyVersionId,
+        UUID sourceVersionId,
+        String lineageKind,
         UUID updatedBy,
         java.time.Instant updatedAt,
         List<String> availableActions

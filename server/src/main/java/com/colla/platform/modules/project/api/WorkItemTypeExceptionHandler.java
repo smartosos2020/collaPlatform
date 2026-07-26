@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 @RestControllerAdvice(assignableTypes = {
     WorkItemTypeConfigurationController.class,
     WorkItemConfigurationDraftController.class,
+    WorkItemConfigurationPublicationController.class,
     WorkItemFieldConfigurationController.class,
     WorkItemLayoutConfigurationController.class,
     WorkItemLayoutWorkbenchController.class,

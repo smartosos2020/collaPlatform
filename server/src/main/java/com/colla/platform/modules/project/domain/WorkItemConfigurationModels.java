@@ -3,6 +3,7 @@ package com.colla.platform.modules.project.domain;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
@@ -82,6 +83,8 @@ public final class WorkItemConfigurationModels {
         List<ConfigurationDiagnostic> diagnostics,
         long aggregateVersion,
         UUID sourceLegacyVersionId,
+        UUID sourceVersionId,
+        String lineageKind,
         UUID createdBy,
         Instant createdAt,
         UUID updatedBy,
@@ -126,6 +129,71 @@ public final class WorkItemConfigurationModels {
         UUID createdBy,
         Instant createdAt,
         Instant completedAt
+    ) {
+    }
+
+    public record PublishedConfigurationVersion(
+        UUID id,
+        UUID workspaceId,
+        UUID spaceId,
+        UUID typeDefinitionId,
+        int versionNumber,
+        String status,
+        int snapshotSchemaVersion,
+        String configHash,
+        JsonNode snapshot,
+        UUID sourceDraftId,
+        UUID rollbackSourceVersionId,
+        UUID publishedBy,
+        Instant publishedAt
+    ) {
+        public boolean completeSnapshot() {
+            return snapshotSchemaVersion >= SNAPSHOT_SCHEMA_VERSION;
+        }
+    }
+
+    public record PublicationCommandReceipt(
+        UUID id,
+        UUID workspaceId,
+        UUID spaceId,
+        UUID typeDefinitionId,
+        String requestId,
+        String operation,
+        String requestHash,
+        String status,
+        int responseSchemaVersion,
+        UUID responseVersionId,
+        Integer responseVersionNumber,
+        String responseConfigHash,
+        JsonNode responsePayload,
+        UUID createdBy,
+        Instant createdAt,
+        Instant completedAt
+    ) {
+    }
+
+    public enum DiffImpact {
+        additive,
+        behavioral,
+        conditional,
+        breaking
+    }
+
+    public record ConfigurationDiffEntry(
+        String keyPath,
+        String changeType,
+        DiffImpact impact,
+        JsonNode beforeValue,
+        JsonNode afterValue
+    ) {
+    }
+
+    public record ConfigurationDiff(
+        String fromHash,
+        String toHash,
+        List<ConfigurationDiffEntry> items,
+        Map<String, Integer> summary,
+        boolean breaking
     ) {
     }
 

@@ -5323,6 +5323,29 @@ body {
   border-left-color: #94a3b8;
 }
 
+.work-item-version-divider {
+  margin: 14px 0 10px;
+}
+
+.work-item-version-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 30px;
+}
+
+.work-item-version-list {
+  margin-top: 4px;
+}
+
+.work-item-version-list .ant-list-item {
+  padding: 10px 0;
+}
+
+.work-item-version-list .ant-list-item-meta-description {
+  overflow-wrap: anywhere;
+}
+
 .work-item-draft-summary {
   display: flex;
   align-items: center;

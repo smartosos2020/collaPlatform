@@ -1,21 +1,31 @@
 import {
   CheckCircleOutlined,
+  CloudUploadOutlined,
   CloseCircleOutlined,
   DeleteOutlined,
+  HistoryOutlined,
   ReloadOutlined,
+  RollbackOutlined,
   SafetyCertificateOutlined,
   WarningOutlined,
 } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Alert, App as AntdApp, Button, Skeleton, Space, Tag, Tooltip, Typography } from 'antd'
+import { Alert, App as AntdApp, Button, Divider, List, Skeleton, Space, Tag, Tooltip, Typography } from 'antd'
 
 import {
   abandonWorkItemConfigurationDraft,
+  getWorkItemConfigurationDraftDiff,
   getWorkItemConfigurationDraft,
+  listWorkItemConfigurationVersions,
+  prepareWorkItemConfigurationRollback,
+  publishWorkItemConfigurationDraft,
   validateWorkItemConfigurationDraft,
   workItemConfigurationDraftKeys,
+  workItemConfigurationVersionKeys,
+  type ConfigurationVersion,
   type WorkItemConfigurationDraft,
 } from '../api/workItemConfigurationApi'
+import { workItemTypeKeys } from '../api/workItemTypesApi'
 import { errorMessage, formatTime } from '../projectSpaceView'
 
 export function ProjectWorkItemConfigurationDraftPanel({
@@ -33,6 +43,23 @@ export function ProjectWorkItemConfigurationDraftPanel({
   const draftQuery = useQuery({
     queryKey,
     queryFn: () => getWorkItemConfigurationDraft(spaceId, typeId),
+    retry: false,
+    refetchOnWindowFocus: false,
+  })
+  const versionsQuery = useQuery({
+    queryKey: workItemConfigurationVersionKeys.list(spaceId, typeId),
+    queryFn: () => listWorkItemConfigurationVersions(spaceId, typeId),
+    retry: false,
+    refetchOnWindowFocus: false,
+  })
+  const draftDiffQuery = useQuery({
+    queryKey: workItemConfigurationVersionKeys.draftDiff(
+      spaceId,
+      typeId,
+      draftQuery.data?.configHash ?? 'pending',
+    ),
+    queryFn: () => getWorkItemConfigurationDraftDiff(spaceId, typeId),
+    enabled: Boolean(draftQuery.data && versionsQuery.data?.[0]?.completeSnapshot),
     retry: false,
     refetchOnWindowFocus: false,
   })
@@ -70,6 +97,46 @@ export function ProjectWorkItemConfigurationDraftPanel({
       message.error(errorMessage(error, '放弃配置草稿失败'))
     },
   })
+  const publishMutation = useMutation({
+    mutationFn: (breakingConfirmed: boolean) => publishWorkItemConfigurationDraft(
+      spaceId,
+      typeId,
+      draftQuery.data?.aggregateVersion ?? -1,
+      breakingConfirmed,
+    ),
+    onSuccess: async (result) => {
+      message.success(`配置版本 v${result.version.versionNumber} 已发布`)
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey }),
+        queryClient.invalidateQueries({
+          queryKey: workItemConfigurationVersionKeys.list(spaceId, typeId),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: [...workItemTypeKeys.all, spaceId],
+        }),
+      ])
+    },
+    onError: (error) => {
+      void draftQuery.refetch()
+      message.error(errorMessage(error, '配置发布失败'))
+    },
+  })
+  const rollbackMutation = useMutation({
+    mutationFn: (version: ConfigurationVersion) => prepareWorkItemConfigurationRollback(
+      spaceId,
+      typeId,
+      version.id,
+      draftQuery.data?.aggregateVersion ?? -1,
+    ),
+    onSuccess: async (result) => {
+      message.success(`已从 v${result.sourceVersionNumber} 生成回滚草稿`)
+      await queryClient.invalidateQueries({ queryKey })
+    },
+    onError: (error) => {
+      void draftQuery.refetch()
+      message.error(errorMessage(error, '准备回滚失败'))
+    },
+  })
 
   if (draftQuery.isLoading) {
     return <section className="work-item-draft-panel"><Skeleton active paragraph={{ rows: 1 }} /></section>
@@ -91,6 +158,22 @@ export function ProjectWorkItemConfigurationDraftPanel({
   const warnings = draft.diagnostics.filter((item) => item.severity === 'warning')
   const canValidate = !readOnly && draft.availableActions.includes('validate')
   const canAbandon = !readOnly && draft.availableActions.includes('abandon')
+  const canPublish = !readOnly && draft.status === 'valid'
+  const currentVersion = versionsQuery.data?.find((version) => version.status === 'published')
+  const breaking = draftDiffQuery.data?.breaking ?? false
+
+  const confirmPublish = () => {
+    modal.confirm({
+      title: breaking ? '确认发布破坏性配置变更？' : '发布当前配置？',
+      content: breaking
+        ? `检测到 ${draftDiffQuery.data?.summary.breaking ?? 0} 项 breaking 变化。发布后会生成不可变新版本，旧版本仅变为 superseded。`
+        : '将生成不可变新版本并原子切换当前版本；发布后的历史快照不能编辑或删除。',
+      okText: breaking ? '确认并发布' : '发布版本',
+      okButtonProps: { danger: breaking },
+      cancelText: '取消',
+      onOk: () => publishMutation.mutateAsync(breaking),
+    })
+  }
 
   return (
     <section className={`work-item-draft-panel status-${draft.status}`} aria-label="配置草稿状态">
@@ -117,6 +200,15 @@ export function ProjectWorkItemConfigurationDraftPanel({
             onClick={() => validateMutation.mutate()}
           >
             校验配置
+          </Button>
+          <Button
+            type="primary"
+            icon={<CloudUploadOutlined />}
+            disabled={!canPublish}
+            loading={publishMutation.isPending}
+            onClick={confirmPublish}
+          >
+            发布版本
           </Button>
           <Button
             danger
@@ -151,6 +243,65 @@ export function ProjectWorkItemConfigurationDraftPanel({
           当前快照没有诊断项
         </Typography.Text>
       )}
+      <Divider className="work-item-version-divider" />
+      <div className="work-item-version-heading">
+        <Space>
+          <HistoryOutlined />
+          <Typography.Text strong>版本历史</Typography.Text>
+          {currentVersion ? <Tag color="success">当前 v{currentVersion.versionNumber}</Tag> : null}
+          {draftDiffQuery.data ? (
+            <Tag color={breaking ? 'error' : 'processing'}>
+              草稿 diff {draftDiffQuery.data.items.length} 项
+            </Tag>
+          ) : null}
+        </Space>
+      </div>
+      <List
+        className="work-item-version-list"
+        loading={versionsQuery.isLoading}
+        locale={{ emptyText: '暂无配置版本' }}
+        dataSource={versionsQuery.data ?? []}
+        renderItem={(version) => (
+          <List.Item
+            actions={[
+              <Button
+                key="rollback"
+                size="small"
+                icon={<RollbackOutlined />}
+                disabled={
+                  readOnly
+                  || !version.completeSnapshot
+                  || version.status === 'published'
+                  || rollbackMutation.isPending
+                }
+                onClick={() => modal.confirm({
+                  title: `从 v${version.versionNumber} 生成回滚草稿？`,
+                  content: '当前草稿将被放弃，历史版本和 current pointer 不会移动；需要重新发布才会生效。',
+                  okText: '生成回滚草稿',
+                  cancelText: '取消',
+                  onOk: () => rollbackMutation.mutateAsync(version),
+                })}
+              >
+                回滚
+              </Button>,
+            ]}
+          >
+            <List.Item.Meta
+              title={(
+                <Space wrap>
+                  <Typography.Text>v{version.versionNumber}</Typography.Text>
+                  <Tag color={version.status === 'published' ? 'success' : 'default'}>
+                    {version.status === 'published' ? '当前' : '历史'}
+                  </Tag>
+                  {!version.completeSnapshot ? <Tag color="warning">legacy partial</Tag> : null}
+                  {version.rollbackSourceVersionId ? <Tag color="purple">回滚发布</Tag> : null}
+                </Space>
+              )}
+              description={`hash ${version.configHash.slice(0, 16)}… · schema v${version.snapshotSchemaVersion} · ${formatTime(version.publishedAt)}`}
+            />
+          </List.Item>
+        )}
+      />
     </section>
   )
 }

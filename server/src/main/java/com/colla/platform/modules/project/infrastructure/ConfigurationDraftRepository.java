@@ -48,6 +48,8 @@ public interface ConfigurationDraftRepository {
         String configHash,
         JsonNode snapshot,
         JsonNode diagnostics,
+        UUID sourceVersionId,
+        String lineageKind,
         UUID actorId
     ) {
     }

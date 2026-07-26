@@ -6,6 +6,7 @@ import static org.hamcrest.Matchers.not;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -252,6 +253,129 @@ class WorkItemTypeConfigurationControllerIntegrationTests {
         mockMvc.perform(get(draftPath).header("Authorization", bearer(outsider.token())))
             .andExpect(status().isNotFound())
             .andExpect(jsonPath("$.error.code").value("not_found_or_hidden"));
+    }
+
+    @Test
+    void publishesImmutableSnapshotsReplaysAndRollsBackThroughANewHigherVersion() throws Exception {
+        TestUser root = root("wicp-root");
+        TestUser owner = member(root.token(), "wicpowner");
+        TestUser readonly = member(root.token(), "wicpmember");
+        TestUser outsider = member(root.token(), "wicpoutside");
+        UUID spaceId = createSpace(owner.token(), "wicp-space");
+        addSpaceMember(spaceId, readonly.id(), "member", owner.id());
+        JsonNode type = createType(
+            owner.token(), spaceId, "wicp_task", "Published Task", 10, "wicp-create-" + suffix()
+        );
+        String typeId = type.get("id").asText();
+        String base = configPath(spaceId) + "/" + typeId;
+        String draftPath = base + "/draft";
+
+        JsonNode draft = json(mockMvc.perform(get(draftPath)
+                .header("Authorization", bearer(owner.token())))
+            .andExpect(status().isOk())
+            .andReturn());
+        JsonNode valid = json(mockMvc.perform(post(draftPath + ":validate")
+                .header("Authorization", bearer(owner.token()))
+                .header("X-Colla-Request-Id", "wicp-validate-" + suffix())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"expectedAggregateVersion\":" + draft.get("aggregateVersion").asLong() + "}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.status").value("valid"))
+            .andReturn());
+
+        String publishRequestId = "wicp-publish-" + suffix();
+        String publishBody = """
+            {"expectedDraftAggregateVersion":%d,"breakingConfirmed":false}
+            """.formatted(valid.get("aggregateVersion").asLong());
+        JsonNode published = json(mockMvc.perform(post(base + "/draft:publish")
+                .header("Authorization", bearer(owner.token()))
+                .header("X-Colla-Request-Id", publishRequestId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(publishBody))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.version.versionNumber").value(2))
+            .andExpect(jsonPath("$.version.snapshotSchemaVersion").value(1))
+            .andExpect(jsonPath("$.version.completeSnapshot").value(true))
+            .andReturn());
+        String version2Id = published.at("/version/id").asText();
+        String version2Hash = published.at("/version/configHash").asText();
+
+        mockMvc.perform(post(base + "/draft:publish")
+                .header("Authorization", bearer(owner.token()))
+                .header("X-Colla-Request-Id", publishRequestId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(publishBody))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.version.id").value(version2Id))
+            .andExpect(jsonPath("$.version.configHash").value(version2Hash));
+        mockMvc.perform(post(base + "/draft:publish")
+                .header("Authorization", bearer(owner.token()))
+                .header("X-Colla-Request-Id", publishRequestId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"expectedDraftAggregateVersion":999,"breakingConfirmed":false}
+                    """))
+            .andExpect(status().isConflict())
+            .andExpect(jsonPath("$.error.code").value("idempotency_key_reused"));
+
+        mockMvc.perform(get(base + "/versions")
+                .header("Authorization", bearer(owner.token())))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$[0].versionNumber").value(2))
+            .andExpect(jsonPath("$[1].snapshotSchemaVersion").value(0))
+            .andExpect(jsonPath("$[1].completeSnapshot").value(false));
+        assertThrows(
+            org.springframework.dao.DataAccessException.class,
+            () -> jdbcTemplate.update(
+                "update project_work_item_type_versions set config='{}'::jsonb where id=?",
+                UUID.fromString(version2Id)
+            )
+        );
+
+        JsonNode nextDraft = json(mockMvc.perform(get(draftPath)
+                .header("Authorization", bearer(owner.token())))
+            .andExpect(status().isOk())
+            .andReturn());
+        JsonNode rollback = json(mockMvc.perform(post(base + "/versions/" + version2Id + ":prepare-rollback")
+                .header("Authorization", bearer(owner.token()))
+                .header("X-Colla-Request-Id", "wicp-rollback-" + suffix())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"expectedDraftAggregateVersion":%d}
+                    """.formatted(nextDraft.get("aggregateVersion").asLong())))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.sourceVersionId").value(version2Id))
+            .andExpect(jsonPath("$.draftStatus").value("valid"))
+            .andReturn());
+        JsonNode version3 = json(mockMvc.perform(post(base + "/draft:publish")
+                .header("Authorization", bearer(owner.token()))
+                .header("X-Colla-Request-Id", "wicp-republish-" + suffix())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"expectedDraftAggregateVersion":%d,"breakingConfirmed":true}
+                    """.formatted(rollback.get("draftAggregateVersion").asLong())))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.version.versionNumber").value(3))
+            .andExpect(jsonPath("$.version.rollbackSourceVersionId").value(version2Id))
+            .andReturn());
+        assertNotEquals(version2Id, version3.at("/version/id").asText());
+
+        mockMvc.perform(get(base + "/versions").header("Authorization", bearer(readonly.token())))
+            .andExpect(status().isForbidden())
+            .andExpect(jsonPath("$.error.code").value("forbidden"));
+        mockMvc.perform(get(base + "/versions").header("Authorization", bearer(outsider.token())))
+            .andExpect(status().isNotFound())
+            .andExpect(jsonPath("$.error.code").value("not_found_or_hidden"));
+        assertEquals(2, jdbcTemplate.queryForObject(
+            "select count(*) from audit_logs where workspace_id=? and action='work_item_configuration.published'",
+            Integer.class,
+            owner.workspaceId()
+        ));
+        assertEquals(2, jdbcTemplate.queryForObject(
+            "select count(*) from domain_events where workspace_id=? and event_type='work_item_configuration.published'",
+            Integer.class,
+            owner.workspaceId()
+        ));
     }
 
     @Test

@@ -22,7 +22,7 @@ public class JdbcConfigurationDraftRepository implements ConfigurationDraftRepos
     private static final String DRAFT_SELECT = """
         select id, workspace_id, space_id, type_definition_id, status,
                snapshot_schema_version, config_hash, snapshot, diagnostics,
-               aggregate_version, source_legacy_version_id,
+               aggregate_version, source_legacy_version_id, source_version_id, lineage_kind,
                created_by, created_at, updated_by, updated_at
           from project_work_item_configuration_drafts
         """;
@@ -87,9 +87,10 @@ public class JdbcConfigurationDraftRepository implements ConfigurationDraftRepos
                 insert into project_work_item_configuration_drafts (
                     id, workspace_id, space_id, type_definition_id, status,
                     snapshot_schema_version, config_hash, snapshot, diagnostics,
-                    aggregate_version, created_by, created_at, updated_by, updated_at
+                    aggregate_version, source_version_id, lineage_kind,
+                    created_by, created_at, updated_by, updated_at
                 )
-                values (?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, 0, ?, now(), ?, now())
+                values (?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, 0, ?, ?, ?, now(), ?, now())
                 on conflict do nothing
                 """,
             draft.id(),
@@ -101,6 +102,8 @@ public class JdbcConfigurationDraftRepository implements ConfigurationDraftRepos
             draft.configHash(),
             json(draft.snapshot()),
             json(draft.diagnostics()),
+            draft.sourceVersionId(),
+            draft.lineageKind(),
             draft.actorId(),
             draft.actorId()
         ) == 1;
@@ -267,6 +270,8 @@ public class JdbcConfigurationDraftRepository implements ConfigurationDraftRepos
                 diagnostics,
                 resultSet.getLong("aggregate_version"),
                 resultSet.getObject("source_legacy_version_id", UUID.class),
+                resultSet.getObject("source_version_id", UUID.class),
+                resultSet.getString("lineage_kind"),
                 resultSet.getObject("created_by", UUID.class),
                 resultSet.getTimestamp("created_at").toInstant(),
                 resultSet.getObject("updated_by", UUID.class),
