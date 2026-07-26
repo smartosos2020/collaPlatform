@@ -1,149 +1,131 @@
 ---
-title: PROJECT-PLATFORM-S07 统一工作项运行时与第一阶段迁移当前执行路线
-status: completed
-route: PROJECT-PLATFORM-S07
+title: PROJECT-PLATFORM-S08 轻量状态流定义与运行时当前执行路线
+status: active
+route: PROJECT-PLATFORM-S08
 program: PROJECT-PLATFORM
 program_doc: docs/00-product/initiatives/project-platform-program.md
-program_revision: 22
-stage: PROJECT-PLATFORM-S07
-stage_final_milestone: PROJECT-PLATFORM-S07-M5
+program_revision: 23
+stage: PROJECT-PLATFORM-S08
+stage_final_milestone: PROJECT-PLATFORM-S08-M4
 last_code_check: 2026-07-26
 source_rule: 本文件是唯一执行路线入口；长期专项只提供 Stage 索引，不直接执行。
 ---
 
-# PROJECT-PLATFORM-S07 统一工作项运行时与第一阶段迁移
+# PROJECT-PLATFORM-S08 轻量状态流定义与运行时
 
 ## 1. Stage 目标
 
-在 S02-S06 已交付的空间、类型、字段、布局、字段访问、不可变发布版本和 `PublishedSnapshotAdapter` 基础上，建立统一的规范 WorkItem 运行时，把 project、requirement、task、bug 等类型实例收敛到同一持久模型、命令和读取合同，并完成 legacy `projects/issues` 的第一阶段可恢复迁移。
+在 S07 已交付的规范 WorkItem、不可变版本绑定、动态字段、命令回执、活动账本和用户侧竖切基础上，交付适用于任务、缺陷、内容等轻量事项的版本化状态流。空间管理员可以在配置草稿中定义状态、动作、转换、守卫、必填字段和动作授权，经 S06 发布后由绑定该版本的 WorkItem 运行；空间成员可以根据服务端 `availableActions` 安全流转、回退、重开、终止和恢复。
 
-S07 的完成标准不是“新增一张工作项表”。它必须证明新实例只绑定并解释不可变发布快照，动态值写入原子且可审计，旧链接和平台对象可稳定解析，迁移具备不可变 manifest、校验、续跑与回滚，用户侧真实创建、编辑、评论和附件形成闭环。S07 不实现 S08 状态流配置、S09 节点流、S10 关系图或 S13 高级保存视图。
+S08 的完成标准不是“给 WorkItem 增加 status 字段”。状态定义必须进入完整 published snapshot，运行实例必须只解释自身绑定版本；动作执行必须具备服务端授权、守卫、乐观锁、持久化幂等、不可变历史、审计和事务 outbox。S08 不实现 S09 节点 token、串并行、分支汇聚、会签或节点交付物，也不提前实现 S14 看板拖拽、S17 自动化编排。
 
 ## 2. 固定输入与当前事实
 
-- S06 完成路线已归档；当前 schema 为 V085，`PublishedSnapshotReader/PublishedSnapshotAdapter` 是运行时唯一允许使用的配置读取端口。
-- 每个规范实例必须显式绑定 `type_definition_id + type_version_id + config_hash`；发布新版本不得静默改变既有实例解释。
-- 规范字段值采用 WorkItem 原子 JSONB 权威值与受控类型化 query projection 的混合模型；只有发布快照声明 query/sort/group capability 的字段可建立投影。
-- legacy `projects/issues` 仍是当前业务事实源；S07 必须先画像、映射和 shadow compare，再按 workspace/space 分阶段切换，不允许双写。
-- S02 已有 legacy project -> space/member 映射；S07 必须复用该显式映射，不得按 UUID 相同推断归属。
-- 旧链接、搜索、IM、通知、审计、文件和平台对象必须经统一 `work_item` resolver 与显式 ID map 定位，不能跨模块读取 legacy 私有表。
-- 配置规模预算不等于实例容量。S07 负责规范运行路径和代表性查询预算；10 万工作项复杂保存视图与生产容量结论仍由 S13/PLATFORM-SCALE 后续稳定负载复核。
+- S07 完成路线已归档；`project_work_items` 是唯一规范实例模型，当前 schema 为 V090。
+- WorkItem 显式绑定 `type_definition_id + type_version_id + config_hash`；状态流运行时只经 `PublishedSnapshotAdapter` 读取绑定版本，不回读 active draft 或 live 配置表。
+- S06 提供唯一配置草稿、校验、不可变发布、diff、rollback、模板 lineage 和兼容矩阵；状态流定义必须扩展这些合同，不能建立第二套发布权威。
+- S07 提供 expected version、持久化 command receipt、活动序列、审计/outbox 和 `availableActions` 投影；状态动作复用这些协议，不复制第二套 WorkItem 命令框架。
+- 轻量状态流权威只保存单一 current state；S09 节点流权威保存 workflow instance 与 active token。两类运行时可共享 command/event SPI，但不得共用私有运行表或把一方降维成另一方。
+- owner、space-admin、member、guest、non-member、enterprise-admin 六身份继续使用空间与内容边界；企业管理员不因治理角色自动获得状态流配置或工作项内容权限。
+- S07 前已存在且绑定旧 snapshot 的 WorkItem 不得被静默补状态；初始化、升级、映射和失败清单必须显式、可校验、可回退。
 
 ## 3. 执行规则
 
 1. 每轮只推进一个 Milestone；每个 Task 必须有唯一 Verification Contract、fresh Acceptance Evidence 和执行报告行。
-2. 所有实例读写均带 workspace/space/type 复合边界；owner、space-admin、member、guest、non-member、enterprise-admin 六身份必须正反验证。
-3. 运行时不得注入 active draft、S04/S05 live repository 或配置 command service；未知 snapshot schema、hash 不一致和 legacy partial 必须失败关闭。
-4. 创建、更新、评论、附件和迁移命令均使用持久化 receipt、规范 request hash、乐观版本、审计和事务 outbox；相同请求精确重放，异载荷冲突。
-5. legacy 切流按 `legacy -> shadow migrate -> canonical write -> canonical default -> old write closed` 推进；每阶段有 workspace flag、观测、kill switch 和回退证据。
-6. 迁移计划和批次基于同一一致性快照，manifest 不可变；批次校验与 workspace 收敛校验分离，失败清单不得被续跑覆盖。
-7. M1-M4 使用影响范围门禁；M5 执行 V001/V061/V065/V078/V085 至最新迁移、完整后端/前端/collaboration/架构/安全/真实隔离浏览器和 `route-final`。
-8. 若任务依赖、真实代码或迁移画像推翻当前假设，先更新 Program/目标架构并记录 revision，不得以“Remaining Gap”弱化阻断项。
+2. 定义、草稿、发布和 runtime 必须保持单一版本链；任何从 live repository、最新类型版本或前端文本补算状态动作的实现均为阻断。
+3. 状态、动作和转换使用永久 semantic key；展示名可变，运行历史和事件不得依赖展示文本定位。
+4. 转换守卫只允许声明式、可审计、可确定求值的表达式；任意代码执行、动态 SQL、前端 guard 和未注册副作用禁止进入基础合同。
+5. 动作命令在同一事务提交 current state、WorkItem aggregate version、活动、workflow history、审计、outbox 和 receipt；失败不得产生半转换。
+6. `availableActions` 与真实执行必须调用同一服务端决策；列表投影可以批量计算，但不能成为授权事实源。
+7. 终止、恢复、回退和重开必须是显式动作并保留完整历史；禁止删除历史或直接改 current state 纠错。
+8. M1-M3 使用影响范围门禁；M4 执行完整 Flyway、后端、前端、协作、架构、安全、六身份真实隔离浏览器和 `route-final`。
 
 ## 4. Milestone 总览
 
 | Milestone | 目标 | 依赖 | 执行报告 | 状态 |
 | --- | --- | --- | --- | --- |
-| PROJECT-PLATFORM-S07-M1 | 规范 WorkItem 持久模型、命令与 API | S06 归档；Program revision 21 | `docs/90-reports/project-platform-s07-m1-execution-report.md` | Completed |
-| PROJECT-PLATFORM-S07-M2 | 动态字段值、参与者、活动账本与查询投影 | M1 | `docs/90-reports/project-platform-s07-m2-execution-report.md` | Completed |
-| PROJECT-PLATFORM-S07-M3 | legacy 读取适配、ID map、统一 resolver 与受控切流 | M1-M2 | `docs/90-reports/project-platform-s07-m3-execution-report.md` | Completed |
-| PROJECT-PLATFORM-S07-M4 | 分批迁移、独立校验、续跑、回滚与演练 | M1-M3 | `docs/90-reports/project-platform-s07-m4-execution-report.md` | Completed |
-| PROJECT-PLATFORM-S07-M5 | 用户侧规范工作项竖切、综合验收与 Stage 收口 | M1-M4 | `docs/90-reports/project-platform-s07-m5-execution-report.md` | Completed |
+| PROJECT-PLATFORM-S08-M1 | 状态、动作、转换、守卫与版本化定义底座 | S07 归档；Program revision 23 | `docs/90-reports/project-platform-s08-m1-execution-report.md` | Pending |
+| PROJECT-PLATFORM-S08-M2 | 状态运行时、权限、幂等与不可变历史 | M1 | `docs/90-reports/project-platform-s08-m2-execution-report.md` | Pending |
+| PROJECT-PLATFORM-S08-M3 | 回退、重开、终止、恢复与存量实例承接 | M1-M2 | `docs/90-reports/project-platform-s08-m3-execution-report.md` | Pending |
+| PROJECT-PLATFORM-S08-M4 | 状态配置器、成员执行 UI、综合验收与 Stage 收口 | M1-M3 | `docs/90-reports/project-platform-s08-m4-execution-report.md` | Pending |
 
 ## 5. 详细任务
 
-### PROJECT-PLATFORM-S07-M1 规范 WorkItem 持久模型、命令与 API
+### PROJECT-PLATFORM-S08-M1 状态、动作、转换、守卫与版本化定义底座
 
 | 任务 | 内容 | 验收标准 | 状态 |
 | --- | --- | --- | --- |
-| PROJECT-PLATFORM-S07-M1-T01 | 审计 legacy project/issue 模型、S02 space map、S03-S06 发布合同、现有 API/UI、评论/附件和平台对象链路 | 表、代码 owner、写入口、依赖、可复用合同、迁移风险和禁止模式可定位；无未经证实的切流假设 | Done |
-| PROJECT-PLATFORM-S07-M1-T02 | 冻结 WorkItem 标识、展示编号、类型绑定、生命周期、版本和错误领域合同 | UUID/number 唯一性、type version/config hash 绑定、active/archived 边界、404/403/409 语义无歧义 | Done |
-| PROJECT-PLATFORM-S07-M1-T03 | 设计并落地 `project_work_items`、编号计数器和实例命令回执 Flyway schema | workspace/space/type/version 复合 FK、唯一约束、乐观版本、索引、owner 和清理闭包完整 | Done |
-| PROJECT-PLATFORM-S07-M1-T04 | 实现 WorkItem Repository、复合边界查询、行锁和 keyset 分页 | 所有查询显式带 workspace/space；单条与列表不越权枚举；并发更新稳定冲突 | Done |
-| PROJECT-PLATFORM-S07-M1-T05 | 实现运行时 snapshot binding 与静态依赖守卫 | 创建事务锁定 current published version 并保存 hash；运行包只依赖 adapter；live/draft 注入被测试阻断 | Done |
-| PROJECT-PLATFORM-S07-M1-T06 | 实现创建命令、默认值应用、服务端字段访问和原子回执 | 默认值/required/write 决策来自绑定 snapshot；实例、审计、outbox、receipt 同事务；重放精确 | Done |
-| PROJECT-PLATFORM-S07-M1-T07 | 实现读取详情、列表摘要与 `availableActions` 投影 | hidden 字段零披露；create/detail layout 输入来自绑定 snapshot；未知字段或 schema 失败关闭 | Done |
-| PROJECT-PLATFORM-S07-M1-T08 | 实现基础更新、归档和恢复命令 | expected version、字段 write 决策、状态约束、审计/outbox、幂等和失败原子性完整 | Done |
-| PROJECT-PLATFORM-S07-M1-T09 | 交付用户协作 API、DTO、错误和分页合同 | 路由不混入管理后台；DTO 不暴露表名/策略正文；错误码和 canonical location 稳定 | Done |
-| PROJECT-PLATFORM-S07-M1-T10 | 接入平台对象注册、导航 identity 和事务 outbox | canonical `work_item` object identity 可解析；事件含稳定 event/object/config version，不复制隐藏值 | Done |
-| PROJECT-PLATFORM-S07-M1-T11 | 完成 Repository/API/并发/幂等/故障注入与六身份自动化测试 | 正反例覆盖跨 workspace、跨 space、伪造组合 ID、未知 snapshot、回滚和精确重放 | Done |
-| PROJECT-PLATFORM-S07-M1-T12 | 同步当前架构、模块/事件合同和数据库 owner，完成 M1 checkpoint | 文档只声明已实现规范实例底座；legacy 仍未切流，M2 输入与证据可复用 | Done |
+| PROJECT-PLATFORM-S08-M1-T01 | 审计 S06 published snapshot、S07 WorkItem/活动/命令合同、现有 issue 状态语义和 S09 边界 | 可复用端口、旧状态数据、调用方、迁移风险和禁止依赖可定位；无未经证实的定义假设 | Pending |
+| PROJECT-PLATFORM-S08-M1-T02 | 冻结 StateDefinition、ActionDefinition、TransitionDefinition、GuardDefinition 和状态分类领域合同 | 永久 key、展示语义、initial/active/terminal/canceled、版本和错误语义无歧义 | Pending |
+| PROJECT-PLATFORM-S08-M1-T03 | 扩展完整 configuration snapshot schema 承载轻量状态流定义 | snapshot/hash/canonicalizer 覆盖状态流；旧 schema、无状态流类型和未来 schema 行为明确 | Pending |
+| PROJECT-PLATFORM-S08-M1-T04 | 落地 current state、状态命令回执和不可变 workflow history Flyway schema | workspace/space/workItem/version 复合边界、唯一性、FK、索引、清理闭包和不可变保护完整 | Pending |
+| PROJECT-PLATFORM-S08-M1-T05 | 把状态流编辑接入 S06 唯一配置草稿与 Repository/DTO | 定义只存在于草稿 snapshot；不建立 live/published 双写表；乐观版本和幂等沿用现有合同 | Pending |
+| PROJECT-PLATFORM-S08-M1-T06 | 实现结构校验：唯一 initial、可达性、终态、重复 key、悬空转换和死路检测 | 非法图产生稳定 diagnostics；校验确定、顺序无关且不静默修复用户定义 | Pending |
+| PROJECT-PLATFORM-S08-M1-T07 | 实现声明式 guard、字段条件、参与者/角色条件注册表和 canonicalizer | 只接受白名单 operator/operand；类型错误、隐藏字段和未知扩展失败关闭 | Pending |
+| PROJECT-PLATFORM-S08-M1-T08 | 定义动作授权、转换必填字段和受控副作用合同 | 授权角色、required field、字段 patch 和副作用引用均可版本化；不执行任意代码 | Pending |
+| PROJECT-PLATFORM-S08-M1-T09 | 把状态流变化接入配置 diff、兼容矩阵、发布和 rollback | key 删除/重定向、initial/terminal/guard 变化分级稳定；blocked/migration_required 不被普通发布绕过 | Pending |
+| PROJECT-PLATFORM-S08-M1-T10 | 为系统预置类型提供确定性轻量状态流草稿/模板输入 | 重复安装/升级 hash 稳定；不覆盖 workspace 本地修改；无默认状态猜测 | Pending |
+| PROJECT-PLATFORM-S08-M1-T11 | 完成 schema、校验、草稿、发布、兼容和跨空间负向自动化测试 | 空库/升级、并发、幂等、不可变、越权、未知 guard 和 S09 私表隔离均通过 | Pending |
+| PROJECT-PLATFORM-S08-M1-T12 | 同步目标/当前架构、模块/对象/事件合同并完成 M1 checkpoint | 文档只声明定义底座；runtime 尚未激活，M2 输入、证据和剩余风险清晰 | Pending |
 
-### PROJECT-PLATFORM-S07-M2 动态字段值、参与者、活动账本与查询投影
-
-| 任务 | 内容 | 验收标准 | 状态 |
-| --- | --- | --- | --- |
-| PROJECT-PLATFORM-S07-M2-T01 | 冻结动态值 canonical JSON、unset/null、多值、用户、附件、引用、interval/computed 的运行语义 | 每类值的编码、校验、比较、脱敏、升级和不支持行为有稳定合同 | Done |
-| PROJECT-PLATFORM-S07-M2-T02 | 落地字段投影、参与者、活动历史和相关命令回执 schema | 规范值与投影同事务；参与者唯一性/角色约束、不可变活动序列和复合隔离完整 | Done |
-| PROJECT-PLATFORM-S07-M2-T03 | 实现 snapshot 驱动的字段 codec、默认值、校验与 canonicalizer | 11 类已注册字段行为明确；未知/禁用/隐藏字段失败关闭；相同语义同 hash | Done |
-| PROJECT-PLATFORM-S07-M2-T04 | 实现动态值 Repository 和原子 patch 命令 | JSONB 权威值、实例 version、投影、活动、审计/outbox/receipt 同事务提交 | Done |
-| PROJECT-PLATFORM-S07-M2-T05 | 实现 capability 驱动的类型化查询投影与重建 | 仅已发布 query/sort/group capability 可投影；受控 SQL 模板、漂移检测和可重建性通过 | Done |
-| PROJECT-PLATFORM-S07-M2-T06 | 实现服务端字段级 read/write/required 与最小披露 | hidden 字段不进入值、错误、差异、活动、搜索或事件；只读/必填规则不可由前端绕过 | Done |
-| PROJECT-PLATFORM-S07-M2-T07 | 实现参与者添加、变更、移除和角色语义 | 权限、最后责任人约束、用户状态、幂等、并发和活动记录完整 | Done |
-| PROJECT-PLATFORM-S07-M2-T08 | 实现不可变活动账本和用户可见投影 | 创建/更新/参与者/归档等事件有稳定序号与 actor；敏感前后值按调用身份投影 | Done |
-| PROJECT-PLATFORM-S07-M2-T09 | 实现基础 filter/sort 查询合同和索引预算 | 只接受 capability 白名单；无能力字段受控拒绝；无动态 SQL 注入和明显 N+1 | Done |
-| PROJECT-PLATFORM-S07-M2-T10 | 接入搜索/通知/协作消费所需稳定事件，不提前实现 S12/S17 产品能力 | outbox schema、去重键和 replay 合同稳定；消费者只能使用公共合同/解析器 | Done |
-| PROJECT-PLATFORM-S07-M2-T11 | 完成字段类型、投影一致性、参与者、活动、权限、并发和故障自动化测试 | 正反例、projection rebuild、事务回滚、隐藏值零泄漏和跨空间负例通过 | Done |
-| PROJECT-PLATFORM-S07-M2-T12 | 执行代表性字段/实例查询预算并完成 M2 checkpoint | 结果标注数据规模、SQL plan 和限制；不冒充 10 万复杂视图或生产容量结论 | Done |
-
-### PROJECT-PLATFORM-S07-M3 legacy 读取适配、ID map、统一 resolver 与受控切流
+### PROJECT-PLATFORM-S08-M2 状态运行时、权限、幂等与不可变历史
 
 | 任务 | 内容 | 验收标准 | 状态 |
 | --- | --- | --- | --- |
-| PROJECT-PLATFORM-S07-M3-T01 | 画像 legacy projects/issues、成员、评论、附件、状态、引用和所有读写调用方 | 数量/hash/水位、脏数据、ID 冲突、孤儿、跨模块消费者和 P0/P1 风险可追溯 | Done |
-| PROJECT-PLATFORM-S07-M3-T02 | 冻结显式 ID map、兼容读取、workspace cutover flag、阶段和 kill switch 合同 | source/target identity、冲突分支、读优先级、禁止双写、回退和旧写关闭语义明确 | Done |
-| PROJECT-PLATFORM-S07-M3-T03 | 落地 S07 migration batch/unit/manifest/failure、legacy ID map 和 cutover schema | 不可变 manifest、生命周期归属、复合 FK、唯一性、失败追加和索引完整 | Done |
-| PROJECT-PLATFORM-S07-M3-T04 | 实现 project/issue -> WorkItem 显式映射 resolver | UUID 复用也写 map；冲突生成新 ID；旧 route 返回 canonical location；跨空间最小披露 | Done |
-| PROJECT-PLATFORM-S07-M3-T05 | 实现 legacy project/issue 只读投影适配器 | 未迁移对象可按规范 DTO 读取；适配器不写 canonical、不伪造 published snapshot 或字段能力 | Done |
-| PROJECT-PLATFORM-S07-M3-T06 | 实现统一 `work_item` resolver 与平台对象兼容注册 | 新旧链接、搜索、IM、通知、审计、文件引用均走公共 resolver；无私表跨模块读取 | Done |
-| PROJECT-PLATFORM-S07-M3-T07 | 实现 workspace/space 分阶段读取路由与 shadow compare | 每阶段可观测命中、漂移、错误和延迟；批次与收敛状态不混淆；kill switch 可恢复 | Done |
-| PROJECT-PLATFORM-S07-M3-T08 | 实现 canonical-only 新写和 legacy 旧写受控关闭合同 | 不双写；切流后旧写返回 stable gone/conflict 与 canonical location；回退不覆盖新事实 | Done |
-| PROJECT-PLATFORM-S07-M3-T09 | 完成 resolver、旧链接、读取对照、切流、回退、六身份和跨模块契约测试 | 已迁移/未迁移/冲突/隐藏/跨空间/消费者 replay 正反例完整 | Done |
-| PROJECT-PLATFORM-S07-M3-T10 | 交付兼容监测、告警、runbook 和调用方清单 | 旧读回退率、旧写调用、map 漂移和消费者死信可定位；P0 有明确停止条件 | Done |
-| PROJECT-PLATFORM-S07-M3-T11 | 同步兼容注册表、当前架构和事件矩阵，完成 M3 checkpoint | legacy 与 canonical 权威阶段清晰；M4 迁移输入冻结且无静默双事实源 | Done |
+| PROJECT-PLATFORM-S08-M2-T01 | 复核 M1 定义、snapshot、schema、报告和未关闭阻断 | 12 项任务逐项可追溯；阻断项 Reopen，不以文档结论代替实现 | Pending |
+| PROJECT-PLATFORM-S08-M2-T02 | 实现绑定 snapshot 驱动的 state runtime adapter 与初始状态解析 | 只解释 WorkItem 绑定版本/hash；无状态流类型返回显式能力缺失；不查询最新配置 | Pending |
+| PROJECT-PLATFORM-S08-M2-T03 | 实现 current state Repository、行锁、乐观版本和原子初始化 | 单实例只有一个 current state；并发初始化唯一；WorkItem/state 版本不漂移 | Pending |
+| PROJECT-PLATFORM-S08-M2-T04 | 实现统一 action/transition/guard 服务端决策与批量 `availableActions` | 投影和执行共享同一 decision；reason code、披露范围、策略版本和动作排序稳定 | Pending |
+| PROJECT-PLATFORM-S08-M2-T05 | 实现字段/参与者/空间角色 guard 与转换 required field 校验 | hidden 字段零披露；guest/member/admin 边界准确；失败不暴露不可见值或目标状态 | Pending |
+| PROJECT-PLATFORM-S08-M2-T06 | 实现状态动作命令和同事务字段 patch | expected version、from state、guard、字段 patch、current state、WorkItem version 原子提交 | Pending |
+| PROJECT-PLATFORM-S08-M2-T07 | 接入持久化幂等回执与规范 request hash | 相同 request ID 精确重放；异载荷冲突；并发败者不重复历史、事件或副作用 | Pending |
+| PROJECT-PLATFORM-S08-M2-T08 | 实现不可变 workflow history 与调用者可见历史投影 | 单调序号、from/to/action/actor/version/decision 可追溯；敏感 guard 输入不落正文 | Pending |
+| PROJECT-PLATFORM-S08-M2-T09 | 接入 WorkItem 活动、审计和事务 outbox 公共合同 | `workflow.action_executed/state_changed` 与 activity/receipt 同事务；事件 schema 可重放且最小披露 | Pending |
+| PROJECT-PLATFORM-S08-M2-T10 | 交付用户状态读取、可用动作和执行 API/DTO/错误合同 | 用户路由不混入治理 API；404/403/409/422 稳定；DTO 不暴露策略正文或表结构 | Pending |
+| PROJECT-PLATFORM-S08-M2-T11 | 完成六身份、并发、重放、guard、故障注入和跨空间自动化测试 | stale command 更新零行；无双转换、半历史、越权枚举、重复事件或隐藏值泄漏 | Pending |
+| PROJECT-PLATFORM-S08-M2-T12 | 执行代表性状态动作/列表动作投影预算并完成 M2 checkpoint | SQL plan、批量上界和延迟可复现；不冒充复杂节点流或生产容量结论 | Pending |
 
-### PROJECT-PLATFORM-S07-M4 分批迁移、独立校验、续跑、回滚与演练
-
-| 任务 | 内容 | 验收标准 | 状态 |
-| --- | --- | --- | --- |
-| PROJECT-PLATFORM-S07-M4-T01 | 冻结 preflight、plan、manifest、批次/单元状态、failure、verify、resume 和 rollback 合同 | 状态机、命令、稳定错误、权限、RTO/停止条件和证据归属无歧义 | Done |
-| PROJECT-PLATFORM-S07-M4-T02 | 实现同一 REPEATABLE_READ 快照的数据画像、目标版本选择、plan 和输入 fingerprint | plan 与 hash 同视图；锁外变化被过期检测拒绝；dry-run 不写业务事实 | Done |
-| PROJECT-PLATFORM-S07-M4-T03 | 实现不可变 migration manifest 和 project 单元边界 | manifest 保存完整生命周期归属；单元覆盖 project、issue 及附属对象；后续尝试不覆盖历史 | Done |
-| PROJECT-PLATFORM-S07-M4-T04 | 实现 project/issue 基础字段、类型、空间、编号和 snapshot binding 迁移 | 每个目标实例绑定完整 published version/hash；ID 冲突显式映射；无默认猜测 | Done |
-| PROJECT-PLATFORM-S07-M4-T05 | 实现动态字段、参与者、评论、附件和活动 provenance 迁移 | 值转换/拒绝清单稳定；附件引用不丢失；来源 ID/checksum/batch 可追溯 | Done |
-| PROJECT-PLATFORM-S07-M4-T06 | 实现小批量执行、限速、暂停、续跑和并发所有权 | 同批次 resume 幂等；lease/fencing 或数据库所有权防双执行；失败单元隔离 | Done |
-| PROJECT-PLATFORM-S07-M4-T07 | 实现批次 manifest verify | count/hash/map/字段/附件/孤儿按原 manifest 校验；后续批次不能让旧批次假成功 | Done |
-| PROJECT-PLATFORM-S07-M4-T08 | 实现独立 workspace convergence verify 和 shadow compare | 收敛校验不改历史批次结论；已迁移/未迁移/回退数据均可解释 | Done |
-| PROJECT-PLATFORM-S07-M4-T09 | 实现写切流前 rollback 与写切流后补偿/kill switch | pre-cutover 可删除本批次目标且保留审计；post-cutover 不覆盖 canonical 新写，走显式补偿 | Done |
-| PROJECT-PLATFORM-S07-M4-T10 | 交付管理员迁移 API/CLI、进度、失败下载和操作 runbook | owner 边界、危险确认、最小披露、重试入口和 canonical location 清晰 | Done |
-| PROJECT-PLATFORM-S07-M4-T11 | 执行真实 PostgreSQL/Flyway 空库和多历史基线迁移 rehearsal | V001/V061/V065/V078/V085 至最新及重复 migrate 通过；legacy sentinel 与历史快照不越界 | Done |
-| PROJECT-PLATFORM-S07-M4-T12 | 执行竞态、崩溃、失败单元、resume、map 冲突、verify 假阳性和 rollback 故障注入 | 每类失败有 fresh 非空证据；无半单元、清单覆盖、历史结论改写或孤儿 | Done |
-| PROJECT-PLATFORM-S07-M4-T13 | 完成安全/性能预算、迁移报告与 M4 checkpoint | 六身份、跨空间、日志脱敏、锁/SQL plan/批量预算达标；生产 cutover 仍需真实备份与批准 | Done |
-
-### PROJECT-PLATFORM-S07-M5 用户侧规范工作项竖切、综合验收与 Stage 收口
+### PROJECT-PLATFORM-S08-M3 回退、重开、终止、恢复与存量实例承接
 
 | 任务 | 内容 | 验收标准 | 状态 |
 | --- | --- | --- | --- |
-| PROJECT-PLATFORM-S07-M5-T01 | 审计 M1-M4 实现、报告、迁移、边界和未关闭 gap | 60 个任务逐项可追溯；阻断项 Reopen，不以文档结论或 Remaining Gap 替代实现 | Done |
-| PROJECT-PLATFORM-S07-M5-T02 | 交付用户侧类型入口、工作项列表、创建和详情路由 | 只展示有权空间/类型；空/加载/错误/旧链接重定向完整；不混入企业管理 UI | Done |
-| PROJECT-PLATFORM-S07-M5-T03 | 用绑定 snapshot 接入 create/detail renderer 和动态值编辑 | 布局、条件、访问、默认值和校验均来自实例版本；无 live 配置回读 | Done |
-| PROJECT-PLATFORM-S07-M5-T04 | 交付参与者、活动、评论和附件真实交互闭环 | 创建、编辑、参与、评论、上传/下载、归档/恢复可连续操作且刷新后事实一致 | Done |
-| PROJECT-PLATFORM-S07-M5-T05 | 完成键盘、窄屏、焦点、长内容、离线/超时和冲突恢复 | 1440/1366/820 关键视口可用；失败保留用户输入；并发冲突不静默覆盖 | Done |
-| PROJECT-PLATFORM-S07-M5-T06 | 执行 owner/admin/member/guest/non-member/enterprise-admin 真实隔离浏览器验收 | 页面入口、字段可见/可写、附件/评论、旧链接和最小披露符合服务端决策 | Done |
-| PROJECT-PLATFORM-S07-M5-T07 | 执行 legacy 与 canonical 混合期真实浏览器和消费者链路验收 | 已迁移/未迁移对象、旧链接、平台对象、搜索/通知合同及 kill switch 可验证 | Done |
-| PROJECT-PLATFORM-S07-M5-T08 | 执行完整迁移 rehearsal、备份恢复、切流和回退演练 | 非空真实形态夹具、失败 resume、批次 verify、收敛 verify、RTO 和回退结果有 fresh 证据 | Done |
-| PROJECT-PLATFORM-S07-M5-T09 | 执行完整后端、迁移、前端、collaboration、架构、工作台、安全和生成物门禁 | full gate 无阻断；日志 fresh 且可复现；mock 不冒充真实浏览器/数据库证据 | Done |
-| PROJECT-PLATFORM-S07-M5-T10 | 同步当前架构、Program、专项索引、模块/事件/兼容合同和运维 runbook | 文档只声明已实现事实；legacy 剩余边界、生产 cutover 限制和 owner 清晰 | Done |
-| PROJECT-PLATFORM-S07-M5-T11 | 复核 S08 准入：规范实例身份、版本绑定和基础活动可被轻量状态流复用 | S08 不重建 WorkItem、字段值或迁移权威；状态流挂载点和禁止项冻结 | Done |
-| PROJECT-PLATFORM-S07-M5-T12 | 给出 S07 Go/Reopen，完成 route-final 并把当前 Stage 置 none | 五份报告、工作上下文、60 Task 和文档一致；仅无阻断时 Completed，S08 保持独立激活 | Done |
+| PROJECT-PLATFORM-S08-M3-T01 | 冻结 forward、return、reopen、terminate、restore 和 correction 动作语义 | 每类动作的来源、目标、授权、终态和历史语义明确；不以直接改状态代替命令 | Pending |
+| PROJECT-PLATFORM-S08-M3-T02 | 实现显式回退转换与最近状态/指定状态边界 | 只允许版本中声明的回退；目标可达、guard 和 required field 重新校验；历史不删除 | Pending |
+| PROJECT-PLATFORM-S08-M3-T03 | 实现终态、重开和重复终止幂等语义 | terminal/canceled 分类稳定；重开目标显式；重复命令精确重放且不产生伪历史 | Pending |
+| PROJECT-PLATFORM-S08-M3-T04 | 实现终止、恢复与 WorkItem archive/restore 生命周期协同 | archive 不伪装业务终止；恢复不自动猜测状态；非法组合受控拒绝 | Pending |
+| PROJECT-PLATFORM-S08-M3-T05 | 设计并实现 pre-S08 WorkItem 显式状态初始化/批量 backfill | manifest、目标版本、初始状态、失败清单、幂等和校验可追溯；不静默修改旧实例 | Pending |
+| PROJECT-PLATFORM-S08-M3-T06 | 实现实例配置版本升级时的 state key 映射与兼容阻断 | 删除/合并/重命名有显式 map；无映射或 blocked 变化失败关闭；旧绑定仍可运行 | Pending |
+| PROJECT-PLATFORM-S08-M3-T07 | 实现空间管理员受控恢复/纠错入口 | 仅空间 owner/admin 可执行；需要原因、expected version、审计和危险确认；企业管理员不自动可见内容 | Pending |
+| PROJECT-PLATFORM-S08-M3-T08 | 实现恢复失败、并发纠错和部分副作用故障原子性 | current state、history、activity、audit、outbox、receipt 全回滚或全提交 | Pending |
+| PROJECT-PLATFORM-S08-M3-T09 | 完善状态生命周期事件、通知/搜索消费合同和 replay 边界 | 事件可去重重放；消费者不读取状态私表；未知版本进入 dead letter | Pending |
+| PROJECT-PLATFORM-S08-M3-T10 | 完成回退/重开/终止/恢复/升级/纠错六身份与故障自动化测试 | 终态、stale、重复、越权、跨空间、隐藏 guard、映射缺失和回滚负例完整 | Pending |
+| PROJECT-PLATFORM-S08-M3-T11 | 执行 V001/V061/V078/V085/V090 至最新迁移与状态 backfill rehearsal | 空库、历史基线、重复 migrate、非空实例、失败续跑和恢复校验通过 | Pending |
+| PROJECT-PLATFORM-S08-M3-T12 | 交付状态恢复 runbook、兼容矩阵并完成 M3 checkpoint | 操作步骤、停止条件、回退边界和 S09 接口清晰；不宣称节点流已实现 | Pending |
+
+### PROJECT-PLATFORM-S08-M4 状态配置器、成员执行 UI、综合验收与 Stage 收口
+
+| 任务 | 内容 | 验收标准 | 状态 |
+| --- | --- | --- | --- |
+| PROJECT-PLATFORM-S08-M4-T01 | 审计 M1-M3 实现、报告、迁移、边界和未关闭 gap | 48 个任务逐项可追溯；阻断项 Reopen，不以 Remaining Gap 弱化完成标准 | Pending |
+| PROJECT-PLATFORM-S08-M4-T02 | 交付空间配置侧状态/动作/转换编辑器 | 编辑、排序、连接、终态、授权、guard、必填和 diagnostics 可操作；不进入企业管理后台 | Pending |
+| PROJECT-PLATFORM-S08-M4-T03 | 交付配置预览、diff、兼容提示、发布阻断和回滚交互 | 草稿/发布边界清晰；blocked/migration_required 不可被前端绕过；失败保留输入 | Pending |
+| PROJECT-PLATFORM-S08-M4-T04 | 在 WorkItem 详情接入当前状态、历史和可用动作执行 UI | 只展示服务端动作；成功后事实一致；409/422/超时/离线可恢复且不静默覆盖 | Pending |
+| PROJECT-PLATFORM-S08-M4-T05 | 完成键盘、焦点、长名称、空状态、窄屏和无障碍交互 | 1440/1366/820 关键视口可用；状态/动作文本不截断或越界；键盘路径完整 | Pending |
+| PROJECT-PLATFORM-S08-M4-T06 | 执行 owner/admin/member/guest/non-member/enterprise-admin 真实隔离浏览器验收 | 配置、查看、执行、回退、纠错和最小披露符合服务端决策 | Pending |
+| PROJECT-PLATFORM-S08-M4-T07 | 执行并发动作、离线重试、终态重开、恢复和 backfill 真实浏览器验收 | 冲突不丢输入；重试不重复动作；刷新后 state/history/activity 一致 | Pending |
+| PROJECT-PLATFORM-S08-M4-T08 | 执行完整 PostgreSQL/Flyway、非空实例升级与故障恢复 rehearsal | 多历史基线、重复 migrate、显式 map、失败清单、续跑和恢复结果有 fresh 证据 | Pending |
+| PROJECT-PLATFORM-S08-M4-T09 | 执行完整后端、前端、collaboration、架构、工作台、安全和生成物门禁 | full gate 无阻断；日志 fresh 可复现；mock 不冒充真实浏览器/数据库证据 | Pending |
+| PROJECT-PLATFORM-S08-M4-T10 | 同步当前架构、Program、专项索引、模块/事件/运维合同 | 文档只声明已实现事实；状态流与 S09 节点流、S14/S17 后续边界清晰 | Pending |
+| PROJECT-PLATFORM-S08-M4-T11 | 复核 S09 准入和共享 command/event SPI | S09 不复用 state 私表，不把 token 图降维成 status；共同协议和禁止项冻结 | Pending |
+| PROJECT-PLATFORM-S08-M4-T12 | 给出 S08 Go/Reopen，完成 route-final 并把当前 Stage 置 none | 四份报告、工作上下文、48 Task 和文档一致；仅无阻断时 Completed，S09 保持 Planned | Pending |
 
 ## 6. Stage 验收
 
-- `project_work_items` 是所有类型实例的唯一规范模型；实例显式绑定完整不可变 `type_version_id + config_hash`。
-- 动态字段 JSONB 权威值、受控查询投影、参与者和不可变活动账本在实例事务中保持一致。
-- 运行时只经 `PublishedSnapshotAdapter` 解释配置，静态和负向测试阻止 active draft/live repository 依赖。
-- 创建、更新、参与者、评论、附件和迁移命令具备乐观版本、持久化幂等、审计/outbox 和故障原子性。
-- legacy ID map、统一 resolver、旧链接、平台对象和跨模块消费者在混合期可稳定定位规范实例，且不存在双写。
-- migration manifest 不可变；批次 verify 与 workspace convergence verify 分离；resume、回滚和故障演练不会覆盖历史或产生孤儿。
-- 第一条用户侧规范工作项竖切完成创建、编辑、参与、评论、附件、归档/恢复及六身份真实隔离验收。
-- S07 不冒充 S08 状态流、S10 关系或 S13 高级查询能力；生产切流仍受真实备份、观测和批准约束。
+- 状态、动作、转换、守卫、必填字段和授权进入完整不可变 configuration snapshot，并经过草稿、校验、diff、发布、rollback 和模板链路。
+- 轻量状态运行时只保存单一 current state，且只解释 WorkItem 绑定的 type version/config hash；不存在对 live/draft 配置的回读。
+- 动作决策、`availableActions` 和执行使用同一服务端授权/guard；六身份、跨 workspace/space 和 hidden 字段最小披露通过。
+- 转换命令具备 expected version、持久化幂等、不可变 history、活动、审计和事务 outbox，故障不产生半转换。
+- 回退、重开、终止、恢复和纠错均为显式命令并保留历史；archive/restore 与业务终态不混淆。
+- pre-S08 实例初始化及配置版本升级使用显式 manifest/mapping/failure/verify，不静默改变旧实例语义。
+- 空间配置 UI 与用户执行 UI 完成真实闭环；企业管理后台不承载日常状态配置或流转。
+- S08 不创建 S09 node token、并行汇聚或会签权威，不冒充 S14 看板和 S17 自动化能力。

@@ -2,11 +2,11 @@
 title: 项目协作平台目标架构
 status: target
 program: PROJECT-PLATFORM
-program_revision: 22
+program_revision: 23
 domain_contract_version: 1
 domain_contract_status: frozen-s01-m3
 migration_contract_version: 1
-stage_review_status: s07-active
+stage_review_status: s08-active
 updated_at: 2026-07-26
 ---
 
@@ -915,3 +915,56 @@ S07 的交付边界是“统一规范 WorkItem 运行时与 legacy 第一阶段�
 - V090 允许系统预置类型在正常校验/发布事务中推进 `current_version_id`，同时继续禁止修改 built-in identity、名称、图标、描述或退休状态。
 - 隔离 route-final 已覆盖六身份、PostgreSQL/Redis/MinIO、离线、409 冲突、窄屏、旧链接、迁移/校验和 pre-cutover rollback。该证据关闭 S07 实现范围，不等价于生产切流批准或容量承诺。
 - S08 只能复用 canonical WorkItem identity、绑定版本、命令回执、活动序列和可用动作挂接轻量状态流；不得创建第二套工作项、字段值、参与者、活动或迁移权威。
+
+## 24. S07-M5 冻结并在 revision 23 激活的 S08 准入包
+
+S08 的交付边界是“轻量状态流定义与运行时”。它允许任务、缺陷、内容等 WorkItem 在单一 current state 上执行版本化动作，但不实现 S09 节点 token、串并行、分支汇聚、会签、交付物或节点任务，也不提前实现 S14 看板拖拽和 S17 自动化编排。
+
+### 24.1 定义与发布权威
+
+- StateDefinition、ActionDefinition、TransitionDefinition 和 GuardDefinition 使用永久 semantic key；展示名、颜色和说明可变，但历史、事件和兼容映射不得依赖展示文本。
+- 状态分类至少区分 initial、active、terminal 和 canceled。每份有效定义恰有一个 initial；无意外死路、悬空转换、重复 key 或不可达活动状态。
+- 轻量状态流是完整 configuration snapshot 的一部分，沿用 S06 唯一 active draft、canonical hash、校验、diff、compatibility、publish、rollback 和模板 lineage。禁止建立 live definition + snapshot 双权威。
+- published snapshot 变化按 semantic key 比较。删除当前状态、改变 initial/terminal、收紧 guard 或 required field 至少为 migration_required；无映射的运行中状态删除必须 blocked。
+
+### 24.2 声明式守卫、授权和副作用
+
+- Guard 只允许注册表中的声明式 operator/operand，输入来自绑定 snapshot、当前 WorkItem 可见字段、参与者、空间角色和稳定上下文。未知 operator、类型不匹配、隐藏字段依赖和未来 schema 失败关闭。
+- Action 定义授权角色、来源/目标状态、required fields、可选原子 field patch 和受控 side-effect key。任意代码、动态 SQL、前端 guard 或未经注册的网络调用不属于基础合同。
+- `availableActions` 与 execute 必须调用同一服务端 decision/guard；投影包含稳定 action key、label、reason code 和输入要求，但不返回策略正文、隐藏值或不可见目标。
+- 企业治理角色不自动获得空间配置或内容流转权。owner/space-admin/member/guest/non-member/enterprise-admin 的最小披露继续服从 S02/S05/S07 空间与字段边界。
+
+### 24.3 运行时权威与事务
+
+- 轻量状态运行时只保存 `(workspace_id, space_id, work_item_id, type_version_id, config_hash, current_state_key, aggregate_version)` 单一权威；状态定义只从 WorkItem 绑定 snapshot 读取，不查询类型 latest version、active draft 或 live repository。
+- 动作命令使用 WorkItem expected version、from-state 前置条件、持久化 request receipt 和 canonical request hash。current state、WorkItem aggregate version、可选字段 patch、workflow history、activity、audit、outbox 和 receipt 在同一事务提交。
+- workflow history 追加保存单调序号、from/to/action、actor、绑定版本、decision reference、correlation/causation 和脱敏摘要。数据库和 Repository 均禁止更新/删除历史事实。
+- `workflow.action_executed`、`workflow.state_changed` 采用公共事件 envelope；消费者按 eventId 幂等，未知 schema 进入 dead letter，不读取状态流私表补算事实。
+
+### 24.4 回退、重开、终止与恢复
+
+- forward、return、reopen、terminate、restore 和 correction 都是显式 Action；不存在绕过 guard/history 直接更新 current state 的普通接口。
+- return 只能到版本定义允许的目标；reopen 的目标状态显式定义；terminate/canceled 与业务 terminal 语义分离。重复命令精确重放，不追加伪历史。
+- WorkItem archive/restore 是对象生命周期，不等于业务终止/恢复。归档时状态事实保留；恢复后不自动猜测或改写业务状态。
+- 空间 owner/admin 可使用受控 recovery/correction 命令，必须提供原因、expected version、危险确认、审计和事件；enterprise-admin 仍需显式空间内容授权。
+
+### 24.5 存量实例和版本升级
+
+- S07 及更早创建且绑定无状态流 snapshot 的 WorkItem 不被静默初始化。状态初始化/backfill 使用显式 manifest、目标版本、initial key、失败清单、幂等、verify 和回退边界。
+- 实例升级到含新状态流的 configuration version 必须提供 state key mapping；删除、合并、重命名或终态变化无完整映射时失败关闭。旧实例继续按原绑定运行或明确报告 capability 缺失。
+- backfill 与 upgrade 不改写既有 activity/history，不伪造用户动作；系统初始化事实带稳定 provenance、actor class、版本和 correlation。
+- 空库、V001/V061/V078/V085/V090 历史基线、非空实例、重复 migrate、失败续跑、并发和恢复必须在隔离 PostgreSQL 中形成 fresh 证据。
+
+### 24.6 状态流与节点流隔离
+
+- S08 current-state repository 与 S09 workflow-instance/node-token repository 分离。状态流实例不创建 token，节点流实例不创建 current-state row。
+- 两类运行时只共享 WorkflowCommand、authorization/guard SPI、aggregate version、idempotency、history/outbox envelope 和 available-action projection，不互相查询私有运行表。
+- 轻量状态流不得为“未来扩展”预先保存伪 token/graph；S09 也不得把并行 token 汇总反写为真实 current state。跨类型统一展示只能使用派生 summary。
+- ArchUnit、schema 和不变量测试必须阻断私表串线，S08 route-final 必须把该负向合同作为 S09 准入证据。
+
+### 24.7 UI 与最终验收
+
+- 状态配置器属于项目空间设置，不进入企业管理后台。它支持状态、动作、转换、授权、guard、required field、diagnostics、预览、diff、发布阻断和 rollback。
+- 用户执行 UI 在 WorkItem 详情展示 current state、可见历史和服务端 `availableActions`；409、422、超时和离线保留用户输入，刷新后 state/history/activity 一致。
+- M4 执行六身份真实隔离浏览器、键盘/焦点/窄屏、并发动作、终态重开、恢复、backfill、完整 Flyway、后端、前端、协作、架构、安全和 route-final。
+- S08 完成只授权进入 S09 节点流设计与运行时，不构成 S14 看板、S17 自动化或生产容量承诺。
