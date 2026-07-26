@@ -2,12 +2,12 @@
 title: 项目协作平台目标架构
 status: target
 program: PROJECT-PLATFORM
-program_revision: 24
+program_revision: 25
 domain_contract_version: 1
 domain_contract_status: frozen-s01-m3
 migration_contract_version: 1
-stage_review_status: s08-completed-s09-planned
-updated_at: 2026-07-26
+stage_review_status: s08-archived-s09-active
+updated_at: 2026-07-27
 ---
 
 # 项目协作平台目标架构
@@ -1017,4 +1017,10 @@ S09 的目标是复杂节点流定义与运行时。它可以在 S08 已验证�
 - 禁止把 `project_work_item_current_states`、`project_work_item_workflow_commands/history` 或 `project_work_item_state_backfill_*` 作为 node instance、active token、join、vote、node task 或 artifact 权威。
 - 禁止把多 token 图折叠写回 S08 单一 current state，或用 S08 state key 猜测节点完成、分支汇聚和会签结果；跨运行时统一展示只能是可重建 summary。
 - S09 的 graph definition 可以进入后续 snapshot schema，但不得让既有 schema v1/v2 被静默解释为节点流；未知 schema、缺失图闭包、无映射运行实例一律失败关闭。
-- S09 激活前必须独立归档 S08 completed 路线、提升 Program revision、生成唯一当前路线，并以 ArchUnit、table-owner/schema 和真实并发测试证明两套私表无读写串线。
+- S08 completed 路线已经独立归档，Program revision 25 与唯一 S09 当前路线已经激活；S09 实现仍必须以 ArchUnit、table-owner/schema 和真实并发测试证明两套私表无读写串线。
+
+### 25.3 Revision 25 激活范围
+
+- S09 当前路线固定为五个 Milestone、60 个 Task：M1 节点图与版本化定义，M2 token/会签运行时，M3 节点任务/表单/交付物/时限，M4 回退/跳转/终止/补偿/升级恢复，M5 可视化设计器、成员执行 UI 与 `route-final`。
+- 激活点是 `PROJECT-PLATFORM-S09-M1-T01`。激活仅建立执行授权和验收合同，不声明 workflow instance、token、task、vote、join、API 或 UI 已实现。
+- S09 只能扩展完整不可变 configuration snapshot，并通过公共 command/event SPI 协作；S08 current-state/history/backfill 私表、S10 关系引擎、S14 高级视图、S16 工作量/工时和 S17 自动化均不在本次激活事实内。

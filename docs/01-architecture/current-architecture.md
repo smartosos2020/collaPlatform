@@ -279,7 +279,7 @@ PLATFORM-SCALE-S01 把模块边界从文档约定升级为机器门禁。2026-07
 - 23 个公开 contract 文件受合同门禁约束；`pnpm architecture:contracts` 同时检查模块、table owner、例外和公共合同来源。
 - S02 收口复核确认 93 条只读例外不属于运行隔离交付范围，退出 Stage 已重新批准为 PLATFORM-SCALE-S05，其中 project 9 条；因 S05-M2-M5 Deferred，例外清理尚未完成，现有精确条目仍不能扩张，修改相关文件时只能保持或减少。
 
-以上数字来自当前 inventory/config，而不是沿用 S03 历史快照。S02 已实现双 API 和独立运行角色，S03 已交付 Worker 多实例 lease、逐 Handler 可靠消费和恢复门槛，S04 已交付双 Event Gateway fanout、业务信号迁移、前端重连校准、旧 Spring 协同退出和双 Hocuspocus 节点恢复。基础设施集群高可用与正式容量承诺仍未交付；PLATFORM-SCALE-S05 的 M2-M5 已 Deferred。PROJECT-PLATFORM-S07 已完成并归档；S08 四个 Milestone、48 个 Task 也已完成，当前 Stage 暂置 none。现有轻量状态流包括 snapshot v2 定义、绑定版本驱动的单一 current-state runtime、forward/return/reopen/terminate/restore/correction、显式 backfill/binding upgrade、空间配置器、成员执行 UI 和六身份真实隔离 route-final。S09 仍为 Planned，当前代码没有 node instance/token、串并行、汇聚或会签权威。
+以上数字来自当前 inventory/config，而不是沿用 S03 历史快照。S02 已实现双 API 和独立运行角色，S03 已交付 Worker 多实例 lease、逐 Handler 可靠消费和恢复门槛，S04 已交付双 Event Gateway fanout、业务信号迁移、前端重连校准、旧 Spring 协同退出和双 Hocuspocus 节点恢复。基础设施集群高可用与正式容量承诺仍未交付；PLATFORM-SCALE-S05 的 M2-M5 已 Deferred。PROJECT-PLATFORM-S07 与 S08 均已完成并归档；S08 交付四个 Milestone、48 个 Task。现有轻量状态流包括 snapshot v2 定义、绑定版本驱动的单一 current-state runtime、forward/return/reopen/terminate/restore/correction、显式 backfill/binding upgrade、空间配置器、成员执行 UI 和六身份真实隔离 route-final。S09 已在 Program revision 25 激活为唯一当前 Stage，路线包含五个 Milestone、60 个 Task，并从 M1-T01 开始；激活不代表运行时已实现，当前代码仍没有 node instance/token/task/vote/join、串并行、汇聚或会签权威。
 
 ## 项目模块当前事实
 
