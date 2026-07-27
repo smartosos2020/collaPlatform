@@ -20,6 +20,7 @@ import {
   Card,
   Empty,
   Input,
+  InputNumber,
   Modal,
   Segmented,
   Select,
@@ -218,7 +219,19 @@ export function ProjectWorkItemLayoutsPanel({
       `${nodeType}_${id.replaceAll('-', '').slice(0, 10)}`,
       nodeType,
       siblings(layout.nodes, parentId).length,
-      { title: nodeLabel(nodeType) },
+      nodeType === 'relation'
+        ? {
+          schemaVersion: 1,
+          title: nodeLabel(nodeType),
+          relationKey: 'related',
+          mode: kind === 'create' ? 'picker' : 'list',
+          maxItems: 50,
+          showReverse: true,
+          collapsedByDefault: false,
+          listFallback: true,
+          keyboardNavigation: true,
+        }
+        : { title: nodeLabel(nodeType) },
     )
     runCommand({ operation: 'add', parentId, targetSortOrder: newNode.sortOrder, node: newNode })
     setSelectedId(newNode.id)
@@ -474,7 +487,7 @@ export function ProjectWorkItemLayoutsPanel({
           <div className="work-item-layout-editor" data-testid="work-item-layout-editor">
             <Card className="work-item-layout-palette" title={<Space><PlusOutlined />控件</Space>}>
               <div className="work-item-layout-palette-actions">
-                {(['section', 'tab', 'column', 'summary'] as const).map((type) => (
+                {(['section', 'tab', 'column', 'relation', 'summary'] as const).map((type) => (
                   <Button
                     key={type}
                     aria-label={`添加${nodeLabel(type)}`}
@@ -742,6 +755,9 @@ function NodeProperties({
   onSave: (node: WorkItemLayoutNode) => void
 }) {
   const [title, setTitle] = useState(String(selected.config.title ?? ''))
+  const [relationKey, setRelationKey] = useState(String(selected.config.relationKey ?? 'related'))
+  const [relationMode, setRelationMode] = useState(String(selected.config.mode ?? 'list'))
+  const [relationMaxItems, setRelationMaxItems] = useState(Number(selected.config.maxItems ?? 50))
   const initialCondition = parseConditionDrafts(selected.visibilityCondition.expression)
   const [conditionJoin, setConditionJoin] = useState<'all' | 'any'>(initialCondition.join)
   const [conditionNegated, setConditionNegated] = useState(initialCondition.negated)
@@ -778,7 +794,21 @@ function NodeProperties({
     const visibilityCondition = expression
       ? { schemaVersion: 1 as const, expression }
       : { schemaVersion: 1 as const }
-    onSave({ ...selected, config: { ...selected.config, title: title.trim() || nodeLabel(selected.nodeType) }, visibilityCondition })
+    const config = selected.nodeType === 'relation'
+      ? {
+        ...selected.config,
+        schemaVersion: 1,
+        title: title.trim() || nodeLabel(selected.nodeType),
+        relationKey: relationKey.trim().toLowerCase(),
+        mode: relationMode,
+        maxItems: relationMaxItems,
+        showReverse: true,
+        collapsedByDefault: Boolean(selected.config.collapsedByDefault),
+        listFallback: true,
+        keyboardNavigation: true,
+      }
+      : { ...selected.config, title: title.trim() || nodeLabel(selected.nodeType) }
+    onSave({ ...selected, config, visibilityCondition })
   }
 
   return (
@@ -786,6 +816,31 @@ function NodeProperties({
       <label>节点类型<Input value={nodeLabel(selected.nodeType)} disabled /></label>
       <label>永久键<Input value={selected.nodeKey} disabled /></label>
       <label>显示名称<Input value={title} maxLength={128} onChange={(event) => setTitle(event.target.value)} /></label>
+      {selected.nodeType === 'relation' ? (
+        <>
+          <label>
+            永久 relation key
+            <Input
+              value={relationKey}
+              status={/^[a-z][a-z0-9_]{0,63}$/.test(relationKey) ? undefined : 'error'}
+              onChange={(event) => setRelationKey(event.target.value)}
+            />
+          </label>
+          <label>
+            展示模式
+            <Select
+              value={relationMode}
+              options={['picker', 'list', 'hierarchy', 'impact'].map((value) => ({ value, label: value }))}
+              onChange={setRelationMode}
+            />
+          </label>
+          <label>
+            展示硬限
+            <InputNumber min={1} max={200} value={relationMaxItems} onChange={(value) => setRelationMaxItems(value ?? 50)} />
+          </label>
+          <Alert type="info" showIcon message="关系值由规范 relation API 保存，不进入普通字段 JSON。" />
+        </>
+      ) : null}
       <div className="work-item-layout-condition-heading">
         <Typography.Text strong>显示条件</Typography.Text>
         <Button
@@ -1117,12 +1172,13 @@ function subtreeContainsField(nodes: WorkItemLayoutNode[], nodeId: string): bool
 function allowedParent(type: WorkItemLayoutNodeType, selected?: WorkItemLayoutNode) {
   if (!selected) return false
   if (type === 'section') return ['section', 'tab'].includes(selected.nodeType)
-  if (type === 'column' || type === 'summary') return ['section', 'tab'].includes(selected.nodeType)
+  if (type === 'column') return ['section', 'tab'].includes(selected.nodeType)
+  if (type === 'relation' || type === 'summary') return ['section', 'tab', 'column'].includes(selected.nodeType)
   return false
 }
 
 function nodeLabel(type: WorkItemLayoutNodeType) {
-  return ({ section: '区块', tab: '标签页', column: '分栏', field: '字段', summary: '摘要' } as const)[type]
+  return ({ section: '区块', tab: '标签页', column: '分栏', field: '字段', relation: '关系控件', summary: '摘要' } as const)[type]
 }
 
 function nodeTitle(item: WorkItemLayoutNode) {

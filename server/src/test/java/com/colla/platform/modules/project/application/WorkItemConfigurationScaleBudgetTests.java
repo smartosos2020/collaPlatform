@@ -75,6 +75,7 @@ class WorkItemConfigurationScaleBudgetTests {
         var assembler = new WorkItemConfigurationSnapshotAssembler(
             types, fields, options, layouts, new WorkItemStateFlowPresetCatalog(objectMapper),
             new WorkItemNodeFlowPresetCatalog(objectMapper),
+            new WorkItemRelationDefinitionPresetCatalog(objectMapper),
             canonicalizer, objectMapper
         );
 

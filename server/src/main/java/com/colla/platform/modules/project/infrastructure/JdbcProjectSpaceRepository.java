@@ -125,6 +125,46 @@ public class JdbcProjectSpaceRepository implements ProjectSpaceRepository {
     public void deleteSpace(UUID workspaceId, UUID spaceId) {
         jdbcTemplate.execute("set local colla.project_space_cleanup = 'on'");
         jdbcTemplate.update(
+            "delete from project_work_item_hierarchy_rebuild_batches where workspace_id = ? and space_id = ?",
+            workspaceId,
+            spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_work_item_hierarchy_paths where workspace_id = ? and space_id = ?",
+            workspaceId,
+            spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_work_item_relation_migration_verifications where workspace_id = ? and space_id = ?",
+            workspaceId,
+            spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_work_item_relation_migration_units where workspace_id = ? and space_id = ?",
+            workspaceId,
+            spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_work_item_relation_migration_batches where workspace_id = ? and space_id = ?",
+            workspaceId,
+            spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_work_item_relation_history where workspace_id = ? and space_id = ?",
+            workspaceId,
+            spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_work_item_relation_commands where workspace_id = ? and space_id = ?",
+            workspaceId,
+            spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_work_item_relations where workspace_id = ? and space_id = ?",
+            workspaceId,
+            spaceId
+        );
+        jdbcTemplate.update(
             "delete from project_work_item_commands where workspace_id = ? and space_id = ?",
             workspaceId,
             spaceId

@@ -14,7 +14,7 @@ Colla Platform 当前是模块化单体：
 
 - 后端：单个 Spring Boot 应用，按业务模块分包。
 - 前端：单个 React SPA，用户工作台和管理后台使用独立 Shell、导航和路由边界。
-- 数据库：单个 PostgreSQL schema，通过 Flyway V001-V096 演进。
+- 数据库：单个 PostgreSQL schema，通过 Flyway V001-V100 演进。
 - 基础设施：Redis、MinIO、WebSocket、平台对象、权限、事件、审计和搜索由模块共享。
 - 交付：本地 Docker 依赖；生产基线是 maintenance、双 API、Worker、Event Gateway、双协作节点的 Docker Compose + Nginx。
 
@@ -52,7 +52,7 @@ Colla Platform 当前是模块化单体：
 
 该历史快照只描述当时的依赖和访问事实，不代表当前计数、边界合格或容量承诺。table owner、允许例外和公共 contract 在 S01-M2 冻结，自动失败门禁在 S01-M3 交付。
 
-S01-M2 已接受 `platform-module-contracts.md`，并以 `platform-modules.json`、`platform-table-owners.json`、`platform-boundary-exceptions.json` 和 `pnpm architecture:contracts` 建立模块、table owner、精确只读例外及 identity/file/platform/event/audit/IM 公共合同。2026-07-27 在 V001-V096 基线执行当前工具确认 15 个后端模块、138 张当前有效表、93 条精确例外和 26 个公共合同文件。138 张表在 owner manifest 中全部唯一归属，重复与 ownerless 均为 0；源码与跨模块候选数量以每次 fresh inventory 报告为准。
+S01-M2 已接受 `platform-module-contracts.md`，并以 `platform-modules.json`、`platform-table-owners.json`、`platform-boundary-exceptions.json` 和 `pnpm architecture:contracts` 建立模块、table owner、精确只读例外及 identity/file/platform/event/audit/IM 公共合同。2026-07-27 在 V001-V100 基线执行当前工具确认 15 个后端模块、146 张当前有效表、93 条精确例外和 27 个公共合同文件。146 张表在 owner manifest 中全部唯一归属，重复与 ownerless 均为 0；fresh inventory 以本地工具结果为准。
 
 ## 前端模块与路由
 
@@ -277,13 +277,13 @@ PLATFORM-SCALE-S01-S04 已完成并归档。S03 交付版本化 envelope、聚�
 
 PLATFORM-SCALE-S01 把模块边界从文档约定升级为机器门禁。2026-07-26 的当前可重复清单为：
 
-- 15 个后端模块、398 个 Java 文件、256 条后端跨模块 import。
+- 15 个后端模块、418 个纳管 Java 文件、266 条后端跨模块 import。
 - 前端有 64 条跨 feature import。
-- V001-V095 形成 134 张当前有效表，每张表有唯一 owner；跨 owner SQL 候选由精确例外治理，foreign write 仍为禁止项。
-- 25 个公开 contract 文件受合同门禁约束；`pnpm architecture:contracts` 同时检查模块、table owner、例外和公共合同来源。
+- V001-V100 形成 146 张当前有效表，每张表有唯一 owner；跨 owner SQL 候选由精确例外治理，foreign write 仍为禁止项。
+- 27 个公开 contract 文件受合同门禁约束；`pnpm architecture:contracts` 同时检查模块、table owner、例外和公共合同来源。
 - S02 收口复核确认 93 条只读例外不属于运行隔离交付范围，退出 Stage 已重新批准为 PLATFORM-SCALE-S05，其中 project 9 条；因 S05-M2-M5 Deferred，例外清理尚未完成，现有精确条目仍不能扩张，修改相关文件时只能保持或减少。
 
-以上数字来自当前 inventory/config，而不是沿用 S03 历史快照。S02 已实现双 API 和独立运行角色，S03 已交付 Worker 多实例 lease、逐 Handler 可靠消费和恢复门槛，S04 已交付双 Event Gateway fanout、业务信号迁移、前端重连校准、旧 Spring 协同退出和双 Hocuspocus 节点恢复。基础设施集群高可用与正式容量承诺仍未交付；PLATFORM-SCALE-S05 的 M2-M5 已 Deferred。PROJECT-PLATFORM-S07、S08 与 S09 均已完成并归档。复杂节点流当前包括 snapshot v3 阶段/节点/边/分支/汇聚/恢复/补偿定义，V093-V096 独立 instance/token/task/artifact/vote/join/receipt/history/backfill 权威，single/any/all/quorum、split/join、表单/交付物/时限、恢复/补偿/升级、空间设计器、成员实例/任务/历史 UI 和六身份真实隔离 route-final。它不读写 S08 current-state/history/backfill 私表。S10 已在 Program revision 27 激活为唯一当前 Stage，路线包含五个 Milestone、60 个 Task 并从 M1-T01 开始；激活不代表关系能力已实现，当前代码仍只有 legacy `issue_relations`，尚无规范 WorkItem relation edge/history、父子/依赖环控制、层级投影或 S10 用户 UI。
+以上事实来自当前 inventory/config，而不是沿用 S03 历史快照。S02 已实现双 API 和独立运行角色，S03 已交付 Worker 多实例 lease、逐 Handler 可靠消费和恢复门槛，S04 已交付双 Event Gateway fanout、业务信号迁移、前端重连校准、旧 Spring 协同退出和双 Hocuspocus 节点恢复。基础设施集群高可用与正式容量承诺仍未交付；PLATFORM-SCALE-S05 的 M2-M5 已 Deferred。PROJECT-PLATFORM-S07、S08 与 S09 均已完成并归档。复杂节点流当前包括 snapshot v3 阶段/节点/边/分支/汇聚/恢复/补偿定义，V093-V096 独立 instance/token/task/artifact/vote/join/receipt/history/backfill 权威，且不读写 S08 私表。S10-M1 已把 configuration snapshot 升至 v4 并由 V097 建立 relation edge/receipt/history/hierarchy projection 底座；S10-M2 通过 V098 激活 canonical relation runtime；S10-M3 通过 V099 激活由 canonical edge 重建的 hierarchy runtime。S10-M4 通过 V100、relation layout node、受权目标搜索/正反向摘要/有界 impact/preview API 与显式 legacy relation migration batch 激活后端和交互合同：非 WorkItem 旧目标保留分类，owner/admin 才能 plan/execute/resume/verify/rollback，原因、expected version 和危险确认均必需。`work_item_relation.changed` 仍只作失效提示，所有正文通过用户 API 重读。S10-M5 已交付空间关系定义编辑、成员关系/层级/影响与迁移 UI；真实隔离浏览器从空库 V001-V100 覆盖六身份、并发单赢家、循环拒绝、离线和 1440/1366/820，S10 已完成并等待独立归档。
 
 ## 项目模块当前事实
 

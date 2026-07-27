@@ -293,6 +293,17 @@ function LayoutPreviewNode({
       </div>
     )
   }
+  if (node.nodeType === 'relation') {
+    return (
+      <div className="work-item-layout-preview-summary" data-relation-key={String(node.config.relationKey ?? '')}>
+        <Typography.Text strong>{String(node.config.title ?? node.nodeKey)}</Typography.Text>
+        <br />
+        <Typography.Text type="secondary">
+          {String(node.config.mode ?? 'list')} · {String(node.config.relationKey ?? '')}
+        </Typography.Text>
+      </div>
+    )
+  }
   const title = String(node.config.title ?? node.nodeKey)
   return (
     <section className={`work-item-layout-preview-group is-${node.nodeType}`} aria-labelledby={`group-${node.id}`}>

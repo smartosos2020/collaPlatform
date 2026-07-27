@@ -119,6 +119,25 @@ workspace audience 只表示“该 workspace 的已连接客户端需要丢弃�
 - 到期扫描使用 `FOR UPDATE SKIP LOCKED` 和 `timed_out_at is null` 产生单一 timeout 事实，并在同一事务追加 `node_task.lifecycle` v1。稳定幂等键为 `node-task:timed-out:{taskId}`。
 - `project.node-task.consumer-contract` 只验证公共 v1 envelope，依赖 durable delivery receipt 去重；未知 schema 永久失败并由通用 Worker 进入 dead letter。通知/搜索正文若后续启用，必须经 `work_item` resolver/用户 API 重新授权，不得读取 node task/artifact 私表。
 
+## S10-M2 WorkItem relation 事件边界
+
+- create/withdraw/restore 成功时，canonical relation edge、不可变 relation history、双端 WorkItem activity、audit、completed command receipt 和 `work_item_relation.changed` v1 outbox 在同一事务中成败；request id/hash 精确重放只返回原结果，不重复追加副作用。
+- archive 的 `detach` 使用同一撤销闭包，`restrict` 在写入任何事实前失败，`retain-history` 保留活动边；WorkItem restore 不静默恢复已撤销边。
+- 公共 payload 只含 space/relation identity、稳定 relation key、双端 WorkItem identity、relation version 和 mutation，不含标题、字段、显示名、授权、原因或定义正文。M2 不注册 notification/search/realtime Handler，未来消费者必须经 `work_item` resolver/用户 API 重新鉴权。
+
+## S10-M3 WorkItem hierarchy 副作用边界
+
+- attach/detach/reparent 仍由规范 relation create/withdraw 命令提交，因此 relation edge、history、双端 activity、audit、receipt、`work_item_relation.changed` outbox 和 closure 刷新在同一事务中成败。reparent 的撤旧/建新使用确定性子 request id，外层 request 精确重放不会复制关系副作用。
+- split-child 把 WorkItem 创建/字段投影与 parent-child relation 闭包置于同一外层事务；任一类型矩阵、深度、环、授权、字段或 outbox 检查失败，子项及全部副作用回滚。
+- hierarchy scan、dry-run、rebuild 与 resume 是 owner/admin 显式恢复操作，只比较或替换可重建 path projection，并写审计/私有 batch 状态；它们不修改 canonical relation edge，也不发布虚假的 create/withdraw/restore 领域事件。
+
+## S10-M4 WorkItem relation 校准与迁移边界
+
+- 关系目标搜索、正反向摘要、局部树与有界 impact 都是用户 API 的实时受权投影；`work_item_relation.changed` v1 只使缓存失效，客户端必须经这些 API 重读，不能把事件 payload 当正文或读取 relation 私表。
+- impact 只返回 dependency/blocking 的有界 upstream/downstream 图，受 definition maxDepth、32 层和 200 edge 硬限约束；它不计算关键路径、工期或触发流程。
+- legacy `issue_relations` plan 冻结 source fingerprint、WorkItem map 和分类。execute 只为 `canonical_work_item` 单元调用规范 relation command；非 WorkItem、跨空间、已删除和未解析目标只保留分类，不产生领域边或伪事件。
+- plan/execute/resume/verify/rollback 是 owner/admin 显式治理操作，写审计与私有 batch/unit/verification 事实。成功创建或撤回的 canonical edge 仍通过唯一 relation command 产生 history/activity/audit/outbox；迁移控制面本身不发布用户关系事件。
+
 ### 5.1 客户端消费与校准
 
 - 浏览器只由应用级 `RealtimeProvider` 解析 v1 envelope；业务页面不再各自建立

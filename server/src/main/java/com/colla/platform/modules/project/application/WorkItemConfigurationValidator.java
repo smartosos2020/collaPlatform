@@ -28,15 +28,18 @@ public class WorkItemConfigurationValidator {
     private final WorkItemConfigurationSnapshotCanonicalizer canonicalizer;
     private final WorkItemStateFlowValidator stateFlowValidator;
     private final WorkItemNodeFlowValidator nodeFlowValidator;
+    private final WorkItemRelationDefinitionValidator relationDefinitionValidator;
 
     public WorkItemConfigurationValidator(
         WorkItemConfigurationSnapshotCanonicalizer canonicalizer,
         WorkItemStateFlowValidator stateFlowValidator,
-        WorkItemNodeFlowValidator nodeFlowValidator
+        WorkItemNodeFlowValidator nodeFlowValidator,
+        WorkItemRelationDefinitionValidator relationDefinitionValidator
     ) {
         this.canonicalizer = canonicalizer;
         this.stateFlowValidator = stateFlowValidator;
         this.nodeFlowValidator = nodeFlowValidator;
+        this.relationDefinitionValidator = relationDefinitionValidator;
     }
 
     public ValidationResult validate(JsonNode requested) {
@@ -101,6 +104,7 @@ public class WorkItemConfigurationValidator {
             error(diagnostics, "invalid_layouts", "$.layouts", "Layouts must be an array");
             return ValidationResult.of(diagnostics);
         }
+        Set<String> relationKeys = relationKeys(snapshot.path("relationDefinitions"));
         Set<String> kinds = new HashSet<>();
         for (int index = 0; index < layouts.size(); index++) {
             JsonNode layout = layouts.get(index);
@@ -109,7 +113,9 @@ public class WorkItemConfigurationValidator {
             if (!Set.of("create", "detail").contains(kind) || !kinds.add(kind)) {
                 error(diagnostics, "duplicate_or_invalid_layout_kind", path + ".layoutKind", "Layout kind must be unique");
             }
-            validateLayout(layout, path, fieldKeys, activeFieldKeys, diagnostics);
+            validateLayout(
+                layout, path, fieldKeys, activeFieldKeys, relationKeys, diagnostics
+            );
         }
         if (!kinds.contains("create") || !kinds.contains("detail")) {
             warning(diagnostics, "missing_layout_kind", "$.layouts", "Both create and detail layouts should be configured");
@@ -155,6 +161,23 @@ public class WorkItemConfigurationValidator {
             hiddenFieldKeys,
             diagnostics
         );
+        int snapshotSchemaVersion = snapshot.path("snapshotSchemaVersion").asInt();
+        if (snapshot.path("relationDefinitions").isArray()
+            && snapshotSchemaVersion < 4) {
+            error(
+                diagnostics,
+                "relation_definitions_require_schema_v4",
+                "$.relationDefinitions",
+                "Relation definitions require snapshot schema version 4"
+            );
+        }
+        if (snapshotSchemaVersion >= 4) {
+            relationDefinitionValidator.validate(
+                snapshot.path("relationDefinitions"),
+                type.path("typeKey").asText(""),
+                diagnostics
+            );
+        }
         diagnostics.sort(Comparator.comparing(ConfigurationDiagnostic::keyPath)
             .thenComparing(ConfigurationDiagnostic::code));
         return ValidationResult.of(diagnostics);
@@ -202,6 +225,7 @@ public class WorkItemConfigurationValidator {
         String path,
         Set<String> fieldKeys,
         Set<String> activeFieldKeys,
+        Set<String> relationKeys,
         List<ConfigurationDiagnostic> diagnostics
     ) {
         JsonNode nodes = layout.path("nodes");
@@ -228,6 +252,15 @@ public class WorkItemConfigurationValidator {
                 error(diagnostics, "unknown_layout_field", nodePath + ".fieldKey", "Layout references an unknown field");
             } else if (fieldKey != null && !activeFieldKeys.contains(fieldKey)) {
                 error(diagnostics, "inactive_layout_field", nodePath + ".fieldKey", "Layout references an inactive field");
+            }
+            if ("relation".equals(node.path("nodeType").asText())) {
+                validateRelationControl(
+                    layout.path("layoutKind").asText(""),
+                    node.path("config"),
+                    nodePath + ".config",
+                    relationKeys,
+                    diagnostics
+                );
             }
             validateConditionReferences(
                 node.path("visibilityCondition"),
@@ -269,6 +302,71 @@ public class WorkItemConfigurationValidator {
                 error(diagnostics, "inactive_policy_field", policyPath + ".fieldKey", "Policy must reference an active field");
             }
             validateConditionReferences(policy.path("policy"), policyPath + ".policy", fieldKeys, diagnostics);
+        }
+    }
+
+    private Set<String> relationKeys(JsonNode definitions) {
+        Set<String> result = new HashSet<>();
+        if (definitions.isArray()) {
+            definitions.forEach(definition -> {
+                String key = definition.path("relationKey").asText("");
+                if (!key.isBlank()) {
+                    result.add(key);
+                }
+            });
+        }
+        return Set.copyOf(result);
+    }
+
+    private void validateRelationControl(
+        String layoutKind,
+        JsonNode config,
+        String path,
+        Set<String> relationKeys,
+        List<ConfigurationDiagnostic> diagnostics
+    ) {
+        if (!config.isObject() || config.path("schemaVersion").asInt() != 1) {
+            error(
+                diagnostics,
+                "invalid_relation_control",
+                path,
+                "Relation control config must use schema version 1"
+            );
+            return;
+        }
+        String relationKey = config.path("relationKey").asText("");
+        if (!relationKeys.contains(relationKey)) {
+            error(
+                diagnostics,
+                "unknown_relation_control_key",
+                path + ".relationKey",
+                "Relation control references an unknown relation definition"
+            );
+        }
+        String mode = config.path("mode").asText("");
+        if (!Set.of("picker", "list", "hierarchy", "impact").contains(mode)) {
+            error(
+                diagnostics,
+                "invalid_relation_control_mode",
+                path + ".mode",
+                "Relation control mode is invalid"
+            );
+        } else if ("create".equals(layoutKind) && !"picker".equals(mode)) {
+            error(
+                diagnostics,
+                "invalid_create_relation_control",
+                path + ".mode",
+                "Create layouts may only use picker relation controls"
+            );
+        }
+        int maxItems = config.path("maxItems").asInt(0);
+        if (maxItems < 1 || maxItems > 200) {
+            error(
+                diagnostics,
+                "invalid_relation_control_limit",
+                path + ".maxItems",
+                "Relation control limit must be between 1 and 200"
+            );
         }
     }
 

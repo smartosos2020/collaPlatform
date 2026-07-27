@@ -65,6 +65,7 @@ import type {
 } from '../api/workItemLayoutsApi'
 import { WorkItemLayoutRenderer, type WorkItemLayoutValues } from './WorkItemLayoutRenderer'
 import { WorkItemNodeWorkflowPanel } from './WorkItemNodeWorkflowPanel'
+import { WorkItemRelationsPanel } from './WorkItemRelationsPanel'
 import { WorkItemWorkflowPanel } from './WorkItemWorkflowPanel'
 import { errorMessage, formatTime } from '../projectSpaceView'
 
@@ -409,6 +410,12 @@ function WorkItemDetail({ space, workItemId }: { space: UserProjectSpace; workIt
           onValuesChange={setValues}
         />
       </Card>
+      <WorkItemRelationsPanel
+        space={space}
+        item={item}
+        online={online}
+        refreshItem={refresh}
+      />
       <WorkItemNodeWorkflowPanel
         spaceId={space.id}
         item={item}

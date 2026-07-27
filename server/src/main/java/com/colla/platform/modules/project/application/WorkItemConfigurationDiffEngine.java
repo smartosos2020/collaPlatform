@@ -169,6 +169,9 @@ public class WorkItemConfigurationDiffEngine {
         if (path.endsWith(".joins")) {
             return "joinKey";
         }
+        if (path.endsWith(".relationDefinitions")) {
+            return "relationKey";
+        }
         return null;
     }
 

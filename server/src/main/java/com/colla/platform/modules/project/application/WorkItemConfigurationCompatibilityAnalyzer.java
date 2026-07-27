@@ -34,6 +34,11 @@ public class WorkItemConfigurationCompatibilityAnalyzer {
         compareKeyedArray("$.layouts", "layoutKind", before.path("layouts"), after.path("layouts"), findings);
         compareStateFlow(before.get("stateFlow"), after.get("stateFlow"), findings);
         compareNodeFlow(before.get("nodeFlow"), after.get("nodeFlow"), findings);
+        compareRelationDefinitions(
+            before.get("relationDefinitions"),
+            after.get("relationDefinitions"),
+            findings
+        );
         findings.sort(Comparator.comparing(CompatibilityFinding::keyPath)
             .thenComparing(CompatibilityFinding::reasonCode));
         if (findings.size() > MAX_FINDINGS) {
@@ -143,6 +148,23 @@ public class WorkItemConfigurationCompatibilityAnalyzer {
         compareKeyedArray("$.nodeFlow.joins", "joinKey", before.path("joins"), after.path("joins"), findings);
     }
 
+    private void compareRelationDefinitions(
+        JsonNode before,
+        JsonNode after,
+        List<CompatibilityFinding> findings
+    ) {
+        if (before == null && after == null) {
+            return;
+        }
+        compareKeyedArray(
+            "$.relationDefinitions",
+            "relationKey",
+            before,
+            after,
+            findings
+        );
+    }
+
     private void compareObject(
         String path,
         JsonNode before,
@@ -234,6 +256,28 @@ public class WorkItemConfigurationCompatibilityAnalyzer {
     private Classification classify(String path, JsonNode before, JsonNode after) {
         boolean removed = before != null && after == null;
         boolean added = before == null && after != null;
+        if (path.matches("^\\$\\.relationDefinitions\\[[^]]+]$") && removed) {
+            return migration("relation_definition_removed",
+                "Detach or migrate every canonical relation edge before removing its definition");
+        }
+        if (path.contains("$.relationDefinitions") && path.endsWith(".relationKey")) {
+            return blocked("relation_key_changed",
+                "Relation semantic keys are immutable; add a new definition and migrate explicitly");
+        }
+        if (path.contains("$.relationDefinitions")
+            && (path.endsWith(".kind") || path.endsWith(".direction"))) {
+            return blocked("relation_semantics_changed",
+                "Relation kind and direction are immutable for an existing semantic key");
+        }
+        if (path.contains("$.relationDefinitions")
+            && (path.contains("TypeKeys")
+                || path.endsWith("Cardinality")
+                || path.endsWith(".deletionPolicy")
+                || path.endsWith(".allowSelf")
+                || path.endsWith(".maxDepth"))) {
+            return migration("relation_constraint_changed",
+                "Validate existing edges and provide a deterministic migration manifest");
+        }
         if (path.matches("^\\$\\.stateFlow\\.states\\[[^]]+]$") && removed) {
             return migration("state_removed", "Provide an explicit state key mapping for every bound instance");
         }

@@ -11,6 +11,7 @@ export type WorkItemRuntime = {
     typeDefinition: JsonObject
     fields: JsonObject[]
     layouts: JsonObject[]
+    relationDefinitions?: JsonObject[]
   }
   accessProjection: Record<string, {
     mode: 'hidden' | 'read' | 'write'

@@ -41,6 +41,7 @@ public class WorkItemConfigurationDraftService {
     private final WorkItemConfigurationSnapshotAssembler assembler;
     private final WorkItemConfigurationSnapshotCanonicalizer canonicalizer;
     private final WorkItemConfigurationValidator validator;
+    private final WorkItemRelationTypeMatrixValidator relationTypeMatrixValidator;
     private final ProjectSpaceRepository spaceRepository;
     private final WorkItemTypeRepository typeRepository;
     private final WorkItemTypeConfigCanonicalizer requestCanonicalizer;
@@ -54,6 +55,7 @@ public class WorkItemConfigurationDraftService {
         WorkItemConfigurationSnapshotAssembler assembler,
         WorkItemConfigurationSnapshotCanonicalizer canonicalizer,
         WorkItemConfigurationValidator validator,
+        WorkItemRelationTypeMatrixValidator relationTypeMatrixValidator,
         ProjectSpaceRepository spaceRepository,
         WorkItemTypeRepository typeRepository,
         WorkItemTypeConfigCanonicalizer requestCanonicalizer,
@@ -66,6 +68,7 @@ public class WorkItemConfigurationDraftService {
         this.assembler = assembler;
         this.canonicalizer = canonicalizer;
         this.validator = validator;
+        this.relationTypeMatrixValidator = relationTypeMatrixValidator;
         this.spaceRepository = spaceRepository;
         this.typeRepository = typeRepository;
         this.requestCanonicalizer = requestCanonicalizer;
@@ -91,7 +94,9 @@ public class WorkItemConfigurationDraftService {
     ) {
         requireManager(user, spaceId, typeId, true);
         ConfigurationSnapshot canonical = canonicalizer.canonicalize(requestedSnapshot);
-        ValidationResult validation = validator.validate(canonical.payload());
+        ValidationResult validation = validateScoped(
+            user.workspaceId(), spaceId, typeId, canonical.payload()
+        );
         Command command = begin(
             user,
             spaceId,
@@ -144,7 +149,9 @@ public class WorkItemConfigurationDraftService {
         ConfigurationDraft active = draftRepository.lockActive(user.workspaceId(), spaceId, typeId)
             .orElseGet(() -> ensureFromLive(user.workspaceId(), spaceId, typeId, user.id()));
         requireVersion(active, expectedAggregateVersion);
-        ValidationResult validation = validator.validate(active.snapshot());
+        ValidationResult validation = validateScoped(
+            user.workspaceId(), spaceId, typeId, active.snapshot()
+        );
         ConfigurationSnapshot canonical = canonicalizer.canonicalize(active.snapshot());
         ConfigurationDraft saved = update(
             active,
@@ -227,7 +234,7 @@ public class WorkItemConfigurationDraftService {
             ),
             active
         );
-        ValidationResult validation = validator.validate(snapshot.payload());
+        ValidationResult validation = validateScoped(workspaceId, spaceId, typeId, snapshot.payload());
         if (active == null) {
             return create(workspaceId, spaceId, typeId, actorId, snapshot, validation.diagnostics());
         }
@@ -245,16 +252,20 @@ public class WorkItemConfigurationDraftService {
     ) {
         if (active == null
             || (!active.snapshot().path("stateFlow").isObject()
-                && !active.snapshot().path("nodeFlow").isObject())) {
+                && !active.snapshot().path("nodeFlow").isObject()
+                && !active.snapshot().path("relationDefinitions").isArray())) {
             return assembled;
         }
         ObjectNode merged = assembled.payload().deepCopy();
-        merged.remove(List.of("stateFlow", "nodeFlow"));
+        merged.remove(List.of("stateFlow", "nodeFlow", "relationDefinitions"));
         if (active.snapshot().path("stateFlow").isObject()) {
             merged.set("stateFlow", active.snapshot().path("stateFlow").deepCopy());
         }
         if (active.snapshot().path("nodeFlow").isObject()) {
             merged.set("nodeFlow", active.snapshot().path("nodeFlow").deepCopy());
+        }
+        if (active.snapshot().path("relationDefinitions").isArray()) {
+            merged.set("relationDefinitions", active.snapshot().path("relationDefinitions").deepCopy());
         }
         return canonicalizer.canonicalize(merged);
     }
@@ -274,16 +285,20 @@ public class WorkItemConfigurationDraftService {
         ).orElse(null);
         if (current == null || !current.completeSnapshot()
             || (!current.snapshot().path("stateFlow").isObject()
-                && !current.snapshot().path("nodeFlow").isObject())) {
+                && !current.snapshot().path("nodeFlow").isObject()
+                && !current.snapshot().path("relationDefinitions").isArray())) {
             return assembled;
         }
         ObjectNode merged = assembled.payload().deepCopy();
-        merged.remove(List.of("stateFlow", "nodeFlow"));
+        merged.remove(List.of("stateFlow", "nodeFlow", "relationDefinitions"));
         if (current.snapshot().path("stateFlow").isObject()) {
             merged.set("stateFlow", current.snapshot().path("stateFlow").deepCopy());
         }
         if (current.snapshot().path("nodeFlow").isObject()) {
             merged.set("nodeFlow", current.snapshot().path("nodeFlow").deepCopy());
+        }
+        if (current.snapshot().path("relationDefinitions").isArray()) {
+            merged.set("relationDefinitions", current.snapshot().path("relationDefinitions").deepCopy());
         }
         return canonicalizer.canonicalize(merged);
     }
@@ -310,8 +325,22 @@ public class WorkItemConfigurationDraftService {
             typeId,
             actorId,
             snapshot,
-            validator.validate(snapshot.payload()).diagnostics()
+            validateScoped(workspaceId, spaceId, typeId, snapshot.payload()).diagnostics()
         );
+    }
+
+    private ValidationResult validateScoped(
+        UUID workspaceId,
+        UUID spaceId,
+        UUID typeId,
+        JsonNode snapshot
+    ) {
+        ValidationResult base = validator.validate(snapshot);
+        List<ConfigurationDiagnostic> diagnostics = new java.util.ArrayList<>(base.diagnostics());
+        diagnostics.addAll(relationTypeMatrixValidator.validate(workspaceId, spaceId, typeId, snapshot));
+        diagnostics.sort(java.util.Comparator.comparing(ConfigurationDiagnostic::keyPath)
+            .thenComparing(ConfigurationDiagnostic::code));
+        return ValidationResult.of(diagnostics);
     }
 
     private ConfigurationDraft create(

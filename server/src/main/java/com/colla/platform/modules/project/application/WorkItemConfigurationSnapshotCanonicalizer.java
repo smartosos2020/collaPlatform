@@ -135,10 +135,17 @@ public class WorkItemConfigurationSnapshotCanonicalizer {
                     .thenComparing(value -> value.path("compensationKey").asText())
             );
         }
+        if ("relationDefinitions".equals(fieldName)) {
+            return java.util.Optional.of(
+                Comparator.comparingInt((JsonNode value) -> value.path("sortOrder").asInt())
+                    .thenComparing(value -> value.path("relationKey").asText())
+            );
+        }
         if (List.of(
             "authorizedRoles", "requiredFieldKeys", "sideEffectKeys", "spaceRoles", "guardKeys",
             "candidateRoles", "explicitUserIds", "participantRoles", "fieldParticipantKeys",
-            "objectTypes", "edgeKeys", "inboundEdgeKeys", "fromNodeKeys"
+            "objectTypes", "edgeKeys", "inboundEdgeKeys", "fromNodeKeys",
+            "sourceTypeKeys", "targetTypeKeys"
         ).contains(fieldName)) {
             return java.util.Optional.of(Comparator.comparing(JsonNode::asText));
         }

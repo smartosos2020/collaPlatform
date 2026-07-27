@@ -175,7 +175,7 @@ class WorkItemTypeConfigurationControllerIntegrationTests {
                 .header("Authorization", bearer(owner.token())))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.status").value("editing"))
-            .andExpect(jsonPath("$.snapshotSchemaVersion").value(3))
+            .andExpect(jsonPath("$.snapshotSchemaVersion").value(4))
             .andExpect(jsonPath("$.aggregateVersion").value(0))
             .andExpect(jsonPath("$.snapshot.stateFlow").doesNotExist())
             .andExpect(jsonPath("$.availableActions", contains("save", "validate", "abandon")))
@@ -294,7 +294,7 @@ class WorkItemTypeConfigurationControllerIntegrationTests {
         JsonNode initial = json(mockMvc.perform(get(draftPath)
                 .header("Authorization", bearer(owner.token())))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.snapshotSchemaVersion").value(3))
+            .andExpect(jsonPath("$.snapshotSchemaVersion").value(4))
             .andExpect(jsonPath("$.snapshot.nodeFlow").doesNotExist())
             .andReturn());
 
@@ -334,7 +334,7 @@ class WorkItemTypeConfigurationControllerIntegrationTests {
                     {"expectedDraftAggregateVersion":%d,"breakingConfirmed":true}
                     """.formatted(valid.get("aggregateVersion").asLong())))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.version.snapshotSchemaVersion").value(3))
+            .andExpect(jsonPath("$.version.snapshotSchemaVersion").value(4))
             .andReturn());
         JsonNode publishedSnapshot = objectMapper.readTree(jdbcTemplate.queryForObject(
             "select config::text from project_work_item_type_versions where id=?",
@@ -395,7 +395,7 @@ class WorkItemTypeConfigurationControllerIntegrationTests {
                 .content(publishBody))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.version.versionNumber").value(2))
-            .andExpect(jsonPath("$.version.snapshotSchemaVersion").value(3))
+            .andExpect(jsonPath("$.version.snapshotSchemaVersion").value(4))
             .andExpect(jsonPath("$.version.completeSnapshot").value(true))
             .andReturn());
         String version2Id = published.at("/version/id").asText();

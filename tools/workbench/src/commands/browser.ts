@@ -2,7 +2,12 @@ import { optionBoolean, optionNumber, optionString } from '../lib/args.js'
 import type { CommandContext } from './types.js'
 
 export async function runCommand({ command, options, root }: CommandContext): Promise<void> {
-  const { browserSmoke, isolatedM5Smoke, isolatedProjectPlatformS09Smoke } = await import('../browser/smoke.js')
+  const {
+    browserSmoke,
+    isolatedM5Smoke,
+    isolatedProjectPlatformS09Smoke,
+    isolatedProjectPlatformS10Smoke,
+  } = await import('../browser/smoke.js')
   if (command === 'browser smoke-im' || command === 'browser smoke-ui-split') {
     await browserSmoke(root, command.endsWith('smoke-im') ? 'e2e/im-smoke.spec.ts' : 'e2e/ui-split-v1-smoke.spec.ts', {
       webBaseUrl: optionString(options, 'web-base-url') || undefined,
@@ -23,6 +28,15 @@ export async function runCommand({ command, options, root }: CommandContext): Pr
       optionNumber(options, 'database-port', 5432),
       optionNumber(options, 'api-port', 18090),
       optionNumber(options, 'web-port', 15190),
+    )
+    return
+  }
+  if (command === 'browser smoke-project-platform-s10-isolated') {
+    await isolatedProjectPlatformS10Smoke(
+      root,
+      optionNumber(options, 'database-port', 5432),
+      optionNumber(options, 'api-port', 18100),
+      optionNumber(options, 'web-port', 15200),
     )
     return
   }

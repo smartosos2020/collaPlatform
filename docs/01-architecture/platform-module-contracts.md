@@ -108,7 +108,7 @@ contract 只允许 JDK 类型、同 contract 包类型或另一个经过批准�
 
 ## 6. Table Owner
 
-V001-V095 当前 134 张有效表在 `platform-table-owners.json` 中恰好归属一个 owner。规则如下：
+V001-V100 当前 146 张有效表在 `platform-table-owners.json` 中恰好归属一个 owner。规则如下：
 
 - `foreignWrite = forbidden`：foreign write 没有例外通道。
 - foreign read 必须匹配精确文件、精确表、read 模式和有效退出 Stage。
@@ -229,6 +229,9 @@ M2 不实现 Worker lease、dead-letter、replay、handler registry 或独立进
 - `project.contract.WorkItemWorkflowEvent` 发布最小的 `workflow.action_executed/state_changed/initialized/binding_changed` v1 envelope。`project.workflow.consumer-contract` 只校验公共 payload schema 并依赖 delivery receipt 去重；未知 payload schema 永久失败。通知、搜索或协作若选择订阅，只能使用该 payload 再经 resolver/用户 API 校准，不得读取状态、回填、命令、history 私表或 active draft 补算事实。
 - S08-M4 的状态配置器、成员执行 UI 和 backfill 管理只调用上述 project 用户/空间配置 API，没有新增跨模块端口、共享表或企业后台内容入口。
 - S09 只能共享版本化 command/event、authorization/guard、aggregate-version、receipt/outbox SPI，不能复用 current-state、workflow history 或 backfill 私表作为 node-instance/token/join/vote 权威。节点恢复、补偿、binding upgrade 和 backfill 仍以 `work_item` 为 aggregate identity；compensation/backfill ledger 不升级为公共对象或跨模块查询表。
+- S10 的 RelationDefinition 只存在于 WorkItemType configuration snapshot v4；`project_work_item_relations/relation_commands/relation_history/hierarchy_paths/hierarchy_rebuild_batches` 均由 project owner 独占。M2-M3 只通过 project 用户 API 激活关系实例、局部层级命令/查询，并通过 owner/admin 治理 API 重建派生 closure；其他模块不得读取这些表、legacy `issue_relations` 或 S08/S09 私表推导关系。
+- `project.contract.WorkItemRelationChangedEvent` 是关系运行时唯一公共增量合同，固定 `eventType=work_item_relation.changed`、`eventVersion=1`、`aggregateType=work_item_relation`。payload 只含 space/relation identity、relation key、双端 WorkItem identity、relation version 和 mutation；消费者必须经 `work_item` resolver/用户 API 校准，未知版本失败关闭。M2 未注册 notification/search/realtime consumer。
+- hierarchy path 与 rebuild batch 是 project 私有派生/恢复事实，不是公共合同或第二套边权威。attach/detach/reparent/split-child 仍通过规范 relation command 产生同一最小公共事件；scan/dry-run/rebuild/resume 不伪造业务关系事件。
 
 ## 15. 非目标
 
@@ -246,7 +249,7 @@ M2 不实现 Worker lease、dead-letter、replay、handler registry 或独立进
 `pnpm architecture:contracts` 必须验证：
 
 1. 代码中的 15 个模块与 manifest 完全一致，未知模块失败。
-2. 138 张当前有效表与 owner manifest 完全一致，重复、缺失、未知 owner 或 ownerless 失败。
+2. 当前有效表与 owner manifest 完全一致，重复、缺失、未知 owner 或 ownerless 失败。
 3. 例外没有通配符、foreign write、缺失 owner/Stage/决定或未知模块。
 4. contract Java 源文件不 import provider 私有包。
 5. 本文保留全部必要决策词和非目标。

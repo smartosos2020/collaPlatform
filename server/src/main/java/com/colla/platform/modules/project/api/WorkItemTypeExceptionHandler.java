@@ -29,6 +29,11 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
     UserWorkItemTypeController.class,
     AdminProjectSpaceController.class,
     UserWorkItemController.class,
+    UserWorkItemRelationController.class,
+    UserWorkItemRelationExperienceController.class,
+    WorkItemRelationMigrationController.class,
+    UserWorkItemHierarchyController.class,
+    ProjectSpaceHierarchyRecoveryController.class,
     UserWorkItemStateFlowController.class,
     UserWorkItemNodeWorkflowController.class,
     UserWorkItemStateBackfillController.class,
@@ -113,6 +118,12 @@ public class WorkItemTypeExceptionHandler {
             case "TYPE_NOT_FOUND", "FIELD_NOT_FOUND", "LAYOUT_NOT_FOUND", "LAYOUT_NODE_NOT_FOUND",
                  "SPACE_NOT_FOUND", "NOT_FOUND_OR_HIDDEN" -> HttpStatus.NOT_FOUND;
             case "FORBIDDEN" -> HttpStatus.FORBIDDEN;
+            case "RELATION_TYPE_MATRIX_REJECTED", "RELATION_SELF_EDGE_REJECTED",
+                 "RELATION_SOURCE_CARDINALITY_EXCEEDED", "RELATION_TARGET_CARDINALITY_EXCEEDED",
+                 "RELATION_CYCLE_DETECTED", "RELATION_ENDPOINT_NOT_ACTIVE",
+                 "HIERARCHY_CANONICAL_GRAPH_INVALID", "HIERARCHY_EDGE_BUDGET_EXCEEDED",
+                 "HIERARCHY_PATH_BUDGET_EXCEEDED", "HIERARCHY_INHERITANCE_BUDGET_EXCEEDED" ->
+                HttpStatus.UNPROCESSABLE_ENTITY;
             case "WORKFLOW_GUARD_REJECTED", "WORKFLOW_REQUIRED_FIELDS_MISSING",
                  "WORKFLOW_ACTION_UNAVAILABLE", "WORKFLOW_STATE_MAPPING_REQUIRED",
                  "NODE_ACTION_UNAVAILABLE", "NODE_RECOVERY_UNAVAILABLE",
@@ -147,7 +158,10 @@ public class WorkItemTypeExceptionHandler {
                  "QUERY_CAPABILITY_UNAVAILABLE", "INVALID_PARTICIPANT_ROLE",
                  "INVALID_RECOVERY_REASON", "DANGEROUS_CONFIRMATION_REQUIRED",
                  "INVALID_BACKFILL_MANIFEST", "INVALID_NODE_VOTE",
-                 "NODE_TASK_ASSIGNEE_INVALID" ->
+                 "NODE_TASK_ASSIGNEE_INVALID", "INVALID_RELATION_KEY",
+                 "INVALID_RELATION_REASON", "INVALID_HIERARCHY_DIRECTION",
+                 "INVALID_HIERARCHY_CURSOR", "INVALID_HIERARCHY_INHERITANCE_FIELD",
+                 "HIERARCHY_CONFIRMATION_REQUIRED" ->
                 HttpStatus.BAD_REQUEST;
             default -> HttpStatus.CONFLICT;
         };

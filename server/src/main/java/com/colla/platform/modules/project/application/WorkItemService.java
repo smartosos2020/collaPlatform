@@ -83,6 +83,7 @@ public class WorkItemService {
     private final WorkItemNodeWorkflowService nodeWorkflowService;
     private final WorkItemStateBackfillService stateBackfillService;
     private final WorkItemNodeBackfillService nodeBackfillService;
+    private final WorkItemRelationService relationService;
     private final PlatformObjectCommands objectCommands;
     private final AuditLog auditLog;
     private final TransactionalOutbox outbox;
@@ -102,6 +103,7 @@ public class WorkItemService {
         WorkItemNodeWorkflowService nodeWorkflowService,
         WorkItemStateBackfillService stateBackfillService,
         WorkItemNodeBackfillService nodeBackfillService,
+        WorkItemRelationService relationService,
         PlatformObjectCommands objectCommands,
         AuditLog auditLog,
         TransactionalOutbox outbox,
@@ -120,6 +122,7 @@ public class WorkItemService {
         this.nodeWorkflowService = nodeWorkflowService;
         this.stateBackfillService = stateBackfillService;
         this.nodeBackfillService = nodeBackfillService;
+        this.relationService = relationService;
         this.objectCommands = objectCommands;
         this.auditLog = auditLog;
         this.outbox = outbox;
@@ -370,6 +373,11 @@ public class WorkItemService {
         );
         if ("completed".equals(receipt.status())) {
             return replay(receipt);
+        }
+        if ("archived".equals(target)) {
+            relationService.beforeEndpointArchive(
+                user, spaceId, workItemId, normalizedRequestId
+            );
         }
         if (repository.transition(
             user.workspaceId(), spaceId, workItemId, expectedStatus, target, user.id(), expectedVersion

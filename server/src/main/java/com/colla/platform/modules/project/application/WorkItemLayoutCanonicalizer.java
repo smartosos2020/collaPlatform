@@ -4,6 +4,7 @@ import static com.colla.platform.modules.project.domain.WorkItemLayoutModels.MAX
 import static com.colla.platform.modules.project.domain.WorkItemLayoutModels.MAX_DEPTH;
 import static com.colla.platform.modules.project.domain.WorkItemLayoutModels.MAX_NODES;
 import static com.colla.platform.modules.project.domain.WorkItemLayoutModels.MAX_POLICIES;
+import static com.colla.platform.modules.project.domain.WorkItemLayoutModels.RELATION_CONTROL_SCHEMA_VERSION;
 import static com.colla.platform.modules.project.domain.WorkItemLayoutModels.failure;
 import static com.colla.platform.modules.project.domain.WorkItemLayoutModels.stableKey;
 
@@ -25,10 +26,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.regex.Pattern;
 import org.springframework.stereotype.Component;
 
 @Component
 public class WorkItemLayoutCanonicalizer {
+    private static final Pattern RELATION_KEY = Pattern.compile("[a-z][a-z0-9_.-]{0,63}");
+    private static final Set<String> RELATION_MODES =
+        Set.of("picker", "list", "hierarchy", "impact");
     private final ObjectMapper objectMapper;
     private final WorkItemTypeConfigCanonicalizer canonicalizer;
     private final WorkItemLayoutConditionDsl conditionDsl;
@@ -52,7 +57,7 @@ public class WorkItemLayoutCanonicalizer {
         List<FieldAccessPolicy> requestedPolicies
     ) {
         String kind = LayoutKind.parse(layoutKind).name();
-        List<LayoutNode> nodes = normalizeNodes(requestedNodes);
+        List<LayoutNode> nodes = normalizeNodes(kind, requestedNodes);
         Map<UUID, Integer> depths = validateTree(nodes);
         List<LayoutNode> orderedNodes = nodes.stream()
             .sorted(Comparator.comparingInt((LayoutNode node) -> depths.get(node.id()))
@@ -74,7 +79,7 @@ public class WorkItemLayoutCanonicalizer {
         return new CanonicalLayout(kind, orderedNodes, policies, canonicalizer.hash(config), config);
     }
 
-    private List<LayoutNode> normalizeNodes(List<LayoutNode> requested) {
+    private List<LayoutNode> normalizeNodes(String layoutKind, List<LayoutNode> requested) {
         List<LayoutNode> values = requested == null ? List.of() : requested;
         if (values.size() > MAX_NODES) {
             throw failure("LAYOUT_NODE_LIMIT", "A layout can contain at most " + MAX_NODES + " nodes");
@@ -95,7 +100,9 @@ public class WorkItemLayoutCanonicalizer {
             if (value.sortOrder() < 0) {
                 throw failure("INVALID_LAYOUT_NODE", "Layout node sort order must be non-negative");
             }
-            JsonNode config = object(value.config(), "INVALID_LAYOUT_NODE", "Layout node config");
+            JsonNode config = type == NodeType.relation
+                ? relationConfig(layoutKind, value.config())
+                : object(value.config(), "INVALID_LAYOUT_NODE", "Layout node config");
             JsonNode condition = conditionDsl.canonicalize(value.visibilityCondition());
             UUID fieldId = value.fieldId();
             String fieldKey = value.fieldKey() == null
@@ -184,9 +191,11 @@ public class WorkItemLayoutCanonicalizer {
         }
         NodeType parentType = NodeType.parse(parent.nodeType());
         Set<NodeType> allowed = switch (parentType) {
-            case section, tab -> Set.of(NodeType.section, NodeType.column, NodeType.field, NodeType.summary);
-            case column -> Set.of(NodeType.field, NodeType.summary);
-            case field, summary -> Set.of();
+            case section, tab -> Set.of(
+                NodeType.section, NodeType.column, NodeType.field, NodeType.relation, NodeType.summary
+            );
+            case column -> Set.of(NodeType.field, NodeType.relation, NodeType.summary);
+            case field, relation, summary -> Set.of();
         };
         if (!allowed.contains(childType)) {
             throw failure(
@@ -246,6 +255,63 @@ public class WorkItemLayoutCanonicalizer {
             throw failure(code, label + " schemaVersion must be 1");
         }
         return canonicalizer.sort(normalized);
+    }
+
+    private JsonNode relationConfig(String layoutKind, JsonNode requested) {
+        ObjectNode config = (ObjectNode) object(
+            requested, "INVALID_RELATION_CONTROL", "Relation control config"
+        );
+        Set<String> allowed = Set.of(
+            "schemaVersion", "relationKey", "mode", "title", "maxItems",
+            "showReverse", "collapsedByDefault", "listFallback", "keyboardNavigation"
+        );
+        config.fieldNames().forEachRemaining(name -> {
+            if (!allowed.contains(name)) {
+                throw failure(
+                    "INVALID_RELATION_CONTROL",
+                    "Unknown relation control config property: " + name
+                );
+            }
+        });
+        if (!config.has("schemaVersion")) {
+            config.put("schemaVersion", RELATION_CONTROL_SCHEMA_VERSION);
+        }
+        if (!config.path("schemaVersion").isInt()
+            || config.path("schemaVersion").asInt() != RELATION_CONTROL_SCHEMA_VERSION) {
+            throw failure("INVALID_RELATION_CONTROL", "Relation control schemaVersion must be 1");
+        }
+        String relationKey = config.path("relationKey").asText("").trim().toLowerCase();
+        if (!RELATION_KEY.matcher(relationKey).matches()) {
+            throw failure(
+                "INVALID_RELATION_CONTROL",
+                "Relation control requires a permanent relationKey"
+            );
+        }
+        String mode = config.path("mode").asText("list").trim().toLowerCase();
+        if (!RELATION_MODES.contains(mode)) {
+            throw failure("INVALID_RELATION_CONTROL", "Unknown relation control mode");
+        }
+        if ("create".equals(layoutKind) && !"picker".equals(mode)) {
+            throw failure(
+                "INVALID_RELATION_CONTROL",
+                "Create layouts may only use relation picker controls"
+            );
+        }
+        int maxItems = config.path("maxItems").asInt(50);
+        if (maxItems < 1 || maxItems > 200) {
+            throw failure(
+                "INVALID_RELATION_CONTROL",
+                "Relation control maxItems must be between 1 and 200"
+            );
+        }
+        config.put("relationKey", relationKey);
+        config.put("mode", mode);
+        config.put("maxItems", maxItems);
+        config.put("showReverse", config.path("showReverse").asBoolean(true));
+        config.put("collapsedByDefault", config.path("collapsedByDefault").asBoolean(false));
+        config.put("listFallback", config.path("listFallback").asBoolean(true));
+        config.put("keyboardNavigation", config.path("keyboardNavigation").asBoolean(true));
+        return canonicalizer.sort(config);
     }
 
     private JsonNode nodeJson(LayoutNode node) {

@@ -11,6 +11,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -260,6 +261,71 @@ public class JdbcWorkItemRepository implements WorkItemRepository {
             spaceId,
             cursor,
             limit
+        );
+    }
+
+    @Override
+    public List<WorkItem> searchRelationTargets(
+        UUID workspaceId,
+        UUID spaceId,
+        List<String> typeKeys,
+        String query,
+        UUID cursor,
+        int limit
+    ) {
+        if (typeKeys == null || typeKeys.isEmpty()) {
+            return List.of();
+        }
+        String placeholders = String.join(
+            ",", java.util.Collections.nCopies(typeKeys.size(), "?")
+        );
+        StringBuilder sql = new StringBuilder(ITEM_SELECT)
+            .append(" where wi.workspace_id=? and wi.space_id=? and wi.status='active'")
+            .append(" and t.status='active' and t.type_key in (")
+            .append(placeholders)
+            .append(")");
+        List<Object> parameters = new ArrayList<>();
+        parameters.add(workspaceId);
+        parameters.add(spaceId);
+        parameters.addAll(typeKeys);
+        String normalized = query == null ? "" : query.trim();
+        if (!normalized.isBlank()) {
+            sql.append(" and (wi.display_key ilike ? escape '\\' or wi.title ilike ? escape '\\')");
+            String pattern = "%" + like(normalized) + "%";
+            parameters.add(pattern);
+            parameters.add(pattern);
+        }
+        if (cursor != null) {
+            sql.append(" and wi.id>?");
+            parameters.add(cursor);
+        }
+        sql.append(" order by wi.id limit ?");
+        parameters.add(limit);
+        return jdbcTemplate.query(sql.toString(), this::mapItem, parameters.toArray());
+    }
+
+    @Override
+    public List<WorkItem> findAll(
+        UUID workspaceId,
+        UUID spaceId,
+        List<UUID> workItemIds
+    ) {
+        if (workItemIds == null || workItemIds.isEmpty()) {
+            return List.of();
+        }
+        String placeholders = String.join(
+            ",", java.util.Collections.nCopies(workItemIds.size(), "?")
+        );
+        List<Object> parameters = new ArrayList<>();
+        parameters.add(workspaceId);
+        parameters.add(spaceId);
+        parameters.addAll(workItemIds);
+        return jdbcTemplate.query(
+            ITEM_SELECT
+                + " where wi.workspace_id=? and wi.space_id=? and wi.id in ("
+                + placeholders + ") order by wi.id",
+            this::mapItem,
+            parameters.toArray()
         );
     }
 
@@ -966,5 +1032,9 @@ public class JdbcWorkItemRepository implements WorkItemRepository {
         } catch (JsonProcessingException exception) {
             throw new IllegalArgumentException("Invalid work item JSON", exception);
         }
+    }
+
+    private String like(String value) {
+        return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
     }
 }

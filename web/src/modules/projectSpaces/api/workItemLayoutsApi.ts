@@ -11,7 +11,7 @@ import type {
 import type { ConfiguredWorkItemType } from './workItemTypesApi'
 
 export type WorkItemLayoutKind = 'create' | 'detail'
-export type WorkItemLayoutNodeType = 'section' | 'tab' | 'column' | 'field' | 'summary'
+export type WorkItemLayoutNodeType = 'section' | 'tab' | 'column' | 'field' | 'relation' | 'summary'
 
 export type WorkItemLayoutCondition = {
   schemaVersion: 1

@@ -2,10 +2,10 @@
 title: 项目协作平台长期专项规划
 status: active
 program: PROJECT-PLATFORM
-revision: 27
+revision: 29
 updated_at: 2026-07-27
 planning_mode: rolling
-current_stage: PROJECT-PLATFORM-S10
+current_stage: PROJECT-PLATFORM-S11
 initiative_index_doc: docs/00-product/initiatives/README.md
 target_architecture_doc: docs/01-architecture/project-platform-target-architecture.md
 ---
@@ -18,7 +18,7 @@ target_architecture_doc: docs/01-architecture/project-platform-target-architectu
 
 规划采用滚动维护：当前 Stage 细化到 Task，下一 Stage 细化到 Milestone，后续 Stage 只冻结目标、依赖和退出证据。新调研、技术验证、代码事实或真实用户反馈可以修改未来规划，但不得静默改写已完成 Stage 的历史结论，也不得在没有变更记录的情况下改变正在执行 Stage 的目标。
 
-`PROJECT-PLATFORM-S08` 与 `PROJECT-PLATFORM-S09` 均已完成并归档；S09 交付完整 snapshot v3 节点图、独立 instance/token/task/vote/join 权威、节点表单/交付物/时限、恢复/补偿/升级/backfill、空间设计器、成员执行面和真实隔离 `route-final`。`PROJECT-PLATFORM-S10` 现已激活为唯一当前 Stage，并细化为五个 Milestone、60 个 Task；它必须为规范 WorkItem 建立独立 relation edge/history/hierarchy projection 权威，不得复用 legacy `issue_relations` 或 S08/S09 流程私表。激活只建立执行路线，不代表 S10 schema、API、迁移或 UI 已交付。`PLATFORM-SCALE-S01-S04` 已建立模块边界门禁、公共合同、双 API、可靠双 Worker、双 Event Gateway、统一客户端校准和唯一知识协同协议；`PLATFORM-SCALE-S05-M1` 只建立容量验证环境、确定性种子和四类加载器，M2-M5 继续 Deferred，不构成生产容量或基础设施 HA 承诺。
+`PROJECT-PLATFORM-S08`、`PROJECT-PLATFORM-S09` 与 `PROJECT-PLATFORM-S10` 均已完成并归档；S10 交付 snapshot v4 关系定义、独立 relation edge/history/hierarchy projection 权威、并发与循环控制、局部层级、受权影响分析、显式 legacy 承接、配置与成员 UI，并通过真实隔离 `route-final`。`PROJECT-PLATFORM-S11` 已激活为五个 Milestone、60 个 Task，当前从 `PROJECT-PLATFORM-S11-M1-T01` 开始建立空间角色、工作项角色与数据权限的分层权威；激活不代表任何 S11 schema、策略、API 或 UI 已实现。`PLATFORM-SCALE-S01-S04` 已建立模块边界门禁、公共合同、双 API、可靠双 Worker、双 Event Gateway、统一客户端校准和唯一知识协同协议；`PLATFORM-SCALE-S05-M1` 只建立容量验证环境、确定性种子和四类加载器，M2-M5 继续 Deferred，不构成生产容量或基础设施 HA 承诺。
 
 ## 2. 专项目标
 
@@ -74,8 +74,8 @@ target_architecture_doc: docs/01-architecture/project-platform-target-architectu
 | PROJECT-PLATFORM-S07 | 统一工作项运行时与第一阶段迁移 | S03-S06 | Completed | 规范实例 API、动态值与活动账本、显式 legacy 映射、可恢复迁移、用户侧完整竖切和 route-final 已交付 |
 | PROJECT-PLATFORM-S08 | 轻量状态流定义与运行时 | S06-S07 | Completed | 版本化定义、单一 current state、动作/历史/恢复、配置与成员执行 UI、真实隔离 route-final 已交付 |
 | PROJECT-PLATFORM-S09 | 节点流定义与运行时 | S06-S08 | Completed | 五个 Milestone、60 个 Task、V093-V096、设计/执行 UI 与真实隔离 route-final 已交付 |
-| PROJECT-PLATFORM-S10 | 工作项关系、层级和依赖 | S07-S09 | Active | 五个 Milestone、60 个 Task；从 M1-T01 关系事实审计开始 |
-| PROJECT-PLATFORM-S11 | 空间角色、工作项角色和数据权限 | S02-S10 | Planned | 分层权限、字段/节点授权、权限解释和审计 |
+| PROJECT-PLATFORM-S10 | 工作项关系、层级和依赖 | S07-S09 | Completed | snapshot v4、关系/层级权威、并发循环控制、显式迁移、配置/成员 UI 与真实隔离 route-final 已交付 |
+| PROJECT-PLATFORM-S11 | 空间角色、工作项角色和数据权限 | S02-S10 | Active | 五个 Milestone、60 个 Task；从 M1-T01 开始建立分层权限、细粒度授权、解释/申请、治理恢复和真实 UI 闭环 |
 | PROJECT-PLATFORM-S12 | 个人工作台、搜索、收藏和动态 | S07-S11 | Planned | 我的工作、关注、最近、草稿和跨空间搜索 |
 | PROJECT-PLATFORM-S13 | 查询模型与表格、列表、树形视图 | S04-S12 | Planned | 保存视图、筛选、排序、分组、列配置和共享 |
 | PROJECT-PLATFORM-S14 | 看板、日历、甘特和时间线 | S08-S13 | Planned | 泳道、拖拽流转、时间排期、层级甘特和基线 |
@@ -194,10 +194,11 @@ S02 固定输入见目标架构 17：落 `project_spaces`、成员、角色分�
 
 | Milestone | 交付目标 | 退出条件 |
 | --- | --- | --- |
-| PROJECT-PLATFORM-S11-M1 | 企业 RBAC、空间角色和实例角色边界 | 权限来源无混用 |
+| PROJECT-PLATFORM-S11-M1 | 权限来源、版本化定义与持久化底座 | 分层定义进入唯一 snapshot 权威，schema 与发布合同完整 |
 | PROJECT-PLATFORM-S11-M2 | 创建、查看、编辑、流转和删除权限 | API 与 UI 动作一致 |
-| PROJECT-PLATFORM-S11-M3 | 字段、节点、关系和数据范围权限 | 细粒度授权可解释、可审计 |
-| PROJECT-PLATFORM-S11-M4 | 权限检查、申请和治理矩阵 | 无权状态不泄露数据，管理员可排查 |
+| PROJECT-PLATFORM-S11-M3 | 字段、节点、关系和数据范围细粒度权限 | 细粒度授权可解释、可审计且不泄露隐藏事实 |
+| PROJECT-PLATFORM-S11-M4 | 权限解释、申请、治理矩阵与存量恢复 | 无权状态不泄露数据，管理员可排查、恢复和续跑 |
+| PROJECT-PLATFORM-S11-M5 | 配置/成员/治理 UI、真实验收及 Stage 收口 | 六身份、自定义角色、真实 PostgreSQL/Flyway 与 route-final 通过 |
 
 ### PROJECT-PLATFORM-S12 个人工作台、搜索、收藏和动态
 
@@ -346,6 +347,8 @@ S02 固定输入见目标架构 17：落 `project_spaces`、成员、角色分�
 | 25 | 2026-07-27 | 归档 S08 完成路线并激活 S09；把复杂节点流细化为版本化节点图、token/会签运行时、节点协作、异常恢复与升级、可视化闭环五个 Milestone、60 个 Task | S09 必须拥有独立 instance/token/task/vote/join 权威，只共享已冻结的 command/event SPI；不得读写 S08 私表，也不得提前实现 S10/S14/S16/S17 | S09 Active；当前执行入口切换为 PROJECT-PLATFORM-S09-M1-T01；S10 保持 Planned |
 | 26 | 2026-07-27 | S09 五个 Milestone、60 个 Task 完成；交付 snapshot v3 节点图、独立 token/task/vote/join 运行时、协作、恢复/补偿/升级/backfill、空间设计器、成员执行面和真实隔离 route-final | 真实 PostgreSQL/Flyway、六身份、并发/故障和完整门禁证明 S09 范围闭环；S10 关系必须复用规范 WorkItem identity 和公共 SPI，不得读取节点流私表或把流程边当对象关系 | S09 Completed；`current_stage` 置 none；Go S10 但保持 Planned，需先归档 S09 再激活 |
 | 27 | 2026-07-27 | 归档 S09 完成路线并激活 S10；把工作项关系细化为版本化定义、并发实例与循环控制、自定义层级与恢复、关系控件/反向/影响/存量承接、真实 UI 与 Stage 收口五个 Milestone、60 个 Task | 现有 `issue_relations` 只属于 legacy issue 且缺少规范双端/方向/环语义；S10 必须建立独立 relation edge/history/hierarchy projection 权威，并继续隔离 S08/S09 私表及 S11/S13/S14/S17/S18 远期范围 | S10 Active；当前执行入口切换为 PROJECT-PLATFORM-S10-M1-T01；S11 保持 Planned |
+| 28 | 2026-07-27 | S10 五个 Milestone、60 个 Task 完成；交付 snapshot v4 关系定义、独立 relation/history/hierarchy 权威、并发/循环/生命周期、局部层级、受权影响、legacy 承接、配置与成员 UI，并通过 V001-V100、六身份真实隔离浏览器和 route-final | 关系端点、方向、环、最小披露和迁移必须由规范服务端事实闭环；真实门禁修复了异常映射 500 与迁移动作路由 404，S11 只能在此稳定上限上增加分层权限，不得改写关系权威 | S10 Completed；`current_stage` 置 none；Go S11 但保持 Planned，需先独立归档 S10 再激活 |
+| 29 | 2026-07-27 | 归档 S10 完成路线并激活 S11；把空间角色、事项角色和数据权限细化为版本化定义底座、运行授权、字段/节点/关系/data scope、解释/申请/治理恢复、配置与成员 UI 五个 Milestone、60 个 Task | 权限必须分层组合企业 RBAC、空间角色、事项角色、参与者和细粒度策略，并让 projection 与 execute 共享服务端决策；企业治理不能旁路私有内容，S12/S13/S17/S18 不得提前实现 | S11 Active；当前执行入口切换为 PROJECT-PLATFORM-S11-M1-T01；S10 路线归档；S12 保持 Planned |
 
 ## 10. 主要产品参考
 

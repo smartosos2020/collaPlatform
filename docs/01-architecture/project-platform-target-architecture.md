@@ -2,7 +2,7 @@
 title: 项目协作平台目标架构
 status: target
 program: PROJECT-PLATFORM
-program_revision: 27
+program_revision: 29
 domain_contract_version: 1
 domain_contract_status: frozen-s01-m3
 migration_contract_version: 1
@@ -1088,3 +1088,65 @@ S09 完成路线已经独立归档，S10 在 Program revision 27 激活为唯一
 - S10 当前路线固定为五个 Milestone、60 个 Task：M1 关系定义/版本化配置/持久化底座，M2 关系实例/并发/循环/生命周期，M3 自定义层级/拆解/查询/恢复，M4 关系控件/反向/影响/legacy 承接，M5 配置与成员 UI、真实验收和 `route-final`。
 - 激活点是 `PROJECT-PLATFORM-S10-M1-T01`。M1 必须先审计当前 WorkItem、snapshot、resolver、legacy relation 和 S08/S09 私表边界，不能从 UI 或历史表名倒推目标语义。
 - S10 最终证据必须覆盖 PostgreSQL/Flyway、六身份、跨空间、并发建边/reparent、父子/依赖环、归档/删除、离线冲突、legacy backfill/verify、响应式/键盘和完整 route-final。
+
+### 26.4 S10-M1 已实现边界
+
+- configuration snapshot v4 新增 `relationDefinitions`，以永久 `relationKey` 冻结 normal/parent-child/dependency/blocking、方向与反向名称、source/target 类型矩阵、双端基数、删除策略、self 规则、深度预算和排序。v1-v3 仍按原合同读取，v4 缺少关系定义数组失败关闭，未来版本继续由 canonicalizer 拒绝。
+- 关系定义继续使用 S06 唯一 draft/published version 权威。canonical hash、乐观草稿、diff、compatibility、rollback、workspace/platform template lineage 和系统预置均处理同一数组；没有建立 live definition 表或 published 双写。
+- V097 只建立 `project_work_item_relations`、`project_work_item_relation_commands`、`project_work_item_relation_history` 和可重建 `project_work_item_hierarchy_paths` schema。四表归 project 唯一 owner，使用 workspace/space、双端 WorkItem 与 definition version 复合约束；回执终态和 history 受不可变触发器保护，空间清理按依赖顺序闭包。
+- `WorkItemRelationChangedEvent` v1 只公开 space/relation identity、semantic key、双端 WorkItem identity、relation version 和 mutation。其他模块必须经 `work_item` resolver/用户 API 重新鉴权，不能读取关系表、S08 私表或 S09 私表补全正文。
+- legacy manifest 分类固定为 canonical WorkItem、platform object reference、unresolved、unsupported。M1 没有读取或迁移 `issue_relations`，也没有把 message/knowledge 目标伪造成 WorkItem。
+- M1 没有激活 relation Repository、建边/撤销命令、循环/基数事务决策、关系 API 或 UI；这些必须从 M2 开始基于已发布 v4 binding 实现，不能把 V097 空表或定义预置写成运行能力。
+
+### 26.5 S10-M2 已实现边界
+
+- `WorkItemRelationRuntimeAdapter` 只从双端 WorkItem 绑定的已发布 snapshot v4 解析稳定 relation key、definition version、config hash 和类型矩阵；缺失、未知版本、hash 漂移或类型不匹配均失败关闭。V098 为无向边增加数据库 canonical endpoint 约束，并补充服务端环检测所需索引。
+- `WorkItemRelationService` 与 relation Repository 激活 create/withdraw/restore。命令按稳定端点顺序加锁，并按 space/relation key 获取事务 advisory lock；双端 expected version、request id 和 request hash 共同约束精确重放，异载荷、陈旧版本、重复活动边和并发败者不会追加事实。
+- normal 有向/无向边只保存一个事实并生成正反向投影；parent-child、dependency、blocking 在同一事务内执行 self、基数和递归环检测。blocking 的反向语义与 dependency 一致，但 M2 不计算 S14 关键路径。
+- archive 按已发布定义执行 `restrict`、`detach` 或 `retain-history`；detach 只撤销活动边，WorkItem restore 不静默恢复。规范 WorkItem 仍只有 active/archive 生命周期，历史事实不提供硬删除入口，delete 检查保持失败关闭。
+- 关系 mutation、不可变 relation history、双端 WorkItem activity、audit、completed receipt 和最小 `work_item_relation.changed` v1 outbox 在单一事务内同成同败。当前不注册 notification/search/realtime consumer，消费者也不得读取 relation、S08 或 S09 私表补全正文。
+- 用户入口固定在 `/api/project-spaces/{spaceId}/work-item-relations`，提供有界列表、详情、capability 与 create/withdraw/restore；projection 和 execute 共享双端授权决策。M2 不交付 hierarchy closure/拆解 UI（M3）、关系控件/影响分析/legacy 承接（M4）或配置 UI（M5）。
+
+### 26.6 S10-M3 已实现边界
+
+- 活动 `parent_child` relation edge 仍是唯一结构权威。V099 只增加可恢复的 hierarchy rebuild batch 与 closure 查询索引；`project_work_item_hierarchy_paths` 可由规范边完整替换，不能通过用户或治理 API 直接写边。
+- V100 增加 relation layout control、受权候选/摘要/impact/preview 合同以及显式 legacy relation migration control plane。layout 只保存永久 relation key 和展示模式，不把关系值塞入字段 JSON；migration unit 只锚定旧事实与映射，规范边仍只能由 relation command 创建/撤回。
+- 反向引用和 impact 缓存只能由 `work_item_relation.changed` 触发失效；事件不携带标题、计数或图正文，消费者必须经受权 resolver/API 校准。
+- create/withdraw/restore 关系在原事务中刷新 closure；attach/detach/reparent 和 split-child 复用 M2 的双端 expected version、稳定图锁、持久 receipt、history/activity/audit/outbox 闭包。层级深度或环校验失败会回滚关系与投影，精确重放不会重复创建子项。
+- 层级解释使用每条边冻结的 definition version 与端点 WorkItem type binding，支持发布定义允许的跨类型父子关系；live draft 或后续发布不会倒推改写旧边。最大深度按绑定定义失败关闭。
+- 用户入口 `/api/project-spaces/{spaceId}/work-item-hierarchy` 提供祖先、子孙、面包屑、父项、子项、同级和局部树查询，以及 attach/detach/reparent/split-child。查询硬限深度 64、节点 200，使用稳定游标和批量摘要；当前授权上限仍是 ProjectSpace 成员边界，S11 的事项级细粒度策略尚未提前实现。
+- split-child 只继承调用方显式白名单中的可写可见字段，最多 32 个稳定 field key；显式子项值优先，不复制状态、node token/task、history、参与者或隐藏字段。
+- owner/admin 治理入口 `/api/project-spaces/{spaceId}/hierarchy-rebuilds` 提供 scan、dry-run、rebuild、失败清单和 resume。恢复最多处理 5000 条活动父子边和 20000 条 path，只替换投影，不修补或删除规范边；结构环与深度越界保留失败批次等待外部修正后续跑。
+- M3 只交付后端局部层级运行时与恢复能力，不包含 M4 的关系控件、反向引用、影响分析和 legacy 承接，也不实现 S13 全局树/保存视图。
+
+### 26.7 S10-M4/M5 收口与 S11 准入
+
+- V100 与 M4 激活 relation layout control、受权目标搜索、正反向摘要、冲突预览、有界 dependency/blocking impact，以及显式 legacy relation migration batch/unit/verification。关系控件只引用永久 relation key；投影与迁移控制面都不创建第二套边权威。
+- 空间配置页通过 S06 唯一草稿编辑方向、反向名称、类型矩阵、基数和删除策略；成员详情通过服务端 capability 查看、创建、撤销关系，使用父子面包屑/局部树/替代列表、拆解/reparent、有界影响和 owner/admin 显式承接入口。
+- 真实隔离浏览器从空库执行 V001-V100，覆盖 owner、space-admin、member、guest、non-member、enterprise-admin，关系并发单赢家、父子环拒绝、离线输入保留、迁移 dry-run，以及 1440/1366/820。门禁发现并修复体验控制器异常未映射导致 500、迁移冒号动作路由不明确两个阻断。
+- S10 五个 Milestone、60 个 Task 完成，Go。当前 Stage 置 `none`，完成路线等待独立归档；生产切流、目标环境容量/长稳、基础设施 HA、S13 全局树和 S14 关键路径均未获授权。
+- S11 可以复用 ProjectSpace 成员边界、WorkItem identity、published snapshot、relation/node/state capability、公共 resolver、audit/outbox 和现有 404/403 最小披露外形；必须建立企业 RBAC、空间角色、事项角色、字段/节点/关系/data scope 的分层决策，不得把现有 `owner/admin/member/guest` 上限误写为最终细粒度权限。
+- S11 的 projection 与 execute 必须共享同一权限决策，并提供可解释、可审计的拒绝来源；企业管理员、非成员和不可见关系端点继续失败关闭。S11 不得提前实现 S12 工作台、S13 保存视图、S17 自动化或 S18 跨空间同步。
+
+## 27. Revision 29 激活的 S11 工程边界
+
+### 27.1 分层权限权威
+
+- 企业 RBAC、空间角色、WorkItem 角色、参与者、字段/节点/关系策略和 data scope 是不同授权层，不得压缩为单一角色表，也不得用前端路由、显示名或最近一次角色猜测权限。
+- 权限定义进入 S06 的唯一 versioned configuration snapshot、canonical hash、diff、compatibility、发布、rollback 与模板 lineage；不得建立 live policy 与 published snapshot 双权威。
+- 运行绑定必须只解释 WorkItem 明确绑定的不可变 snapshot。subject 与组织、用户组、企业角色等身份事实通过公共端口校准，project 和 permission 模块不得互读私表补算授权。
+- projection、query、execute、export、resolver 与事件消费者必须共享同一服务端 decision 或批量等价实现。字段、节点、关系和 data scope 只能收紧对象级上限，不能反向授予对象访问。
+
+### 27.2 最小披露与治理边界
+
+- hidden 字段、不可见节点、不可见关系端点和 data scope 外对象不得进入列表、计数、游标、搜索候选、影响图、错误、事件正文或治理解释；不可见对象保持稳定 404/最小披露。
+- 企业管理员只拥有企业治理能力，不自动取得私有空间或 WorkItem 内容；治理 explanation 需要治理权限与内容访问的交集，用户 explanation 只返回可安全披露的来源和申请入口。
+- 角色分配/回收、最后 owner 移交、临时授权、申请/审批/到期、策略变更、缓存失效、存量承接与恢复都必须有 expected version、稳定 request id、持久 receipt、audit/outbox 和明确回退边界。
+- S10 relation edge/history/hierarchy projection 继续是关系事实权威。S11 只能在公共 identity、resolver、capability 与事件合同上增加访问决策，不能改写关系、状态流或节点流私表。
+
+### 27.3 Revision 29 激活范围
+
+- S11 当前路线固定为五个 Milestone、60 个 Task：M1 权限来源/版本化定义/持久化底座，M2 创建/查看/编辑/流转/删除运行授权，M3 字段/节点/关系/data scope，M4 解释/申请/治理/恢复，M5 配置与成员 UI、真实验收和 `route-final`。
+- 激活点是 `PROJECT-PLATFORM-S11-M1-T01`。Revision 29 只建立执行授权和验收合同，不声明任何 S11 schema、策略、API、迁移或 UI 已实现。
+- S11 最终证据必须覆盖空库与升级 Flyway、六身份和自定义角色、企业治理无内容旁路、并发收权、临时授权到期、hidden 零披露、迁移/恢复、离线/窄屏及完整 `route-final`。
+- S11 不实现 S12 个人工作台、S13 保存视图/查询 DSL、S17 自动化或 S18 跨空间同步；这些 Stage 继续保持 Planned。

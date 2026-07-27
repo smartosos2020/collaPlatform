@@ -49,6 +49,22 @@ export async function isolatedProjectPlatformS09Smoke(
   )
 }
 
+export async function isolatedProjectPlatformS10Smoke(
+  root: string,
+  databasePort = 5432,
+  apiPort = 18100,
+  webPort = 15200,
+): Promise<void> {
+  return isolatedRouteSmoke(
+    root,
+    'project-platform-s10-m5-route-final.spec.ts',
+    'colla_s10_m5_e2e',
+    databasePort,
+    apiPort,
+    webPort,
+  )
+}
+
 async function isolatedRouteSmoke(
   root: string,
   spec: string,

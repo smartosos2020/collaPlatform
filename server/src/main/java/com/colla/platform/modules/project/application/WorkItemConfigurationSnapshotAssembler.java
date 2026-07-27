@@ -33,6 +33,7 @@ public class WorkItemConfigurationSnapshotAssembler {
     private final WorkItemLayoutRepository layoutRepository;
     private final WorkItemStateFlowPresetCatalog stateFlowPresetCatalog;
     private final WorkItemNodeFlowPresetCatalog nodeFlowPresetCatalog;
+    private final WorkItemRelationDefinitionPresetCatalog relationDefinitionPresetCatalog;
     private final WorkItemConfigurationSnapshotCanonicalizer canonicalizer;
     private final ObjectMapper objectMapper;
 
@@ -43,6 +44,7 @@ public class WorkItemConfigurationSnapshotAssembler {
         WorkItemLayoutRepository layoutRepository,
         WorkItemStateFlowPresetCatalog stateFlowPresetCatalog,
         WorkItemNodeFlowPresetCatalog nodeFlowPresetCatalog,
+        WorkItemRelationDefinitionPresetCatalog relationDefinitionPresetCatalog,
         WorkItemConfigurationSnapshotCanonicalizer canonicalizer,
         ObjectMapper objectMapper
     ) {
@@ -52,6 +54,7 @@ public class WorkItemConfigurationSnapshotAssembler {
         this.layoutRepository = layoutRepository;
         this.stateFlowPresetCatalog = stateFlowPresetCatalog;
         this.nodeFlowPresetCatalog = nodeFlowPresetCatalog;
+        this.relationDefinitionPresetCatalog = relationDefinitionPresetCatalog;
         this.canonicalizer = canonicalizer;
         this.objectMapper = objectMapper;
     }
@@ -85,6 +88,10 @@ public class WorkItemConfigurationSnapshotAssembler {
                     () -> stateFlowPresetCatalog.stateFlowFor(type.typeKey())
                         .ifPresent(stateFlow -> root.set("stateFlow", stateFlow))
                 );
+            relationDefinitionPresetCatalog.definitionsFor(type.typeKey())
+                .ifPresent(definitions -> root.set("relationDefinitions", definitions));
+        } else {
+            root.putArray("relationDefinitions");
         }
         return canonicalizer.canonicalize(root);
     }

@@ -86,7 +86,7 @@ class PublishedSnapshotAdapterTests {
         var repository = mock(PublishedSnapshotReader.class);
         var canonicalizer = new WorkItemConfigurationSnapshotCanonicalizer(objectMapper);
         var snapshot = objectMapper.readTree("""
-            {"snapshotSchemaVersion":4,"typeDefinition":{"typeKey":"future"},"fields":[],"layouts":[]}
+            {"snapshotSchemaVersion":5,"typeDefinition":{"typeKey":"future"},"fields":[],"layouts":[]}
             """);
         UUID workspaceId = UUID.randomUUID();
         UUID spaceId = UUID.randomUUID();
@@ -94,7 +94,7 @@ class PublishedSnapshotAdapterTests {
         UUID versionId = UUID.randomUUID();
         when(repository.findPublishedSnapshot(workspaceId, spaceId, typeId, versionId))
             .thenReturn(Optional.of(version(
-                workspaceId, spaceId, typeId, versionId, 4, "c".repeat(64), snapshot
+                workspaceId, spaceId, typeId, versionId, 5, "c".repeat(64), snapshot
             )));
 
         WorkItemConfigurationException unsupported = assertThrows(

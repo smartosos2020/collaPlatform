@@ -28,6 +28,21 @@ public interface WorkItemRepository {
 
     List<WorkItem> list(UUID workspaceId, UUID spaceId, UUID typeId, UUID cursor, int limit);
 
+    List<WorkItem> searchRelationTargets(
+        UUID workspaceId,
+        UUID spaceId,
+        List<String> typeKeys,
+        String query,
+        UUID cursor,
+        int limit
+    );
+
+    List<WorkItem> findAll(
+        UUID workspaceId,
+        UUID spaceId,
+        List<UUID> workItemIds
+    );
+
     int update(
         UUID workspaceId,
         UUID spaceId,

@@ -375,7 +375,7 @@ class WorkItemStateFlowFoundationIntegrationTests {
     }
 
     @Test
-    void migratesHistoricalBaselinesToV096Repeatably() {
+    void migratesHistoricalBaselinesToV099Repeatably() {
         for (String baseline : new String[]{"001", "061", "078", "085", "090", "093", "095"}) {
             Flyway latest = Flyway.configure()
                 .dataSource(dataSource())
@@ -384,7 +384,7 @@ class WorkItemStateFlowFoundationIntegrationTests {
             latest.clean();
             Flyway.configure().dataSource(dataSource()).target(baseline).load().migrate();
             latest.migrate();
-            assertEquals("096", latest.info().current().getVersion().getVersion());
+            assertEquals("100", latest.info().current().getVersion().getVersion());
             assertEquals(0, latest.migrate().migrationsExecuted);
         }
     }

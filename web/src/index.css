@@ -5400,6 +5400,95 @@ body {
   white-space: pre-wrap;
 }
 
+.work-item-relation-definition-editor > .ant-card-body,
+.work-item-relations-panel > .ant-card-body,
+.work-item-relation-tab,
+.work-item-hierarchy-tab,
+.work-item-impact-tab,
+.work-item-relation-migration-tab {
+  min-width: 0;
+}
+
+.work-item-relation-definition-list {
+  display: grid;
+  gap: 12px;
+}
+
+.work-item-relation-definition-field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.work-item-relation-definition-field > span {
+  color: #475569;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.work-item-relation-definition-field .ant-select,
+.work-item-relation-definition-field .ant-input-number {
+  width: 100%;
+}
+
+.work-item-relation-tab,
+.work-item-hierarchy-tab,
+.work-item-impact-tab,
+.work-item-relation-migration-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.work-item-relation-compose {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.7fr) minmax(260px, 1.3fr) auto;
+  gap: 10px;
+}
+
+.work-item-hierarchy-breadcrumbs {
+  display: flex;
+  overflow-x: auto;
+  align-items: center;
+  min-height: 38px;
+  gap: 4px;
+  padding-block: 4px;
+}
+
+.work-item-relation-migration-controls {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.6fr) minmax(260px, 1fr) auto auto;
+}
+
+.work-item-relations-panel .ant-list-item,
+.work-item-relation-definition-editor code {
+  overflow-wrap: anywhere;
+}
+
+.work-item-relations-panel [tabindex="0"]:focus-visible,
+.work-item-hierarchy-tab .ant-collapse-header:focus-visible {
+  border-radius: 6px;
+  outline: 2px solid #6d4cff;
+  outline-offset: 2px;
+}
+
+@media (max-width: 820px) {
+  .work-item-relation-compose,
+  .work-item-relation-migration-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .work-item-relations-panel > .ant-card-head,
+  .work-item-relation-definition-editor > .ant-card-head {
+    align-items: flex-start;
+  }
+
+  .work-item-relations-panel .ant-tabs-nav-wrap {
+    overflow-x: auto;
+  }
+}
+
 .project-space-hero,
 .admin-project-space-hero {
   border-color: var(--ui-card-border);

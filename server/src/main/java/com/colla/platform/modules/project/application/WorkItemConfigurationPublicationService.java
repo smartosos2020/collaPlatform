@@ -46,6 +46,7 @@ public class WorkItemConfigurationPublicationService {
     private final WorkItemTypeRepository typeRepository;
     private final WorkItemConfigurationSnapshotCanonicalizer canonicalizer;
     private final WorkItemConfigurationValidator validator;
+    private final WorkItemRelationTypeMatrixValidator relationTypeMatrixValidator;
     private final WorkItemConfigurationDiffEngine diffEngine;
     private final WorkItemConfigurationCompatibilityAnalyzer compatibilityAnalyzer;
     private final WorkItemTypeConfigCanonicalizer requestCanonicalizer;
@@ -60,6 +61,7 @@ public class WorkItemConfigurationPublicationService {
         WorkItemTypeRepository typeRepository,
         WorkItemConfigurationSnapshotCanonicalizer canonicalizer,
         WorkItemConfigurationValidator validator,
+        WorkItemRelationTypeMatrixValidator relationTypeMatrixValidator,
         WorkItemConfigurationDiffEngine diffEngine,
         WorkItemConfigurationCompatibilityAnalyzer compatibilityAnalyzer,
         WorkItemTypeConfigCanonicalizer requestCanonicalizer,
@@ -73,6 +75,7 @@ public class WorkItemConfigurationPublicationService {
         this.typeRepository = typeRepository;
         this.canonicalizer = canonicalizer;
         this.validator = validator;
+        this.relationTypeMatrixValidator = relationTypeMatrixValidator;
         this.diffEngine = diffEngine;
         this.compatibilityAnalyzer = compatibilityAnalyzer;
         this.requestCanonicalizer = requestCanonicalizer;
@@ -147,7 +150,9 @@ public class WorkItemConfigurationPublicationService {
             throw failure("UNSUPPORTED_SNAPSHOT_SCHEMA", "Configuration snapshot schema is not supported");
         }
         ConfigurationSnapshot canonical = canonicalizer.canonicalize(draft.snapshot());
-        ValidationResult validation = validator.validate(canonical.payload());
+        ValidationResult validation = validateScoped(
+            user.workspaceId(), spaceId, typeId, canonical.payload()
+        );
         if (!validation.valid() || !"valid".equals(draft.status())) {
             throw failure("DRAFT_NOT_VALID", "Configuration draft must be validated before publication");
         }
@@ -344,7 +349,9 @@ public class WorkItemConfigurationPublicationService {
             throw failure("DRAFT_VERSION_CONFLICT", "Configuration draft changed");
         }
         UUID draftId = UUID.randomUUID();
-        ValidationResult validation = validator.validate(source.snapshot());
+        ValidationResult validation = validateScoped(
+            user.workspaceId(), spaceId, typeId, source.snapshot()
+        );
         if (!draftRepository.tryInsert(new NewDraft(
             draftId,
             user.workspaceId(),
@@ -375,6 +382,24 @@ public class WorkItemConfigurationPublicationService {
         complete(command, source, response);
         recordRollback(user, rollbackDraft, source, command.requestId());
         return response;
+    }
+
+    private ValidationResult validateScoped(
+        UUID workspaceId,
+        UUID spaceId,
+        UUID typeId,
+        JsonNode snapshot
+    ) {
+        ValidationResult base = validator.validate(snapshot);
+        List<com.colla.platform.modules.project.domain.WorkItemConfigurationModels.ConfigurationDiagnostic>
+            diagnostics = new java.util.ArrayList<>(base.diagnostics());
+        diagnostics.addAll(relationTypeMatrixValidator.validate(workspaceId, spaceId, typeId, snapshot));
+        diagnostics.sort(java.util.Comparator.comparing(
+            com.colla.platform.modules.project.domain.WorkItemConfigurationModels.ConfigurationDiagnostic::keyPath
+        ).thenComparing(
+            com.colla.platform.modules.project.domain.WorkItemConfigurationModels.ConfigurationDiagnostic::code
+        ));
+        return ValidationResult.of(diagnostics);
     }
 
     private void requireManager(CurrentUser user, UUID spaceId, UUID typeId, boolean writable) {

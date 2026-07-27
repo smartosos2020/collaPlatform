@@ -126,6 +126,48 @@ class WorkItemLayoutCanonicalizerTests {
         assertEquals(field, result.nodes().getLast().id());
     }
 
+    @Test
+    void relationControlsUsePermanentKeysAndCreateLayoutsOnlyAllowPickers() {
+        UUID section = UUID.randomUUID();
+        var config = objectMapper.createObjectNode()
+            .put("relationKey", "blocks")
+            .put("mode", "picker")
+            .put("maxItems", 25);
+        LayoutNode relation = new LayoutNode(
+            UUID.randomUUID(),
+            section,
+            "blocks_picker",
+            "relation",
+            null,
+            null,
+            0,
+            config,
+            objectMapper.createObjectNode().put("schemaVersion", 1)
+        );
+
+        var result = canonicalizer.canonicalize(
+            "create",
+            List.of(node(section, null, "main", "section", null, null, 0), relation),
+            List.of()
+        );
+        assertEquals("blocks", result.nodes().getLast().config().path("relationKey").asText());
+        assertEquals(true, result.nodes().getLast().config().path("listFallback").asBoolean());
+
+        var invalid = new LayoutNode(
+            relation.id(), section, relation.nodeKey(), relation.nodeType(), null, null, 0,
+            config.put("mode", "impact"), relation.visibilityCondition()
+        );
+        WorkItemLayoutException failure = assertThrows(
+            WorkItemLayoutException.class,
+            () -> canonicalizer.canonicalize(
+                "create",
+                List.of(node(section, null, "main", "section", null, null, 0), invalid),
+                List.of()
+            )
+        );
+        assertEquals("INVALID_RELATION_CONTROL", failure.code());
+    }
+
     private LayoutNode node(
         UUID id,
         UUID parentId,

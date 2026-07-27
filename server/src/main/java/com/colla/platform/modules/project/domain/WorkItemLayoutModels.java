@@ -10,6 +10,7 @@ import java.util.regex.Pattern;
 public final class WorkItemLayoutModels {
     public static final int CONDITION_SCHEMA_VERSION = 1;
     public static final int POLICY_SCHEMA_VERSION = 1;
+    public static final int RELATION_CONTROL_SCHEMA_VERSION = 1;
     public static final int MAX_NODES = 120;
     public static final int MAX_POLICIES = 120;
     public static final int MAX_DEPTH = 4;
@@ -37,6 +38,7 @@ public final class WorkItemLayoutModels {
         tab,
         column,
         field,
+        relation,
         summary;
 
         public static NodeType parse(String value) {

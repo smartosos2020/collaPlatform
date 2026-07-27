@@ -357,6 +357,7 @@ public class WorkItemLayoutAccessProjectionService {
             ));
         if (node.fieldKey() == null
             && !"summary".equals(node.nodeType())
+            && !"relation".equals(node.nodeType())
             && nested.isEmpty()) {
             return false;
         }
