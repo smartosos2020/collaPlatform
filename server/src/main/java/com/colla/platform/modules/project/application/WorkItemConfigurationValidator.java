@@ -29,17 +29,20 @@ public class WorkItemConfigurationValidator {
     private final WorkItemStateFlowValidator stateFlowValidator;
     private final WorkItemNodeFlowValidator nodeFlowValidator;
     private final WorkItemRelationDefinitionValidator relationDefinitionValidator;
+    private final WorkItemPermissionDefinitionValidator permissionDefinitionValidator;
 
     public WorkItemConfigurationValidator(
         WorkItemConfigurationSnapshotCanonicalizer canonicalizer,
         WorkItemStateFlowValidator stateFlowValidator,
         WorkItemNodeFlowValidator nodeFlowValidator,
-        WorkItemRelationDefinitionValidator relationDefinitionValidator
+        WorkItemRelationDefinitionValidator relationDefinitionValidator,
+        WorkItemPermissionDefinitionValidator permissionDefinitionValidator
     ) {
         this.canonicalizer = canonicalizer;
         this.stateFlowValidator = stateFlowValidator;
         this.nodeFlowValidator = nodeFlowValidator;
         this.relationDefinitionValidator = relationDefinitionValidator;
+        this.permissionDefinitionValidator = permissionDefinitionValidator;
     }
 
     public ValidationResult validate(JsonNode requested) {
@@ -178,6 +181,24 @@ public class WorkItemConfigurationValidator {
                 diagnostics
             );
         }
+        if (snapshot.path("permissionModel").isObject() && snapshotSchemaVersion < 5) {
+            error(
+                diagnostics,
+                "permission_model_requires_schema_v5",
+                "$.permissionModel",
+                "Permission definitions require snapshot schema version 5"
+            );
+        }
+        if (snapshotSchemaVersion >= 5) {
+            permissionDefinitionValidator.validate(
+                snapshot.path("permissionModel"),
+                type.path("typeKey").asText(""),
+                fieldKeys,
+                nodeKeys(snapshot.path("nodeFlow")),
+                relationKeys,
+                diagnostics
+            );
+        }
         diagnostics.sort(Comparator.comparing(ConfigurationDiagnostic::keyPath)
             .thenComparing(ConfigurationDiagnostic::code));
         return ValidationResult.of(diagnostics);
@@ -310,6 +331,20 @@ public class WorkItemConfigurationValidator {
         if (definitions.isArray()) {
             definitions.forEach(definition -> {
                 String key = definition.path("relationKey").asText("");
+                if (!key.isBlank()) {
+                    result.add(key);
+                }
+            });
+        }
+        return Set.copyOf(result);
+    }
+
+    private Set<String> nodeKeys(JsonNode nodeFlow) {
+        Set<String> result = new HashSet<>();
+        JsonNode nodes = nodeFlow.path("nodes");
+        if (nodes.isArray()) {
+            nodes.forEach(node -> {
+                String key = node.path("nodeKey").asText("");
                 if (!key.isBlank()) {
                     result.add(key);
                 }

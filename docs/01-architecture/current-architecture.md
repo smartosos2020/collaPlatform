@@ -14,7 +14,7 @@ Colla Platform 当前是模块化单体：
 
 - 后端：单个 Spring Boot 应用，按业务模块分包。
 - 前端：单个 React SPA，用户工作台和管理后台使用独立 Shell、导航和路由边界。
-- 数据库：单个 PostgreSQL schema，通过 Flyway V001-V100 演进。
+- 数据库：单个 PostgreSQL schema，通过 Flyway V001-V101 演进。
 - 基础设施：Redis、MinIO、WebSocket、平台对象、权限、事件、审计和搜索由模块共享。
 - 交付：本地 Docker 依赖；生产基线是 maintenance、双 API、Worker、Event Gateway、双协作节点的 Docker Compose + Nginx。
 
@@ -52,7 +52,7 @@ Colla Platform 当前是模块化单体：
 
 该历史快照只描述当时的依赖和访问事实，不代表当前计数、边界合格或容量承诺。table owner、允许例外和公共 contract 在 S01-M2 冻结，自动失败门禁在 S01-M3 交付。
 
-S01-M2 已接受 `platform-module-contracts.md`，并以 `platform-modules.json`、`platform-table-owners.json`、`platform-boundary-exceptions.json` 和 `pnpm architecture:contracts` 建立模块、table owner、精确只读例外及 identity/file/platform/event/audit/IM 公共合同。2026-07-27 在 V001-V100 基线执行当前工具确认 15 个后端模块、146 张当前有效表、93 条精确例外和 27 个公共合同文件。146 张表在 owner manifest 中全部唯一归属，重复与 ownerless 均为 0；fresh inventory 以本地工具结果为准。
+S01-M2 已接受 `platform-module-contracts.md`，并以 `platform-modules.json`、`platform-table-owners.json`、`platform-boundary-exceptions.json` 和 `pnpm architecture:contracts` 建立模块、table owner、精确只读例外及 identity/file/platform/event/audit/IM 公共合同。2026-07-27 在 V001-V101 基线执行当前工具确认 15 个后端模块、150 张当前有效表、93 条精确例外和 29 个公共合同文件。150 张表在 owner manifest 中全部唯一归属，重复与 ownerless 均为 0；fresh inventory 以本地工具结果为准。
 
 ## 前端模块与路由
 
@@ -119,7 +119,7 @@ S01-M2 已接受 `platform-module-contracts.md`，并以 `platform-modules.json`
 
 ## 数据库迁移
 
-当前 Flyway 版本为 V096。历史迁移文件不可修改。
+当前 Flyway 版本为 V101。历史迁移文件不可修改。
 
 知识库最后四个迁移：
 
@@ -279,11 +279,11 @@ PLATFORM-SCALE-S01 把模块边界从文档约定升级为机器门禁。2026-07
 
 - 15 个后端模块、418 个纳管 Java 文件、266 条后端跨模块 import。
 - 前端有 64 条跨 feature import。
-- V001-V100 形成 146 张当前有效表，每张表有唯一 owner；跨 owner SQL 候选由精确例外治理，foreign write 仍为禁止项。
+- V001-V101 形成 150 张当前有效表，每张表有唯一 owner；跨 owner SQL 候选由精确例外治理，foreign write 仍为禁止项。
 - 27 个公开 contract 文件受合同门禁约束；`pnpm architecture:contracts` 同时检查模块、table owner、例外和公共合同来源。
 - S02 收口复核确认 93 条只读例外不属于运行隔离交付范围，退出 Stage 已重新批准为 PLATFORM-SCALE-S05，其中 project 9 条；因 S05-M2-M5 Deferred，例外清理尚未完成，现有精确条目仍不能扩张，修改相关文件时只能保持或减少。
 
-以上事实来自当前 inventory/config，而不是沿用 S03 历史快照。S02 已实现双 API 和独立运行角色，S03 已交付 Worker 多实例 lease、逐 Handler 可靠消费和恢复门槛，S04 已交付双 Event Gateway fanout、业务信号迁移、前端重连校准、旧 Spring 协同退出和双 Hocuspocus 节点恢复。基础设施集群高可用与正式容量承诺仍未交付；PLATFORM-SCALE-S05 的 M2-M5 已 Deferred。PROJECT-PLATFORM-S07、S08 与 S09 均已完成并归档。复杂节点流当前包括 snapshot v3 阶段/节点/边/分支/汇聚/恢复/补偿定义，V093-V096 独立 instance/token/task/artifact/vote/join/receipt/history/backfill 权威，且不读写 S08 私表。S10-M1 已把 configuration snapshot 升至 v4 并由 V097 建立 relation edge/receipt/history/hierarchy projection 底座；S10-M2 通过 V098 激活 canonical relation runtime；S10-M3 通过 V099 激活由 canonical edge 重建的 hierarchy runtime。S10-M4 通过 V100、relation layout node、受权目标搜索/正反向摘要/有界 impact/preview API 与显式 legacy relation migration batch 激活后端和交互合同：非 WorkItem 旧目标保留分类，owner/admin 才能 plan/execute/resume/verify/rollback，原因、expected version 和危险确认均必需。`work_item_relation.changed` 仍只作失效提示，所有正文通过用户 API 重读。S10-M5 已交付空间关系定义编辑、成员关系/层级/影响与迁移 UI；真实隔离浏览器从空库 V001-V100 覆盖六身份、并发单赢家、循环拒绝、离线和 1440/1366/820，S10 已完成并等待独立归档。
+以上事实来自当前 inventory/config，而不是沿用 S03 历史快照。S02 已实现双 API 和独立运行角色，S03 已交付 Worker 多实例 lease、逐 Handler 可靠消费和恢复门槛，S04 已交付双 Event Gateway fanout、业务信号迁移、前端重连校准、旧 Spring 协同退出和双 Hocuspocus 节点恢复。基础设施集群高可用与正式容量承诺仍未交付；PLATFORM-SCALE-S05 的 M2-M5 已 Deferred。PROJECT-PLATFORM-S07 至 S10 均已完成并归档。复杂节点流当前包括 snapshot v3 阶段/节点/边/分支/汇聚/恢复/补偿定义，V093-V096 独立 instance/token/task/artifact/vote/join/receipt/history/backfill 权威，且不读写 S08 私表。S10 通过 snapshot v4 与 V097-V100 交付关系、层级、影响和显式迁移闭环。S11-M1 已把 configuration snapshot 升至 v5，并由 V101 建立分层 role binding、WorkItem role assignment、permission receipt 与 immutable decision evidence 定义底座；M2 已激活只解释绑定 snapshot 的统一单项/批量 decision，并接管 WorkItem、子资源、状态流、节点流和关系的主要运行入口。字段、节点、关系 key 与 data scope 的组合裁剪、治理 API 和 UI 尚由 M3-M5 承接。
 
 ## 项目模块当前事实
 
@@ -380,6 +380,8 @@ PROJECT-PLATFORM-S01 于 2026-07-18 完成项目模块当前事实审计、目�
 - 本地数据有 33 个项目、34 条项目成员关系、2 个事项和 0 个 iteration；未发现孤儿关系，但有 31 条项目成员未出现在对应项目群中的同步漂移。
 
 S07-M5 已完成用户侧规范 WorkItem 竖切：类型入口、列表、创建、详情、绑定 snapshot 动态值、参与者、活动、评论、真实附件上传/下载以及归档/恢复均走 `/api/project-spaces/{spaceId}/work-items`；旧 issue 路由只通过显式 map 解析或重定向，不恢复 legacy 写。隔离 route-final 已覆盖六身份、PostgreSQL/Redis/MinIO、离线、409 冲突、1366/820 视口、迁移 verify 和 pre-cutover rollback。流程版本和高级可配置视图仍是后续目标架构能力；隔离环境迁移演练不等于生产切流批准。
+
+S11-M5 已完成规范 WorkItem 分层数据权限闭环：configuration snapshot v5 是空间/事项角色、subject selector、allow/deny、字段/节点/关系限定和 data scope 的唯一配置权威；`WorkItemPermissionDecisionService` 统一服务 projection/query/execute。关系读模型携带每个端点自身的 config hash、字段值和创建者决策绑定，并以 relation key 校准 data scope；关系命令先锁规范 relation 再创建 FK 回执，避免并发 reparent 锁升级死锁。用户详情只返回 capability、安全 explanation 和字段访问投影，运行 snapshot 明确移除 permission model、状态/节点策略正文。owner/admin 治理入口仍要求空间成员内容边界，仅 enterprise-admin 身份返回最小披露。V001-V101、532 项后端测试、真实 PostgreSQL、六身份和 1440/1366/820 隔离 route-final 已通过。S12 现已激活但尚未实现；现有 workspace dashboard、recent/favorite、search 与 notification 仍只是可复用当前事实，不代表受 S11 data scope 校准的个人工作台已交付。
 
 S01 已确定 ProjectSpace + versioned WorkItemType + WorkItem、规范 JSONB + capability typed projection、显式 legacy ID map、canonical-only write cutover 和状态/节点双运行时。S02-S06 已落地空间、类型、字段、布局/字段权限和不可变发布配置；S07 已落地规范 WorkItem、兼容 resolver、受控切流边界和可恢复第一阶段迁移。生产 canonical write cutover 仍需目标环境画像、备份恢复、观测窗口、容量证据和批准，不能由本地 rehearsal 自动授权。
 

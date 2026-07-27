@@ -76,6 +76,7 @@ class WorkItemConfigurationScaleBudgetTests {
             types, fields, options, layouts, new WorkItemStateFlowPresetCatalog(objectMapper),
             new WorkItemNodeFlowPresetCatalog(objectMapper),
             new WorkItemRelationDefinitionPresetCatalog(objectMapper),
+            new WorkItemPermissionPresetCatalog(objectMapper),
             canonicalizer, objectMapper
         );
 

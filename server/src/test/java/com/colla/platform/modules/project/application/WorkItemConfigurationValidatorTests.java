@@ -15,7 +15,8 @@ class WorkItemConfigurationValidatorTests {
             new WorkItemStateFlowSideEffectRegistry()
         ),
         new WorkItemNodeFlowValidator(new WorkItemNodeTypeRegistry()),
-        new WorkItemRelationDefinitionValidator()
+        new WorkItemRelationDefinitionValidator(),
+        new WorkItemPermissionDefinitionValidator()
     );
 
     @Test

@@ -141,11 +141,38 @@ public class WorkItemConfigurationSnapshotCanonicalizer {
                     .thenComparing(value -> value.path("relationKey").asText())
             );
         }
+        if ("spaceRoleDefinitions".equals(fieldName)) {
+            return java.util.Optional.of(byOrderThenKey("roleKey"));
+        }
+        if ("workItemRoleDefinitions".equals(fieldName)) {
+            return java.util.Optional.of(byOrderThenKey("roleKey"));
+        }
+        if ("permissionPolicies".equals(fieldName)) {
+            return java.util.Optional.of(
+                Comparator.comparingInt((JsonNode value) -> value.path("priority").asInt())
+                    .thenComparingInt(value -> value.path("sortOrder").asInt())
+                    .thenComparing(value -> value.path("policyKey").asText())
+            );
+        }
+        if ("subjectSelectors".equals(fieldName)) {
+            return java.util.Optional.of(
+                Comparator.comparing((JsonNode value) -> value.path("kind").asText())
+                    .thenComparing(value -> value.path("key").asText())
+                    .thenComparing(value -> value.path("subjectId").asText())
+            );
+        }
+        if ("legacyMappings".equals(fieldName)) {
+            return java.util.Optional.of(
+                Comparator.comparing((JsonNode value) -> value.path("sourceKind").asText())
+                    .thenComparing(value -> value.path("sourceKey").asText())
+            );
+        }
         if (List.of(
             "authorizedRoles", "requiredFieldKeys", "sideEffectKeys", "spaceRoles", "guardKeys",
             "candidateRoles", "explicitUserIds", "participantRoles", "fieldParticipantKeys",
             "objectTypes", "edgeKeys", "inboundEdgeKeys", "fromNodeKeys",
-            "sourceTypeKeys", "targetTypeKeys"
+            "sourceTypeKeys", "targetTypeKeys", "actionKeys", "inheritedRoleKeys",
+            "sourceKinds", "fieldKeys", "nodeKeys", "relationKeys", "values"
         ).contains(fieldName)) {
             return java.util.Optional.of(Comparator.comparing(JsonNode::asText));
         }

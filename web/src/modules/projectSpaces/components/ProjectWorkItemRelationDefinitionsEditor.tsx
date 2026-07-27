@@ -71,7 +71,11 @@ export function ProjectWorkItemRelationDefinitionsEditor({
     mutationFn: () => saveWorkItemConfigurationDraft(
       spaceId,
       typeId,
-      { ...snapshot, snapshotSchemaVersion: 4, relationDefinitions: items },
+      {
+        ...snapshot,
+        snapshotSchemaVersion: Math.max(Number(snapshot.snapshotSchemaVersion ?? 1), 4),
+        relationDefinitions: items,
+      },
       draft.aggregateVersion,
     ),
     onSuccess: (saved) => {

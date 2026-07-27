@@ -34,6 +34,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
     WorkItemRelationMigrationController.class,
     UserWorkItemHierarchyController.class,
     ProjectSpaceHierarchyRecoveryController.class,
+    WorkItemPermissionGovernanceController.class,
     UserWorkItemStateFlowController.class,
     UserWorkItemNodeWorkflowController.class,
     UserWorkItemStateBackfillController.class,

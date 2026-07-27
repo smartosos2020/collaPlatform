@@ -106,6 +106,12 @@ public class WorkItemRelationService {
             user, spaceId, sourceWorkItemId, targetWorkItemId,
             expectedSourceVersion, expectedTargetVersion
         );
+        accessDecision.requireAction(
+            user, spaceId, locked.source(), "relate", normalizedKey
+        );
+        accessDecision.requireAction(
+            user, spaceId, locked.target(), "accept_link", normalizedKey
+        );
         RelationDefinitionBinding binding = runtimeAdapter.requireForCreate(
             locked.source(), locked.target(), normalizedKey
         );
@@ -237,14 +243,13 @@ public class WorkItemRelationService {
             "expectedTargetVersion", expectedTargetVersion,
             "reason", normalizedReason
         ));
+        WorkItemRelation current = requireRelation(user, spaceId, relationId, true);
         CommandReceipt receipt = begin(
             user, spaceId, relationId, "withdraw", normalizedRequestId, requestHash
         );
         if ("completed".equals(receipt.status())) {
             return replay(receipt);
         }
-
-        WorkItemRelation current = requireRelation(user, spaceId, relationId, true);
         if (!"active".equals(current.status()) || current.version() != expectedRelationVersion) {
             throw failure("RELATION_VERSION_CONFLICT", "Relation changed or is not active");
         }
@@ -299,14 +304,13 @@ public class WorkItemRelationService {
             "expectedSourceVersion", expectedSourceVersion,
             "expectedTargetVersion", expectedTargetVersion
         ));
+        WorkItemRelation current = requireRelation(user, spaceId, relationId, true);
         CommandReceipt receipt = begin(
             user, spaceId, relationId, "restore", normalizedRequestId, requestHash
         );
         if ("completed".equals(receipt.status())) {
             return replay(receipt);
         }
-
-        WorkItemRelation current = requireRelation(user, spaceId, relationId, true);
         if (!"withdrawn".equals(current.status()) || current.version() != expectedRelationVersion) {
             throw failure("RELATION_VERSION_CONFLICT", "Relation changed or is not withdrawn");
         }
@@ -584,6 +588,18 @@ public class WorkItemRelationService {
         UUID perspectiveWorkItemId
     ) {
         WorkItemRelation relation = projection.relation();
+        WorkItem sourceItem = endpointItem(
+            projection.source(), projection.sourceBinding(), relation
+        );
+        WorkItem targetItem = endpointItem(
+            projection.target(), projection.targetBinding(), relation
+        );
+        accessDecision.requireAction(
+            user, spaceId, sourceItem, "view", relation.relationKey()
+        );
+        accessDecision.requireAction(
+            user, spaceId, targetItem, "view", relation.relationKey()
+        );
         boolean targetPerspective = perspectiveWorkItemId != null
             && perspectiveWorkItemId.equals(relation.targetWorkItemId())
             && !perspectiveWorkItemId.equals(relation.sourceWorkItemId());
@@ -598,8 +614,8 @@ public class WorkItemRelationService {
             user,
             spaceId,
             relation.relationKey(),
-            endpointItem(projection.source(), relation),
-            endpointItem(projection.target(), relation),
+            sourceItem,
+            targetItem,
             relation.status()
         );
         List<String> actions = new ArrayList<>();
@@ -631,6 +647,7 @@ public class WorkItemRelationService {
 
     private WorkItem endpointItem(
         com.colla.platform.modules.project.domain.WorkItemRelationRuntimeModels.RelationEndpoint endpoint,
+        com.colla.platform.modules.project.domain.WorkItemRelationRuntimeModels.RelationEndpointBinding binding,
         WorkItemRelation relation
     ) {
         return new WorkItem(
@@ -641,17 +658,17 @@ public class WorkItemRelationService {
             endpoint.typeVersionId(),
             endpoint.typeKey(),
             "",
-            relation.definitionConfigHash(),
+            binding.configHash(),
             1,
             endpoint.displayKey(),
             endpoint.title(),
-            objectMapper.createObjectNode(),
+            binding.fieldValues(),
             endpoint.status(),
             endpoint.version(),
-            relation.createdBy(),
-            relation.createdAt(),
-            relation.updatedBy(),
-            relation.updatedAt(),
+            binding.createdBy(),
+            binding.createdAt(),
+            binding.updatedBy(),
+            binding.updatedAt(),
             null
         );
     }

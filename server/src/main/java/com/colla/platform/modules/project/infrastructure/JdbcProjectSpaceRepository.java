@@ -125,6 +125,26 @@ public class JdbcProjectSpaceRepository implements ProjectSpaceRepository {
     public void deleteSpace(UUID workspaceId, UUID spaceId) {
         jdbcTemplate.execute("set local colla.project_space_cleanup = 'on'");
         jdbcTemplate.update(
+            "delete from project_permission_decision_evidence where workspace_id = ? and space_id = ?",
+            workspaceId,
+            spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_permission_command_receipts where workspace_id = ? and space_id = ?",
+            workspaceId,
+            spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_work_item_role_assignments where workspace_id = ? and space_id = ?",
+            workspaceId,
+            spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_space_permission_role_bindings where workspace_id = ? and space_id = ?",
+            workspaceId,
+            spaceId
+        );
+        jdbcTemplate.update(
             "delete from project_work_item_hierarchy_rebuild_batches where workspace_id = ? and space_id = ?",
             workspaceId,
             spaceId

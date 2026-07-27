@@ -5402,11 +5402,72 @@ body {
 
 .work-item-relation-definition-editor > .ant-card-body,
 .work-item-relations-panel > .ant-card-body,
+.work-item-permission-policy-editor > .ant-card-body,
+.work-item-permissions-panel > .ant-card-body,
 .work-item-relation-tab,
 .work-item-hierarchy-tab,
 .work-item-impact-tab,
 .work-item-relation-migration-tab {
   min-width: 0;
+}
+
+.work-item-permission-role-summary,
+.work-item-permission-role-list,
+.work-item-permission-capabilities {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-block: 12px;
+}
+
+.work-item-permission-policy-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.work-item-permission-field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.work-item-permission-field > span {
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}
+
+.work-item-permission-field .ant-select,
+.work-item-permission-field .ant-input-number {
+  width: 100%;
+}
+
+.work-item-permission-explanation {
+  display: grid;
+  grid-template-columns: minmax(120px, auto) minmax(180px, 320px);
+  gap: 12px;
+  align-items: center;
+  margin-block: 14px;
+}
+
+.work-item-permission-explanation .ant-descriptions,
+.work-item-permission-explanation .ant-alert {
+  grid-column: 1 / -1;
+}
+
+.work-item-permission-field-list .ant-list-item {
+  min-width: 0;
+}
+
+@media (max-width: 820px) {
+  .work-item-permission-explanation {
+    grid-template-columns: 1fr;
+  }
+
+  .work-item-permission-policy-editor > .ant-card-head,
+  .work-item-permissions-panel > .ant-card-head {
+    padding-inline: 12px;
+  }
 }
 
 .work-item-relation-definition-list {

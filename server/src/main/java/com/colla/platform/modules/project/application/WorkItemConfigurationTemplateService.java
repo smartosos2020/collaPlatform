@@ -61,6 +61,7 @@ public class WorkItemConfigurationTemplateService {
     private final WorkItemStateFlowPresetCatalog stateFlowPresetCatalog;
     private final WorkItemNodeFlowPresetCatalog nodeFlowPresetCatalog;
     private final WorkItemRelationDefinitionPresetCatalog relationDefinitionPresetCatalog;
+    private final WorkItemPermissionPresetCatalog permissionPresetCatalog;
     private final WorkItemConfigurationSnapshotCanonicalizer canonicalizer;
     private final WorkItemConfigurationValidator validator;
     private final WorkItemConfigurationThreeWayMerge mergeEngine;
@@ -79,6 +80,7 @@ public class WorkItemConfigurationTemplateService {
         WorkItemStateFlowPresetCatalog stateFlowPresetCatalog,
         WorkItemNodeFlowPresetCatalog nodeFlowPresetCatalog,
         WorkItemRelationDefinitionPresetCatalog relationDefinitionPresetCatalog,
+        WorkItemPermissionPresetCatalog permissionPresetCatalog,
         WorkItemConfigurationSnapshotCanonicalizer canonicalizer,
         WorkItemConfigurationValidator validator,
         WorkItemConfigurationThreeWayMerge mergeEngine,
@@ -96,6 +98,7 @@ public class WorkItemConfigurationTemplateService {
         this.stateFlowPresetCatalog = stateFlowPresetCatalog;
         this.nodeFlowPresetCatalog = nodeFlowPresetCatalog;
         this.relationDefinitionPresetCatalog = relationDefinitionPresetCatalog;
+        this.permissionPresetCatalog = permissionPresetCatalog;
         this.canonicalizer = canonicalizer;
         this.validator = validator;
         this.mergeEngine = mergeEngine;
@@ -622,6 +625,7 @@ public class WorkItemConfigurationTemplateService {
             );
         relationDefinitionPresetCatalog.definitionsFor(preset.typeKey())
             .ifPresent(definitions -> root.set("relationDefinitions", definitions));
+        root.set("permissionModel", permissionPresetCatalog.modelFor(preset.typeKey()));
         return root;
     }
 

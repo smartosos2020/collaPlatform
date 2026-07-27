@@ -193,6 +193,8 @@ S09 的 StageDefinition、NodeDefinition、EdgeDefinition、BranchDefinition、J
 
 S10 的 RelationDefinition、relation edge、command receipt、history、hierarchy path 和 hierarchy rebuild batch 不注册新的 platform objectType。规范端点始终是既有 `work_item` identity；关系事件只携带双端 UUID 和稳定 semantic key，不携带标题、字段值或访问策略。M2-M3 的关系与局部层级 API 在每次查询和命令中重新应用 ProjectSpace/双端 WorkItem 边界，不提供 relation、path 或 rebuild resolver/独立 deep link，不能因一端可见而泄露另一端摘要。面包屑、父子、同级和局部树只是现有 WorkItem 的有界导航投影，不形成 S13 全局树对象。legacy `issue_relations` 中 message/knowledge 等目标继续按原 platform object resolver 语义保留，不转换成虚假 WorkItem。
 
+S11-M1 的 role/policy/selector/data-scope definition、角色绑定、事项角色分配、命令回执和 decision evidence 都是既有 `work_item`/`project_space` 的内部配置、授权或审计事实，不注册 permission、role、policy、decision 等新 objectType，不生成独立 deep link、收藏或搜索 identity。公共 resolver 只能消费安全 decision 后返回原对象摘要，不能通过 evidence 或 role binding 暴露隐藏对象。
+
 S04 Stage 收口后，`FieldDefinition`、`FieldOption`、规则和复杂类型配置的对象归属保持不变：它们都是工作项类型内部的配置图，不具备独立分享、收藏、搜索、关系或平台对象解析能力。S05 的布局只能通过稳定 `fieldId + fieldKey` 引用该图，S06 只能把经校验的图物化进新的不可变类型版本；两者都不能把字段配置提升为独立平台对象。S07-M1 的 `work_item` resolver 只解析真实规范实例，不解析字段或布局配置。
 
 S05-M1-M4 交付的 `WorkItemLayout`、布局节点、条件规则和字段访问策略同样只是 `WorkItemTypeDefinition` 内部配置，不注册 `work_item_layout`、`work_item_field_policy` 或其他平台 objectType。配置预览和成员样本只能投影 synthetic 值与安全选项摘要，不得生成收藏、最近访问、对象链接或搜索索引事实。S07-M1 新增的 `work_item` 必须显式绑定不可变 `type_version_id + config_hash`，发布新配置版本不会改变既有对象解释。
@@ -240,3 +242,9 @@ M37 后 Base 记录可以作为关系源：
 - `file` 暂无完整 resolver 和统一导航页。
 - 平台对象类型规则表和 Java resolver 的类型来源仍是两套，需要后续收敛。
 - 对象关系图谱仍停留在各模块详情内的局部关系展示，尚未形成全局关系浏览页面。
+
+## S11 WorkItem 权限投影
+
+- `work_item` identity、space/type binding 与对象版本不因权限策略改变；权限是对同一规范对象的服务端 decision，不创建新的平台对象类型。
+- resolver、列表、详情、字段、节点、关系和命令必须共享同一绑定 snapshot v5 decision；data scope 外对象返回不可用摘要，不进入标题、计数、游标或搜索候选。
+- 平台对象摘要不携带 permission model、角色、selector、字段值或 deny 正文。安全 explanation 只在对象已可见后返回最小来源；enterprise governance 不自动取得内容访问。

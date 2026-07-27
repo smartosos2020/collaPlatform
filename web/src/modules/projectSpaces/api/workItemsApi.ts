@@ -21,6 +21,16 @@ export type WorkItemRuntime = {
   }>
 }
 
+export type WorkItemPermissionExplanation = {
+  allowed: boolean
+  action: string
+  reasonCode: string
+  disclosureScope: string
+  safePolicySources: string[]
+  requestAvailable: boolean
+  evaluatedAt: string
+}
+
 export type WorkItem = {
   id: string
   spaceId: string
@@ -128,6 +138,17 @@ export function listWorkItems(spaceId: string, typeId?: string) {
 
 export function getWorkItem(spaceId: string, workItemId: string) {
   return apiGet<WorkItem>(`/project-spaces/${spaceId}/work-items/${workItemId}`)
+}
+
+export function getWorkItemPermissionExplanation(
+  spaceId: string,
+  workItemId: string,
+  action: string,
+) {
+  const query = new URLSearchParams({ action })
+  return apiGet<WorkItemPermissionExplanation>(
+    `/project-spaces/${spaceId}/work-items/${workItemId}/permission-explanation?${query}`,
+  )
 }
 
 export function getWorkItemCreateForm(spaceId: string, typeId: string) {

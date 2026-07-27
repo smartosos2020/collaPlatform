@@ -138,6 +138,25 @@ workspace audience 只表示“该 workspace 的已连接客户端需要丢弃�
 - legacy `issue_relations` plan 冻结 source fingerprint、WorkItem map 和分类。execute 只为 `canonical_work_item` 单元调用规范 relation command；非 WorkItem、跨空间、已删除和未解析目标只保留分类，不产生领域边或伪事件。
 - plan/execute/resume/verify/rollback 是 owner/admin 显式治理操作，写审计与私有 batch/unit/verification 事实。成功创建或撤回的 canonical edge 仍通过唯一 relation command 产生 history/activity/audit/outbox；迁移控制面本身不发布用户关系事件。
 
+## S11-M1 权限定义事件边界
+
+- `work_item_permission.changed` v1 只冻结权限定义或绑定变化后的最小失效合同：workspace/space/可选 WorkItem identity、policy version/config hash、change kind 和 aggregate version。
+- 事件不携带策略正文、角色显示名、subject 列表、字段值、拒绝原因正文或隐藏对象信息。消费者只能据此失效并经统一 permission decision/resolver 重新校准，不能读取 project、permission 或 identity 私表补算授权。
+- M1 没有激活 role mutation 或 runtime decision，因此不发布运行事件；V101 空表与定义 preset 不能被解释为权限已生效。M2 之后的成功授权变更必须把事实、receipt、audit 与 outbox 放在同一事务。
+
+## S11-M4 权限治理副作用边界
+
+- explanation、policy preview、consistency scan 与 legacy classify 是只读或 dry-run；它们不得创建角色、授权、申请或伪造 `work_item_permission.changed`。
+- permission request 的提交不自动授予；approve/reject/revoke/expire 是独立状态转换。成功角色或授权变更必须把规范事实、completed receipt、audit 和最小 outbox 放在同一事务，失败不得留下半授权。
+- consistency rebuild 只能替换可重建 projection；legacy rollback 只撤回由同一 manifest 创建且未被后续规范命令修改的授权。二者都不得覆盖新策略或扩大可见范围。
+- 高风险告警只携带 workspace/space、mutation 类别、版本与审计引用，不包含 WorkItem 标题、字段值、subject 私有信息或隐藏策略正文。
+
+## S11-M5 客户端校准边界
+
+- 配置 UI 保存 permission model 只更新草稿；validate/publish/rollback 沿用 S06 原子闭包。关系或节点编辑不得降级已有 snapshot v5。
+- WorkItem permission explanation 与 capability 是只读校准，不发布权限事件；刷新、重连和 item version 变化只触发 REST 重读。
+- 成功授权变化仍由规范服务端命令发布最小 `work_item_permission.changed`，客户端先丢弃受保护缓存再校准；运行 DTO 和 realtime payload 都不得携带策略正文或 hidden subject。
+
 ### 5.1 客户端消费与校准
 
 - 浏览器只由应用级 `RealtimeProvider` 解析 v1 envelope；业务页面不再各自建立

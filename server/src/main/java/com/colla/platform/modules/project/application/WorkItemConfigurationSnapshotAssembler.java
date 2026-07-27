@@ -34,6 +34,7 @@ public class WorkItemConfigurationSnapshotAssembler {
     private final WorkItemStateFlowPresetCatalog stateFlowPresetCatalog;
     private final WorkItemNodeFlowPresetCatalog nodeFlowPresetCatalog;
     private final WorkItemRelationDefinitionPresetCatalog relationDefinitionPresetCatalog;
+    private final WorkItemPermissionPresetCatalog permissionPresetCatalog;
     private final WorkItemConfigurationSnapshotCanonicalizer canonicalizer;
     private final ObjectMapper objectMapper;
 
@@ -45,6 +46,7 @@ public class WorkItemConfigurationSnapshotAssembler {
         WorkItemStateFlowPresetCatalog stateFlowPresetCatalog,
         WorkItemNodeFlowPresetCatalog nodeFlowPresetCatalog,
         WorkItemRelationDefinitionPresetCatalog relationDefinitionPresetCatalog,
+        WorkItemPermissionPresetCatalog permissionPresetCatalog,
         WorkItemConfigurationSnapshotCanonicalizer canonicalizer,
         ObjectMapper objectMapper
     ) {
@@ -55,6 +57,7 @@ public class WorkItemConfigurationSnapshotAssembler {
         this.stateFlowPresetCatalog = stateFlowPresetCatalog;
         this.nodeFlowPresetCatalog = nodeFlowPresetCatalog;
         this.relationDefinitionPresetCatalog = relationDefinitionPresetCatalog;
+        this.permissionPresetCatalog = permissionPresetCatalog;
         this.canonicalizer = canonicalizer;
         this.objectMapper = objectMapper;
     }
@@ -93,6 +96,7 @@ public class WorkItemConfigurationSnapshotAssembler {
         } else {
             root.putArray("relationDefinitions");
         }
+        root.set("permissionModel", permissionPresetCatalog.modelFor(type.typeKey()));
         return canonicalizer.canonicalize(root);
     }
 

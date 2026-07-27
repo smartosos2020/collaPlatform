@@ -172,6 +172,18 @@ public class WorkItemConfigurationDiffEngine {
         if (path.endsWith(".relationDefinitions")) {
             return "relationKey";
         }
+        if (path.endsWith(".spaceRoleDefinitions") || path.endsWith(".workItemRoleDefinitions")) {
+            return "roleKey";
+        }
+        if (path.endsWith(".permissionPolicies")) {
+            return "policyKey";
+        }
+        if (path.endsWith(".subjectSelectors")) {
+            return "kind+key+subjectId";
+        }
+        if (path.endsWith(".legacyMappings")) {
+            return "sourceKind+sourceKey";
+        }
         return null;
     }
 

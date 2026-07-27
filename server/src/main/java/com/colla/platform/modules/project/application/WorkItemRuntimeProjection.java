@@ -168,6 +168,10 @@ public class WorkItemRuntimeProjection {
         // server-side policy. User runtime endpoints expose only a decision projection.
         visible.remove("stateFlow");
         visible.remove("nodeFlow");
+        // Permission policies, selectors, role inheritance, and legacy mappings are also
+        // server-side policy. Exposing the configuration body would let ordinary members infer
+        // hidden roles, subjects, and deny rules.
+        visible.remove("permissionModel");
         return visible;
     }
 

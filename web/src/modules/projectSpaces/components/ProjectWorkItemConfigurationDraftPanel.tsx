@@ -31,6 +31,7 @@ import { errorMessage, formatTime } from '../projectSpaceView'
 import { ProjectWorkItemConfigurationTemplatePanel } from './ProjectWorkItemConfigurationTemplatePanel'
 import { ProjectWorkItemNodeBackfillPanel } from './ProjectWorkItemNodeBackfillPanel'
 import { ProjectWorkItemNodeFlowDesigner } from './ProjectWorkItemNodeFlowDesigner'
+import { ProjectWorkItemPermissionPolicyEditor } from './ProjectWorkItemPermissionPolicyEditor'
 import { ProjectWorkItemRelationDefinitionsEditor } from './ProjectWorkItemRelationDefinitionsEditor'
 import { ProjectWorkItemStateFlowEditor } from './ProjectWorkItemStateFlowEditor'
 import { ProjectWorkItemStateBackfillPanel } from './ProjectWorkItemStateBackfillPanel'
@@ -282,6 +283,14 @@ export function ProjectWorkItemConfigurationDraftPanel({
           description="前端和服务端都不会提供普通绕过入口；请保留旧绑定或另行完成受控恢复方案。"
         />
       ) : null}
+      <ProjectWorkItemPermissionPolicyEditor
+        key={`permissions:${draft.id}:${draft.aggregateVersion}`}
+        spaceId={spaceId}
+        typeId={typeId}
+        readOnly={readOnly || draft.status === 'abandoned'}
+        draft={draft}
+        onDraftSaved={updateCachedDraft}
+      />
       <ProjectWorkItemRelationDefinitionsEditor
         key={`relations:${draft.id}:${draft.aggregateVersion}`}
         spaceId={spaceId}

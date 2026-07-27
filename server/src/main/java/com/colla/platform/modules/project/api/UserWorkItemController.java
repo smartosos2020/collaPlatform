@@ -90,6 +90,21 @@ public class UserWorkItemController {
         return WorkItemApiDtos.response(service.get(currentUser(authentication), spaceId, workItemId));
     }
 
+    @GetMapping("/{workItemId}/permission-explanation")
+    public Object permissionExplanation(
+        @PathVariable UUID spaceId,
+        @PathVariable UUID workItemId,
+        @RequestParam(defaultValue = "view") String action,
+        Authentication authentication
+    ) {
+        return service.explainPermission(
+            currentUser(authentication),
+            spaceId,
+            workItemId,
+            action
+        );
+    }
+
     @GetMapping("/query")
     public WorkItemPageResponse query(
         @PathVariable UUID spaceId,

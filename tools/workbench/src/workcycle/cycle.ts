@@ -196,18 +196,31 @@ async function verify(options: WorkCycleOptions): Promise<void> {
       const { assertRealBrowserEvidence } = await import('../security/browserEvidence.js')
       assertRealBrowserEvidence(browserSpecs.join(' '), repositoryRoot)
     }
-    const output = await run('node', args, {
-      cwd: webRoot,
-      env: { COLLA_E2E_SUITE: 'all' },
-      capture: true,
-      trimOutput: false,
-    })
+    const isolatedS11Route = evidenceKind === 'real'
+      && evidenceEnvironment === 'isolated'
+      && browserSpecs.length === 1
+      && browserSpecs[0].replaceAll('\\', '/').endsWith('project-platform-s11-m5-route-final.spec.ts')
+    let command = `node ${args.join(' ')}`
+    let output: string
+    if (isolatedS11Route) {
+      const { isolatedProjectPlatformS11Smoke } = await import('../browser/smoke.js')
+      await isolatedProjectPlatformS11Smoke(repositoryRoot)
+      command = 'pnpm smoke:s11-m5-isolated'
+      output = 'PROJECT-PLATFORM-S11 isolated route-final browser smoke passed.\n'
+    } else {
+      output = await run('node', args, {
+        cwd: webRoot,
+        env: { COLLA_E2E_SUITE: 'all' },
+        capture: true,
+        trimOutput: false,
+      })
+    }
     const browserLog = join(reportDir, `work-cycle-browser-${new Date().toISOString().replace(/[-:]/g, '').replace(/\..+$/, '')}.log`)
     writeFileSync(browserLog, output)
     if (output) console.log(output)
     context.browserEvidence = {
       status: 'passed', kind: evidenceKind, environment: evidenceEnvironment,
-      command: `node ${args.join(' ')}`, logPath: browserLog, completedAt: new Date().toISOString(),
+      command, logPath: browserLog, completedAt: new Date().toISOString(),
     }
   } else if (hasReason) {
     const reason = options.browserNotRequiredReason!.trim()

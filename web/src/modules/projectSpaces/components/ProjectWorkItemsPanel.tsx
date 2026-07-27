@@ -66,6 +66,7 @@ import type {
 import { WorkItemLayoutRenderer, type WorkItemLayoutValues } from './WorkItemLayoutRenderer'
 import { WorkItemNodeWorkflowPanel } from './WorkItemNodeWorkflowPanel'
 import { WorkItemRelationsPanel } from './WorkItemRelationsPanel'
+import { WorkItemPermissionsPanel } from './WorkItemPermissionsPanel'
 import { WorkItemWorkflowPanel } from './WorkItemWorkflowPanel'
 import { errorMessage, formatTime } from '../projectSpaceView'
 
@@ -410,6 +411,7 @@ function WorkItemDetail({ space, workItemId }: { space: UserProjectSpace; workIt
           onValuesChange={setValues}
         />
       </Card>
+      <WorkItemPermissionsPanel space={space} item={item} />
       <WorkItemRelationsPanel
         space={space}
         item={item}

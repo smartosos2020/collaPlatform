@@ -232,6 +232,13 @@ M2 不实现 Worker lease、dead-letter、replay、handler registry 或独立进
 - S10 的 RelationDefinition 只存在于 WorkItemType configuration snapshot v4；`project_work_item_relations/relation_commands/relation_history/hierarchy_paths/hierarchy_rebuild_batches` 均由 project owner 独占。M2-M3 只通过 project 用户 API 激活关系实例、局部层级命令/查询，并通过 owner/admin 治理 API 重建派生 closure；其他模块不得读取这些表、legacy `issue_relations` 或 S08/S09 私表推导关系。
 - `project.contract.WorkItemRelationChangedEvent` 是关系运行时唯一公共增量合同，固定 `eventType=work_item_relation.changed`、`eventVersion=1`、`aggregateType=work_item_relation`。payload 只含 space/relation identity、relation key、双端 WorkItem identity、relation version 和 mutation；消费者必须经 `work_item` resolver/用户 API 校准，未知版本失败关闭。M2 未注册 notification/search/realtime consumer。
 - hierarchy path 与 rebuild batch 是 project 私有派生/恢复事实，不是公共合同或第二套边权威。attach/detach/reparent/split-child 仍通过规范 relation command 产生同一最小公共事件；scan/dry-run/rebuild/resume 不伪造业务关系事件。
+- S11 的 SpaceRole、WorkItemRole、PermissionPolicy、SubjectSelector 与 DataScope 只存在于 WorkItemType configuration snapshot v5；角色绑定、事项角色分配、命令回执和 decision evidence 四表均由 project owner 独占。其他模块不得读取 project/permission/identity 私表拼接授权。
+- `project.contract.WorkItemPermissionContracts` 冻结最小 request/decision/explanation DTO；`project.contract.WorkItemPermissionChangedEvent` v1 只携带 workspace/space/WorkItem、policy version/hash、change kind 与 aggregate version，用于失效和重读，不携带策略正文、角色显示名、字段值或 subject 隐私。
+- M1 公共合同只是定义与边界，不代表运行授权已接管。M2 起 projection/query/execute/resolver/consumer 必须消费同一 decision 或批量等价结果；enterprise governance 不能映射为私有内容 owner。
+- S11-M2 已激活统一 `WorkItemPermissionDecisionService`：单项和批量只解释绑定 snapshot，并以 config hash、policy version 与 subject version 校准。WorkItem、子资源、S08/S09 和 S10 入口只能调用该服务或等价批量结果，不得各自读取私表重建角色。
+- S11-M4 的用户 explanation、治理 trace、request adapter、角色 mutation、策略 preview、consistency scan 和 legacy disposition 均属于 project 公共 API/应用边界；治理 trace 需要治理权限与内容访问交集，enterprise governance 不能反向取得 WorkItem 内容。
+- 通用 permission 模块继续拥有公共申请/审批/授予/拒绝/撤回事实；project 只提交规范 WorkItem identity 与有界申请合同，不允许 permission 模块读取 project 私表或把通用 ACL 当作 snapshot policy 的第二权威。
+- S11-M5 的 Web 配置器只写 S06 草稿 API；成员详情只读服务端 capability/explanation/access projection。运行 DTO 必须移除 `permissionModel`，禁止前端接收后按角色、selector 或 deny 正文补算授权。
 
 ## 15. 非目标
 

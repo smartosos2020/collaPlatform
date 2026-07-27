@@ -21,7 +21,8 @@ class WorkItemNodeFlowDefinitionTests {
             new WorkItemStateFlowSideEffectRegistry()
         ),
         new WorkItemNodeFlowValidator(new WorkItemNodeTypeRegistry()),
-        new WorkItemRelationDefinitionValidator()
+        new WorkItemRelationDefinitionValidator(),
+        new WorkItemPermissionDefinitionValidator()
     );
     private final WorkItemNodeFlowPresetCatalog presets = new WorkItemNodeFlowPresetCatalog(objectMapper);
 

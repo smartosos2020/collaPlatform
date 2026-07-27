@@ -2,11 +2,11 @@
 title: 项目协作平台目标架构
 status: target
 program: PROJECT-PLATFORM
-program_revision: 29
+program_revision: 31
 domain_contract_version: 1
 domain_contract_status: frozen-s01-m3
 migration_contract_version: 1
-stage_review_status: s09-archived-s10-active
+stage_review_status: s11-archived-s12-active
 updated_at: 2026-07-27
 ---
 
@@ -1150,3 +1150,76 @@ S09 完成路线已经独立归档，S10 在 Program revision 27 激活为唯一
 - 激活点是 `PROJECT-PLATFORM-S11-M1-T01`。Revision 29 只建立执行授权和验收合同，不声明任何 S11 schema、策略、API、迁移或 UI 已实现。
 - S11 最终证据必须覆盖空库与升级 Flyway、六身份和自定义角色、企业治理无内容旁路、并发收权、临时授权到期、hidden 零披露、迁移/恢复、离线/窄屏及完整 `route-final`。
 - S11 不实现 S12 个人工作台、S13 保存视图/查询 DSL、S17 自动化或 S18 跨空间同步；这些 Stage 继续保持 Planned。
+
+### 27.4 S11-M1 已实现边界
+
+- configuration snapshot v5 新增分层 permission model，以永久 key 冻结 space/work-item role、subject selector、allow/deny policy、action、data scope 和 legacy mapping；v5 缺少模型或未来 schema 均失败关闭。
+- 权限定义继续使用 S06 唯一 draft/published authority。canonical hash、乐观草稿、diff、compatibility、rollback、template lineage 和系统预置处理同一模型，不建立 live policy 双写。
+- V101 只建立空间角色绑定、事项角色分配、持久命令回执和不可变 decision evidence。四表由 project 唯一拥有，复合约束绑定 workspace/space/type definition/published version，并进入空间清理闭包。
+- 系统预置明确区分 enterprise、space 与 work-item role；企业管理员不映射为内容 owner。旧空间成员、participant、字段策略与通用 ACL 只能按显式 manifest 承接，未知来源失败。
+- `WorkItemPermissionContracts` 与 `WorkItemPermissionChangedEvent` v1 只公开最小 decision/explanation/request 和失效 identity，不包含策略正文、隐藏角色名、字段值或 subject 私有信息。
+- M1 没有激活运行时 adapter、统一 decision、对象/字段/节点/关系授权、申请治理 API 或 UI；这些从 M2-M5 依次建立，不能把定义预置或空表写成已生效授权。
+
+### 27.5 S11-M2 已实现边界
+
+- `WorkItemPermissionRuntimeAdapter` 只解释 WorkItem 绑定的不可变 snapshot。v5 使用 role inheritance、selector、allow/deny 和 policy priority；v1-v4 使用冻结的 legacy space-role ceiling，绝不回读 live draft/policy。
+- `WorkItemPermissionDecisionService` 的单项和最多 200 项批量入口共享同一 evaluator，返回 policy version/hash、subject version、稳定 reason 与最小安全来源。deny 优先，enterprise role 不成为内容 owner。
+- WorkItem create/read/update/archive/restore、participant/comment/attachment/activity、状态流、节点流和服务端 `availableActions` 接入统一 decision。子资源与 workflow/node 细化规则只能进一步收紧对象上限。
+- relation create 分别要求 source `relate` 与 target `accept_link`；关系投影分别要求双端 `view`。任一端拒绝时不返回另一端摘要、计数或 capability。
+- 当前决策不做跨请求缓存，因此 policy/subject/version 变化不会产生陈旧 capability；最小 change event 只保留失效/重读合同。字段/node/relation key 和 data scope 组合从 M3 激活。
+
+### 27.6 S11-M3 已实现边界
+
+- M2 唯一 evaluator 增加 field/node/relation qualifier 与 EvaluationContext；限定规则只能收紧已允许的对象动作，不能反向授予对象访问。
+- data scope 固定为 all、created-by-subject、participating、work-item-role、field-match、explicit-set；field operator 仅接受 equals、not-equals、in、contains，未知表达式失败关闭。
+- WorkItem 详情在对象 view 通过后逐字段应用 `field_read` 并移除拒绝字段；patch 逐字段应用 `field_write`，拒绝只返回统一错误而不回显 field key/value。
+- 创建人、字段值、事项角色和显式对象集合进入同一版本化决策上下文；批量上限、selector/policy/value 预算延续 v5 validator。没有动态 SQL、任意脚本或 S13 查询 DSL。
+
+### 27.7 S11-M4 已实现边界
+
+- 用户 explanation 只投影 decision 的安全来源、稳定 reason 和可申请标记；治理 trace 必须同时满足空间治理与对象内容可见，任一不满足均返回相同隐藏外形。
+- 权限申请 adapter 只验证并规范化 request id、动作、原因、重复提交和最长 365 天到期，不把提交直接解释为审批或授予。审批、拒绝、撤回与授予继续使用通用 permission 工作流的独立事务和审计边界。
+- 角色 mutation 强制 expected-version 上游合同、原因、危险确认、临时到期与最后 owner 保护。策略预览最多 200 项，版本冲突失败并要求刷新；隐藏候选只暴露布尔信号，不返回标题、身份或真实总量。
+- 一致性扫描只报告失效 subject、缺失角色与过期授权，修复仅允许重建可丢弃投影；legacy 承接对扩权、未知映射和人工复核项失败关闭，不覆盖后续规范授权。
+- owner/admin 治理 API 先经过空间 manager 边界。enterprise admin 身份不等于空间成员或内容 owner，不能借治理入口读取 decision trace、扫描输入或对象正文。
+- M4 不交付配置/成员/治理 UI，也不声明浏览器闭环；这些由 M5 的真实隔离 route-final 验证。
+
+### 27.8 S11-M5 收口与 S12 准入
+
+- 空间配置草稿交付权限策略编辑器，覆盖空间/事项角色、subject selector、allow/deny、动作、字段/节点/关系限定与 data scope。保存继续进入唯一 snapshot v5 草稿、校验、diff、compatibility、发布与 rollback，不建立 live policy 双写。
+- 关系与节点编辑器保存时只提升其最低 schema，不得把包含 permission model 的 v5 草稿降级为 v4/v3。所有运行绑定仍以已发布不可变版本和 config hash 为准。
+- WorkItem 详情只显示服务端 capability、安全 explanation 和字段访问投影；运行 snapshot 移除 permission model、state/node policy 正文，成员无法从响应反推隐藏角色、selector、deny 或 legacy 映射。
+- 关系投影必须使用 source/target 各自绑定的 snapshot hash、字段值和创建者构造 decision context，并携带 relation key；不得使用 relation definition hash 代替端点配置绑定。relation mutation 先锁规范 relation 再建立 FK command receipt，避免并发锁升级死锁。
+- owner/admin 治理预览继续经过空间 manager 边界。enterprise admin、non-member 与 data scope 外对象保持最小披露，企业治理不能成为内容访问旁路。
+- 真实隔离浏览器从随机空库执行 V001-V101，动态验证 owner、space-admin、member、guest、non-member、enterprise-admin，覆盖长名称、1440/1366/820、键盘与 safe source；完整门禁不以 route mock 冒充真实系统。
+- S11 五个 Milestone、60 个 Task 完成，Go。S12 可以聚合我的待办、负责、参与、关注、最近、收藏、草稿、搜索和动态，但必须复用 S11 统一 decision/data scope，不能从索引、计数或错误差异泄露隐藏对象。
+
+## 28. Revision 31 激活的 S12 工程边界
+
+### 28.1 个人聚合权威
+
+- 个人工作台以 workspace 与当前 user 为调用边界，聚合我的待办、负责、参与和关注。bucket reason 可以多值，但同一 WorkItem 只返回一份规范摘要；enterprise-admin 不映射为其他用户或私有内容主体。
+- project 继续拥有 WorkItem、participant、node task、activity 与 S11 decision；platform 拥有规范对象 recent/favorite；search 拥有可重建 index；notification 拥有通知、偏好与 read state。S12 只能调用公共端口、resolver 和最小事件，不得读取跨 owner 私表拼聚合。
+- personal projection、dashboard card、cache 与 search index 都可丢弃、可重建，不成为 WorkItem、权限、收藏、搜索或通知的第二权威。source version、subject version 与失效水位必须可校准。
+- 草稿摘要由各 owner 模块按当前用户与权限投影；S12 不建立跨模块通用草稿事实表，也不把配置草稿正文复制进个人工作台。
+
+### 28.2 权限、搜索与最小披露
+
+- 列表、分组、计数、facet、游标、搜索分数、高亮、深链、动态来源和提醒必须复用 S11 对象 decision、field/node/relation qualifier 与 data scope，或使用语义等价的有界批量结果。
+- 禁止“先召回全部对象再让浏览器过滤”。data scope 外对象不得改变可观察总量、空分组、下一页、搜索得分、错误类型或响应时间外形；权限收紧先丢弃受保护缓存，再经 REST 重读。
+- recent/favorite 只保存规范对象引用。resolver 返回不可见、删除、归档或失效时不得回显旧 title、excerpt、path 或 access count，清理投影不能修改原对象事实。
+- WorkItem search document 只包含允许建立索引的最小字段和来源版本。hidden 字段、permission model、角色/selector、subject 私有信息和 notification 正文不得进入索引或公共事件。
+
+### 28.3 命令、事件与恢复
+
+- favorite、card layout、nudge、read state 等写命令使用 caller-stable request ID、expected version、持久 receipt、audit/outbox 和稳定 replay；重复提交不产生重复收藏、催办或通知。
+- 事件只携带 workspace/user/object identity、source version 与 change kind，用于失效和重读，不携带受保护标题或正文。乱序、重复、gap、重连、用户禁用和空间归档必须收敛。
+- projection/index 一致性扫描、dry-run、rebuild、失败清单和 resume 只修复可重建数据；不得重写 WorkItem、participant、node task、收藏或通知规范事实，也不得在恢复时扩大权限。
+- 到期/超期提醒与催办固定在受控产品合同内，不引入任意 trigger-condition-action、脚本或 webhook；这些仍属于 S17。
+
+### 28.4 Revision 31 激活范围
+
+- S12 固定为 4 个 Milestone、48 个 Task：M1 我的待办/负责/参与/关注，M2 最近/收藏/草稿/个性化卡片，M3 跨空间/类型全局搜索，M4 动态/提醒/催办/个人通知与 `route-final`。
+- 激活点是 `PROJECT-PLATFORM-S12-M1-T01`。Revision 31 只冻结执行与验收合同，不声明任何 S12 schema、API、projection、consumer 或 UI 已实现。
+- S12 最终证据必须覆盖空库与升级 Flyway、六身份、跨空间、并发收权、hidden 零披露、索引乱序/重建、通知去重、离线/重连、长名称和 1440/1366/820 真实隔离浏览器。
+- S12 不实现 S13 查询 DSL/保存视图、S14 看板/日历/甘特、S16 产能排期、S17 自动化或 S18 跨空间同步；这些 Stage 保持 Planned。

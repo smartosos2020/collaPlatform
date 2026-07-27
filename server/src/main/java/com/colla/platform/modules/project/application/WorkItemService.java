@@ -50,7 +50,10 @@ import com.colla.platform.modules.project.infrastructure.WorkItemRepository.Lock
 import com.colla.platform.modules.project.infrastructure.WorkItemRepository.NewWorkItem;
 import com.colla.platform.modules.project.runtime.PublishedSnapshotAdapter;
 import com.colla.platform.modules.project.contract.WorkItemChangedEvent;
+import com.colla.platform.modules.project.contract.WorkItemPermissionContracts.SubjectContext;
+import com.colla.platform.modules.project.contract.WorkItemPermissionContracts.PermissionExplanation;
 import com.colla.platform.modules.project.runtime.PublishedSnapshotAdapter.RuntimeConfiguration;
+import com.colla.platform.modules.project.runtime.WorkItemPermissionRuntimeAdapter.EvaluationContext;
 import com.colla.platform.shared.auth.CurrentUser;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -84,6 +87,8 @@ public class WorkItemService {
     private final WorkItemStateBackfillService stateBackfillService;
     private final WorkItemNodeBackfillService nodeBackfillService;
     private final WorkItemRelationService relationService;
+    private final WorkItemPermissionDecisionService permissionDecisionService;
+    private final WorkItemPermissionGovernanceService permissionGovernanceService;
     private final PlatformObjectCommands objectCommands;
     private final AuditLog auditLog;
     private final TransactionalOutbox outbox;
@@ -104,6 +109,8 @@ public class WorkItemService {
         WorkItemStateBackfillService stateBackfillService,
         WorkItemNodeBackfillService nodeBackfillService,
         WorkItemRelationService relationService,
+        WorkItemPermissionDecisionService permissionDecisionService,
+        WorkItemPermissionGovernanceService permissionGovernanceService,
         PlatformObjectCommands objectCommands,
         AuditLog auditLog,
         TransactionalOutbox outbox,
@@ -123,10 +130,37 @@ public class WorkItemService {
         this.stateBackfillService = stateBackfillService;
         this.nodeBackfillService = nodeBackfillService;
         this.relationService = relationService;
+        this.permissionDecisionService = permissionDecisionService;
+        this.permissionGovernanceService = permissionGovernanceService;
         this.objectCommands = objectCommands;
         this.auditLog = auditLog;
         this.outbox = outbox;
         this.objectMapper = objectMapper;
+    }
+
+    public PermissionExplanation explainPermission(
+        CurrentUser user,
+        UUID spaceId,
+        UUID workItemId,
+        String action
+    ) {
+        ProjectSpaceSummary space = requireMember(user, spaceId);
+        WorkItem item = requireItem(user, spaceId, workItemId);
+        RuntimeConfiguration configuration = configuration(user, item);
+        // Explanation is available only after the object itself is visible. This preserves the
+        // same 404 shape for data-scope and hidden-object denials.
+        requirePermission(user, space, item, configuration, "view");
+        var decision = permissionDecisionService.decide(
+            configuration,
+            subjectContext(user, space, item),
+            spaceId,
+            workItemId,
+            action
+        );
+        return permissionGovernanceService.explainForUser(
+            decision,
+            !"permission_request".equals(action)
+        );
     }
 
     @Transactional
@@ -166,6 +200,7 @@ public class WorkItemService {
         if (!configuration.configHash().equals(type.configHash())) {
             throw failure("SNAPSHOT_INTEGRITY_FAILURE", "Current work item type hash does not match its snapshot");
         }
+        requirePermission(user, space, null, configuration, "create");
         JsonNode preparedValues = projection.prepareCreate(
             configuration, space.currentUserRole(), type.spaceStatus(), fieldValues
         );
@@ -242,6 +277,7 @@ public class WorkItemService {
         RuntimeConfiguration configuration = snapshotAdapter.requireComplete(
             user.workspaceId(), spaceId, typeId, type.versionId()
         );
+        requirePermission(user, space, null, configuration, "create");
         return new WorkItemCreateForm(
             type.typeId(),
             type.versionId(),
@@ -284,6 +320,7 @@ public class WorkItemService {
     ) {
         ProjectSpaceSummary space = requireWritableMember(user, spaceId);
         WorkItem current = requireItem(user, spaceId, workItemId);
+        requirePermission(user, space, current, configuration(user, current), "edit");
         if (!"active".equals(current.status())) {
             throw failure("INVALID_WORK_ITEM_TRANSITION", "Archived work items must be restored before editing");
         }
@@ -307,6 +344,7 @@ public class WorkItemService {
         JsonNode preparedValues = projection.prepareUpdate(
             configuration, space.currentUserRole(), "active", current.fieldValues(), requested
         );
+        requireWritableFields(user, space, current, configuration, requested);
         CanonicalValues values = valueCodec.canonicalize(configuration, preparedValues);
         if (repository.update(
             user.workspaceId(), spaceId, workItemId, nextTitle, values.values(), user.id(), expectedVersion
@@ -363,6 +401,7 @@ public class WorkItemService {
             throw failure("INVALID_WORK_ITEM_TRANSITION", "Work item cannot transition to the requested status");
         }
         String operation = "archived".equals(target) ? "archive" : "restore";
+        requirePermission(user, space, current, configuration(user, current), operation);
         String normalizedRequestId = requestId(requestId);
         String requestHash = requestHash(user, operation, Map.of(
             "workItemId", workItemId.toString(),
@@ -414,8 +453,9 @@ public class WorkItemService {
         UUID spaceId,
         UUID workItemId
     ) {
-        requireMember(user, spaceId);
-        requireItem(user, spaceId, workItemId);
+        ProjectSpaceSummary space = requireMember(user, spaceId);
+        WorkItem item = requireItem(user, spaceId, workItemId);
+        requirePermission(user, space, item, configuration(user, item), "view");
         return hydrateParticipants(user, repository.listParticipants(
             user.workspaceId(), spaceId, workItemId
         ));
@@ -432,8 +472,9 @@ public class WorkItemService {
         long expectedVersion,
         String requestId
     ) {
-        requireWritableMember(user, spaceId);
+        ProjectSpaceSummary space = requireWritableMember(user, spaceId);
         WorkItem current = requireItem(user, spaceId, workItemId);
+        requirePermission(user, space, current, configuration(user, current), "participant_manage");
         if (!"active".equals(current.status())) {
             throw failure("INVALID_WORK_ITEM_TRANSITION", "Archived work items cannot change participants");
         }
@@ -527,8 +568,9 @@ public class WorkItemService {
         Long beforeSequence,
         int limit
     ) {
-        requireMember(user, spaceId);
-        requireItem(user, spaceId, workItemId);
+        ProjectSpaceSummary space = requireMember(user, spaceId);
+        WorkItem item = requireItem(user, spaceId, workItemId);
+        requirePermission(user, space, item, configuration(user, item), "view");
         int safeLimit = Math.max(1, Math.min(limit, MAX_PAGE_SIZE));
         var rows = hydrateActivities(user, repository.listActivities(
             user.workspaceId(), spaceId, workItemId, beforeSequence, safeLimit + 1
@@ -546,8 +588,9 @@ public class WorkItemService {
         UUID spaceId,
         UUID workItemId
     ) {
-        requireMember(user, spaceId);
-        requireItem(user, spaceId, workItemId);
+        ProjectSpaceSummary space = requireMember(user, spaceId);
+        WorkItem item = requireItem(user, spaceId, workItemId);
+        requirePermission(user, space, item, configuration(user, item), "view");
         return hydrateComments(user, repository.listComments(user.workspaceId(), spaceId, workItemId));
     }
 
@@ -560,8 +603,9 @@ public class WorkItemService {
         long expectedVersion,
         String requestId
     ) {
-        requireWritableMember(user, spaceId);
+        ProjectSpaceSummary space = requireWritableMember(user, spaceId);
         WorkItem current = requireItem(user, spaceId, workItemId);
+        requirePermission(user, space, current, configuration(user, current), "comment");
         if (!"active".equals(current.status())) {
             throw failure("INVALID_WORK_ITEM_TRANSITION", "Archived work items cannot be commented on");
         }
@@ -626,8 +670,9 @@ public class WorkItemService {
         UUID spaceId,
         UUID workItemId
     ) {
-        requireMember(user, spaceId);
-        requireItem(user, spaceId, workItemId);
+        ProjectSpaceSummary space = requireMember(user, spaceId);
+        WorkItem item = requireItem(user, spaceId, workItemId);
+        requirePermission(user, space, item, configuration(user, item), "view");
         return hydrateAttachments(
             user,
             repository.listAttachments(user.workspaceId(), spaceId, workItemId)
@@ -643,8 +688,9 @@ public class WorkItemService {
         long expectedVersion,
         String requestId
     ) {
-        requireWritableMember(user, spaceId);
+        ProjectSpaceSummary space = requireWritableMember(user, spaceId);
         WorkItem current = requireItem(user, spaceId, workItemId);
+        requirePermission(user, space, current, configuration(user, current), "attach");
         if (!"active".equals(current.status())) {
             throw failure("INVALID_WORK_ITEM_TRANSITION", "Archived work items cannot add attachments");
         }
@@ -792,14 +838,15 @@ public class WorkItemService {
         WorkflowPresentation workflow,
         RuntimeConfiguration configuration
     ) {
-        JsonNode values = projection.projectDetail(
+        requirePermission(user, space, item, configuration, "view");
+        JsonNode values = filterReadableFields(user, space, item, configuration, projection.projectDetail(
             configuration, space.currentUserRole(), space.status(), item.fieldValues()
-        );
+        ));
         ObjectNode runtime = (ObjectNode) projection.runtimePresentation(
             configuration, space.currentUserRole(), space.status(), "detail", item.fieldValues()
         );
         runtime.set("workflow", objectMapper.valueToTree(workflow));
-        return new WorkItemView(item, values, runtime, actions(space, item));
+        return new WorkItemView(item, values, runtime, actions(user, space, item, configuration));
     }
 
     private List<WorkItemView> views(
@@ -825,7 +872,9 @@ public class WorkItemService {
 
     public WorkflowPresentation workflow(CurrentUser user, UUID spaceId, UUID workItemId) {
         ProjectSpaceSummary space = requireMember(user, spaceId);
-        return stateFlowService.presentation(user, space, requireItem(user, spaceId, workItemId));
+        WorkItem item = requireItem(user, spaceId, workItemId);
+        requirePermission(user, space, item, configuration(user, item), "view");
+        return stateFlowService.presentation(user, space, item);
     }
 
     public NodeWorkflowPresentation nodeWorkflow(
@@ -834,8 +883,10 @@ public class WorkItemService {
         UUID workItemId
     ) {
         ProjectSpaceSummary space = requireMember(user, spaceId);
+        WorkItem item = requireItem(user, spaceId, workItemId);
+        requirePermission(user, space, item, configuration(user, item), "view");
         return nodeWorkflowService.presentation(
-            user, space, requireItem(user, spaceId, workItemId)
+            user, space, item
         );
     }
 
@@ -846,9 +897,11 @@ public class WorkItemService {
         Long beforeSequence,
         int limit
     ) {
-        requireMember(user, spaceId);
+        ProjectSpaceSummary space = requireMember(user, spaceId);
+        WorkItem item = requireItem(user, spaceId, workItemId);
+        requirePermission(user, space, item, configuration(user, item), "view");
         return nodeWorkflowService.history(
-            user, requireItem(user, spaceId, workItemId), beforeSequence, limit
+            user, item, beforeSequence, limit
         );
     }
 
@@ -859,8 +912,10 @@ public class WorkItemService {
         UUID taskId
     ) {
         ProjectSpaceSummary space = requireMember(user, spaceId);
+        WorkItem item = requireItem(user, spaceId, workItemId);
+        requirePermission(user, space, item, configuration(user, item), "view");
         return nodeWorkflowService.taskContext(
-            user, space, requireItem(user, spaceId, workItemId), taskId
+            user, space, item, taskId
         );
     }
 
@@ -886,9 +941,11 @@ public class WorkItemService {
         long expectedWorkItemVersion,
         String requestId
     ) {
-        requireWritableMember(user, spaceId);
+        ProjectSpaceSummary space = requireWritableMember(user, spaceId);
+        WorkItem item = requireItem(user, spaceId, workItemId);
+        requirePermission(user, space, item, configuration(user, item), "transition");
         return nodeWorkflowService.start(
-            user, requireItem(user, spaceId, workItemId), expectedWorkItemVersion, requestId
+            user, item, expectedWorkItemVersion, requestId
         );
     }
 
@@ -922,8 +979,10 @@ public class WorkItemService {
         String requestId
     ) {
         ProjectSpaceSummary space = requireWritableMember(user, spaceId);
+        WorkItem item = requireItem(user, spaceId, workItemId);
+        requirePermission(user, space, item, configuration(user, item), "workflow_manage");
         return nodeWorkflowService.recover(
-            user, space, requireItem(user, spaceId, workItemId), commandKey,
+            user, space, item, commandKey,
             reason, confirmation, expectedWorkItemVersion, expectedInstanceVersion, requestId
         );
     }
@@ -941,8 +1000,10 @@ public class WorkItemService {
         String requestId
     ) {
         ProjectSpaceSummary space = requireWritableMember(user, spaceId);
+        WorkItem item = requireItem(user, spaceId, workItemId);
+        requirePermission(user, space, item, configuration(user, item), "workflow_manage");
         return nodeWorkflowService.upgrade(
-            user, space, requireItem(user, spaceId, workItemId), targetTypeVersionId,
+            user, space, item, targetTypeVersionId,
             nodeMap, reason, confirmation, expectedWorkItemVersion,
             expectedInstanceVersion, requestId
         );
@@ -957,8 +1018,10 @@ public class WorkItemService {
         String confirmation
     ) {
         ProjectSpaceSummary space = requireWritableMember(user, spaceId);
+        WorkItem item = requireItem(user, spaceId, workItemId);
+        requirePermission(user, space, item, configuration(user, item), "workflow_manage");
         return nodeWorkflowService.resumeCompensation(
-            user, space, requireItem(user, spaceId, workItemId),
+            user, space, item,
             runId, reason, confirmation
         );
     }
@@ -978,8 +1041,10 @@ public class WorkItemService {
         String requestId
     ) {
         ProjectSpaceSummary space = requireWritableMember(user, spaceId);
+        WorkItem item = requireItem(user, spaceId, workItemId);
+        requirePermission(user, space, item, configuration(user, item), "transition");
         return nodeWorkflowService.taskCommand(
-            user, space, requireItem(user, spaceId, workItemId), taskId, operation,
+            user, space, item, taskId, operation,
             decision, targetAssigneeId, fieldPatch, artifacts,
             expectedWorkItemVersion, expectedInstanceVersion,
             requestId
@@ -993,9 +1058,11 @@ public class WorkItemService {
         Long beforeSequence,
         int limit
     ) {
-        requireMember(user, spaceId);
+        ProjectSpaceSummary space = requireMember(user, spaceId);
+        WorkItem item = requireItem(user, spaceId, workItemId);
+        requirePermission(user, space, item, configuration(user, item), "view");
         return stateFlowService.history(
-            user, requireItem(user, spaceId, workItemId), beforeSequence, limit
+            user, item, beforeSequence, limit
         );
     }
 
@@ -1010,8 +1077,10 @@ public class WorkItemService {
         String requestId
     ) {
         ProjectSpaceSummary space = requireWritableMember(user, spaceId);
+        WorkItem item = requireItem(user, spaceId, workItemId);
+        requirePermission(user, space, item, configuration(user, item), "transition");
         return stateFlowService.execute(
-            user, space, requireItem(user, spaceId, workItemId), actionKey,
+            user, space, item, actionKey,
             fromStateKey, expectedVersion, fieldPatch, requestId
         );
     }
@@ -1027,8 +1096,10 @@ public class WorkItemService {
         String requestId
     ) {
         ProjectSpaceSummary space = requireWorkflowManager(user, spaceId);
+        WorkItem item = requireItem(user, spaceId, workItemId);
+        requirePermission(user, space, item, configuration(user, item), "workflow_manage");
         return stateFlowService.correct(
-            user, space, requireItem(user, spaceId, workItemId), targetStateKey,
+            user, space, item, targetStateKey,
             expectedVersion, reason, confirmation, requestId
         );
     }
@@ -1045,8 +1116,10 @@ public class WorkItemService {
         String requestId
     ) {
         ProjectSpaceSummary space = requireWorkflowManager(user, spaceId);
+        WorkItem item = requireItem(user, spaceId, workItemId);
+        requirePermission(user, space, item, configuration(user, item), "workflow_manage");
         return stateFlowService.upgradeBinding(
-            user, space, requireItem(user, spaceId, workItemId), targetTypeVersionId,
+            user, space, item, targetTypeVersionId,
             targetStateKey, expectedVersion, reason, confirmation, requestId
         );
     }
@@ -1138,18 +1211,155 @@ public class WorkItemService {
         return configuration;
     }
 
-    private List<String> actions(ProjectSpaceSummary space, WorkItem item) {
+    private List<String> actions(
+        CurrentUser user,
+        ProjectSpaceSummary space,
+        WorkItem item,
+        RuntimeConfiguration configuration
+    ) {
         List<String> actions = new ArrayList<>();
-        actions.add("view");
-        if ("active".equals(space.status()) && !"guest".equals(space.currentUserRole())) {
-            if ("active".equals(item.status())) {
-                actions.add("edit");
-                actions.add("archive");
-            } else {
-                actions.add("restore");
+        for (String action : List.of("view", "edit", "archive", "restore")) {
+            boolean lifecycleApplicable = switch (action) {
+                case "edit", "archive" -> "active".equals(item.status());
+                case "restore" -> "archived".equals(item.status());
+                default -> true;
+            };
+            if (lifecycleApplicable && permissionDecisionService.decide(
+                configuration,
+                subjectContext(user, space, item),
+                item.spaceId(),
+                item.id(),
+                action,
+                evaluationContext(user, item, null, null, null)
+            ).allowed()) {
+                actions.add(action);
             }
         }
         return List.copyOf(actions);
+    }
+
+    private void requirePermission(
+        CurrentUser user,
+        ProjectSpaceSummary space,
+        WorkItem item,
+        RuntimeConfiguration configuration,
+        String action
+    ) {
+        permissionDecisionService.require(permissionDecisionService.decide(
+            configuration,
+            subjectContext(user, space, item),
+            space.id(),
+            item == null ? null : item.id(),
+            action,
+            evaluationContext(user, item, null, null, null)
+        ));
+    }
+
+    private EvaluationContext evaluationContext(
+        CurrentUser user,
+        WorkItem item,
+        String fieldKey,
+        String nodeKey,
+        String relationKey
+    ) {
+        if (item == null) {
+            return EvaluationContext.empty();
+        }
+        Set<String> roles = item.createdBy().equals(user.id()) ? Set.of("creator") : Set.of();
+        Set<UUID> participants = item.createdBy().equals(user.id()) ? Set.of(user.id()) : Set.of();
+        Map<String, String> values = new java.util.HashMap<>();
+        item.fieldValues().fields().forEachRemaining(entry -> {
+            if (entry.getValue().isValueNode()) {
+                values.put(entry.getKey(), entry.getValue().asText());
+            }
+        });
+        return new EvaluationContext(
+            item.id(),
+            item.createdBy(),
+            participants,
+            roles,
+            Map.copyOf(values),
+            fieldKey,
+            nodeKey,
+            relationKey
+        );
+    }
+
+    private JsonNode filterReadableFields(
+        CurrentUser user,
+        ProjectSpaceSummary space,
+        WorkItem item,
+        RuntimeConfiguration configuration,
+        JsonNode projected
+    ) {
+        if (!projected.isObject()) {
+            return projected;
+        }
+        ObjectNode safe = ((ObjectNode) projected).deepCopy();
+        List<String> keys = new ArrayList<>();
+        safe.fieldNames().forEachRemaining(keys::add);
+        for (String fieldKey : keys) {
+            if (!permissionDecisionService.decide(
+                configuration,
+                subjectContext(user, space, item),
+                item.spaceId(),
+                item.id(),
+                "field_read",
+                evaluationContext(user, item, fieldKey, null, null)
+            ).allowed()) {
+                safe.remove(fieldKey);
+            }
+        }
+        return safe;
+    }
+
+    private void requireWritableFields(
+        CurrentUser user,
+        ProjectSpaceSummary space,
+        WorkItem item,
+        RuntimeConfiguration configuration,
+        JsonNode requested
+    ) {
+        if (!requested.isObject()) {
+            return;
+        }
+        List<String> keys = new ArrayList<>();
+        requested.fieldNames().forEachRemaining(keys::add);
+        for (String fieldKey : keys) {
+            if (!permissionDecisionService.decide(
+                configuration,
+                subjectContext(user, space, item),
+                item.spaceId(),
+                item.id(),
+                "field_write",
+                evaluationContext(user, item, fieldKey, null, null)
+            ).allowed()) {
+                throw failure("FORBIDDEN", "One or more requested fields are not writable");
+            }
+        }
+    }
+
+    private SubjectContext subjectContext(
+        CurrentUser user,
+        ProjectSpaceSummary space,
+        WorkItem item
+    ) {
+        Set<String> enterpriseRoles = user.roles().stream()
+            .map(role -> role.toLowerCase(Locale.ROOT))
+            .collect(java.util.stream.Collectors.toUnmodifiableSet());
+        Set<String> workItemRoles = new LinkedHashSet<>();
+        if (item != null && item.createdBy().equals(user.id())) {
+            workItemRoles.add("creator");
+        }
+        return new SubjectContext(
+            user.workspaceId(),
+            user.id(),
+            item == null ? 0 : item.version(),
+            enterpriseRoles,
+            Set.of(space.currentUserRole()),
+            Set.copyOf(workItemRoles),
+            Set.of()
+        );
     }
 
     private ProjectSpaceSummary requireMember(CurrentUser user, UUID spaceId) {

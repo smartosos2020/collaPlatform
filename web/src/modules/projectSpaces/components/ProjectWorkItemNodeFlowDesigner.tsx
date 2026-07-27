@@ -95,7 +95,12 @@ export function ProjectWorkItemNodeFlowDesigner({
     mutationFn: () => saveWorkItemConfigurationDraft(
       spaceId,
       typeId,
-      { ...snapshot, snapshotSchemaVersion: 3, nodeFlow: flow, stateFlow: undefined },
+      {
+        ...snapshot,
+        snapshotSchemaVersion: Math.max(Number(snapshot.snapshotSchemaVersion ?? 1), 3),
+        nodeFlow: flow,
+        stateFlow: undefined,
+      },
       draft.aggregateVersion,
     ),
     onSuccess: (saved) => {

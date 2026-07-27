@@ -39,6 +39,7 @@ public class WorkItemConfigurationCompatibilityAnalyzer {
             after.get("relationDefinitions"),
             findings
         );
+        comparePermissionModel(before.get("permissionModel"), after.get("permissionModel"), findings);
         findings.sort(Comparator.comparing(CompatibilityFinding::keyPath)
             .thenComparing(CompatibilityFinding::reasonCode));
         if (findings.size() > MAX_FINDINGS) {
@@ -165,6 +166,48 @@ public class WorkItemConfigurationCompatibilityAnalyzer {
         );
     }
 
+    private void comparePermissionModel(
+        JsonNode before,
+        JsonNode after,
+        List<CompatibilityFinding> findings
+    ) {
+        if (before == null && after == null) {
+            return;
+        }
+        if (before == null || after == null) {
+            addFinding("$.permissionModel", before, after, findings);
+            return;
+        }
+        compareKeyedArray(
+            "$.permissionModel.spaceRoleDefinitions",
+            "roleKey",
+            before.path("spaceRoleDefinitions"),
+            after.path("spaceRoleDefinitions"),
+            findings
+        );
+        compareKeyedArray(
+            "$.permissionModel.workItemRoleDefinitions",
+            "roleKey",
+            before.path("workItemRoleDefinitions"),
+            after.path("workItemRoleDefinitions"),
+            findings
+        );
+        compareKeyedArray(
+            "$.permissionModel.permissionPolicies",
+            "policyKey",
+            before.path("permissionPolicies"),
+            after.path("permissionPolicies"),
+            findings
+        );
+        compareKeyedArray(
+            "$.permissionModel.legacyMappings",
+            "sourceKind+sourceKey",
+            before.path("legacyMappings"),
+            after.path("legacyMappings"),
+            findings
+        );
+    }
+
     private void compareObject(
         String path,
         JsonNode before,
@@ -256,6 +299,39 @@ public class WorkItemConfigurationCompatibilityAnalyzer {
     private Classification classify(String path, JsonNode before, JsonNode after) {
         boolean removed = before != null && after == null;
         boolean added = before == null && after != null;
+        if ("$.permissionModel".equals(path)) {
+            return removed
+                ? blocked("permission_model_removed",
+                    "Bound permission models cannot be removed; publish an explicit replacement")
+                : migration("permission_model_added",
+                    "Existing items require an explicit permission binding manifest");
+        }
+        if (path.matches("^\\$\\.permissionModel\\.spaceRoleDefinitions\\[[^]]+]$") && removed) {
+            return migration("space_role_removed",
+                "Reassign or revoke every active role binding before removing the role");
+        }
+        if (path.matches("^\\$\\.permissionModel\\.workItemRoleDefinitions\\[[^]]+]$") && removed) {
+            return migration("work_item_role_removed",
+                "Reassign every active work-item role before removing the definition");
+        }
+        if (path.matches("^\\$\\.permissionModel\\.permissionPolicies\\[[^]]+]$") && removed) {
+            return migration("permission_policy_removed",
+                "Preview affected decisions and migrate bindings before publication");
+        }
+        if (path.contains("$.permissionModel") && path.endsWith(".roleKey")) {
+            return blocked("permission_role_key_changed",
+                "Permission role semantic keys are immutable");
+        }
+        if (path.contains("$.permissionModel") && path.endsWith(".policyKey")) {
+            return blocked("permission_policy_key_changed",
+                "Permission policy semantic keys are immutable");
+        }
+        if (path.contains("$.permissionModel")
+            && (path.endsWith(".effect") || path.contains(".actionKeys")
+                || path.contains(".subjectSelectors") || path.contains(".dataScope"))) {
+            return migration("permission_decision_contract_changed",
+                "Preview allow/deny and data-scope impact before publication");
+        }
         if (path.matches("^\\$\\.relationDefinitions\\[[^]]+]$") && removed) {
             return migration("relation_definition_removed",
                 "Detach or migrate every canonical relation edge before removing its definition");

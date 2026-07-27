@@ -3,6 +3,7 @@ package com.colla.platform.modules.project.infrastructure;
 import com.colla.platform.modules.project.domain.WorkItemRelationModels.Direction;
 import com.colla.platform.modules.project.domain.WorkItemRelationModels.RelationKind;
 import com.colla.platform.modules.project.domain.WorkItemRelationRuntimeModels.RelationEndpoint;
+import com.colla.platform.modules.project.domain.WorkItemRelationRuntimeModels.RelationEndpointBinding;
 import com.colla.platform.modules.project.domain.WorkItemRelationRuntimeModels.RelationProjection;
 import com.colla.platform.modules.project.domain.WorkItemRelationRuntimeModels.WorkItemRelation;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -34,11 +35,19 @@ public class JdbcWorkItemRelationRepository implements WorkItemRelationRepositor
                source_type.type_key source_type_key,
                source.display_key source_display_key, source.title source_title,
                source.status source_status, source.version source_version,
+               source.config_hash source_config_hash,
+               source.field_values source_field_values,
+               source.created_by source_created_by, source.created_at source_created_at,
+               source.updated_by source_updated_by, source.updated_at source_updated_at,
                target.type_definition_id target_type_definition_id,
                target.type_version_id target_type_version_id,
                target_type.type_key target_type_key,
                target.display_key target_display_key, target.title target_title,
                target.status target_status, target.version target_version,
+               target.config_hash target_config_hash,
+               target.field_values target_field_values,
+               target.created_by target_created_by, target.created_at target_created_at,
+               target.updated_by target_updated_by, target.updated_at target_updated_at,
                definition.value->>'forwardName' relation_forward_name,
                definition.value->>'reverseName' relation_reverse_name
           from project_work_item_relations r
@@ -575,6 +584,8 @@ public class JdbcWorkItemRelationRepository implements WorkItemRelationRepositor
             mapRelation(resultSet, rowNumber),
             endpoint(resultSet, "source"),
             endpoint(resultSet, "target"),
+            endpointBinding(resultSet, "source"),
+            endpointBinding(resultSet, "target"),
             resultSet.getString("relation_forward_name"),
             resultSet.getString("relation_reverse_name")
         );
@@ -590,6 +601,20 @@ public class JdbcWorkItemRelationRepository implements WorkItemRelationRepositor
             resultSet.getString(prefix + "_title"),
             resultSet.getString(prefix + "_status"),
             resultSet.getLong(prefix + "_version")
+        );
+    }
+
+    private RelationEndpointBinding endpointBinding(
+        ResultSet resultSet,
+        String prefix
+    ) throws SQLException {
+        return new RelationEndpointBinding(
+            resultSet.getString(prefix + "_config_hash"),
+            json(resultSet.getString(prefix + "_field_values")),
+            resultSet.getObject(prefix + "_created_by", UUID.class),
+            resultSet.getTimestamp(prefix + "_created_at").toInstant(),
+            resultSet.getObject(prefix + "_updated_by", UUID.class),
+            resultSet.getTimestamp(prefix + "_updated_at").toInstant()
         );
     }
 

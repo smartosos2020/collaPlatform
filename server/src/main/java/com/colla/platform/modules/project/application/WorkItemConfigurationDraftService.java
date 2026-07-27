@@ -253,11 +253,12 @@ public class WorkItemConfigurationDraftService {
         if (active == null
             || (!active.snapshot().path("stateFlow").isObject()
                 && !active.snapshot().path("nodeFlow").isObject()
-                && !active.snapshot().path("relationDefinitions").isArray())) {
+                && !active.snapshot().path("relationDefinitions").isArray()
+                && !active.snapshot().path("permissionModel").isObject())) {
             return assembled;
         }
         ObjectNode merged = assembled.payload().deepCopy();
-        merged.remove(List.of("stateFlow", "nodeFlow", "relationDefinitions"));
+        merged.remove(List.of("stateFlow", "nodeFlow", "relationDefinitions", "permissionModel"));
         if (active.snapshot().path("stateFlow").isObject()) {
             merged.set("stateFlow", active.snapshot().path("stateFlow").deepCopy());
         }
@@ -266,6 +267,9 @@ public class WorkItemConfigurationDraftService {
         }
         if (active.snapshot().path("relationDefinitions").isArray()) {
             merged.set("relationDefinitions", active.snapshot().path("relationDefinitions").deepCopy());
+        }
+        if (active.snapshot().path("permissionModel").isObject()) {
+            merged.set("permissionModel", active.snapshot().path("permissionModel").deepCopy());
         }
         return canonicalizer.canonicalize(merged);
     }
@@ -286,11 +290,12 @@ public class WorkItemConfigurationDraftService {
         if (current == null || !current.completeSnapshot()
             || (!current.snapshot().path("stateFlow").isObject()
                 && !current.snapshot().path("nodeFlow").isObject()
-                && !current.snapshot().path("relationDefinitions").isArray())) {
+                && !current.snapshot().path("relationDefinitions").isArray()
+                && !current.snapshot().path("permissionModel").isObject())) {
             return assembled;
         }
         ObjectNode merged = assembled.payload().deepCopy();
-        merged.remove(List.of("stateFlow", "nodeFlow", "relationDefinitions"));
+        merged.remove(List.of("stateFlow", "nodeFlow", "relationDefinitions", "permissionModel"));
         if (current.snapshot().path("stateFlow").isObject()) {
             merged.set("stateFlow", current.snapshot().path("stateFlow").deepCopy());
         }
@@ -299,6 +304,9 @@ public class WorkItemConfigurationDraftService {
         }
         if (current.snapshot().path("relationDefinitions").isArray()) {
             merged.set("relationDefinitions", current.snapshot().path("relationDefinitions").deepCopy());
+        }
+        if (current.snapshot().path("permissionModel").isObject()) {
+            merged.set("permissionModel", current.snapshot().path("permissionModel").deepCopy());
         }
         return canonicalizer.canonicalize(merged);
     }

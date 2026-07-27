@@ -4,6 +4,7 @@ import com.colla.platform.modules.project.domain.WorkItemRelationModels.Cardinal
 import com.colla.platform.modules.project.domain.WorkItemRelationModels.DeletionPolicy;
 import com.colla.platform.modules.project.domain.WorkItemRelationModels.Direction;
 import com.colla.platform.modules.project.domain.WorkItemRelationModels.RelationKind;
+import com.fasterxml.jackson.databind.JsonNode;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -67,10 +68,22 @@ public final class WorkItemRelationRuntimeModels {
     ) {
     }
 
+    public record RelationEndpointBinding(
+        String configHash,
+        JsonNode fieldValues,
+        UUID createdBy,
+        Instant createdAt,
+        UUID updatedBy,
+        Instant updatedAt
+    ) {
+    }
+
     public record RelationProjection(
         WorkItemRelation relation,
         RelationEndpoint source,
         RelationEndpoint target,
+        RelationEndpointBinding sourceBinding,
+        RelationEndpointBinding targetBinding,
         String forwardName,
         String reverseName
     ) {

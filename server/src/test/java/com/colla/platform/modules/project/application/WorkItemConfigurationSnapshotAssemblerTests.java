@@ -60,15 +60,17 @@ class WorkItemConfigurationSnapshotAssemblerTests {
             new WorkItemStateFlowPresetCatalog(objectMapper),
             new WorkItemNodeFlowPresetCatalog(objectMapper),
             new WorkItemRelationDefinitionPresetCatalog(objectMapper),
+            new WorkItemPermissionPresetCatalog(objectMapper),
             new WorkItemConfigurationSnapshotCanonicalizer(objectMapper),
             objectMapper
         ).assemble(workspaceId, spaceId, typeId);
 
-        assertEquals(4, snapshot.schemaVersion());
+        assertEquals(5, snapshot.schemaVersion());
         assertEquals("task", snapshot.payload().path("typeDefinition").path("typeKey").asText());
         assertEquals("priority", snapshot.payload().path("fields").get(0).path("fieldKey").asText());
         assertEquals("high", snapshot.payload().path("fields").get(0).path("options").get(0).path("optionKey").asText());
         assertEquals(0, snapshot.payload().path("layouts").size());
         assertEquals(0, snapshot.payload().path("relationDefinitions").size());
+        assertEquals(4, snapshot.payload().path("permissionModel").path("spaceRoleDefinitions").size());
     }
 }
