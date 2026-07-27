@@ -272,3 +272,27 @@ M37 后 Base 记录可以作为关系源：
 - `work_item` identity、space/type binding 与对象版本不因权限策略改变；权限是对同一规范对象的服务端 decision，不创建新的平台对象类型。
 - resolver、列表、详情、字段、节点、关系和命令必须共享同一绑定 snapshot v5 decision；data scope 外对象返回不可用摘要，不进入标题、计数、游标或搜索候选。
 - 平台对象摘要不携带 permission model、角色、selector、字段值或 deny 正文。安全 explanation 只在对象已可见后返回最小来源；enterprise governance 不自动取得内容访问。
+
+## S15-M1 项目计划对象边界
+
+- ProjectPlan、PlanPhase、PlanMilestone、PlanLink 和 PlanChange 是 project 模块治理对象，当前不注册为新的 platform objectType，不创建全局 resolver、收藏、搜索或跨空间导航。
+- PlanLink 只引用既有 canonical `work_item` identity 和来源版本；当前权限重投影后不可见的引用被省略。它不复制标题、流程节点、依赖、日期、baseline 或授权事实。
+- 阶段/里程碑顺序、日期、责任人和状态属于计划 aggregate；派生完成率、逾期数和可见链接数不是新的权威对象，也不反向改写 WorkItem。
+
+## S15-M2 项目治理台账对象边界
+
+- Risk、Issue、Decision、ChangeRequest、ResponsePlan 和 RegisterHistory 是 project 内治理对象，当前不注册为 platform objectType，不创建全局 resolver、搜索、收藏或跨空间导航。
+- RegisterReference 只引用受权 canonical `work_item` 或 M1 plan identity/version；Issue 不冒充 WorkItem/缺陷，ChangeRequest 不冒充 Plan，Decision 不冒充审批结论。
+- 风险分、到期提示、状态标签和隐藏引用截断是当前投影；它们不创建新的授权、流程、日期或计划权威。
+
+## S15-M3 交付评审对象边界
+
+- Deliverable、DeliverableVersion、ReviewRound、Signoff 和 Acceptance 是 project 内治理对象，当前不注册新的 platform objectType、resolver、搜索、收藏或跨空间 deep link。
+- MaterialReference 只引用已有 platform/file/knowledge/work_item/plan/milestone identity/version 或受限外部 URI；它不是文件副本、文档版本、WorkItem 或计划对象。
+- review item、required signer/quorum 与 acceptance 是交付治理事实；它们不创建新的用户、权限、审批流程或文件权威，隐藏来源完整省略。
+
+## S15-M4 项目详情与健康对象边界
+
+- ProjectDetail、HealthSignal、HealthStatus、Deviation、BlockingSummary、详情偏好和健康投影不是新的 platform objectType，不注册 resolver、搜索、收藏或跨空间 deep link。
+- 详情只组合既有 Plan/Register/Deliverable 当前受权 identity/version；信号的 rule/explanation/observedAt 是有界派生，不复制来源标题、正文、ACL、成员或历史。
+- V117 健康投影是用户/空间级、五分钟过期的可删除低基数索引；它不授权、不冻结健康、不成为 S16 产能或 S19 管理度量权威。

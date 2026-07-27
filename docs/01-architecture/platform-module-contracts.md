@@ -300,3 +300,31 @@ M2 不实现 Worker lease、dead-letter、replay、handler registry 或独立进
 - project service 只通过 `AuditTimelineQuery` 公共合同读取 audit owner 的最小 work_item 事件；不得直接读取 `audit_logs`。activity、workflow 和 relation 由 project owner 内部投影为稳定来源 identity。
 - baseline compare 与 timeline render 必须先取得当前 S13/S11/S10/M2/M3 受权 identity 集合；隐藏 baseline entry 或 relation endpoint 不进入 diff、数量、事件或错误外形。
 - entry/dependency 是 90 天生命周期内的不可变视图快照，timeline index 可删除重建；两者都不是 WorkItem、日期、关系、层级、授权、audit 或 workflow history 权威。
+
+## 21. S15-M1 项目计划模块边界
+
+- project owner 持有 V114 的 plan、phase、milestone、link、change 和 command receipt；其他模块不得读取这些私表拼装计划、进度或权限。
+- PlanLink v1 只保存当前受权 canonical `work_item` identity/version。节点、依赖、日期和 S14 baseline 继续通过既有 project 公共投影或命令消费；计划服务不得复制这些来源的标题、ACL、流程、关系或 baseline 私有内容。
+- 计划阶段与里程碑是独立治理事实，不是流程节点或 WorkItem；计划日期和状态 mutation 不直接写 WorkItem、relation、hierarchy 或 calendar 私表。
+- project 仅通过 `AuditLog` 与 `TransactionalOutbox` 公共合同记录副作用；V114 复合 FK、owner manifest、清理顺序和不可变 change trigger 是架构门禁的一部分。
+
+## 22. S15-M2 项目治理台账模块边界
+
+- project owner 持有 V115 register entry/reference/response/history/command 表；其他 owner 不得读取私表拼装风险分、问题阻断、决策、变更、响应或权限。
+- register reference 只通过 WorkItemService/ProjectPlanService 公共合同校验当前 identity/version；不复制 WorkItem、流程、计划图或权限内容，收权后引用完整省略。
+- 变更批准只调用 ProjectPlanService canonical mutation，不直接写 V114；计划命令与台账命令加入同一事务，精确重放不重复计划、history、audit 或 outbox。
+- `AuditLog`、`TransactionalOutbox` 是唯一跨 owner 写边；V115 复合边界、owner manifest、清理顺序和 history immutable trigger 由架构门禁保护。
+
+## 23. S15-M3 交付评审模块边界
+
+- project owner 持有 V116 deliverable/version/material/review/signoff/acceptance/command 表；file、knowledge、platform、audit、event 或其他 owner 不得读取这些私表拼装结论。
+- 文件/知识/WorkItem 物料只经 `PlatformObjectRegistry` 公共合同校验，Plan/Milestone/Register 只经 M1/M2 public service；V116 不复制 provider 标题、正文、路径、ACL 或成员事实。
+- submitted version/material、signoff 与 acceptance 是不可变治理事实；current pointer、review close 和 deliverable status 在 project 事务内更新，浏览器不得自行计算 quorum 或验收成功。
+- audit/outbox 仍是唯一跨 owner 写边；V116 owner manifest、清理顺序、复合 FK、序列锁和 immutable triggers 属于架构门禁。
+
+## 24. S15-M4 项目详情与健康模块边界
+
+- project owner 持有 V117 detail preference、command receipt 和 disposable health projection 表；其他 owner 不得读取这些私表拼装权限、健康或计数。
+- `ProjectDetailService` 只组合 `ProjectPlanService`、`ProjectRegisterService` 和 `ProjectDeliveryService` 公共合同。来源服务先执行当前成员/权限校准，详情层不得全量读取后在浏览器过滤。
+- projection index 写入失败不阻断 canonical 详情；任何缓存、realtime signal、fingerprint 或旧健康状态都不能授权。online/focus/reconnect 只触发 REST 重读。
+- 个人偏好使用 caller-stable request ID/hash、expected version、精确回执、audit/outbox；V117 owner manifest、复合 FK、过期索引和空间清理顺序由架构门禁保护。

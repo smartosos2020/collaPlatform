@@ -48,7 +48,11 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
     UserWorkItemBoardController.class,
     UserWorkItemCalendarController.class,
     UserWorkItemGanttController.class,
-    UserWorkItemScheduleController.class
+    UserWorkItemScheduleController.class,
+    UserProjectPlanController.class,
+    UserProjectRegisterController.class,
+    UserProjectDeliveryController.class,
+    UserProjectDetailController.class
 })
 public class WorkItemTypeExceptionHandler {
     @ExceptionHandler(WorkItemTypeException.class)
@@ -175,7 +179,39 @@ public class WorkItemTypeExceptionHandler {
                  "INVALID_BOARD_MOVE", "INVALID_CALENDAR_CONFIGURATION",
                  "INVALID_CALENDAR_WINDOW", "INVALID_CALENDAR_TIMEZONE",
                  "INVALID_CALENDAR_DATE", "INVALID_CALENDAR_MUTATION",
-                 "CALENDAR_TYPE_REQUIRED" ->
+                 "CALENDAR_TYPE_REQUIRED", "PROJECT_PLAN_COMMAND_INVALID",
+                 "PROJECT_PLAN_GRAPH_INVALID", "PROJECT_PLAN_PHASE_INVALID",
+                 "PROJECT_PLAN_MILESTONE_INVALID", "PROJECT_PLAN_LINK_INVALID",
+                 "PROJECT_PLAN_OWNER_INVALID", "PROJECT_PLAN_OPERATION_INVALID",
+                 "PROJECT_REGISTER_TYPE_INVALID", "PROJECT_REGISTER_COMMAND_INVALID",
+                 "PROJECT_REGISTER_GRAPH_INVALID", "PROJECT_REGISTER_REFERENCE_INVALID",
+                 "PROJECT_REGISTER_RESPONSE_INVALID", "PROJECT_REGISTER_OWNER_INVALID",
+                 "PROJECT_REGISTER_RISK_ASSESSMENT_INVALID",
+                 "PROJECT_REGISTER_TYPE_DETAIL_INVALID",
+                 "PROJECT_REGISTER_DECISION_BASIS_REQUIRED",
+                 "PROJECT_REGISTER_CHANGE_IMPACT_REQUIRED",
+                 "PROJECT_REGISTER_REASON_REQUIRED",
+                 "PROJECT_REGISTER_VERIFICATION_REQUIRED",
+                 "PROJECT_REGISTER_DECISION_CHAIN_INVALID",
+                 "PROJECT_REGISTER_PLAN_ACTION_REQUIRED",
+                 "PROJECT_REGISTER_TRANSITION_INVALID",
+                 "PROJECT_DELIVERABLE_COMMAND_INVALID",
+                 "PROJECT_DELIVERABLE_OPERATION_INVALID",
+                 "PROJECT_DELIVERABLE_TRANSITION_INVALID",
+                 "PROJECT_DELIVERABLE_VERSION_INVALID",
+                 "PROJECT_DELIVERABLE_VERSION_REQUIRED",
+                 "PROJECT_DELIVERABLE_MATERIAL_INVALID",
+                 "PROJECT_DELIVERABLE_REVIEW_INVALID",
+                 "PROJECT_DELIVERABLE_REVIEW_REQUIRED",
+                 "PROJECT_DELIVERABLE_REVIEW_NOT_OPEN",
+                 "PROJECT_DELIVERABLE_SIGNER_FORBIDDEN",
+                 "PROJECT_DELIVERABLE_SIGNOFF_CONFLICT",
+                 "PROJECT_DELIVERABLE_QUORUM_NOT_MET",
+                 "PROJECT_DELIVERABLE_ACCEPTANCE_INVALID",
+                 "PROJECT_DELIVERABLE_REASON_REQUIRED",
+                 "PROJECT_DELIVERABLE_PARTICIPANT_INVALID",
+                 "PROJECT_DELIVERABLE_TRACE_INVALID",
+                 "PROJECT_DETAIL_PREFERENCE_INVALID" ->
                 HttpStatus.BAD_REQUEST;
             case "BOARD_COLUMN_UNMAPPED", "BOARD_LANE_BUDGET_EXCEEDED",
                  "CALENDAR_WINDOW_BUDGET_EXCEEDED", "INVALID_CALENDAR_RANGE",

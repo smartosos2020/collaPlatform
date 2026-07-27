@@ -463,3 +463,36 @@ S01 已确定 ProjectSpace + versioned WorkItemType + WorkItem、规范 JSONB + 
 - 通知矩阵已覆盖 Base 授权、审批细分动作和直接资源授权变化；跨模块通知投影仍需随 Worker 独立化继续收敛。
 - 平台对象 file resolver、对象关系全局图谱仍不完整。
 - 正式桌面端、原生移动端、高可用部署和自动发布体系未交付。
+
+## S15-M1 项目计划当前实现
+
+- project 模块通过 `/api/project-spaces/{spaceId}/project-plans` 提供计划列表、详情、创建与版本化 mutate；V114 保存计划、阶段、里程碑、WorkItem 链接、不可变变更和命令回执。
+- 当前成员权限在每次读写时重新判定；guest 只读，空间外和 enterprise governance 均不可见。隐藏链接与失效责任人会在服务端投影时移除，不进入计数、进度或错误。
+- 计划 mutation 使用 expected version 与精确 request hash replay，并在同事务写 audit 和 `project.plan.changed` outbox；Web 不把本地状态、realtime signal 或离线草稿当成提交成功。
+- 当前只完成计划、阶段和里程碑。风险/问题/决策/变更台账、交付物/评审/验收和项目健康尚未实现，入口为 `PROJECT-PLATFORM-S15-M2-T01`。
+
+## S15-M2 项目治理台账当前实现
+
+- project 模块通过 `/api/project-spaces/{spaceId}/project-register` 提供统一风险、问题、决策和变更列表/详情/命令；V115 保存类型明细、响应计划、受权引用、不可变历史和精确回执。
+- guest 只读，空间外与 enterprise governance 隐藏；每次读取重新校准责任人及 WorkItem/Plan 引用，收权来源不进入数量或错误。
+- 所有 mutation 使用 expected version 和 exact request hash，成功后写 `project_register.*` audit 与 `project.register.changed` outbox；批准变更通过 M1 服务执行 canonical plan command。
+- 当前入口为 `PROJECT-PLATFORM-S15-M3-T01`；交付物、评审、会签、验收和最终健康聚合尚未实现。
+
+## S15-M3 交付评审当前实现
+
+- project 模块通过 `/api/project-spaces/{spaceId}/deliverables` 提供交付物目录/详情、不可变版本、评审轮次、并发会签和验收命令；V116 保存七张 project-owned 表。
+- platform resolver 与 M1/M2 公共服务负责物料及追踪授权；数据库只保存稳定 type/identity/version/URI。当前读取会移除收权物料、失效参与者和不可见台账追踪。
+- 会签 required signer/quorum、撤销、关闭结论和验收全部由服务端判定；exact replay 不重复版本、签署、验收、audit 或 outbox。
+- M4 将只聚合 M1-M3 当前可见事实生成项目详情与健康解释；S16 估分、工时和人员产能尚未实现。
+
+## S15-M4 项目详情与健康聚合当前实现
+
+- project 模块通过 `/api/project-spaces/{spaceId}/project-detail` 聚合 M1 计划/偏差、M2 风险/问题/变更和 M3 交付/验收的当前可见最小事实；它只调用这些 owner public service，不读取其他 aggregate 私表或建立第二份计划/台账/交付权威。
+- `ProjectDetail`、`HealthSignal`、`HealthStatus`、`Deviation` 和 `BlockingSummary` 固定 schema v1。每个健康信号携带稳定来源 identity/version、观测时间、规则和解释；计划/台账/交付达到 20/200/100 上界或信号超过 50 时显式返回 `unknown`，不伪装为完整结论。
+- V117 保存用户/空间级详情区块与紧凑偏好、精确命令回执，以及五分钟可重建健康投影。投影只含低基数 status/count/policy/fingerprint，写失败不阻断 canonical 响应，且从不用于授权。
+- 所有读写先验证当前活动空间成员，随后由 M1-M3 服务各自重校准来源权限；enterprise admin 和 non-member 无内容旁路，隐藏来源不进入标题、数量、信号、原因或错误外形。
+- Web 已交付健康状态、阻塞计数、可解释信号、计划偏差、个人偏好、REST 校准和离线本地输入，并通过 1440/1366/820、六身份、跨空间、幂等及并发冲突真实隔离验收。S15 四个 Milestone、48 个 Task 已完成，S16 尚未激活。
+
+## S16 激活状态
+
+S15 完成路线已归档，S16 在 Program revision 39 激活。当前代码仍停留在 V117 的 S15 已实现事实；S16 工作日历、估分、实际工时、人员负荷、产能冲突和资源排期尚无实现事实，唯一入口为 `PROJECT-PLATFORM-S16-M1-T01`。

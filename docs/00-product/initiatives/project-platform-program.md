@@ -2,10 +2,10 @@
 title: 项目协作平台长期专项规划
 status: active
 program: PROJECT-PLATFORM
-revision: 37
+revision: 39
 updated_at: 2026-07-28
 planning_mode: rolling
-current_stage: PROJECT-PLATFORM-S15
+current_stage: PROJECT-PLATFORM-S16
 initiative_index_doc: docs/00-product/initiatives/README.md
 target_architecture_doc: docs/01-architecture/project-platform-target-architecture.md
 ---
@@ -18,7 +18,7 @@ target_architecture_doc: docs/01-architecture/project-platform-target-architectu
 
 规划采用滚动维护：当前 Stage 细化到 Task，下一 Stage 细化到 Milestone，后续 Stage 只冻结目标、依赖和退出证据。新调研、技术验证、代码事实或真实用户反馈可以修改未来规划，但不得静默改写已完成 Stage 的历史结论，也不得在没有变更记录的情况下改变正在执行 Stage 的目标。
 
-`PROJECT-PLATFORM-S08` 至 `PROJECT-PLATFORM-S14` 均已完成并归档。`PROJECT-PLATFORM-S15` 已在 revision 37 激活，当前唯一执行入口为 `PROJECT-PLATFORM-S15-M1-T01`；四个 Milestone、48 个 Task 将依次交付计划/里程碑、风险台账、交付评审和项目健康聚合。`PLATFORM-SCALE-S01-S04` 已建立模块边界门禁、公共合同、双 API、可靠双 Worker、双 Event Gateway、统一客户端校准和唯一知识协同协议；`PLATFORM-SCALE-S05-M1` 只建立容量验证环境、确定性种子和四类加载器，M2-M5 继续 Deferred，不构成生产容量或基础设施 HA 承诺。
+`PROJECT-PLATFORM-S08` 至 `PROJECT-PLATFORM-S15` 均已完成并归档。`PROJECT-PLATFORM-S16` 已在 revision 39 激活，当前唯一执行入口为 `PROJECT-PLATFORM-S16-M1-T01`；四个 Milestone、48 个 Task 将依次交付工作日历/估分、实际工时、人员负荷/产能冲突和资源排期。`PLATFORM-SCALE-S01-S04` 已建立模块边界门禁、公共合同、双 API、可靠双 Worker、双 Event Gateway、统一客户端校准和唯一知识协同协议；`PLATFORM-SCALE-S05-M1` 只建立容量验证环境、确定性种子和四类加载器，M2-M5 继续 Deferred，不构成生产容量或基础设施 HA 承诺。
 
 ## 2. 专项目标
 
@@ -79,8 +79,8 @@ target_architecture_doc: docs/01-architecture/project-platform-target-architectu
 | PROJECT-PLATFORM-S12 | 个人工作台、搜索、收藏和动态 | S07-S11 | Completed | M1-M4、48 个 Task、V102-V105、六身份真实隔离浏览器与 route-final 已完成 |
 | PROJECT-PLATFORM-S13 | 查询模型与表格、列表、树形视图 | S04-S12 | Completed | M1-M4、48 个 Task 与 route-final 完成；路线已归档 |
 | PROJECT-PLATFORM-S14 | 看板、日历、甘特和时间线 | S08-S13 | Completed | M1-M4、48 个 Task、V110-V113 与真实隔离 route-final 完成；路线已归档 |
-| PROJECT-PLATFORM-S15 | 计划、里程碑、风险、交付物和评审 | S09-S14 | Active | M1-M4、48 个 Task 已激活；当前入口 PROJECT-PLATFORM-S15-M1-T01 |
-| PROJECT-PLATFORM-S16 | 估分、工时、产能和人员排期 | S11-S15 | Planned | 工作日历、负荷、估算/实际偏差和跨事项排期 |
+| PROJECT-PLATFORM-S15 | 计划、里程碑、风险、交付物和评审 | S09-S14 | Completed | M1-M4、48 个 Task、V114-V117 与真实隔离 route-final 完成；路线已归档 |
+| PROJECT-PLATFORM-S16 | 估分、工时、产能和人员排期 | S11-S15 | Active | M1-M4、48 个 Task 已激活；当前入口 PROJECT-PLATFORM-S16-M1-T01 |
 | PROJECT-PLATFORM-S17 | 自动化规则、通知和开放连接器 | S08-S16 | Planned | 触发器-条件-操作、幂等执行、Webhook 和重试 |
 | PROJECT-PLATFORM-S18 | 跨空间授权、关系和数据同步 | S10-S17 | Planned | 跨空间可见性、单/双向同步、冲突和审计 |
 | PROJECT-PLATFORM-S19 | 度量、效能、治理和管理驾驶舱 | S13-S18 | Planned | 指标语义、跨空间图表、风险预警和治理视图 |
@@ -357,6 +357,8 @@ S02 固定输入见目标架构 17：落 `project_spaces`、成员、角色分�
 | 35 | 2026-07-27 | 归档 S13 完成路线并激活 S14；把看板/泳道/拖拽、日历/日期区间、甘特/依赖/层级、基线/时间线/性能细化为 4 个 Milestone、48 个 Task | S14 必须复用 S13 受权查询/保存视图、S08/S09 规范流程命令、S10 canonical relation/hierarchy 与 S11 decision/data scope；禁止浏览器直接改事实或提前实现 S15-S19 | S14 Active；当前入口切换为 PROJECT-PLATFORM-S14-M1-T01；S13 路线归档；S15 保持 Planned |
 | 36 | 2026-07-28 | S14 四个 Milestone、48 个 Task 完成；交付 V110-V113 看板、日历、甘特、基线和四源最小时间线，修复并行可重建索引竞态并完成 PostgreSQL 16、六身份真实隔离和 route-final | 所有高级视图继续以 S13 受权查询、S11 当前 decision、S10 canonical relation/hierarchy 和 S08/S09 规范命令为边界；基线不冻结标题或权限，时间线不成为新 history，本地预算不冒充 S16 产能 | S14 Completed；`current_stage` 置 none；Go S15 但保持 Planned，需先独立归档 S14 并生成新当前路线 |
 | 37 | 2026-07-28 | 归档 S14 完成路线并激活 S15；把计划/阶段/里程碑、风险/问题/决策/变更台账、交付物/评审/验收和项目健康聚合细化为 4 个 Milestone、48 个 Task | S15 必须复用 S14 日期/依赖/基线、S11 当前 decision/data scope 及各 owner 公共合同；计划对象不能冒充流程节点或 WorkItem，健康信号不能提前成为 S19 管理指标 | S15 Active；当前入口切换为 PROJECT-PLATFORM-S15-M1-T01；S14 路线归档；S16 保持 Planned |
+| 38 | 2026-07-28 | S15 四个 Milestone、48 个 Task 完成；交付 V114-V117 项目计划/里程碑、治理台账、交付评审/验收和当前受权的可解释健康聚合，并完成 PostgreSQL 16、六身份真实隔离和 route-final | S15 事实继续复用 WorkItem、流程、关系、日期、文件和 S11 权限 owner；健康投影可重建且不授权，确定性预算不冒充 S16 产能或 S19 管理指标 | S15 Completed；`current_stage` 置 none；Go S16 但保持 Planned，需先独立归档 S15 并生成新当前路线 |
+| 39 | 2026-07-28 | 归档 S15 完成路线并激活 S16；把工作日历/估分、实际工时/修订、人员负荷/产能冲突、资源排期/调整细化为 4 个 Milestone、48 个 Task | S16 必须复用 S11 当前 decision/data scope、S14 日期/甘特和 S15 计划/里程碑公共合同；不得通过人员负荷泄漏隐藏事项，也不得提前实现 S17-S19 | S16 Active；当前入口切换为 PROJECT-PLATFORM-S16-M1-T01；S15 路线归档；S17 保持 Planned |
 
 ## 10. 主要产品参考
 

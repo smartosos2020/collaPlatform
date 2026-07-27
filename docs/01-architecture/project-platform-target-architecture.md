@@ -2,11 +2,11 @@
 title: 项目协作平台目标架构
 status: target
 program: PROJECT-PLATFORM
-program_revision: 37
+program_revision: 39
 domain_contract_version: 1
 domain_contract_status: frozen-s01-m3
 migration_contract_version: 1
-stage_review_status: s14-archived-s15-active
+stage_review_status: s15-archived-s16-active
 updated_at: 2026-07-28
 ---
 
@@ -1360,3 +1360,53 @@ S09 完成路线已经独立归档，S10 在 Program revision 27 激活为唯一
 - 计划阶段不得冒充 S08/S09 流程节点；里程碑日期不得静默改写 WorkItem 日期；计划链接和偏差派生必须复用 S10/S14 公共投影与规范命令，并保留 provenance。
 - 所有列表、计数、责任人、物料、结论和健康信号继续执行 S11 当前 decision/data scope。隐藏对象不通过标题、数量、空隙、错误、导出或健康原因泄漏，enterprise governance 不获得内容旁路。
 - S15 激活只声明规划范围，不声明实现事实；不得提前实现 S16 估分/工时/人员产能、S17 自动化、S18 跨空间同步或 S19 组织级管理指标。
+
+### 29.12 S15-M1 已实现边界
+
+- `ProjectPlan`、`PlanPhase`、`PlanMilestone`、`PlanLink` 与 `PlanChange` 固定 schema v1；V114 以 workspace/space 复合边界保存计划图、不可变变更和精确命令回执。
+- 创建、编辑、发布、归档和恢复要求当前空间成员权限、expected aggregate version、caller-stable request ID 与 request hash；成功后同事务追加 audit 和 `project.plan.changed` outbox，精确重放不重复副作用。
+- 计划阶段和里程碑是项目治理事实，不冒充 S08/S09 流程节点，不静默改写 canonical WorkItem 日期。PlanLink v1 只持有当前受权 WorkItem identity/version；节点、依赖、日期和 S14 baseline 仍由既有公共投影提供，不复制私表事实。
+- 读取时重新校准当前 S11 权限：隐藏或收权 WorkItem 链接、失效责任人和相关派生不会通过标题、数量、错误或进度泄漏。进度与逾期只由当前可见里程碑状态/日期有界派生，可删除重建。
+- 确定性上界为每空间 20 个计划、每计划 24 个阶段、100 个里程碑、200 个链接和 100 条返回变更；这些是本地门禁，不是生产容量或 S16 人员产能承诺。
+- Web 已交付计划创建、选择、编辑、发布/归档/恢复、进度和里程碑摘要，并验证 1440/1366/820 响应式、离线输入、六身份、跨空间与并发冲突。M1 不交付 M2 风险台账、M3 交付评审或 M4 健康聚合。
+
+### 29.13 S15-M2 已实现边界
+
+- `Risk`、`Issue`、`Decision`、`ChangeRequest`、`ResponsePlan`、受权 `RegisterReference` 与 `RegisterHistory` 固定 schema v1；V115 以统一 aggregate 保存类型明细、响应、来源版本、不可变历史和精确命令回执。
+- 风险支持识别、评估、监控、关闭/重开；问题支持升级、解决、验证/重开；决策支持提议、采纳、替代链与撤销；变更支持影响分析、批准/拒绝和应用状态。关闭、验证或撤销只追加历史，不覆盖旧结论。
+- 变更批准必须携带 caller-stable 的计划动作并调用 M1 canonical plan mutation；未批准不改计划，register/plan receipt、audit 与 outbox 在同一事务边界内成败。
+- 引用只保存当前受权 WorkItem/Plan identity/version；读取时重新校准 S11 当前权限与有效责任人。隐藏引用不进入标题、数量、详情或错误，enterprise governance 不获得内容旁路。
+- 确定性上界为每空间 200 个条目、每条目 100 个引用、20 个响应和 100 条返回历史。Web 验证四类筛选、详情、响应/历史、REST 校准、离线草稿和 1440/1366/820 响应式。
+- M2 不创建新的 WorkItem、流程、计划或审批权威，也不交付 M3 文件/评审/验收或 M4 项目健康。
+
+### 29.14 S15-M3 已实现边界
+
+- `Deliverable`、不可变 `DeliverableVersion`/`MaterialReference`、`ReviewRound`、append-only `Signoff` 与 `Acceptance` 固定 schema v1；V116 保存 current version 指针、评审策略、会签与精确命令回执。
+- 版本提交先写不可变版本/物料，再以 expected aggregate version 原子切换 current 指针；撤回、替代、归档/恢复不删除旧版本。版本、物料、会签和验收受数据库不可变 trigger 保护。
+- 文件、知识、WorkItem 通过公共 platform resolver 校验；Plan/Milestone 与风险/变更追踪通过 M1/M2 公共服务校验。只保存 type/identity/source version 或受限 external URI，不复制标题、正文、路径或 ACL。
+- 评审轮次冻结评审项、required signer 与 quorum；一人只有一个当前有效结论，撤销以新事实追加。并发会签以 review 事务锁分配序号，再由 aggregate expected version 保证一胜一冲突和安全重试。
+- close 由服务端按当前有效签署计算 approved/rejected；验收只引用已关闭轮次并追加不可变结论，不能静默覆盖。收权物料、参与者和追踪引用在读取时最小化。
+- 确定性上界为每空间 100 个交付物、每交付物 50 个版本、每版本 50 个物料、每轮 30 个评审项/签署人。Web 与真实隔离流覆盖版本、评审、会签、验收、离线和 1440/1366/820。
+
+### 29.15 S15-M4 已实现边界
+
+- `ProjectDetail`、`HealthSignal`、`HealthStatus`、`Deviation`、`BlockingSummary` 和个人 `DetailPreference` 固定 schema v1。V117 保存偏好、精确命令回执和可删除健康投影，不保存来源标题、正文、ACL 或授权快照。
+- detail 只组合 M1 `ProjectPlanService`、M2 `ProjectRegisterService` 和 M3 `ProjectDeliveryService` 的当前受权公开响应；无跨 owner 私表 join、客户端权限过滤或 enterprise governance 内容旁路。
+- 健康状态由逾期里程碑、未验证问题、高风险、待决变更、待验收和驳回交付有界派生。每个信号携带 source identity/version、规则、解释和观测时间；任一来源或 50 信号上界被触达时返回 `unknown`。
+- 可重建投影只保存 user/space/status/count/policy/source fingerprint 并在五分钟后过期；投影写失败不阻断 canonical 响应，不能授权或成为 S19 组织级指标。
+- 个人偏好采用 caller-stable request ID/hash、expected version、精确回执、audit 和 `project.detail.preference.changed` outbox。Web 已验证 REST 校准、离线输入、多标签冲突、六身份、跨空间及 1440/1366/820。
+
+### 29.16 S15 Go 与 S16 准入
+
+- S15 四个 Milestone、48 个 Task 和 V114-V117 已完成；计划、台账、交付评审与健康聚合各有唯一边界，并继续复用 canonical WorkItem、流程、关系、日期、文件、审计和 S11 当前权限。
+- S16 可以在 S15 计划/里程碑 identity 和 S11 data scope 上建立工作日历、估分、实际工时、人员负荷、产能冲突与资源排期，但不得改写计划、WorkItem 日期或把 S15 健康信号当产能事实。
+- 当前确定性预算只证明本地受控输入有界，不是生产人员容量、吞吐或 SLO。S16 必须重新冻结时区、节假日、部分排期、修订审计、跨空间最小披露与六身份验收合同。
+- S15 当前路线完成后先进入独立 archive-only 工作循环；只有归档成功，才能将 Program 修订并激活 S16 独立路线。
+
+### 29.17 S16 激活边界
+
+- S15 完成路线已通过独立 archive-only 工作循环归档；S16 已在 Program revision 39 激活，唯一入口为 `PROJECT-PLATFORM-S16-M1-T01`。
+- S16 当前路线包含 4 个 Milestone、48 个 Task：M1 工作日历/估分/排期规则，M2 实际工时/不可变修订，M3 人员分配/负荷/产能冲突，M4 资源排期甘特/调整与 Stage 收口。
+- WorkCalendar、Estimate、Worklog、Allocation 与 Capacity 可以建立各自唯一事实，但只能通过公共合同引用 canonical WorkItem、Plan/Milestone、用户、日期、关系、流程与权限；不得把 assignee、计划日期或 S15 健康复制为 S16 权威。
+- 所有跨事项、人员和空间的列表、计数、空隙、冲突、曲线和导出继续执行 S11 当前 decision/data scope；enterprise governance 不获得私有内容旁路。
+- S16 激活只声明规划范围，不声明实现事实；不得提前实现 S17 自动化、S18 跨空间同步或 S19 组织级度量，确定性预算也不代表生产 headcount、容量、利用率或 SLO。

@@ -219,3 +219,29 @@ workspace audience 只表示“该 workspace 的已连接客户端需要丢弃�
 - baseline create/delete 写个人视图事实和不可变 command receipt，不发布 WorkItem、relation、workflow 或 audit 替代事件；exact replay 不重复条目、依赖或副作用。
 - baseline compare、timeline render 和 index rebuild 是读取/派生操作，不发布领域事件。timeline 只引用既有 activity/audit/workflow/relation 来源。
 - 收权、过期或删除后旧 baseline 内容失败关闭；realtime/online/focus 只触发当前受权 REST 重读，客户端差异和时间线缓存不是授权或 history。
+
+## 12. S15-M1 项目计划副作用边界
+
+- create/update/publish/archive/restore 成功后，同事务追加对应 audit action 和版本 1 的 `project.plan.changed` outbox；payload 只含 operation、space/plan identity、status 和 aggregate version。
+- caller-stable request ID 与规范 request hash 的精确重放返回原计划结果，不重复 change、audit 或 outbox。expected version 冲突、权限收紧或非法图在副作用前失败。
+- list/get、进度/逾期派生和当前权限校准不发布领域事件。realtime/online/focus 只能使查询失效并触发 REST 校准，不能把客户端计划状态升级为权威。
+
+## 13. S15-M2 项目治理台账副作用边界
+
+- create/update 与所有类型状态命令成功后，同事务追加不可变 RegisterHistory、对应 `project_register.*` audit 和版本 1 的 `project.register.changed` outbox；payload 只含类型、operation、status 和 version。
+- exact request replay 返回原结果，不重复响应、history、audit、outbox 或批准后的计划动作。版本冲突、非法转换、无理由关闭和失效引用在副作用前失败。
+- 变更 approve 先在同事务调用 canonical plan mutation；任一写失败会整体回滚。未批准、list/get、风险分派生和 REST 校准均不改计划。
+- realtime/online/focus 只触发当前受权 REST 重读；客户端缓存、离线草稿和提醒不是处置成功、计划变更或授权事实。
+
+## 14. S15-M3 交付评审副作用边界
+
+- create/update/submit/withdraw/review/sign/revoke/close/accept/reject/archive/restore 成功后，同事务写对应 `project_deliverable.*` audit 和版本 1 `project.deliverable.changed` outbox。
+- exact replay 返回原 aggregate，不重复版本、物料、轮次、signoff、acceptance、audit 或 outbox。序号竞争先在轮次事务锁内串行，再由 expected version 把并发败者转换为可恢复冲突。
+- resolver、list/get、当前权限投影和 REST 校准不发布领域事件；收权物料或参与者不会作为删除事件、数量或原因暴露。
+- realtime/online/focus 只使受权查询失效；客户端缓存、离线意见、签署按钮或本地 quorum 不是签署/验收事实。
+
+## 15. S15-M4 项目详情与健康副作用边界
+
+- detail get、健康/偏差/阻塞派生和 projection upsert 不发布领域事件；投影失败被隔离，不能回滚或替代 canonical plan/register/delivery 读取。
+- 详情偏好保存成功后同事务写 `project_detail.preference_saved` audit 和版本 1 `project.detail.preference.changed` outbox；payload 只含 space identity 与偏好版本，不含标题、信号、健康原因或来源清单。
+- exact replay 返回原偏好，不重复 audit/outbox；expected version 冲突在副作用前失败。realtime/online/focus 只失效详情查询并 REST 校准，客户端缓存和离线笔记不是健康或验收事实。

@@ -154,6 +154,17 @@ import { WorkItemRelationsPanel } from './WorkItemRelationsPanel'
 import { WorkItemPermissionsPanel } from './WorkItemPermissionsPanel'
 import { WorkItemWorkflowPanel } from './WorkItemWorkflowPanel'
 import { errorMessage, formatTime } from '../projectSpaceView'
+import {
+  createProjectPlan,
+  getProjectPlan,
+  listProjectPlans,
+  mutateProjectPlan,
+  projectPlanKeys,
+  type ProjectPlan,
+} from '../api/projectPlansApi'
+import { ProjectRegisterPanel } from './ProjectRegisterPanel'
+import { ProjectDeliveryPanel } from './ProjectDeliveryPanel'
+import { ProjectDetailPanel } from './ProjectDetailPanel'
 
 export function ProjectWorkItemsPanel({
   space,
@@ -164,7 +175,253 @@ export function ProjectWorkItemsPanel({
 }) {
   return workItemId
     ? <WorkItemDetail space={space} workItemId={workItemId} />
-    : <WorkItemCollection space={space} />
+    : (
+      <>
+        <ProjectDetailPanel space={space} />
+        <ProjectPlanPanel space={space} />
+        <ProjectRegisterPanel space={space} />
+        <ProjectDeliveryPanel space={space} />
+        <WorkItemCollection space={space} />
+      </>
+    )
+}
+
+function ProjectPlanPanel({ space }: { space: UserProjectSpace }) {
+  const { message } = AntdApp.useApp()
+  const queryClient = useQueryClient()
+  const today = new Date().toISOString().slice(0, 10)
+  const [selectedPlanId, setSelectedPlanId] = useState<string>()
+  const [name, setName] = useState('')
+  const [description, setDescription] = useState('')
+  const [startDate, setStartDate] = useState(today)
+  const [endDate, setEndDate] = useState(() => shiftDate(today, 30))
+  const listQuery = useQuery({
+    queryKey: projectPlanKeys.list(space.id),
+    queryFn: () => listProjectPlans(space.id),
+  })
+  const detailQuery = useQuery({
+    queryKey: projectPlanKeys.detail(space.id, selectedPlanId ?? 'none'),
+    queryFn: () => getProjectPlan(space.id, selectedPlanId!),
+    enabled: Boolean(selectedPlanId),
+  })
+  const refresh = async (plan: ProjectPlan) => {
+    setSelectedPlanId(plan.plan.id)
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: projectPlanKeys.list(space.id) }),
+      queryClient.invalidateQueries({
+        queryKey: projectPlanKeys.detail(space.id, plan.plan.id),
+      }),
+    ])
+  }
+  const createMutation = useMutation({
+    mutationFn: () => createProjectPlan(space.id, {
+      name,
+      description,
+      startDate,
+      endDate,
+    }),
+    onSuccess: async (plan) => {
+      await refresh(plan)
+      message.success('项目计划已创建')
+    },
+    onError: (error) => message.error(errorMessage(error, '项目计划创建失败，请刷新后重试')),
+  })
+  const mutateMutation = useMutation({
+    mutationFn: ({
+      operation,
+      plan,
+    }: {
+      operation: 'update' | 'publish' | 'archive' | 'restore'
+      plan: ProjectPlan
+    }) => mutateProjectPlan(
+      space.id,
+      plan,
+      operation,
+      operation === 'update' ? { name, description } : undefined,
+    ),
+    onSuccess: async (plan, variables) => {
+      await refresh(plan)
+      message.success({
+        update: '项目计划已保存',
+        publish: '项目计划已发布',
+        archive: '项目计划已归档',
+        restore: '项目计划已恢复为草稿',
+      }[variables.operation])
+    },
+    onError: (error) => message.error(errorMessage(error, '项目计划操作失败，请刷新后重试')),
+  })
+  const current = detailQuery.data
+  const writable = space.status === 'active' && space.currentUserRole !== 'guest'
+  const validCreate = name.trim()
+    && startDate
+    && endDate
+    && endDate >= startDate
+
+  return (
+    <Card
+      className="content-card project-plan-panel"
+      data-testid="project-plan-panel"
+      title={<Space><CalendarOutlined />项目计划与里程碑</Space>}
+      extra={<Tag color="blue">S15 · 当前权限实时校准</Tag>}
+    >
+      <div className="project-plan-toolbar">
+        <Select
+          aria-label="项目计划"
+          allowClear
+          showSearch
+          value={selectedPlanId}
+          loading={listQuery.isLoading}
+          placeholder="选择项目计划"
+          optionFilterProp="label"
+          options={(listQuery.data ?? []).map((plan) => ({
+            label: `${plan.name} · ${plan.status}`,
+            value: plan.id,
+          }))}
+          onChange={(planId) => {
+            setSelectedPlanId(planId)
+            const selected = listQuery.data?.find((plan) => plan.id === planId)
+            if (!selected) return
+            setName(selected.name)
+            setDescription(selected.description)
+            setStartDate(selected.startDate)
+            setEndDate(selected.endDate)
+          }}
+        />
+        <Input
+          aria-label="计划名称"
+          value={name}
+          maxLength={120}
+          placeholder="计划名称"
+          onChange={(event) => setName(event.target.value)}
+        />
+        <Input
+          aria-label="计划说明"
+          value={description}
+          maxLength={1000}
+          placeholder="计划说明"
+          onChange={(event) => setDescription(event.target.value)}
+        />
+        <Input
+          aria-label="计划开始日期"
+          type="date"
+          value={startDate}
+          disabled={Boolean(current)}
+          onChange={(event) => setStartDate(event.target.value)}
+        />
+        <Input
+          aria-label="计划结束日期"
+          type="date"
+          value={endDate}
+          disabled={Boolean(current)}
+          onChange={(event) => setEndDate(event.target.value)}
+        />
+      </div>
+      <Space wrap>
+        <Button
+          type="primary"
+          disabled={!writable || !validCreate}
+          loading={createMutation.isPending}
+          onClick={() => createMutation.mutate()}
+        >
+          新建计划
+        </Button>
+        <Button
+          disabled={!writable || !current || current.plan.status === 'archived' || !name.trim()}
+          loading={mutateMutation.isPending}
+          onClick={() => current && mutateMutation.mutate({
+            operation: 'update',
+            plan: current,
+          })}
+        >
+          保存名称与说明
+        </Button>
+        {current?.plan.status === 'draft' ? (
+          <Button
+            disabled={!writable}
+            onClick={() => mutateMutation.mutate({ operation: 'publish', plan: current })}
+          >
+            发布计划
+          </Button>
+        ) : null}
+        {current && current.plan.status !== 'archived' ? (
+          <Button
+            danger
+            disabled={!writable}
+            onClick={() => mutateMutation.mutate({ operation: 'archive', plan: current })}
+          >
+            归档计划
+          </Button>
+        ) : null}
+        {current?.plan.status === 'archived' ? (
+          <Button
+            disabled={!writable}
+            onClick={() => mutateMutation.mutate({ operation: 'restore', plan: current })}
+          >
+            恢复为草稿
+          </Button>
+        ) : null}
+      </Space>
+      {!writable ? (
+        <Typography.Paragraph type="secondary">
+          当前身份只读；项目计划写入仅对 active owner、admin 和 member 开放。
+        </Typography.Paragraph>
+      ) : null}
+      {detailQuery.isError ? (
+        <Alert
+          type="error"
+          showIcon
+          message="项目计划加载失败"
+          description={errorMessage(detailQuery.error, '请刷新后重试')}
+        />
+      ) : null}
+      {current ? (
+        <div className="project-plan-summary">
+          <Space wrap>
+            <Tag color={current.plan.status === 'published' ? 'green' : 'default'}>
+              {current.plan.status}
+            </Tag>
+            <Tag>阶段 {current.phases.length}</Tag>
+            <Tag>里程碑 {current.progress.visibleMilestones}</Tag>
+            <Tag color={current.progress.overdueMilestones > 0 ? 'red' : 'blue'}>
+              逾期 {current.progress.overdueMilestones}
+            </Tag>
+            <Tag>当前可见关联 {current.progress.visibleLinks}</Tag>
+            {current.progress.truncated ? <Tag color="orange">隐藏关联已省略</Tag> : null}
+          </Space>
+          <Progress
+            percent={current.progress.completionPercent}
+            aria-label="项目计划完成度"
+            size="small"
+          />
+          <List
+            size="small"
+            loading={detailQuery.isLoading}
+            locale={{ emptyText: '暂无里程碑' }}
+            dataSource={current.milestones}
+            renderItem={(milestone) => (
+              <List.Item>
+                <Space wrap>
+                  <strong>{milestone.name}</strong>
+                  <Tag>{milestone.status}</Tag>
+                  <Typography.Text type="secondary">
+                    {milestone.targetDate}
+                  </Typography.Text>
+                </Space>
+              </List.Item>
+            )}
+          />
+          <Typography.Paragraph type="secondary">
+            计划阶段不同于流程节点；里程碑日期不会改写工作项日期。隐藏或收权关联不会进入标题、数量或进度。
+          </Typography.Paragraph>
+        </div>
+      ) : (
+        <Empty
+          image={Empty.PRESENTED_IMAGE_SIMPLE}
+          description="尚未选择项目计划；可填写名称和日期创建草稿。"
+        />
+      )}
+    </Card>
+  )
 }
 
 function WorkItemCollection({ space }: { space: UserProjectSpace }) {
