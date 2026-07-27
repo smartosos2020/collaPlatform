@@ -145,6 +145,66 @@ public class JdbcProjectSpaceRepository implements ProjectSpaceRepository {
             spaceId
         );
         jdbcTemplate.update(
+            "delete from project_work_item_saved_view_commands where workspace_id = ? and space_id = ?",
+            workspaceId,
+            spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_work_item_saved_view_shares where workspace_id = ? and space_id = ?",
+            workspaceId,
+            spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_work_item_saved_view_versions where workspace_id = ? and space_id = ?",
+            workspaceId,
+            spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_work_item_saved_views where workspace_id = ? and space_id = ?",
+            workspaceId,
+            spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_work_item_tree_projection_stats where workspace_id = ? and space_id = ?",
+            workspaceId,
+            spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_work_item_tree_preferences where workspace_id = ? and space_id = ?",
+            workspaceId,
+            spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_work_item_export_jobs where workspace_id = ? and space_id = ?",
+            workspaceId,
+            spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_work_item_view_commands where workspace_id = ? and space_id = ?",
+            workspaceId,
+            spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_work_item_view_preferences where workspace_id = ? and space_id = ?",
+            workspaceId,
+            spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_work_item_query_receipts where workspace_id = ? and space_id = ?",
+            workspaceId,
+            spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_work_item_query_projection_stats where workspace_id = ? and space_id = ?",
+            workspaceId,
+            spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_work_item_query_definitions where workspace_id = ? and space_id = ?",
+            workspaceId,
+            spaceId
+        );
+        jdbcTemplate.update(
             "delete from project_work_item_hierarchy_rebuild_batches where workspace_id = ? and space_id = ?",
             workspaceId,
             spaceId

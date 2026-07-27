@@ -1,6 +1,8 @@
 import {
   ArrowLeftOutlined,
+  ApartmentOutlined,
   CommentOutlined,
+  DownloadOutlined,
   FileOutlined,
   HistoryOutlined,
   InboxOutlined,
@@ -8,7 +10,9 @@ import {
   PlusOutlined,
   ReloadOutlined,
   SaveOutlined,
+  TableOutlined,
   TeamOutlined,
+  UnorderedListOutlined,
 } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -23,16 +27,19 @@ import {
   List,
   Modal,
   Progress,
+  Segmented,
   Select,
   Skeleton,
   Space,
   Table,
   Tabs,
   Tag,
+  Tree,
+  type TreeDataNode,
   Typography,
   Upload,
 } from 'antd'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type Key } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
 import { ApiRequestError } from '../../../shared/api/httpClient'
@@ -48,7 +55,6 @@ import {
   listWorkItemAttachments,
   listWorkItemComments,
   listWorkItemParticipants,
-  listWorkItems,
   nudgeWorkItemParticipant,
   putWorkItemParticipant,
   transitionWorkItem,
@@ -59,6 +65,38 @@ import {
   type WorkItemRuntime,
 } from '../api/workItemsApi'
 import { listActiveWorkItemTypes, workItemTypeKeys } from '../api/workItemTypesApi'
+import {
+  bulkWorkItems,
+  exportWorkItemView,
+  getWorkItemViewPreference,
+  renderWorkItemView,
+  saveWorkItemViewPreference,
+  workItemViewKeys,
+  type QueryDefinition,
+  type WorkItemColumn,
+  type WorkItemViewRow,
+} from '../api/workItemViewsApi'
+import {
+  getWorkItemTreePreference,
+  renderWorkItemTree,
+  saveWorkItemTreePreference,
+  workItemTreeViewKeys,
+  type WorkItemTreeNode,
+} from '../api/workItemTreeViewsApi'
+import {
+  copySavedView,
+  createSavedView,
+  deleteSavedView,
+  executeSavedView,
+  favoriteSavedView,
+  listSavedViews,
+  revokeSavedView,
+  savedViewKeys,
+  shareSavedView,
+  transferSavedView,
+  updateSavedView,
+  type WorkItemSavedView,
+} from '../api/workItemSavedViewsApi'
 import type { ConfiguredWorkItemField } from '../api/workItemFieldsApi'
 import type {
   WorkItemFieldAccessProjection,
@@ -84,7 +122,9 @@ export function ProjectWorkItemsPanel({
 }
 
 function WorkItemCollection({ space }: { space: UserProjectSpace }) {
+  const { message } = AntdApp.useApp()
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const [searchParams, setSearchParams] = useSearchParams()
   const [createOpen, setCreateOpen] = useState(searchParams.get('create') === '1')
   const [selectedTypeOverride, setSelectedTypeOverride] = useState(searchParams.get('typeId') ?? undefined)
@@ -93,9 +133,300 @@ function WorkItemCollection({ space }: { space: UserProjectSpace }) {
     queryFn: () => listActiveWorkItemTypes(space.id),
   })
   const selectedTypeId = selectedTypeOverride ?? typesQuery.data?.[0]?.id
+  const preferenceQuery = useQuery({
+    queryKey: workItemViewKeys.preference(space.id),
+    queryFn: () => getWorkItemViewPreference(space.id),
+  })
+  const [modeOverride, setModeOverride] = useState<'table' | 'list'>()
+  const [treeMode, setTreeMode] = useState(false)
+  const [densityOverride, setDensityOverride] = useState<'compact' | 'comfortable'>()
+  const [columnKeysOverride, setColumnKeysOverride] = useState<string[]>()
+  const [selectedRowKeys, setSelectedRowKeys] = useState<Key[]>([])
+  const [savedDefinitionOverride, setSavedDefinitionOverride] = useState<QueryDefinition>()
+  const [selectedSavedViewId, setSelectedSavedViewId] = useState(
+    searchParams.get('savedViewId') ?? undefined,
+  )
+  const [saveViewOpen, setSaveViewOpen] = useState(false)
+  const [savedViewName, setSavedViewName] = useState('')
+  const [savedViewDescription, setSavedViewDescription] = useState('')
+  const [shareOpen, setShareOpen] = useState(false)
+  const [shareUserId, setShareUserId] = useState<string>()
+  const [sharePermission, setSharePermission] = useState<'use' | 'manage'>('use')
+  const [expandedTreeKeys, setExpandedTreeKeys] = useState<Key[]>()
+  const [loadedTreeState, setLoadedTreeState] = useState<{
+    queryHash: string
+    children: Record<string, WorkItemTreeNode[]>
+  }>()
+  const mode = modeOverride ?? preferenceQuery.data?.mode ?? 'table'
+  const density = densityOverride ?? preferenceQuery.data?.density ?? 'comfortable'
+  const availableColumns = useMemo<WorkItemColumn[]>(() => [
+    { key: 'displayKey', label: '编号', width: 120, frozen: true, format: 'text' },
+    { key: 'title', label: '标题', width: 320, frozen: true, format: 'text' },
+    { key: 'status', label: '状态', width: 120, frozen: false, format: 'tag' },
+    { key: 'updatedAt', label: '更新于', width: 190, frozen: false, format: 'datetime' },
+    { key: 'createdAt', label: '创建于', width: 190, frozen: false, format: 'datetime' },
+    { key: 'state', label: '流程状态', width: 150, frozen: false, format: 'tag' },
+    { key: 'participantRole', label: '我的角色', width: 150, frozen: false, format: 'tag' },
+  ], [])
+  const activeColumnKeys = columnKeysOverride
+    ?? preferenceQuery.data?.columns.map((column) => column.key)
+    ?? availableColumns.slice(0, 4).map((column) => column.key)
+  const columns = availableColumns.filter((column) => activeColumnKeys.includes(column.key))
+  const defaultDefinition = useMemo<QueryDefinition>(() => ({
+    schemaVersion: 1,
+    typeId: selectedTypeId,
+    filter: null,
+    sorts: [{ field: 'updatedAt', direction: 'desc', nulls: 'last' }],
+    group: null,
+    select: columns.map((column) => column.key),
+    limit: 50,
+    cursor: null,
+  }), [columns, selectedTypeId])
+  const definition = savedDefinitionOverride ?? defaultDefinition
+  const savedViewsQuery = useQuery({
+    queryKey: savedViewKeys.list(space.id),
+    queryFn: () => listSavedViews(space.id),
+  })
+  const membersQuery = useQuery({
+    queryKey: ['project-spaces', space.id, 'members', 'saved-view-sharing'],
+    queryFn: () => listProjectSpaceMembers(space.id),
+    enabled: shareOpen,
+  })
+  const selectedSavedView = savedViewsQuery.data?.find((view) => view.id === selectedSavedViewId)
+  const viewSignature = JSON.stringify({ mode, density, columns, definition })
   const itemsQuery = useQuery({
-    queryKey: workItemKeys.list(space.id, selectedTypeId),
-    queryFn: () => listWorkItems(space.id, selectedTypeId),
+    queryKey: workItemViewKeys.render(space.id, viewSignature),
+    queryFn: () => renderWorkItemView(space.id, {
+      schemaVersion: 1,
+      mode,
+      density,
+      columns,
+      query: definition,
+    }),
+    enabled: Boolean(selectedTypeId) && !treeMode,
+  })
+  const treePreferenceQuery = useQuery({
+    queryKey: workItemTreeViewKeys.preference(space.id),
+    queryFn: () => getWorkItemTreePreference(space.id),
+    enabled: treeMode,
+  })
+  const treeQuery = useQuery({
+    queryKey: workItemTreeViewKeys.roots(space.id, viewSignature),
+    queryFn: () => renderWorkItemTree(space.id, definition),
+    enabled: Boolean(selectedTypeId) && treeMode,
+  })
+  const effectiveExpandedTreeKeys = expandedTreeKeys
+    ?? treePreferenceQuery.data?.expandedNodeIds
+    ?? []
+  const loadedTreeChildren = useMemo(
+    () => loadedTreeState && loadedTreeState.queryHash === treeQuery.data?.queryHash
+      ? loadedTreeState.children
+      : {},
+    [loadedTreeState, treeQuery.data?.queryHash],
+  )
+  const loadedTreeItems = useMemo(() => [
+    ...(treeQuery.data?.items ?? []),
+    ...Object.values(loadedTreeChildren).flat(),
+  ], [loadedTreeChildren, treeQuery.data?.items])
+  const treeData = useMemo(() => {
+    const build = (item: WorkItemTreeNode): TreeDataNode => ({
+      key: item.id,
+      title: (
+        <Space wrap size="small">
+          <strong>{item.title}</strong>
+          <Tag>{item.displayKey}</Tag>
+          <Tag>{item.status}</Tag>
+          {item.matchKind === 'context' ? <Tag color="default">路径上下文</Tag> : null}
+        </Space>
+      ),
+      isLeaf: !item.expandable,
+      children: loadedTreeChildren[item.id]?.map(build),
+    })
+    return (treeQuery.data?.items ?? []).map(build)
+  }, [loadedTreeChildren, treeQuery.data?.items])
+  const savePreferenceMutation = useMutation<unknown>({
+    mutationFn: () => treeMode
+      ? saveWorkItemTreePreference(
+          space.id,
+          treePreferenceQuery.data?.version ?? 0,
+          effectiveExpandedTreeKeys.map(String),
+        )
+      : saveWorkItemViewPreference(space.id, {
+          requestId: crypto.randomUUID(),
+          expectedVersion: preferenceQuery.data?.version ?? 0,
+          mode,
+          density,
+          columns,
+        }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: treeMode
+          ? workItemTreeViewKeys.preference(space.id)
+          : workItemViewKeys.preference(space.id),
+      })
+      message.success('视图偏好已保存')
+    },
+    onError: (error) => message.error(errorMessage(error, '偏好保存失败，请刷新后重试')),
+  })
+  const bulkMutation = useMutation({
+    mutationFn: (action: 'archive' | 'restore') => bulkWorkItems(
+      space.id,
+      action,
+      (itemsQuery.data?.rows ?? [])
+        .concat(loadedTreeItems.map((item) => ({
+          workItemId: item.id,
+          displayKey: item.displayKey,
+          title: item.title,
+          version: item.version,
+          cells: [],
+          availableActions: item.availableActions,
+        })))
+        .filter((row) => selectedRowKeys.includes(row.workItemId))
+        .map((row) => ({ workItemId: row.workItemId, expectedVersion: row.version })),
+    ),
+    onSuccess: async (result) => {
+      setSelectedRowKeys([])
+      await queryClient.invalidateQueries({ queryKey: workItemViewKeys.all })
+      message.success(`批量操作完成：${result.succeeded} 成功，${result.failed} 失败`)
+    },
+    onError: (error) => message.error(errorMessage(error, '批量操作失败')),
+  })
+  const exportMutation = useMutation({
+    mutationFn: () => exportWorkItemView(space.id, definition, columns),
+    onSuccess: ({ job, content }) => {
+      const url = URL.createObjectURL(new Blob([content], { type: 'text/csv;charset=utf-8' }))
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `work-items-${job.id}.csv`
+      link.click()
+      URL.revokeObjectURL(url)
+      message.success('受权导出已生成')
+    },
+    onError: (error) => message.error(errorMessage(error, '导出失败')),
+  })
+  const currentPresentation = () => ({
+    schemaVersion: 1 as const,
+    mode: treeMode ? 'tree' as const : mode,
+    density,
+    columns,
+    relationKey: 'parent_child',
+    maxDepth: 32,
+  })
+  const applySavedView = (view: WorkItemSavedView) => {
+    setSelectedSavedViewId(view.id)
+    setSelectedTypeOverride(view.query.typeId)
+    setSavedDefinitionOverride({ ...view.query, cursor: null })
+    setTreeMode(view.presentation.mode === 'tree')
+    if (view.presentation.mode !== 'tree') setModeOverride(view.presentation.mode)
+    setDensityOverride(view.presentation.density)
+    setColumnKeysOverride(view.presentation.columns.map((column) => column.key))
+    setSearchParams({ savedViewId: view.id }, { replace: true })
+  }
+  const refreshSavedViews = async () => {
+    await queryClient.invalidateQueries({ queryKey: savedViewKeys.list(space.id) })
+  }
+  const createSavedViewMutation = useMutation({
+    mutationFn: () => createSavedView(space.id, {
+      name: savedViewName,
+      description: savedViewDescription,
+      scope: 'personal',
+      query: { ...definition, cursor: null },
+      presentation: currentPresentation(),
+    }),
+    onSuccess: async (view) => {
+      await refreshSavedViews()
+      applySavedView(view)
+      setSaveViewOpen(false)
+      message.success('个人视图已保存')
+    },
+    onError: (error) => message.error(errorMessage(error, '保存视图失败')),
+  })
+  const updateSavedViewMutation = useMutation({
+    mutationFn: () => {
+      if (!selectedSavedView) throw new Error('未选择保存视图')
+      return updateSavedView(space.id, selectedSavedView.id, {
+        expectedVersion: selectedSavedView.aggregateVersion,
+        name: savedViewName || selectedSavedView.name,
+        description: savedViewDescription,
+        scope: selectedSavedView.scope,
+        query: { ...definition, cursor: null },
+        presentation: currentPresentation(),
+      })
+    },
+    onSuccess: async (view) => {
+      await refreshSavedViews()
+      applySavedView(view)
+      setSaveViewOpen(false)
+      message.success('保存视图已更新')
+    },
+    onError: (error) => message.error(errorMessage(error, '视图已变化，请刷新后重试')),
+  })
+  const executeSavedViewMutation = useMutation({
+    mutationFn: (viewId: string) => executeSavedView(space.id, viewId),
+    onSuccess: ({ view }) => applySavedView(view),
+    onError: (error) => {
+      setSelectedSavedViewId(undefined)
+      message.error(errorMessage(error, '保存视图不可用或需要重新授权'))
+    },
+  })
+  const savedViewCommandMutation = useMutation({
+    mutationFn: async (command: 'copy' | 'favorite' | 'delete' | 'share' | 'revoke' | 'transfer') => {
+      if (!selectedSavedView) throw new Error('未选择保存视图')
+      if (command === 'copy') {
+        return copySavedView(space.id, selectedSavedView.id, `${selectedSavedView.name} - 副本`)
+      }
+      if (command === 'favorite') {
+        await favoriteSavedView(selectedSavedView.id)
+        return selectedSavedView
+      }
+      if (command === 'delete') {
+        return deleteSavedView(space.id, selectedSavedView.id, selectedSavedView.aggregateVersion)
+      }
+      if (!shareUserId) throw new Error('请选择空间成员')
+      if (command === 'share') {
+        return shareSavedView(
+          space.id,
+          selectedSavedView.id,
+          selectedSavedView.aggregateVersion,
+          shareUserId,
+          sharePermission,
+        )
+      }
+      if (command === 'revoke') {
+        return revokeSavedView(
+          space.id,
+          selectedSavedView.id,
+          selectedSavedView.aggregateVersion,
+          shareUserId,
+        )
+      }
+      return transferSavedView(
+        space.id,
+        selectedSavedView.id,
+        selectedSavedView.aggregateVersion,
+        shareUserId,
+      )
+    },
+    onSuccess: async (view, command) => {
+      await refreshSavedViews()
+      if (command === 'delete' || command === 'transfer') {
+        setSelectedSavedViewId(undefined)
+        setSavedDefinitionOverride(undefined)
+      } else {
+        applySavedView(view)
+      }
+      setShareOpen(false)
+      setShareUserId(undefined)
+      message.success({
+        copy: '视图副本已创建',
+        favorite: '已加入收藏',
+        delete: '保存视图已删除',
+        share: '分享权限已更新',
+        revoke: '分享已撤销',
+        transfer: '视图所有权已移交',
+      }[command])
+    },
+    onError: (error) => message.error(errorMessage(error, '保存视图操作失败，请刷新后重试')),
   })
 
   const openCreate = (typeId?: string) => {
@@ -116,6 +447,28 @@ function WorkItemCollection({ space }: { space: UserProjectSpace }) {
       >
         <div className="project-work-item-filter">
           <Select
+            aria-label="保存视图目录"
+            allowClear
+            showSearch
+            loading={savedViewsQuery.isLoading || executeSavedViewMutation.isPending}
+            value={selectedSavedViewId}
+            placeholder="个人与共享视图"
+            optionFilterProp="label"
+            options={savedViewsQuery.data?.map((view) => ({
+              label: `${view.name}${view.scope === 'shared' ? ' · 共享' : ' · 个人'}`,
+              value: view.id,
+            }))}
+            onChange={(viewId) => {
+              setSelectedSavedViewId(viewId)
+              if (viewId) {
+                executeSavedViewMutation.mutate(viewId)
+              } else {
+                setSavedDefinitionOverride(undefined)
+                setSearchParams({}, { replace: true })
+              }
+            }}
+          />
+          <Select
             aria-label="按工作项类型筛选"
             allowClear
             value={selectedTypeId}
@@ -124,10 +477,122 @@ function WorkItemCollection({ space }: { space: UserProjectSpace }) {
             options={typesQuery.data?.map((type) => ({ label: type.name, value: type.id }))}
             onChange={setSelectedTypeOverride}
           />
+          <Segmented
+            aria-label="工作项视图模式"
+            value={treeMode ? 'tree' : mode}
+            options={[
+              { label: '表格', value: 'table', icon: <TableOutlined /> },
+              { label: '紧凑列表', value: 'list', icon: <UnorderedListOutlined /> },
+              { label: '层级树', value: 'tree', icon: <ApartmentOutlined /> },
+            ]}
+            onChange={(value) => {
+              setTreeMode(value === 'tree')
+              if (value !== 'tree') setModeOverride(value as 'table' | 'list')
+            }}
+          />
+          <Select
+            aria-label="列表密度"
+            value={density}
+            options={[
+              { label: '舒适', value: 'comfortable' },
+              { label: '紧凑', value: 'compact' },
+            ]}
+            onChange={setDensityOverride}
+          />
+          <Select
+            aria-label="显示列"
+            mode="multiple"
+            value={activeColumnKeys}
+            maxTagCount="responsive"
+            options={availableColumns.map((column) => ({ label: column.label, value: column.key }))}
+            onChange={(value) => setColumnKeysOverride(value.length ? value : ['title'])}
+          />
+          <Button
+            icon={<SaveOutlined />}
+            loading={savePreferenceMutation.isPending}
+            onClick={() => savePreferenceMutation.mutate()}
+          >
+            保存偏好
+          </Button>
+          <Button
+            type="primary"
+            onClick={() => {
+              setSavedViewName(selectedSavedView?.name ?? '')
+              setSavedViewDescription(selectedSavedView?.description ?? '')
+              setSaveViewOpen(true)
+            }}
+          >
+            {selectedSavedView?.canManage ? '编辑保存视图' : '另存为视图'}
+          </Button>
           <Typography.Text type="secondary">列表只展示当前空间内你有权访问的工作项。</Typography.Text>
         </div>
-        {itemsQuery.isLoading ? <Skeleton active paragraph={{ rows: 5 }} /> : null}
-        {itemsQuery.isError ? (
+        {selectedSavedView ? (
+          <Alert
+            className="project-saved-view-access"
+            type="info"
+            showIcon
+            message={<Space wrap>
+              <strong>{selectedSavedView.name}</strong>
+              <Tag color={selectedSavedView.canManage ? 'blue' : 'default'}>
+                {selectedSavedView.canManage ? '可管理' : '仅可使用'}
+              </Tag>
+              <Typography.Text type="secondary">
+                执行时会重新校准工作项与字段权限，分享不会扩大内容访问范围。
+              </Typography.Text>
+            </Space>}
+            action={<Space wrap>
+              <Button size="small" onClick={() => savedViewCommandMutation.mutate('favorite')}>收藏</Button>
+              <Button size="small" onClick={() => savedViewCommandMutation.mutate('copy')}>复制</Button>
+              {selectedSavedView.canManage ? (
+                <Button size="small" onClick={() => setShareOpen(true)}>分享与移交</Button>
+              ) : null}
+              {selectedSavedView.canManage ? (
+                <Button
+                  size="small"
+                  danger
+                  onClick={() => Modal.confirm({
+                    title: '删除保存视图？',
+                    content: '删除后收藏和旧链接不会再显示名称或结果。',
+                    okButtonProps: { danger: true },
+                    onOk: async () => { await savedViewCommandMutation.mutateAsync('delete') },
+                  })}
+                >
+                  删除
+                </Button>
+              ) : null}
+            </Space>}
+          />
+        ) : null}
+        <div className="project-work-item-actions">
+          <Space wrap>
+            <Button
+              disabled={!selectedRowKeys.length}
+              loading={bulkMutation.isPending}
+              onClick={() => bulkMutation.mutate('archive')}
+            >
+              批量归档
+            </Button>
+            <Button
+              disabled={!selectedRowKeys.length}
+              loading={bulkMutation.isPending}
+              onClick={() => bulkMutation.mutate('restore')}
+            >
+              批量恢复
+            </Button>
+            <Button
+              icon={<DownloadOutlined />}
+              loading={exportMutation.isPending}
+              onClick={() => exportMutation.mutate()}
+            >
+              导出 CSV
+            </Button>
+            {selectedRowKeys.length ? <Tag color="blue">已选择 {selectedRowKeys.length} 项</Tag> : null}
+          </Space>
+        </div>
+        {(treeMode ? treeQuery.isLoading : itemsQuery.isLoading)
+          ? <Skeleton active paragraph={{ rows: 5 }} />
+          : null}
+        {!treeMode && itemsQuery.isError ? (
           <Alert
             type="error"
             showIcon
@@ -136,44 +601,236 @@ function WorkItemCollection({ space }: { space: UserProjectSpace }) {
             action={<Button size="small" onClick={() => itemsQuery.refetch()}>重试</Button>}
           />
         ) : null}
-        {!itemsQuery.isLoading && !itemsQuery.isError && itemsQuery.data?.items.length === 0 ? (
+        {!treeMode && !itemsQuery.isLoading && !itemsQuery.isError && itemsQuery.data?.rows.length === 0 ? (
           <Empty description="当前类型还没有工作项">
             {space.status === 'active' && space.currentUserRole !== 'guest'
               ? <Button type="primary" onClick={() => openCreate()}>创建第一条工作项</Button>
               : null}
           </Empty>
         ) : null}
-        {itemsQuery.data?.items.length ? (
+        {!treeMode && itemsQuery.data?.rows.length && mode === 'table' ? (
           <Table
-            rowKey="id"
-            dataSource={itemsQuery.data.items}
+            size={density === 'compact' ? 'small' : 'middle'}
+            rowKey="workItemId"
+            dataSource={itemsQuery.data.rows}
             pagination={false}
             scroll={{ x: 760 }}
+            rowSelection={{
+              selectedRowKeys,
+              onChange: setSelectedRowKeys,
+              getCheckboxProps: (row) => ({ disabled: !row.availableActions.length }),
+            }}
             onRow={(item) => ({
               tabIndex: 0,
-              onClick: () => navigate(`/project-spaces/${space.id}/work-items/${item.id}`),
+              onClick: () => navigate(`/project-spaces/${space.id}/work-items/${item.workItemId}`),
               onKeyDown: (event) => {
-                if (event.key === 'Enter') navigate(`/project-spaces/${space.id}/work-items/${item.id}`)
+                if (event.key === 'Enter') {
+                  navigate(`/project-spaces/${space.id}/work-items/${item.workItemId}`)
+                }
               },
             })}
-            columns={[
-              {
-                title: '工作项',
-                key: 'item',
-                render: (_, item: WorkItem) => (
-                  <Space>
-                    <Avatar>{item.typeName.slice(0, 1)}</Avatar>
-                    <span><strong>{item.title}</strong><small className="project-work-item-subline">{item.displayKey}</small></span>
-                  </Space>
-                ),
+            columns={columns.map((column) => ({
+              title: column.label,
+              key: column.key,
+              width: column.width,
+              fixed: column.frozen ? 'left' as const : undefined,
+              render: (_: unknown, row: WorkItemViewRow) => {
+                const cell = row.cells.find((candidate) => candidate.columnKey === column.key)
+                if (!cell) return <Typography.Text type="secondary">—</Typography.Text>
+                if (column.format === 'tag') return <Tag>{cell.displayValue || '—'}</Tag>
+                if (column.format === 'datetime') return formatTime(cell.displayValue)
+                return column.key === 'title'
+                  ? <strong>{cell.displayValue}</strong>
+                  : cell.displayValue
               },
-              { title: '类型', dataIndex: 'typeName', width: 160, render: (value: string) => <Tag color="purple">{value}</Tag> },
-              { title: '状态', dataIndex: 'status', width: 120, render: (value: string) => <Tag color={value === 'active' ? 'green' : 'default'}>{value}</Tag> },
-              { title: '更新于', dataIndex: 'updatedAt', width: 190, render: formatTime },
-            ]}
+            }))}
           />
         ) : null}
+        {!treeMode && itemsQuery.data?.rows.length && mode === 'list' ? (
+          <List
+            className={`project-work-item-compact-list is-${density}`}
+            dataSource={itemsQuery.data.rows}
+            renderItem={(row) => (
+              <List.Item
+                tabIndex={0}
+                onClick={() => navigate(`/project-spaces/${space.id}/work-items/${row.workItemId}`)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    navigate(`/project-spaces/${space.id}/work-items/${row.workItemId}`)
+                  }
+                }}
+              >
+                <List.Item.Meta
+                  avatar={<Avatar>{row.displayKey.slice(0, 1)}</Avatar>}
+                  title={<Space wrap><strong>{row.title}</strong><Tag>{row.displayKey}</Tag></Space>}
+                  description={row.cells
+                    .filter((cell) => !['title', 'displayKey'].includes(cell.columnKey))
+                    .map((cell) => cell.displayValue)
+                    .filter(Boolean)
+                    .join(' · ')}
+                />
+              </List.Item>
+            )}
+          />
+        ) : null}
+        {treeMode && treeQuery.isError ? (
+          <Alert
+            type="error"
+            showIcon
+            message="层级树加载失败"
+            description="树不会回退为私表读取或猜测隐藏路径；请重试 REST 校准。"
+            action={<Button size="small" onClick={() => treeQuery.refetch()}>重试</Button>}
+          />
+        ) : null}
+        {treeMode && treeQuery.data ? (
+          <div className="project-work-item-tree" data-testid="project-work-item-tree">
+            <Space wrap>
+              <Tag color="blue">可见节点 {treeQuery.data.aggregate.visibleNodeCount}</Tag>
+              <Tag>匹配 {treeQuery.data.aggregate.matchedCount}</Tag>
+              <Tag>最大可见深度 {treeQuery.data.aggregate.maxVisibleDepth}</Tag>
+              {treeQuery.data.truncated ? <Tag color="orange">结果已按预算截断</Tag> : null}
+            </Space>
+            <Tree
+              blockNode
+              checkable
+              selectable
+              showLine
+              treeData={treeData}
+              expandedKeys={effectiveExpandedTreeKeys}
+              checkedKeys={selectedRowKeys}
+              onExpand={setExpandedTreeKeys}
+              onCheck={(keys) => setSelectedRowKeys(Array.isArray(keys) ? keys : keys.checked)}
+              onSelect={(keys) => {
+                if (keys[0]) navigate(`/project-spaces/${space.id}/work-items/${keys[0]}`)
+              }}
+              loadData={async (node) => {
+                const id = String(node.key)
+                if (loadedTreeChildren[id]) return
+                const result = await renderWorkItemTree(space.id, definition, id)
+                setLoadedTreeState((current) => ({
+                  queryHash: treeQuery.data?.queryHash ?? result.queryHash,
+                  children: {
+                    ...(current?.queryHash === treeQuery.data?.queryHash ? current.children : {}),
+                    [id]: result.items,
+                  },
+                }))
+              }}
+            />
+            {!treeData.length ? <Empty description="当前查询没有可见层级节点" /> : null}
+          </div>
+        ) : null}
       </Card>
+      <Modal
+        title={selectedSavedView?.canManage ? '编辑保存视图' : '另存为个人视图'}
+        open={saveViewOpen}
+        okText={selectedSavedView?.canManage ? '保存新版本' : '创建视图'}
+        confirmLoading={createSavedViewMutation.isPending || updateSavedViewMutation.isPending}
+        okButtonProps={{ disabled: !savedViewName.trim() }}
+        onCancel={() => setSaveViewOpen(false)}
+        onOk={() => selectedSavedView?.canManage
+          ? updateSavedViewMutation.mutate()
+          : createSavedViewMutation.mutate()}
+      >
+        <Form layout="vertical">
+          <Form.Item label="视图名称" required>
+            <Input
+              autoFocus
+              maxLength={120}
+              value={savedViewName}
+              onChange={(event) => setSavedViewName(event.target.value)}
+            />
+          </Form.Item>
+          <Form.Item label="说明">
+            <Input.TextArea
+              maxLength={500}
+              value={savedViewDescription}
+              onChange={(event) => setSavedViewDescription(event.target.value)}
+            />
+          </Form.Item>
+          <Alert
+            type="info"
+            showIcon
+            message="保存查询与展示配置，不复制工作项内容；每次执行都会重新鉴权。"
+          />
+        </Form>
+      </Modal>
+      <Modal
+        title="分享、撤销与移交"
+        open={shareOpen}
+        footer={null}
+        onCancel={() => setShareOpen(false)}
+      >
+        <Form layout="vertical">
+          <Form.Item label="空间成员" required>
+            <Select
+              showSearch
+              optionFilterProp="label"
+              loading={membersQuery.isLoading}
+              value={shareUserId}
+              options={membersQuery.data
+                ?.filter((member) => member.effective && member.userId !== selectedSavedView?.ownerUserId)
+                .map((member) => ({
+                  label: `${member.displayName} · ${member.roleKey}`,
+                  value: member.userId,
+                }))}
+              onChange={setShareUserId}
+            />
+          </Form.Item>
+          <Form.Item label="权限">
+            <Select
+              value={sharePermission}
+              options={[
+                { label: '仅使用（不能修改或再次分享）', value: 'use' },
+                { label: '可管理（可编辑、分享与删除）', value: 'manage' },
+              ]}
+              onChange={setSharePermission}
+            />
+          </Form.Item>
+          <Space wrap>
+            <Button
+              type="primary"
+              disabled={!shareUserId}
+              loading={savedViewCommandMutation.isPending}
+              onClick={() => savedViewCommandMutation.mutate('share')}
+            >
+              分享或更新权限
+            </Button>
+            <Button
+              disabled={!shareUserId}
+              loading={savedViewCommandMutation.isPending}
+              onClick={() => savedViewCommandMutation.mutate('revoke')}
+            >
+              撤销分享
+            </Button>
+            {selectedSavedView?.ownerUserId ? (
+              <Button
+                danger
+                disabled={!shareUserId}
+                loading={savedViewCommandMutation.isPending}
+                onClick={() => Modal.confirm({
+                  title: '移交视图所有权？',
+                  content: '移交后当前用户不再自动拥有管理权限。',
+                  onOk: async () => { await savedViewCommandMutation.mutateAsync('transfer') },
+                })}
+              >
+                移交所有权
+              </Button>
+            ) : null}
+          </Space>
+          {selectedSavedView?.shares.filter((share) => share.status === 'active').length ? (
+            <List
+              header="当前分享"
+              dataSource={selectedSavedView.shares.filter((share) => share.status === 'active')}
+              renderItem={(share) => (
+                <List.Item>
+                  <Typography.Text code>{share.subjectUserId}</Typography.Text>
+                  <Tag>{share.permission === 'manage' ? '可管理' : '仅使用'}</Tag>
+                </List.Item>
+              )}
+            />
+          ) : null}
+        </Form>
+      </Modal>
       <CreateWorkItemModal
         key={selectedTypeId ?? 'no-type'}
         space={space}

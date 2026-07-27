@@ -18,7 +18,7 @@ class WorkItemPermissionFoundationIntegrationTests {
             Flyway flyway = Flyway.configure()
                 .dataSource(container.getJdbcUrl(), container.getUsername(), container.getPassword())
                 .load();
-            assertEquals(105, flyway.migrate().migrationsExecuted);
+            assertEquals(109, flyway.migrate().migrationsExecuted);
             assertEquals(0, flyway.migrate().migrationsExecuted);
 
             org.postgresql.ds.PGSimpleDataSource dataSource = new org.postgresql.ds.PGSimpleDataSource();

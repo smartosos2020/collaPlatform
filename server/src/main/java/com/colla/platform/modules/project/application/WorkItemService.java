@@ -768,25 +768,12 @@ public class WorkItemService {
         int limit
     ) {
         ProjectSpaceSummary space = requireMember(user, spaceId);
-        LockedType type = repository.findCurrentType(user.workspaceId(), spaceId, typeId)
-            .orElseThrow(() -> failure("NOT_FOUND_OR_HIDDEN", "Work item type is not available"));
-        RuntimeConfiguration configuration = snapshotAdapter.requireComplete(
-            user.workspaceId(), spaceId, typeId, type.versionId()
-        );
-        JsonNode field = projection.requireQueryableField(
-            configuration, space.currentUserRole(), space.status(), fieldKey
-        );
-        var descriptor = fieldTypeRegistry.require(field.path("fieldType").asText());
-        if (!descriptor.filterable() || !descriptor.operators().contains(operator) || !"eq".equals(operator)) {
-            throw failure("QUERY_CAPABILITY_UNAVAILABLE", "Field does not publish the requested query capability");
-        }
         String normalizedSort = sortDirection == null
             ? "none"
             : sortDirection.trim().toLowerCase(Locale.ROOT);
-        if (!List.of("none", "asc", "desc").contains(normalizedSort)
-            || !"none".equals(normalizedSort) && !descriptor.sortable()) {
-            throw failure("QUERY_CAPABILITY_UNAVAILABLE", "Field does not publish the requested sort capability");
-        }
+        RuntimeConfiguration configuration = requireQueryCapability(
+            user, spaceId, typeId, fieldKey, operator, normalizedSort
+        );
         ObjectNode requested = objectMapper.createObjectNode();
         requested.set(fieldKey, value);
         FieldProjection queryValue = valueCodec.canonicalize(configuration, requested)
@@ -803,6 +790,51 @@ public class WorkItemService {
             safeLimit
         );
         return new WorkItemPage(views(user, space, matched), null);
+    }
+
+    /**
+     * Public capability boundary used by registered query consumers. Dynamic fields
+     * can only enter a query after the bound published snapshot approves the operation.
+     */
+    public RuntimeConfiguration requireQueryCapability(
+        CurrentUser user,
+        UUID spaceId,
+        UUID typeId,
+        String fieldKey,
+        String operator,
+        String sortDirection
+    ) {
+        ProjectSpaceSummary space = requireMember(user, spaceId);
+        LockedType type = repository.findCurrentType(user.workspaceId(), spaceId, typeId)
+            .orElseThrow(() -> failure("NOT_FOUND_OR_HIDDEN", "Work item type is not available"));
+        RuntimeConfiguration configuration = snapshotAdapter.requireComplete(
+            user.workspaceId(), spaceId, typeId, type.versionId()
+        );
+        JsonNode field = projection.requireQueryableField(
+            configuration, space.currentUserRole(), space.status(), fieldKey
+        );
+        var descriptor = fieldTypeRegistry.require(field.path("fieldType").asText());
+        if (!descriptor.filterable() || !descriptor.operators().contains(operator)) {
+            throw failure(
+                "QUERY_CAPABILITY_UNAVAILABLE",
+                "Field does not publish the requested query capability"
+            );
+        }
+        String normalizedSort = sortDirection == null
+            ? "none"
+            : sortDirection.trim().toLowerCase(Locale.ROOT);
+        if (!List.of("none", "asc", "desc").contains(normalizedSort)
+            || !"none".equals(normalizedSort) && !descriptor.sortable()) {
+            throw failure(
+                "QUERY_CAPABILITY_UNAVAILABLE",
+                "Field does not publish the requested sort capability"
+            );
+        }
+        return configuration;
+    }
+
+    public void requireQueryScope(CurrentUser user, UUID spaceId) {
+        requireMember(user, spaceId);
     }
 
     @Transactional

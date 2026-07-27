@@ -2,10 +2,10 @@
 title: 项目协作平台长期专项规划
 status: active
 program: PROJECT-PLATFORM
-revision: 33
+revision: 35
 updated_at: 2026-07-27
 planning_mode: rolling
-current_stage: PROJECT-PLATFORM-S13
+current_stage: PROJECT-PLATFORM-S14
 initiative_index_doc: docs/00-product/initiatives/README.md
 target_architecture_doc: docs/01-architecture/project-platform-target-architecture.md
 ---
@@ -18,7 +18,7 @@ target_architecture_doc: docs/01-architecture/project-platform-target-architectu
 
 规划采用滚动维护：当前 Stage 细化到 Task，下一 Stage 细化到 Milestone，后续 Stage 只冻结目标、依赖和退出证据。新调研、技术验证、代码事实或真实用户反馈可以修改未来规划，但不得静默改写已完成 Stage 的历史结论，也不得在没有变更记录的情况下改变正在执行 Stage 的目标。
 
-`PROJECT-PLATFORM-S08` 至 `PROJECT-PLATFORM-S12` 均已完成并归档。S12 以 V102-V105 交付受 S11 最小披露约束的个人 WorkItem 聚合、对象个性化、规范搜索、动态、提醒、催办和通知重校准，并通过真实 PostgreSQL/Flyway、六身份隔离浏览器与 `route-final`。`PROJECT-PLATFORM-S13` 已激活，固定为 4 个 Milestone、48 个 Task，从统一筛选/排序/分组/分页查询 DSL 开始，随后交付表格/列表、树形层级和个人/共享保存视图。`PLATFORM-SCALE-S01-S04` 已建立模块边界门禁、公共合同、双 API、可靠双 Worker、双 Event Gateway、统一客户端校准和唯一知识协同协议；`PLATFORM-SCALE-S05-M1` 只建立容量验证环境、确定性种子和四类加载器，M2-M5 继续 Deferred，不构成生产容量或基础设施 HA 承诺。
+`PROJECT-PLATFORM-S08` 至 `PROJECT-PLATFORM-S13` 均已完成并归档。`PROJECT-PLATFORM-S14` 已在 revision 35 激活为唯一当前 Stage，当前执行入口是 `PROJECT-PLATFORM-S14-M1-T01`；其四个 Milestone、48 个 Task 将交付受权看板、日历、甘特、基线和时间线，但尚无 S14 实现事实。`PLATFORM-SCALE-S01-S04` 已建立模块边界门禁、公共合同、双 API、可靠双 Worker、双 Event Gateway、统一客户端校准和唯一知识协同协议；`PLATFORM-SCALE-S05-M1` 只建立容量验证环境、确定性种子和四类加载器，M2-M5 继续 Deferred，不构成生产容量或基础设施 HA 承诺。
 
 ## 2. 专项目标
 
@@ -77,8 +77,8 @@ target_architecture_doc: docs/01-architecture/project-platform-target-architectu
 | PROJECT-PLATFORM-S10 | 工作项关系、层级和依赖 | S07-S09 | Completed | snapshot v4、关系/层级权威、并发循环控制、显式迁移、配置/成员 UI 与真实隔离 route-final 已交付 |
 | PROJECT-PLATFORM-S11 | 空间角色、工作项角色和数据权限 | S02-S10 | Completed | snapshot v5、分层权限、统一 decision、细粒度授权、治理恢复、配置/成员 UI 与真实隔离 route-final 已交付 |
 | PROJECT-PLATFORM-S12 | 个人工作台、搜索、收藏和动态 | S07-S11 | Completed | M1-M4、48 个 Task、V102-V105、六身份真实隔离浏览器与 route-final 已完成 |
-| PROJECT-PLATFORM-S13 | 查询模型与表格、列表、树形视图 | S04-S12 | Active | M1-M4、48 个 Task 已激活；从统一查询 DSL 开始 |
-| PROJECT-PLATFORM-S14 | 看板、日历、甘特和时间线 | S08-S13 | Planned | 泳道、拖拽流转、时间排期、层级甘特和基线 |
+| PROJECT-PLATFORM-S13 | 查询模型与表格、列表、树形视图 | S04-S12 | Completed | M1-M4、48 个 Task 与 route-final 完成；路线已归档 |
+| PROJECT-PLATFORM-S14 | 看板、日历、甘特和时间线 | S08-S13 | Active | M1-M4、48 个 Task 已激活；当前从 M1-T01 开始 |
 | PROJECT-PLATFORM-S15 | 计划、里程碑、风险、交付物和评审 | S09-S14 | Planned | 项目计划闭环、风险台账、里程碑变更和验收 |
 | PROJECT-PLATFORM-S16 | 估分、工时、产能和人员排期 | S11-S15 | Planned | 工作日历、负荷、估算/实际偏差和跨事项排期 |
 | PROJECT-PLATFORM-S17 | 自动化规则、通知和开放连接器 | S08-S16 | Planned | 触发器-条件-操作、幂等执行、Webhook 和重试 |
@@ -353,6 +353,8 @@ S02 固定输入见目标架构 17：落 `project_spaces`、成员、角色分�
 | 31 | 2026-07-27 | 归档 S11 完成路线并激活 S12；把个人工作台、最近/收藏/草稿、全局搜索、动态/提醒/催办/通知细化为 4 个 Milestone、48 个 Task | 现有 workspace dashboard、platform recent/favorite、search 与 notification 是可复用事实但不是 S12 权限权威；所有列表、计数、游标、命中和动态必须逐项复用 S11 decision/data scope，且不得提前实现 S13/S14/S16/S17/S18 | S12 Active；当前执行入口切换为 PROJECT-PLATFORM-S12-M1-T01；S11 路线归档；S13 保持 Planned |
 | 32 | 2026-07-27 | S12 四个 Milestone、48 个 Task 完成；交付 V102-V105、个人工作聚合、对象个性化、规范 WorkItem 搜索、动态/提醒/催办/通知重校准和六身份真实隔离 route-final | 个人体验只聚合各 owner 的最小事实并在响应前执行 S11 decision；索引、个人投影、卡片和通知失效均非授权权威，隐藏对象不进入标题、计数、facet、游标或通知 | S12 Completed；`current_stage` 置 none；Go S13 但保持 Planned，需先独立归档 S12 再激活 |
 | 33 | 2026-07-27 | 归档 S12 完成路线并激活 S13；把查询模型细化为统一 DSL、表格/紧凑列表、树形层级、个人/共享保存视图四个 Milestone、48 个 Task | S13 必须以 published snapshot capability、S10 canonical hierarchy、S11 decision/data scope 和 S12 最小对象合同为边界；禁止任意 SQL/脚本、客户端权限过滤及提前实现 S14/S16/S17/S18 | S13 Active；当前入口切换为 PROJECT-PLATFORM-S13-M1-T01；S12 路线归档；S14 保持 Planned |
+| 34 | 2026-07-27 | S13 四个 Milestone、48 个 Task 完成；交付 V106-V109、统一查询 DSL、表格/列表、permission-scoped 树和版本化个人/共享保存视图，并完成真实隔离 route-final | 保存视图仅持有查询与展示配置；分享、收藏、移交和执行均经 resolver、成员边界及 S11 当前 decision 重校准，不能形成结果或授权快照 | S13 Completed；`current_stage` 置 none；Go S14 但保持 Planned，需先独立归档 S13 并激活 |
+| 35 | 2026-07-27 | 归档 S13 完成路线并激活 S14；把看板/泳道/拖拽、日历/日期区间、甘特/依赖/层级、基线/时间线/性能细化为 4 个 Milestone、48 个 Task | S14 必须复用 S13 受权查询/保存视图、S08/S09 规范流程命令、S10 canonical relation/hierarchy 与 S11 decision/data scope；禁止浏览器直接改事实或提前实现 S15-S19 | S14 Active；当前入口切换为 PROJECT-PLATFORM-S14-M1-T01；S13 路线归档；S15 保持 Planned |
 
 ## 10. 主要产品参考
 

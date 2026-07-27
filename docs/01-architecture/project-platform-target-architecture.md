@@ -2,11 +2,11 @@
 title: 项目协作平台目标架构
 status: target
 program: PROJECT-PLATFORM
-program_revision: 33
+program_revision: 35
 domain_contract_version: 1
 domain_contract_status: frozen-s01-m3
 migration_contract_version: 1
-stage_review_status: s12-archived-s13-active
+stage_review_status: s13-archived-s14-active
 updated_at: 2026-07-27
 ---
 
@@ -1266,3 +1266,45 @@ S09 完成路线已经独立归档，S10 在 Program revision 27 激活为唯一
 - 树形视图只通过 S10 canonical hierarchy 公共边界查询根、子节点和祖先路径，不复制 parent/edge 权威；hidden 节点不得从子数、路径断点、聚合或错误外形中被枚举。
 - 保存视图只持有版本化查询与展示配置，不保存结果、标题、字段值、角色或授权快照。分享、复制、移交、撤销、收藏和删除使用持久回执、expected version、audit/outbox，并且分享永不扩张底层内容权限。
 - S13 不实现 S14 看板/日历/甘特、S16 产能排期、S17 自动化或 S18 跨空间同步；这些 Stage 保持 Planned。
+
+### 29.1 S13-M1 已实现边界
+
+- 查询合同固定为 schema v1，并对 filter node、field、operator、sort、group、aggregate、select、页大小和复杂度实行注册白名单与硬限制；AND/OR 子树规范化后生成稳定 SHA-256 hash，任意 SQL、脚本、JSON path 和未知类型均失败关闭。
+- 动态字段必须绑定单一 WorkItem type，并在执行前通过 published snapshot 的 query/sort capability；服务端不以无能力 JSONB 全表扫描兜底。系统字段和受控 participant/state/node/relation/hierarchy 条件经 project owner 的公共只读投影边界组合。
+- 候选集最多 200 项，先经 S11 contextual decision 和字段可读投影，再参与筛选、排序、分组、聚合、计数及 cursor；workspace/user/space/query hash/anchor 共同签名 cursor，跨身份或篡改稳定拒绝。
+- V106 建立 project owner 的查询定义、不可变执行回执和可重建投影统计；统一 execute/explain/dry-run API 与低基数指标不记录 query、identity、标题或策略正文。该预算是本地确定性上界，不声明生产 SLO。
+- M1 不交付表格/紧凑列表 Web、批量/导出、树形视图或保存/共享视图；这些仍分别由 M2-M4 实现。
+
+### 29.2 S13-M2 已实现边界
+
+- 表格与紧凑列表共用 M1 schema v1 查询和服务端受权结果；`ColumnSpec` 只接受注册 key、宽度、冻结位和格式，`CellProjection` 只从当前行已允许字段生成。read-denied 或 hidden 动态 cell 不返回空占位，也不进入导出。
+- V107 建立 project owner 的用户视图偏好、稳定命令回执和受控导出任务。偏好以 workspace/space/user/view key 隔离并用 expected version 更新；调用方 request ID/hash 精确重放。导出保存不可变 query/column 输入、owner、状态和 1 天过期水位，不保存标题或结果快照。
+- 批量 archive/restore 选择集硬限 100；每个 WorkItem 通过规范命令独立重新鉴权和乐观锁，子命令使用稳定短哈希幂等键，响应只给 succeeded/failed 与安全 reason code。单项失败不暴露标题、字段或隐藏对象存在性。
+- 导出创建和下载均重新校准空间成员；下载时重新执行 M1 query/decision，只产生当前允许行列，并防御 CSV 公式注入。当前查询最多返回 100 行，属于本地确定性预算，不声明生产容量或异步吞吐 SLO。
+- Web 提供 table/list、compact/comfortable、列选择与保存、批量反馈和受控 CSV 下载；应用级 realtime/online/focus 校准只触发 REST 重读。真实隔离 E2E 覆盖 owner/admin/member/guest/outsider/enterprise-admin、越权隐藏、偏好重放、导出收权、批量和响应式界面。
+- M2 不建立树 parent/edge 权威，也不交付个人/共享保存视图、收藏或分享；这些仍由 M3-M4 实现。
+
+### 29.3 S13-M3 已实现边界
+
+- `TreeRequest`、`TreeNode`、`AncestorPath`、`TreeAggregate` 固定 schema v1。树只通过 `WorkItemHierarchyProjectionProvider` 读取 S10 canonical hierarchy 的 identity/depth 投影，再与 M1 当前受权查询集合相交；树服务不引用 relation/hierarchy repository 或私表。
+- 每次 render/path 先执行空间成员和 S11 decision/data scope；隐藏中间节点无标记折叠到最近可见祖先。root、children、path、visible child count、matched/context 与 aggregate 都只基于可见集合，不返回断点、隐藏 identity、不可见标题或原始 edge。
+- 单次树预算固定为 200 个受权候选、32 个可见层级、50 个同级展开项和 64 个用户展开 identity。多页 expansion cursor 绑定 workspace/user/space/tree hash；循环、自引用或 cursor 漂移失败关闭，孤儿和隐藏祖先统一成为无来源标记的可见 root。
+- V108 只保存 workspace/space/user 隔离的 relation key、展开 identity、版本和可重建低基数统计；不复制 edge、parent、标题、字段、查询结果或权限快照。canonical 投影漂移仍使用 S10 scan/rebuild；树统计可丢弃，展开状态中的失效 identity 不产生内容。
+- Web 提供层级树、懒展开、键盘/勾选/详情深链、长名称截断和 table/list/tree 上下文保持；批量与导出继续走 M2 服务端逐对象授权。真实隔离 E2E 覆盖三层树、六身份、循环拒绝、离线与 1440/1366/820。
+- M3 不交付个人/共享保存视图、分享、移交、收藏或 S14 看板/日历/甘特拖拽；这些仍由 M4 与后续 Stage 实现。
+
+### 29.4 S13-M4 已实现边界
+
+- `SavedView` 固定保存 schema v1 `QueryDefinition` 与 `PresentationConfig`，后者只选择 table/list/tree、密度、注册列、canonical relation key 和有界树深度；禁止 page cursor、查询结果、标题、字段值、subject、角色或授权快照。
+- V109 建立 workspace/space/owner 复合约束的 saved view、不可变 version、可撤销 user share 与不可变 command receipt。创建/复制 identity 由 workspace/space/actor/operation/request ID 稳定派生；更新、分享、撤销、移交和删除均要求 expected aggregate version，完成回执精确重放原响应。
+- `use` 只允许目录与执行，`manage` 允许编辑/分享/撤销/删除；只有 owner 可以移交。所有 target 必须是当前有效空间成员，enterprise governance 和 non-member 不获得内容旁路；保存视图的分享不能扩大其底层 WorkItem、字段、列或树权限。
+- `SavedViewPlatformObjectResolver` 是 platform recent/favorite/deep-link 的唯一解析入口。platform 只保存 `saved_view` identity；resolver 每次重查空间成员和当前 owner/share，不可见、删除或移交导致失效引用清理且不回显旧名称、路径或数量。
+- 执行时重新规范化 DSL 并按 presentation 调用 M2 table/list 或 M3 tree 服务，因此版本不支持、持久 cursor、权限收紧和隐藏列均显式失败或按当前身份最小化。恢复只丢弃无效引用/用户状态，不改 WorkItem、层级或权限事实。
+- Web 交付个人/共享目录、创建/版本编辑、复制、收藏、分享/撤销、移交和删除，并明确展示可使用/可管理来源与“分享不扩权”。真实隔离 route-final 覆盖六身份、跨空间、并发编辑 one-winner、收权、删除、移交、幽灵收藏、离线、长名称及 1440/1366/820。
+
+### 29.5 S13 Go 与 S14 准入
+
+- S13 四个 Milestone、48 个 Task 完成并 Go，当前 Stage 置 `none`；V106-V109、四份执行报告、完整门禁和 route-final 形成 fresh 证据。
+- S14 看板、日历、甘特和时间线必须继续复用 S13 查询/保存视图、S10 canonical hierarchy/relations 与 S11 decision/data scope；拖拽只能调用 S08/S09 规范流程命令，不能由浏览器改表、推导权限或把日期/依赖投影升级为第二权威。
+- S13 完成路线已归档；S14 已在 Program revision 35 激活，当前入口为 `PROJECT-PLATFORM-S14-M1-T01`。激活只建立看板、日历、甘特、基线和时间线的 4 个 Milestone、48 个 Task，不声明任何 S14 实现事实。
+- S14 必须逐项复用 S13 受权查询/保存视图、S08/S09 规范流程命令、S10 canonical relation/hierarchy 与 S11 decision/data scope；不得提前实现 S15 项目计划、S16 产能、S17 自动化、S18 跨空间同步或 S19 管理度量。

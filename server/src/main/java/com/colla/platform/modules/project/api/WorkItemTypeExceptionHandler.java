@@ -40,7 +40,11 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
     UserWorkItemStateBackfillController.class,
     UserWorkItemNodeBackfillController.class,
     WorkItemCompatibilityController.class,
-    ProjectController.class
+    ProjectController.class,
+    UserWorkItemQueryController.class,
+    UserWorkItemViewController.class,
+    UserWorkItemTreeViewController.class,
+    UserWorkItemSavedViewController.class
 })
 public class WorkItemTypeExceptionHandler {
     @ExceptionHandler(WorkItemTypeException.class)
