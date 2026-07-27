@@ -272,3 +272,31 @@ M2 不实现 Worker lease、dead-letter、replay、handler registry 或独立进
 3. 例外没有通配符、foreign write、缺失 owner/Stage/决定或未知模块。
 4. contract Java 源文件不 import provider 私有包。
 5. 本文保留全部必要决策词和非目标。
+
+## 17. S14-M1 WorkItem 看板模块边界
+
+- 看板 API、偏好、排序、回执与统计均由 project owner 实现和持表；workspace、platform、search、notification 与其他模块不得读取 V110 私表拼装卡片、动作、计数或权限。
+- 看板只组合 project 内已有的 S13 query、S11 permission decision、S08 state presentation/command 与 S09 node presentation/command 公共边界，不创建新的跨模块内容端口，也不允许浏览器解释 guard 或直接写流程表。
+- V110 owner manifest、复合 FK、唯一约束、清理顺序和不可变 completed receipt 是架构门禁的一部分。偏好和排序是用户展示事实或可重建投影，不是 WorkItem、流程、层级、日期或授权权威。
+- M1 不改变 S10 relation/hierarchy、platform object resolver、事件 worker 或 realtime transport 的 owner；M2-M4 的日历、甘特、基线和时间线仍无已实现模块合同。
+
+## 18. S14-M2 WorkItem 日历模块边界
+
+- 日历 API、个人偏好、可重建窗口索引、日期命令回执和统计均由 project owner 实现和持表；其他 owner 不得读取 V111 私表拼装事件、日期、计数或权限。
+- 日历只组合 S13 query、S11 permission/data scope、published snapshot field capability 与 WorkItem 公共更新命令；浏览器不得自行解释字段权限、直接写工作项或把显示时区值当成存储事实。
+- 日期更新仍由 WorkItem transaction 负责 validation、activity、audit 与 outbox。V111 receipt 和 index 不能成为第二套日期、事件、关系或 history 权威。
+- M2 不改变 S10 relation/hierarchy、platform resolver 或 realtime transport owner；甘特、关键路径、基线和时间线仍由 M3-M4 交付。
+
+## 19. S14-M3 WorkItem 甘特模块边界
+
+- 甘特 API、个人偏好、可重建排期索引和统计均由 project owner 实现和持表；其他 owner 不得读取 V112 私表拼装行、日期、层级、依赖、关键路径或权限。
+- 甘特只组合 S13 query、M2 calendar/date mutation、S10 hierarchy 公共投影和 identity-only dependency 公共投影。dependency provider 的调用方先给出当前受权 identity 集合，provider 只返回双端均在集合内的稳定 edge。
+- 关键路径、浮动量、最近可见祖先和 schedule index 均为可重建派生，不成为第二套 relation、hierarchy、date 或 WorkItem 权威；浏览器不得自行补隐藏边或解释权限。
+- M3 不改变 relation/hierarchy/calendar/platform resolver/realtime owner；基线和时间线仍由 M4 交付。
+
+## 20. S14-M4 排期基线与时间线模块边界
+
+- baseline API、不可变条目/依赖、命令回执和可重建 timeline index 由 project owner 持有；V113 不保存标题、字段值、角色、权限或 history 正文。
+- project service 只通过 `AuditTimelineQuery` 公共合同读取 audit owner 的最小 work_item 事件；不得直接读取 `audit_logs`。activity、workflow 和 relation 由 project owner 内部投影为稳定来源 identity。
+- baseline compare 与 timeline render 必须先取得当前 S13/S11/S10/M2/M3 受权 identity 集合；隐藏 baseline entry 或 relation endpoint 不进入 diff、数量、事件或错误外形。
+- entry/dependency 是 90 天生命周期内的不可变视图快照，timeline index 可删除重建；两者都不是 WorkItem、日期、关系、层级、授权、audit 或 workflow history 权威。

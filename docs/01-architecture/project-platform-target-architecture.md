@@ -2,12 +2,12 @@
 title: 项目协作平台目标架构
 status: target
 program: PROJECT-PLATFORM
-program_revision: 35
+program_revision: 37
 domain_contract_version: 1
 domain_contract_status: frozen-s01-m3
 migration_contract_version: 1
-stage_review_status: s13-archived-s14-active
-updated_at: 2026-07-27
+stage_review_status: s14-archived-s15-active
+updated_at: 2026-07-28
 ---
 
 # 项目协作平台目标架构
@@ -1308,3 +1308,55 @@ S09 完成路线已经独立归档，S10 在 Program revision 27 激活为唯一
 - S14 看板、日历、甘特和时间线必须继续复用 S13 查询/保存视图、S10 canonical hierarchy/relations 与 S11 decision/data scope；拖拽只能调用 S08/S09 规范流程命令，不能由浏览器改表、推导权限或把日期/依赖投影升级为第二权威。
 - S13 完成路线已归档；S14 已在 Program revision 35 激活，当前入口为 `PROJECT-PLATFORM-S14-M1-T01`。激活只建立看板、日历、甘特、基线和时间线的 4 个 Milestone、48 个 Task，不声明任何 S14 实现事实。
 - S14 必须逐项复用 S13 受权查询/保存视图、S08/S09 规范流程命令、S10 canonical relation/hierarchy 与 S11 decision/data scope；不得提前实现 S15 项目计划、S16 产能、S17 自动化、S18 跨空间同步或 S19 管理度量。
+
+### 29.6 S14-M1 已实现边界
+
+- `BoardRequest`、`BoardColumn`、`BoardLane`、`BoardCard`、`BoardAction` 与 `MoveIntent` 固定 schema v1。view/column/lane 使用稳定 key；空列始终返回；WIP 仅是可见卡片的展示告警，不替代流程 guard，也不授权移动。
+- 看板每次 render 都扩展并执行 S13 `QueryDefinition`，只对 S11 decision/data scope 后的可见 `QueryItem` 计算列、泳道、计数、分页和卡片最小投影。系统字段使用注册 key；动态字段必须通过绑定 published snapshot 的 query capability，未知或不具能力的字段失败关闭。
+- 状态列与节点列只把 `MoveIntent` 映射到 S08 `executeWorkflowAction` 或 S09 `executeNodeTaskCommand` 公共命令。服务不直接更新 current state、token、task 或 history；caller-stable request ID、request hash、expected WorkItem/order/instance version 与不可变回执保证精确重放和 one-winner 冲突。
+- V110 建立 workspace/space/user/view 复合边界的个人偏好、可重建排序、不可变命令回执和低基数渲染统计。排序仅在 source WorkItem version 与当前权威分组一致时采用；冲突或收权失败不会留下半流转，统计不保存 WorkItem、标题、字段或身份。
+- 本地确定性预算固定为最多 12 列、24 个可见泳道、100 张卡片、200 次状态/节点 presentation 公共端口调用和 388 个 card/lane 投影容器；单次 render 的 board owner SQL 固定为一次 order 读取与一次低基数统计 upsert。该上界只用于可复现门禁，不声明生产容量、SLO 或 S16 人员产能。
+- Web 已交付 board 模式、筛选复用、泳道、拖拽、左右键跨列、上下键重排、WIP 编辑、长名称与 1440/1366/820 响应式布局。真实隔离 E2E 覆盖 owner、space-admin、member、guest、non-member、enterprise-admin、跨空间、并发 one-winner、精确重放、收权、离线输入和 REST 恢复。
+- M1 不交付日历、日期拖放、甘特、依赖线、关键路径、基线或时间线；这些仍由 S14-M2 至 M4 交付，S15-S19 也未提前实现。
+
+### 29.7 S14-M2 已实现边界
+
+- `CalendarRequest`、`DateBinding`、`RangeWindow`、`CalendarEvent`、`CalendarDay` 与 `DateMutation` 固定 schema v1；IANA timezone、date/datetime 类型、全天语义、无日期区、DST、版本、错误与窗口上限均由服务端校验。
+- render 扩展并执行 S13 `QueryDefinition`，只消费当前可见 `QueryItem`；动态日期字段必须通过绑定 published snapshot 的 `between` capability，未注册、类型错配、date/datetime 混配或 allDay 不匹配失败关闭。
+- V111 保存 workspace/space/user/view 范围的个人偏好、来源版本窗口索引、不可变日期命令回执和低基数统计。索引可删除重建且不复制标题、正文、权限或日期权威。
+- 日期移动/拉伸只调用规范 WorkItem update，使用 caller-stable request ID、request hash 与 expected WorkItem version 提供精确重放和并发 one-winner；validation、audit 和 outbox 仍由 WorkItem transaction 持有。
+- 月/周/日窗口最多 62 天、100 个可见事件、8 个 overlap lane 和 163 个窗口投影容器；这些是本地可复现门禁，不是生产容量、SLO 或 S16 产能承诺。
+- Web 已交付字段/时区选择、月/周/日窗口、拖放与键盘移动、区间调整、无日期区、离线输入恢复、长名称和 1440/1366/820 响应式体验。
+- M2 不交付甘特、依赖线、关键路径、基线或时间线；下一入口为 S14-M3，S15-S19 未提前实现。
+
+### 29.8 S14-M3 已实现边界
+
+- `GanttRequest`、`ScheduleBar`、`HierarchyRow`、`DependencyLine` 与 `GanttResult` 固定 schema v1；日期、zoom、层级、依赖、截断、版本、错误和确定性上限由服务端校验。
+- render 组合 S13 受权 `QueryDefinition`、M2 日期窗口、S10 hierarchy 公共投影和 identity-only dependency 公共投影。依赖双端必须可见，隐藏祖先折叠到最近可见父级，不能通过空隙、数量或原因泄漏。
+- 关键路径和浮动量通过有界拓扑派生；relation cycle、缺日期和截断显式降级，派生结果和 V112 schedule index 都不成为 relation、hierarchy 或 date 权威。
+- 日期移动/拉伸委托 M2 canonical mutation，继续使用 caller-stable request ID、request hash 与 expected WorkItem version；不自动修改未授权事项。
+- V112 保存个人偏好、展开状态、可重建排期索引和低基数统计；上界为 100 行、200 条可见依赖、32 层层级和 64 个展开节点。
+- Web 已交付层级展开、日/周/月缩放、依赖/关键路径提示、键盘排期、离线恢复、长名称和 1440/1366/820 响应式体验。
+- M3 不交付基线或时间线；下一入口为 S14-M4，S15-S19 未提前实现。
+
+### 29.9 S14-M4 已实现边界
+
+- `BaselineCreateCommand`、`BaselineSnapshot`、`BaselineDiff`、`TimelineRequest` 与 `TimelineResult` 固定 schema v1。V113 保存个人 baseline、不可变 entry/dependency、精确 command receipt 和可重建 timeline index。
+- baseline 只冻结当前受权 identity/version、日期、最近可见父级和 dependency identity/version；不保存标题、字段值、角色或授权快照。每次 compare 先重跑当前 Gantt 投影，隐藏/收权 identity 不以 removed 行、数量或原因泄漏。
+- timeline 组合 project activity/workflow/relation 投影和 audit owner 的 `AuditTimelineQuery` 公共合同，保存稳定 source identity/type/time/actor 引用，不复制正文或升级为新 history。
+- 确定性上界为每用户/空间 20 个 active baseline、每基线 100 entry/200 dependency、90 天保留和单次 200 timeline event。并行重建索引使用复合键幂等 upsert；这些不是生产容量或 S16 产能承诺。
+- Web 已交付基线创建/比较/删除、差异摘要、时间线、离线输入恢复、长名称和 1440/1366/820 响应式体验。
+
+### 29.10 S14 Go 与 S15 准入
+
+- S14 四个 Milestone、48 个 Task 和 V110-V113 已完成；看板、日历、甘特、基线和时间线始终复用 S13 query、S11 decision/data scope、S10 relation/hierarchy 与 S08/S09 规范命令，没有建立第二套 WorkItem、流程、日期、关系、层级或权限权威。
+- S15 可以建立计划、阶段、里程碑、风险、交付物和评审聚合，但必须复用 S14 日期/依赖/基线合同与 S11 当前权限；计划对象不能把流程节点、甘特条或 baseline 快照冒充新的 WorkItem 权威。
+- S14 完成路线已通过独立 archive-only 工作循环归档；S15 已在 Program revision 37 激活，当前唯一入口为 `PROJECT-PLATFORM-S15-M1-T01`。
+
+### 29.11 S15 激活边界
+
+- S15 的唯一当前路线包含 4 个 Milestone、48 个 Task：M1 计划/阶段/里程碑，M2 风险/问题/决策/变更台账，M3 交付物/评审/会签/验收，M4 项目详情与健康聚合。
+- Plan、Phase、Milestone、RegisterEntry、Deliverable、Review 与 Acceptance 可以形成各自唯一治理权威，但只能通过稳定 identity 和公共合同引用 canonical WorkItem、流程、关系、日期、文件、审计和用户事实。
+- 计划阶段不得冒充 S08/S09 流程节点；里程碑日期不得静默改写 WorkItem 日期；计划链接和偏差派生必须复用 S10/S14 公共投影与规范命令，并保留 provenance。
+- 所有列表、计数、责任人、物料、结论和健康信号继续执行 S11 当前 decision/data scope。隐藏对象不通过标题、数量、空隙、错误、导出或健康原因泄漏，enterprise governance 不获得内容旁路。
+- S15 激活只声明规划范围，不声明实现事实；不得提前实现 S16 估分/工时/人员产能、S17 自动化、S18 跨空间同步或 S19 组织级管理指标。

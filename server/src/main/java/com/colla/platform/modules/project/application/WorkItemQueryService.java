@@ -365,7 +365,7 @@ public final class WorkItemQueryService {
             item.createdAt(),
             item.updatedAt(),
             view.fieldValues(),
-            Map.copyOf(selected),
+            java.util.Collections.unmodifiableMap(new LinkedHashMap<>(selected)),
             view.availableActions()
         );
     }

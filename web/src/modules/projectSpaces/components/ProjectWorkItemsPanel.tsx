@@ -1,6 +1,9 @@
 import {
   ArrowLeftOutlined,
+  AppstoreOutlined,
   ApartmentOutlined,
+  BarChartOutlined,
+  CalendarOutlined,
   CommentOutlined,
   DownloadOutlined,
   FileOutlined,
@@ -39,7 +42,14 @@ import {
   Typography,
   Upload,
 } from 'antd'
-import { useEffect, useMemo, useState, type Key } from 'react'
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type CSSProperties,
+  type Key,
+  type KeyboardEvent,
+} from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
 import { ApiRequestError } from '../../../shared/api/httpClient'
@@ -76,6 +86,42 @@ import {
   type WorkItemColumn,
   type WorkItemViewRow,
 } from '../api/workItemViewsApi'
+import {
+  getWorkItemCalendarPreference,
+  mutateWorkItemCalendarDate,
+  renderWorkItemCalendar,
+  saveWorkItemCalendarPreference,
+  workItemCalendarKeys,
+  type WorkItemCalendarBinding,
+  type WorkItemCalendarEvent,
+} from '../api/workItemCalendarsApi'
+import {
+  getWorkItemGanttPreference,
+  mutateWorkItemGanttDate,
+  renderWorkItemGantt,
+  saveWorkItemGanttPreference,
+  workItemGanttKeys,
+  type WorkItemGanttBar,
+} from '../api/workItemGanttsApi'
+import {
+  compareWorkItemScheduleBaseline,
+  createWorkItemScheduleBaseline,
+  deleteWorkItemScheduleBaseline,
+  listWorkItemScheduleBaselines,
+  renderWorkItemTimeline,
+  workItemScheduleKeys,
+  type WorkItemScheduleBaselineDiff,
+} from '../api/workItemSchedulesApi'
+import {
+  getWorkItemBoardPreference,
+  moveWorkItemBoardCard,
+  renderWorkItemBoard,
+  saveWorkItemBoardPreference,
+  workItemBoardKeys,
+  type WorkItemBoardCard,
+  type WorkItemBoardColumn,
+  type WorkItemBoardResult,
+} from '../api/workItemBoardsApi'
 import {
   getWorkItemTreePreference,
   renderWorkItemTree,
@@ -139,6 +185,23 @@ function WorkItemCollection({ space }: { space: UserProjectSpace }) {
   })
   const [modeOverride, setModeOverride] = useState<'table' | 'list'>()
   const [treeMode, setTreeMode] = useState(false)
+  const [boardMode, setBoardMode] = useState(false)
+  const [calendarMode, setCalendarMode] = useState(false)
+  const [ganttMode, setGanttMode] = useState(false)
+  const [boardColumnsOverride, setBoardColumnsOverride] = useState<WorkItemBoardColumn[]>()
+  const [boardSwimlaneOverride, setBoardSwimlaneOverride] = useState<string | null>()
+  const [draggedBoardCard, setDraggedBoardCard] = useState<WorkItemBoardCard>()
+  const [draggedCalendarEvent, setDraggedCalendarEvent] = useState<WorkItemCalendarEvent>()
+  const [calendarBindingOverride, setCalendarBindingOverride] = useState<WorkItemCalendarBinding>()
+  const [calendarTimezoneOverride, setCalendarTimezoneOverride] = useState<string>()
+  const [calendarViewModeOverride, setCalendarViewModeOverride] = useState<'month' | 'week' | 'day'>()
+  const [calendarAnchorDate, setCalendarAnchorDate] = useState(() =>
+    new Date().toISOString().slice(0, 10))
+  const [ganttZoomOverride, setGanttZoomOverride] = useState<'day' | 'week' | 'month'>()
+  const [ganttExpandedOverride, setGanttExpandedOverride] = useState<string[]>()
+  const [baselineName, setBaselineName] = useState('')
+  const [selectedBaselineId, setSelectedBaselineId] = useState<string>()
+  const [baselineDiff, setBaselineDiff] = useState<WorkItemScheduleBaselineDiff>()
   const [densityOverride, setDensityOverride] = useState<'compact' | 'comfortable'>()
   const [columnKeysOverride, setColumnKeysOverride] = useState<string[]>()
   const [selectedRowKeys, setSelectedRowKeys] = useState<Key[]>([])
@@ -183,6 +246,169 @@ function WorkItemCollection({ space }: { space: UserProjectSpace }) {
     cursor: null,
   }), [columns, selectedTypeId])
   const definition = savedDefinitionOverride ?? defaultDefinition
+  const selectedType = typesQuery.data?.find((type) => type.id === selectedTypeId)
+  const boardViewKey = `type-${selectedTypeId ?? 'none'}`
+  const defaultBoardColumns = useMemo<WorkItemBoardColumn[]>(() => {
+    if (selectedType?.typeKey === 'bug') {
+      return [
+        { key: 'open', label: '待处理', wipLimit: 8, moveKind: 'state', moveActionKey: 'reopen' },
+        { key: 'in_progress', label: '处理中', wipLimit: 5, moveKind: 'state', moveActionKey: 'start_progress' },
+        { key: 'resolved', label: '待验证', wipLimit: 4, moveKind: 'state', moveActionKey: 'mark_fixed' },
+        { key: 'closed', label: '已关闭', wipLimit: 0, moveKind: 'state', moveActionKey: 'verify_passed' },
+        { key: 'canceled', label: '已取消', wipLimit: 0, moveKind: 'state', moveActionKey: 'terminate' },
+      ]
+    }
+    return [
+      { key: 'open', label: '待处理', wipLimit: 8, moveKind: 'state', moveActionKey: 'reopen' },
+      { key: 'in_progress', label: '处理中', wipLimit: 5, moveKind: 'state', moveActionKey: 'start_progress' },
+      { key: 'done', label: '已完成', wipLimit: 0, moveKind: 'state', moveActionKey: 'complete' },
+      { key: 'canceled', label: '已取消', wipLimit: 0, moveKind: 'state', moveActionKey: 'terminate' },
+    ]
+  }, [selectedType?.typeKey])
+  const boardPreferenceQuery = useQuery({
+    queryKey: workItemBoardKeys.preference(space.id, boardViewKey),
+    queryFn: () => getWorkItemBoardPreference(space.id, boardViewKey),
+    enabled: Boolean(selectedTypeId) && boardMode,
+  })
+  const boardColumns = boardColumnsOverride
+    ?? boardPreferenceQuery.data?.columns
+    ?? defaultBoardColumns
+  const boardSwimlaneField = boardSwimlaneOverride !== undefined
+    ? boardSwimlaneOverride
+    : boardPreferenceQuery.data?.swimlaneField ?? null
+  const boardRequest = {
+    schemaVersion: 1 as const,
+    viewKey: boardViewKey,
+    columnField: 'state',
+    swimlaneField: boardSwimlaneField,
+    columns: boardColumns,
+    query: definition,
+  }
+  const boardSignature = JSON.stringify(boardRequest)
+  const boardQuery = useQuery({
+    queryKey: workItemBoardKeys.render(space.id, boardSignature),
+    queryFn: () => renderWorkItemBoard(space.id, boardRequest),
+    enabled: Boolean(selectedTypeId) && boardMode,
+  })
+  const calendarViewKey = `type-${selectedTypeId ?? 'none'}`
+  const calendarPreferenceQuery = useQuery({
+    queryKey: workItemCalendarKeys.preference(space.id, calendarViewKey),
+    queryFn: () => getWorkItemCalendarPreference(space.id, calendarViewKey),
+    enabled: Boolean(selectedTypeId) && calendarMode,
+  })
+  const calendarBinding = calendarBindingOverride
+    ?? calendarPreferenceQuery.data?.binding
+    ?? { startField: 'due_date', endField: null, allDay: true }
+  const calendarTimezone = calendarTimezoneOverride
+    ?? calendarPreferenceQuery.data?.timezone
+    ?? Intl.DateTimeFormat().resolvedOptions().timeZone
+    ?? 'UTC'
+  const calendarViewMode = calendarViewModeOverride
+    ?? calendarPreferenceQuery.data?.mode
+    ?? 'month'
+  const calendarRange = calendarWindow(calendarAnchorDate, calendarViewMode)
+  const calendarRequest = {
+    schemaVersion: 1 as const,
+    viewKey: calendarViewKey,
+    binding: calendarBinding,
+    window: {
+      ...calendarRange,
+      timezone: calendarTimezone,
+      mode: calendarViewMode,
+    },
+    query: definition,
+  }
+  const calendarSignature = JSON.stringify(calendarRequest)
+  const calendarQuery = useQuery({
+    queryKey: workItemCalendarKeys.render(space.id, calendarSignature),
+    queryFn: () => renderWorkItemCalendar(space.id, calendarRequest),
+    enabled: Boolean(selectedTypeId) && calendarMode,
+  })
+  const ganttViewKey = `type-${selectedTypeId ?? 'none'}`
+  const ganttPreferenceQuery = useQuery({
+    queryKey: workItemGanttKeys.preference(space.id, ganttViewKey),
+    queryFn: () => getWorkItemGanttPreference(space.id, ganttViewKey),
+    enabled: Boolean(selectedTypeId) && ganttMode,
+  })
+  const ganttZoom = ganttZoomOverride ?? ganttPreferenceQuery.data?.zoom ?? 'week'
+  const ganttExpanded = ganttExpandedOverride
+    ?? ganttPreferenceQuery.data?.expandedNodeIds
+    ?? []
+  const ganttRequest = {
+    schemaVersion: 1 as const,
+    viewKey: ganttViewKey,
+    binding: calendarBinding,
+    window: {
+      ...calendarRange,
+      timezone: calendarTimezone,
+      mode: calendarViewMode,
+    },
+    query: definition,
+    hierarchyRelationKey: 'parent_child',
+    expandedNodeIds: ganttExpanded,
+    criticalPath: true,
+  }
+  const ganttSignature = JSON.stringify(ganttRequest)
+  const ganttQuery = useQuery({
+    queryKey: workItemGanttKeys.render(space.id, ganttSignature),
+    queryFn: () => renderWorkItemGantt(space.id, ganttRequest),
+    enabled: Boolean(selectedTypeId) && ganttMode,
+  })
+  const baselinesQuery = useQuery({
+    queryKey: workItemScheduleKeys.baselines(space.id),
+    queryFn: () => listWorkItemScheduleBaselines(space.id),
+    enabled: Boolean(selectedTypeId) && ganttMode,
+  })
+  const timelineQuery = useQuery({
+    queryKey: workItemScheduleKeys.timeline(space.id, ganttSignature),
+    queryFn: () => renderWorkItemTimeline(space.id, ganttRequest),
+    enabled: Boolean(selectedTypeId) && ganttMode,
+  })
+  const createBaselineMutation = useMutation({
+    mutationFn: () => createWorkItemScheduleBaseline(
+      space.id,
+      baselineName,
+      ganttRequest,
+    ),
+    onSuccess: async (snapshot) => {
+      setSelectedBaselineId(snapshot.baseline.id)
+      setBaselineName('')
+      setBaselineDiff(undefined)
+      await queryClient.invalidateQueries({
+        queryKey: workItemScheduleKeys.baselines(space.id),
+      })
+      message.success('排期基线已创建')
+    },
+    onError: (error) => message.error(errorMessage(error, '基线创建失败，请刷新后重试')),
+  })
+  const compareBaselineMutation = useMutation({
+    mutationFn: (baselineId: string) => compareWorkItemScheduleBaseline(
+      space.id,
+      baselineId,
+      ganttRequest,
+    ),
+    onSuccess: (result) => {
+      setBaselineDiff(result)
+      message.success('基线差异已按当前权限重新计算')
+    },
+    onError: (error) => message.error(errorMessage(error, '基线比较失败，请刷新后重试')),
+  })
+  const deleteBaselineMutation = useMutation({
+    mutationFn: async (baselineId: string) => {
+      const baseline = baselinesQuery.data?.find((value) => value.id === baselineId)
+      if (!baseline) throw new Error('Baseline is no longer available')
+      return deleteWorkItemScheduleBaseline(space.id, baseline)
+    },
+    onSuccess: async () => {
+      setSelectedBaselineId(undefined)
+      setBaselineDiff(undefined)
+      await queryClient.invalidateQueries({
+        queryKey: workItemScheduleKeys.baselines(space.id),
+      })
+      message.success('排期基线已删除')
+    },
+    onError: (error) => message.error(errorMessage(error, '基线删除失败，请刷新后重试')),
+  })
   const savedViewsQuery = useQuery({
     queryKey: savedViewKeys.list(space.id),
     queryFn: () => listSavedViews(space.id),
@@ -203,17 +429,17 @@ function WorkItemCollection({ space }: { space: UserProjectSpace }) {
       columns,
       query: definition,
     }),
-    enabled: Boolean(selectedTypeId) && !treeMode,
+    enabled: Boolean(selectedTypeId) && !treeMode && !boardMode && !calendarMode && !ganttMode,
   })
   const treePreferenceQuery = useQuery({
     queryKey: workItemTreeViewKeys.preference(space.id),
     queryFn: () => getWorkItemTreePreference(space.id),
-    enabled: treeMode,
+    enabled: treeMode && !boardMode && !calendarMode && !ganttMode,
   })
   const treeQuery = useQuery({
     queryKey: workItemTreeViewKeys.roots(space.id, viewSignature),
     queryFn: () => renderWorkItemTree(space.id, definition),
-    enabled: Boolean(selectedTypeId) && treeMode,
+    enabled: Boolean(selectedTypeId) && treeMode && !boardMode && !calendarMode && !ganttMode,
   })
   const effectiveExpandedTreeKeys = expandedTreeKeys
     ?? treePreferenceQuery.data?.expandedNodeIds
@@ -245,7 +471,40 @@ function WorkItemCollection({ space }: { space: UserProjectSpace }) {
     return (treeQuery.data?.items ?? []).map(build)
   }, [loadedTreeChildren, treeQuery.data?.items])
   const savePreferenceMutation = useMutation<unknown>({
-    mutationFn: () => treeMode
+    mutationFn: () => ganttMode
+      ? saveWorkItemGanttPreference(
+          space.id,
+          ganttViewKey,
+          ganttPreferenceQuery.data?.version ?? 0,
+          {
+            binding: calendarBinding,
+            timezone: calendarTimezone,
+            zoom: ganttZoom,
+            hierarchyRelationKey: 'parent_child',
+            expandedNodeIds: ganttExpanded,
+          },
+        )
+      : calendarMode
+      ? saveWorkItemCalendarPreference(
+          space.id,
+          calendarViewKey,
+          calendarPreferenceQuery.data?.version ?? 0,
+          calendarBinding,
+          calendarTimezone,
+          calendarViewMode,
+        )
+      : boardMode
+      ? saveWorkItemBoardPreference(
+          space.id,
+          boardViewKey,
+          boardPreferenceQuery.data?.version ?? 0,
+          {
+            columnField: 'state',
+            swimlaneField: boardSwimlaneField,
+            columns: boardColumns,
+          },
+        )
+      : treeMode
       ? saveWorkItemTreePreference(
           space.id,
           treePreferenceQuery.data?.version ?? 0,
@@ -260,7 +519,13 @@ function WorkItemCollection({ space }: { space: UserProjectSpace }) {
         }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({
-        queryKey: treeMode
+        queryKey: ganttMode
+          ? workItemGanttKeys.preference(space.id, ganttViewKey)
+          : calendarMode
+          ? workItemCalendarKeys.preference(space.id, calendarViewKey)
+          : boardMode
+          ? workItemBoardKeys.preference(space.id, boardViewKey)
+          : treeMode
           ? workItemTreeViewKeys.preference(space.id)
           : workItemViewKeys.preference(space.id),
       })
@@ -273,6 +538,16 @@ function WorkItemCollection({ space }: { space: UserProjectSpace }) {
       space.id,
       action,
       (itemsQuery.data?.rows ?? [])
+        .concat((boardQuery.data?.columns ?? []).flatMap((column) =>
+          column.lanes.flatMap((lane) => lane.cards.map((card) => ({
+            workItemId: card.workItemId,
+            displayKey: card.displayKey,
+            title: card.title,
+            version: card.workItemVersion,
+            cells: [],
+            availableActions: card.availableActions,
+          }))),
+        ))
         .concat(loadedTreeItems.map((item) => ({
           workItemId: item.id,
           displayKey: item.displayKey,
@@ -304,6 +579,236 @@ function WorkItemCollection({ space }: { space: UserProjectSpace }) {
     },
     onError: (error) => message.error(errorMessage(error, '导出失败')),
   })
+  const boardMoveMutation = useMutation({
+    mutationFn: async ({
+      card,
+      column,
+      swimlaneKey,
+      rank,
+      reorder,
+    }: {
+      card: WorkItemBoardCard
+      column: WorkItemBoardResult['columns'][number]
+      swimlaneKey: string
+      rank: number
+      reorder: boolean
+    }) => {
+      if (!boardPreferenceQuery.data) {
+        await saveWorkItemBoardPreference(space.id, boardViewKey, 0, {
+          columnField: 'state',
+          swimlaneField: boardSwimlaneField,
+          columns: boardColumns,
+        })
+      }
+      const action = reorder
+        ? undefined
+        : card.moveActions.find((candidate) =>
+            candidate.kind === column.column.moveKind
+            && candidate.actionKey === column.column.moveActionKey)
+      if (!reorder && !action) throw new Error('当前身份没有到目标列的可用流程动作')
+      return moveWorkItemBoardCard(space.id, boardViewKey, card, {
+        columnKey: column.column.key,
+        swimlaneKey,
+        rank,
+        kind: reorder ? 'reorder' : action!.kind,
+        actionKey: reorder ? 'reorder' : action!.actionKey,
+        action,
+      })
+    },
+    onSuccess: async () => {
+      setDraggedBoardCard(undefined)
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: workItemBoardKeys.all }),
+        queryClient.invalidateQueries({ queryKey: workItemViewKeys.all }),
+      ])
+      message.success('看板位置已更新')
+    },
+    onError: (error) => {
+      setDraggedBoardCard(undefined)
+      message.error(errorMessage(error, '移动失败；工作项可能已变化，请刷新后重试'))
+    },
+  })
+  const moveBoardCard = (
+    card: WorkItemBoardCard,
+    column: WorkItemBoardResult['columns'][number],
+    swimlaneKey: string,
+    rank?: number,
+    forceReorder = false,
+  ) => {
+    const reorder = forceReorder || card.columnKey === column.column.key
+    if (!reorder && column.column.wipLimit > 0
+      && column.visibleCount >= column.column.wipLimit) {
+      message.warning(`“${column.column.label}”已达到 WIP 上限`)
+      return
+    }
+    const lane = column.lanes.find((candidate) => candidate.key === swimlaneKey)
+      ?? column.lanes[0]
+    const nextRank = rank
+      ?? ((lane?.cards.at(-1)?.rank ?? 0) + 1024)
+    boardMoveMutation.mutate({
+      card,
+      column,
+      swimlaneKey: lane?.key ?? 'unassigned',
+      rank: Math.max(0, nextRank),
+      reorder,
+    })
+  }
+  const keyboardBoardMove = (
+    event: KeyboardEvent,
+    card: WorkItemBoardCard,
+    columnIndex: number,
+    lane: WorkItemBoardResult['columns'][number]['lanes'][number],
+  ) => {
+    if (!boardQuery.data || boardMoveMutation.isPending) return
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+      event.preventDefault()
+      const targetIndex = columnIndex + (event.key === 'ArrowLeft' ? -1 : 1)
+      const target = boardQuery.data.columns[targetIndex]
+      if (target) moveBoardCard(card, target, lane.key)
+      return
+    }
+    if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return
+    event.preventDefault()
+    const index = lane.cards.findIndex((candidate) => candidate.workItemId === card.workItemId)
+    if (event.key === 'ArrowUp' && index > 0) {
+      const before = lane.cards[index - 1]
+      const previous = lane.cards[index - 2]
+      moveBoardCard(
+        card,
+        boardQuery.data.columns[columnIndex],
+        lane.key,
+        previous ? Math.floor((previous.rank + before.rank) / 2) : Math.floor(before.rank / 2),
+        true,
+      )
+    } else if (event.key === 'ArrowDown' && index < lane.cards.length - 1) {
+      const after = lane.cards[index + 1]
+      const following = lane.cards[index + 2]
+      moveBoardCard(
+        card,
+        boardQuery.data.columns[columnIndex],
+        lane.key,
+        following ? Math.floor((after.rank + following.rank) / 2) : after.rank + 1024,
+        true,
+      )
+    }
+  }
+  const calendarDateMutation = useMutation({
+    mutationFn: async ({
+      event,
+      startValue,
+      endValue,
+      operation,
+    }: {
+      event: WorkItemCalendarEvent
+      startValue?: string | null
+      endValue?: string | null
+      operation: 'move' | 'resize'
+    }) => {
+      if (!calendarPreferenceQuery.data) {
+        await saveWorkItemCalendarPreference(
+          space.id,
+          calendarViewKey,
+          0,
+          calendarBinding,
+          calendarTimezone,
+          calendarViewMode,
+        )
+      }
+      return mutateWorkItemCalendarDate(space.id, calendarViewKey, event, {
+        operation,
+        startValue,
+        endValue,
+        timezone: calendarTimezone,
+      })
+    },
+    onSuccess: async () => {
+      setDraggedCalendarEvent(undefined)
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: workItemCalendarKeys.all }),
+        queryClient.invalidateQueries({ queryKey: workItemViewKeys.all }),
+      ])
+      message.success('日历日期已更新')
+    },
+    onError: (error) => {
+      setDraggedCalendarEvent(undefined)
+      message.error(errorMessage(error, '日期更新失败；工作项可能已变化，请刷新后重试'))
+    },
+  })
+  const moveCalendarEvent = (event: WorkItemCalendarEvent, targetDate: string) => {
+    if (!event.allDay || !event.displayStartDate) {
+      message.warning('当前 Web 拖放只处理全天日期；时间点请使用日期编辑')
+      return
+    }
+    const duration = Math.max(
+      0,
+      dateDistance(event.displayStartDate, event.displayEndDate ?? event.displayStartDate),
+    )
+    calendarDateMutation.mutate({
+      event,
+      startValue: targetDate,
+      endValue: calendarBinding.endField ? shiftDate(targetDate, duration) : null,
+      operation: 'move',
+    })
+  }
+  const keyboardCalendarMove = (event: KeyboardEvent, item: WorkItemCalendarEvent) => {
+    if (!item.displayStartDate || !['ArrowLeft', 'ArrowRight'].includes(event.key)) return
+    event.preventDefault()
+    moveCalendarEvent(item, shiftDate(item.displayStartDate, event.key === 'ArrowLeft' ? -1 : 1))
+  }
+  const ganttDateMutation = useMutation({
+    mutationFn: async ({
+      bar,
+      startValue,
+      endValue,
+      operation,
+    }: {
+      bar: WorkItemGanttBar
+      startValue?: string | null
+      endValue?: string | null
+      operation: 'move' | 'resize'
+    }) => {
+      if (!ganttPreferenceQuery.data) {
+        await saveWorkItemGanttPreference(space.id, ganttViewKey, 0, {
+          binding: calendarBinding,
+          timezone: calendarTimezone,
+          zoom: ganttZoom,
+          hierarchyRelationKey: 'parent_child',
+          expandedNodeIds: ganttExpanded,
+        })
+      }
+      return mutateWorkItemGanttDate(space.id, ganttViewKey, bar, {
+        operation,
+        startValue,
+        endValue,
+        timezone: calendarTimezone,
+      })
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: workItemGanttKeys.all }),
+        queryClient.invalidateQueries({ queryKey: workItemCalendarKeys.all }),
+        queryClient.invalidateQueries({ queryKey: workItemViewKeys.all }),
+      ])
+      message.success('甘特排期已更新')
+    },
+    onError: (error) => {
+      message.error(errorMessage(error, '排期更新失败；请刷新后重试'))
+    },
+  })
+  const shiftGanttBar = (bar: WorkItemGanttBar, days: number) => {
+    if (!bar.startDate) return
+    const duration = Math.max(0, dateDistance(
+      bar.startDate,
+      bar.endDate ?? bar.startDate,
+    ))
+    const startValue = shiftDate(bar.startDate, days)
+    ganttDateMutation.mutate({
+      bar,
+      startValue,
+      endValue: calendarBinding.endField ? shiftDate(startValue, duration) : null,
+      operation: 'move',
+    })
+  }
   const currentPresentation = () => ({
     schemaVersion: 1 as const,
     mode: treeMode ? 'tree' as const : mode,
@@ -315,7 +820,13 @@ function WorkItemCollection({ space }: { space: UserProjectSpace }) {
   const applySavedView = (view: WorkItemSavedView) => {
     setSelectedSavedViewId(view.id)
     setSelectedTypeOverride(view.query.typeId)
+    setBoardColumnsOverride(undefined)
+    setBoardSwimlaneOverride(undefined)
+    setDraggedBoardCard(undefined)
     setSavedDefinitionOverride({ ...view.query, cursor: null })
+    setBoardMode(false)
+    setCalendarMode(false)
+    setGanttMode(false)
     setTreeMode(view.presentation.mode === 'tree')
     if (view.presentation.mode !== 'tree') setModeOverride(view.presentation.mode)
     setDensityOverride(view.presentation.density)
@@ -475,21 +986,160 @@ function WorkItemCollection({ space }: { space: UserProjectSpace }) {
             placeholder="全部类型"
             loading={typesQuery.isLoading}
             options={typesQuery.data?.map((type) => ({ label: type.name, value: type.id }))}
-            onChange={setSelectedTypeOverride}
+            onChange={(value) => {
+              setSelectedTypeOverride(value)
+              setBoardColumnsOverride(undefined)
+              setBoardSwimlaneOverride(undefined)
+              setDraggedBoardCard(undefined)
+            }}
           />
           <Segmented
             aria-label="工作项视图模式"
-            value={treeMode ? 'tree' : mode}
+            value={ganttMode
+              ? 'gantt'
+              : calendarMode
+                ? 'calendar'
+                : boardMode
+                  ? 'board'
+                  : treeMode
+                    ? 'tree'
+                    : mode}
             options={[
               { label: '表格', value: 'table', icon: <TableOutlined /> },
               { label: '紧凑列表', value: 'list', icon: <UnorderedListOutlined /> },
               { label: '层级树', value: 'tree', icon: <ApartmentOutlined /> },
+              { label: '看板', value: 'board', icon: <AppstoreOutlined /> },
+              { label: '日历', value: 'calendar', icon: <CalendarOutlined /> },
+              { label: '甘特', value: 'gantt', icon: <BarChartOutlined /> },
             ]}
             onChange={(value) => {
+              setBoardMode(value === 'board')
+              setCalendarMode(value === 'calendar')
+              setGanttMode(value === 'gantt')
               setTreeMode(value === 'tree')
-              if (value !== 'tree') setModeOverride(value as 'table' | 'list')
+              if (value === 'table' || value === 'list') setModeOverride(value)
             }}
           />
+          {boardMode ? (
+            <Select
+              aria-label="看板泳道"
+              value={boardSwimlaneField ?? 'none'}
+              options={[
+                { label: '不使用泳道', value: 'none' },
+                { label: '按我的参与角色', value: 'participantRole' },
+              ]}
+              onChange={(value) => setBoardSwimlaneOverride(
+                value === 'none' ? null : value,
+              )}
+            />
+          ) : null}
+          {calendarMode ? (
+            <>
+              <Input
+                aria-label="日历开始日期字段"
+                value={calendarBinding.startField}
+                placeholder="开始日期字段"
+                onChange={(event) => setCalendarBindingOverride({
+                  ...calendarBinding,
+                  startField: event.target.value,
+                })}
+              />
+              <Input
+                aria-label="日历结束日期字段"
+                value={calendarBinding.endField ?? ''}
+                placeholder="结束日期字段（可选）"
+                onChange={(event) => setCalendarBindingOverride({
+                  ...calendarBinding,
+                  endField: event.target.value || null,
+                })}
+              />
+              <Select
+                aria-label="日历粒度"
+                value={calendarViewMode}
+                options={[
+                  { label: '月', value: 'month' },
+                  { label: '周', value: 'week' },
+                  { label: '日', value: 'day' },
+                ]}
+                onChange={setCalendarViewModeOverride}
+              />
+              <Input
+                aria-label="日历时区"
+                value={calendarTimezone}
+                placeholder="IANA 时区"
+                onChange={(event) => setCalendarTimezoneOverride(event.target.value)}
+              />
+              <Input
+                aria-label="日历锚点日期"
+                type="date"
+                value={calendarAnchorDate}
+                onChange={(event) => setCalendarAnchorDate(event.target.value)}
+              />
+              <Button
+                aria-label="上一日历窗口"
+                onClick={() => setCalendarAnchorDate(shiftCalendarAnchor(
+                  calendarAnchorDate,
+                  calendarViewMode,
+                  -1,
+                ))}
+              >
+                上一段
+              </Button>
+              <Button
+                aria-label="下一日历窗口"
+                onClick={() => setCalendarAnchorDate(shiftCalendarAnchor(
+                  calendarAnchorDate,
+                  calendarViewMode,
+                  1,
+                ))}
+              >
+                下一段
+              </Button>
+            </>
+          ) : null}
+          {ganttMode ? (
+            <>
+              <Input
+                aria-label="甘特开始日期字段"
+                value={calendarBinding.startField}
+                placeholder="开始日期字段"
+                onChange={(event) => setCalendarBindingOverride({
+                  ...calendarBinding,
+                  startField: event.target.value,
+                })}
+              />
+              <Input
+                aria-label="甘特结束日期字段"
+                value={calendarBinding.endField ?? ''}
+                placeholder="结束日期字段（可选）"
+                onChange={(event) => setCalendarBindingOverride({
+                  ...calendarBinding,
+                  endField: event.target.value || null,
+                })}
+              />
+              <Select
+                aria-label="甘特缩放"
+                value={ganttZoom}
+                options={[
+                  { label: '日', value: 'day' },
+                  { label: '周', value: 'week' },
+                  { label: '月', value: 'month' },
+                ]}
+                onChange={setGanttZoomOverride}
+              />
+              <Input
+                aria-label="甘特时区"
+                value={calendarTimezone}
+                onChange={(event) => setCalendarTimezoneOverride(event.target.value)}
+              />
+              <Input
+                aria-label="甘特锚点日期"
+                type="date"
+                value={calendarAnchorDate}
+                onChange={(event) => setCalendarAnchorDate(event.target.value)}
+              />
+            </>
+          ) : null}
           <Select
             aria-label="列表密度"
             value={density}
@@ -589,10 +1239,18 @@ function WorkItemCollection({ space }: { space: UserProjectSpace }) {
             {selectedRowKeys.length ? <Tag color="blue">已选择 {selectedRowKeys.length} 项</Tag> : null}
           </Space>
         </div>
-        {(treeMode ? treeQuery.isLoading : itemsQuery.isLoading)
+        {(ganttMode
+          ? ganttQuery.isLoading
+          : calendarMode
+            ? calendarQuery.isLoading
+          : boardMode
+            ? boardQuery.isLoading
+          : treeMode
+            ? treeQuery.isLoading
+            : itemsQuery.isLoading)
           ? <Skeleton active paragraph={{ rows: 5 }} />
           : null}
-        {!treeMode && itemsQuery.isError ? (
+        {!treeMode && !boardMode && !calendarMode && !ganttMode && itemsQuery.isError ? (
           <Alert
             type="error"
             showIcon
@@ -601,14 +1259,15 @@ function WorkItemCollection({ space }: { space: UserProjectSpace }) {
             action={<Button size="small" onClick={() => itemsQuery.refetch()}>重试</Button>}
           />
         ) : null}
-        {!treeMode && !itemsQuery.isLoading && !itemsQuery.isError && itemsQuery.data?.rows.length === 0 ? (
+        {!treeMode && !boardMode && !calendarMode && !ganttMode && !itemsQuery.isLoading
+          && !itemsQuery.isError && itemsQuery.data?.rows.length === 0 ? (
           <Empty description="当前类型还没有工作项">
             {space.status === 'active' && space.currentUserRole !== 'guest'
               ? <Button type="primary" onClick={() => openCreate()}>创建第一条工作项</Button>
               : null}
           </Empty>
         ) : null}
-        {!treeMode && itemsQuery.data?.rows.length && mode === 'table' ? (
+        {!treeMode && !boardMode && !calendarMode && !ganttMode && itemsQuery.data?.rows.length && mode === 'table' ? (
           <Table
             size={density === 'compact' ? 'small' : 'middle'}
             rowKey="workItemId"
@@ -646,7 +1305,7 @@ function WorkItemCollection({ space }: { space: UserProjectSpace }) {
             }))}
           />
         ) : null}
-        {!treeMode && itemsQuery.data?.rows.length && mode === 'list' ? (
+        {!treeMode && !boardMode && !calendarMode && !ganttMode && itemsQuery.data?.rows.length && mode === 'list' ? (
           <List
             className={`project-work-item-compact-list is-${density}`}
             dataSource={itemsQuery.data.rows}
@@ -673,7 +1332,453 @@ function WorkItemCollection({ space }: { space: UserProjectSpace }) {
             )}
           />
         ) : null}
-        {treeMode && treeQuery.isError ? (
+        {ganttMode && ganttQuery.isError ? (
+          <Alert
+            type="error"
+            showIcon
+            message="甘特加载失败"
+            description={errorMessage(
+              ganttQuery.error,
+              '请检查日期 capability、层级与依赖；隐藏端点不会降级为占位线。',
+            )}
+            action={<Button size="small" onClick={() => ganttQuery.refetch()}>重试</Button>}
+          />
+        ) : null}
+        {ganttMode && ganttQuery.data ? (
+          <div className="project-work-item-gantt-shell" data-testid="project-work-item-gantt">
+            <Space wrap>
+              <Tag color="blue">可见排期 {ganttQuery.data.rows.length}</Tag>
+              <Tag>依赖线 {ganttQuery.data.dependencies.length}</Tag>
+              <Tag color={ganttQuery.data.criticalPathAvailable ? 'red' : 'default'}>
+                {ganttQuery.data.criticalPathAvailable
+                  ? '关键路径已派生'
+                  : `关键路径降级：${ganttQuery.data.criticalPathReason}`}
+              </Tag>
+              {ganttQuery.data.truncated ? <Tag color="orange">结果按预算截断</Tag> : null}
+              <Typography.Text type="secondary">
+                排期与依赖均由当前权限重新投影；← → 移动一天。
+              </Typography.Text>
+            </Space>
+            <section className="project-work-item-schedule-history" data-testid="work-item-schedule-history">
+              <Typography.Title level={5}>排期基线与最小时间线</Typography.Title>
+              <Space wrap>
+                <Input
+                  aria-label="基线名称"
+                  value={baselineName}
+                  maxLength={120}
+                  placeholder="例如：发布前排期"
+                  onChange={(event) => setBaselineName(event.target.value)}
+                />
+                <Button
+                  type="primary"
+                  loading={createBaselineMutation.isPending}
+                  disabled={!baselineName.trim()}
+                  onClick={() => createBaselineMutation.mutate()}
+                >
+                  创建基线
+                </Button>
+                <Select
+                  aria-label="排期基线"
+                  value={selectedBaselineId}
+                  placeholder="选择基线"
+                  loading={baselinesQuery.isLoading}
+                  options={(baselinesQuery.data ?? []).map((baseline) => ({
+                    label: baseline.name,
+                    value: baseline.id,
+                  }))}
+                  onChange={(value) => {
+                    setSelectedBaselineId(value)
+                    setBaselineDiff(undefined)
+                  }}
+                />
+                <Button
+                  disabled={!selectedBaselineId}
+                  loading={compareBaselineMutation.isPending}
+                  onClick={() => selectedBaselineId
+                    && compareBaselineMutation.mutate(selectedBaselineId)}
+                >
+                  比较当前排期
+                </Button>
+                <Button
+                  danger
+                  disabled={!selectedBaselineId}
+                  loading={deleteBaselineMutation.isPending}
+                  onClick={() => selectedBaselineId
+                    && deleteBaselineMutation.mutate(selectedBaselineId)}
+                >
+                  删除基线
+                </Button>
+              </Space>
+              <Typography.Paragraph type="secondary">
+                基线只冻结 identity、日期、父级与依赖版本，保留 90 天；标题和权限始终按当前请求重新校准。
+              </Typography.Paragraph>
+              {baselineDiff ? (
+                <Space wrap aria-label="基线差异摘要">
+                  <Tag color="blue">事项变化 {baselineDiff.entries.length}</Tag>
+                  <Tag>新增依赖 {baselineDiff.addedDependencies}</Tag>
+                  <Tag>移除依赖 {baselineDiff.removedDependencies}</Tag>
+                  {baselineDiff.truncated ? <Tag color="orange">结果已截断</Tag> : null}
+                </Space>
+              ) : null}
+              {timelineQuery.isError ? (
+                <Alert
+                  type="warning"
+                  showIcon
+                  message="时间线加载失败"
+                  description={errorMessage(timelineQuery.error, '请稍后重试')}
+                />
+              ) : (
+                <List
+                  size="small"
+                  aria-label="排期时间线"
+                  loading={timelineQuery.isLoading}
+                  locale={{ emptyText: '当前受权事项暂无时间线事件' }}
+                  dataSource={timelineQuery.data?.events ?? []}
+                  renderItem={(event) => (
+                    <List.Item>
+                      <Space wrap>
+                        <Tag>{event.sourceKind}</Tag>
+                        <strong>{event.eventType}</strong>
+                        <Typography.Text type="secondary">
+                          {formatTime(event.occurredAt)}
+                        </Typography.Text>
+                      </Space>
+                    </List.Item>
+                  )}
+                />
+              )}
+            </section>
+            <div className={`project-work-item-gantt is-${ganttZoom}`}>
+              <header className="project-work-item-gantt-header">
+                <strong>工作项 / 层级</strong>
+                <span>
+                  {ganttQuery.data.window.startDate} — {ganttQuery.data.window.endDate}
+                </span>
+              </header>
+              {ganttQuery.data.rows.map((row) => (
+                <div
+                  className="project-work-item-gantt-row"
+                  key={row.workItemId}
+                  data-testid={`gantt-row-${row.workItemId}`}
+                >
+                  <div
+                    className="project-work-item-gantt-label"
+                    style={{ paddingInlineStart: 10 + row.depth * 18 }}
+                  >
+                    {row.expandable ? (
+                      <Button
+                        size="small"
+                        type="text"
+                        aria-label={`${row.expanded ? '折叠' : '展开'} ${row.bar.title}`}
+                        onClick={() => setGanttExpandedOverride(row.expanded
+                          ? ganttExpanded.filter((id) => id !== row.workItemId)
+                          : [...ganttExpanded, row.workItemId])}
+                      >
+                        {row.expanded ? '−' : '+'}
+                      </Button>
+                    ) : <span className="project-work-item-gantt-indent" />}
+                    <button
+                      type="button"
+                      onClick={() => navigate(
+                        `/project-spaces/${space.id}/work-items/${row.workItemId}`,
+                      )}
+                    >
+                      <Tag>{row.bar.displayKey}</Tag>
+                      <strong title={row.bar.title}>{row.bar.title}</strong>
+                    </button>
+                  </div>
+                  <div className="project-work-item-gantt-track">
+                    {row.bar.startDate ? (
+                      <div
+                        className={`project-work-item-gantt-bar${row.bar.critical ? ' is-critical' : ''}`}
+                        style={ganttBarStyle(
+                          row.bar.startDate,
+                          row.bar.endDate ?? row.bar.startDate,
+                          ganttQuery.data.window.startDate,
+                          ganttQuery.data.window.endDate,
+                        )}
+                        tabIndex={0}
+                        aria-label={`${row.bar.displayKey} ${row.bar.title} 排期`}
+                        onKeyDown={(event) => {
+                          if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+                            event.preventDefault()
+                            shiftGanttBar(row.bar, event.key === 'ArrowLeft' ? -1 : 1)
+                          }
+                        }}
+                      >
+                        <span>{row.bar.startDate} → {row.bar.endDate ?? row.bar.startDate}</span>
+                        {calendarBinding.endField ? (
+                          <Input
+                            aria-label={`调整 ${row.bar.title} 甘特结束日期`}
+                            type="date"
+                            size="small"
+                            value={row.bar.endDate ?? row.bar.startDate}
+                            onChange={(event) => ganttDateMutation.mutate({
+                              bar: row.bar,
+                              startValue: row.bar.startDate,
+                              endValue: event.target.value,
+                              operation: 'resize',
+                            })}
+                          />
+                        ) : null}
+                      </div>
+                    ) : (
+                      <span className="project-work-item-gantt-unscheduled">未安排日期</span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <section className="project-work-item-gantt-dependencies">
+              <Typography.Title level={5}>受权依赖线</Typography.Title>
+              {ganttQuery.data.dependencies.map((line) => (
+                <Tag color={line.critical ? 'red' : 'blue'} key={line.relationId}>
+                  {line.sourceWorkItemId.slice(0, 8)} ← {line.targetWorkItemId.slice(0, 8)}
+                </Tag>
+              ))}
+              {!ganttQuery.data.dependencies.length
+                ? <Typography.Text type="secondary">当前窗口没有双端可见依赖</Typography.Text>
+                : null}
+            </section>
+          </div>
+        ) : null}
+        {calendarMode && calendarQuery.isError ? (
+          <Alert
+            type="error"
+            showIcon
+            message="日历加载失败"
+            description={errorMessage(
+              calendarQuery.error,
+              '请检查已发布日期字段、时区与窗口；日历不会回退读取私有投影。',
+            )}
+            action={<Button size="small" onClick={() => calendarQuery.refetch()}>重试</Button>}
+          />
+        ) : null}
+        {calendarMode && calendarQuery.data ? (
+          <div className="project-work-item-calendar-shell" data-testid="project-work-item-calendar">
+            <Space wrap>
+              <Tag color="blue">可见日程 {calendarQuery.data.visibleEventCount}</Tag>
+              <Tag>{calendarQuery.data.window.startDate} 至 {calendarQuery.data.window.endDate}</Tag>
+              <Typography.Text type="secondary">
+                全天日程可拖放或用 ← → 移动；日期修改会在服务端重新鉴权。
+              </Typography.Text>
+            </Space>
+            <div
+              className={`project-work-item-calendar is-${calendarViewMode}`}
+              style={{
+                '--calendar-columns': calendarViewMode === 'month'
+                  ? 7
+                  : calendarQuery.data.days.length,
+              } as CSSProperties}
+            >
+              {calendarQuery.data.days.map((day) => (
+                <section
+                  className="project-work-item-calendar-day"
+                  key={day.date}
+                  data-testid={`calendar-day-${day.date}`}
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={(event) => {
+                    event.preventDefault()
+                    if (draggedCalendarEvent) moveCalendarEvent(draggedCalendarEvent, day.date)
+                  }}
+                >
+                  <header>
+                    <strong>{day.date.slice(5)}</strong>
+                    <Tag>{day.events.length}</Tag>
+                  </header>
+                  <div className="project-work-item-calendar-events">
+                    {day.events.map((item) => (
+                      <article
+                        className={`project-work-item-calendar-event lane-${item.overlapLane}`}
+                        key={`${day.date}-${item.workItemId}`}
+                        tabIndex={0}
+                        draggable={item.allDay && !calendarDateMutation.isPending}
+                        aria-label={`${item.displayKey} ${item.title}`}
+                        onDragStart={() => setDraggedCalendarEvent(item)}
+                        onDragEnd={() => setDraggedCalendarEvent(undefined)}
+                        onKeyDown={(event) => keyboardCalendarMove(event, item)}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => navigate(
+                            `/project-spaces/${space.id}/work-items/${item.workItemId}`,
+                          )}
+                        >
+                          <Tag>{item.displayKey}</Tag>
+                          <strong title={item.title}>{item.title}</strong>
+                        </button>
+                        {calendarBinding.endField && item.allDay ? (
+                          <Input
+                            aria-label={`调整 ${item.title} 结束日期`}
+                            type="date"
+                            size="small"
+                            value={item.displayEndDate ?? item.displayStartDate ?? ''}
+                            onChange={(event) => calendarDateMutation.mutate({
+                              event: item,
+                              startValue: item.displayStartDate,
+                              endValue: event.target.value,
+                              operation: 'resize',
+                            })}
+                          />
+                        ) : null}
+                      </article>
+                    ))}
+                    {!day.events.length
+                      ? <div className="project-work-item-calendar-empty">拖放到此日期</div>
+                      : null}
+                  </div>
+                </section>
+              ))}
+            </div>
+            <section className="project-work-item-calendar-no-date">
+              <Typography.Title level={5}>未安排日期</Typography.Title>
+              <div>
+                {calendarQuery.data.noDateEvents.map((item) => (
+                  <article className="project-work-item-calendar-event" key={item.workItemId}>
+                    <button
+                      type="button"
+                      onClick={() => navigate(
+                        `/project-spaces/${space.id}/work-items/${item.workItemId}`,
+                      )}
+                    >
+                      <Tag>{item.displayKey}</Tag>
+                      <strong title={item.title}>{item.title}</strong>
+                    </button>
+                    <Input
+                      aria-label={`安排 ${item.title} 日期`}
+                      type="date"
+                      size="small"
+                      onChange={(event) => calendarDateMutation.mutate({
+                        event: item,
+                        startValue: event.target.value,
+                        endValue: calendarBinding.endField ? event.target.value : null,
+                        operation: 'move',
+                      })}
+                    />
+                  </article>
+                ))}
+                {!calendarQuery.data.noDateEvents.length
+                  ? <Typography.Text type="secondary">没有未安排日期的可见工作项</Typography.Text>
+                  : null}
+              </div>
+            </section>
+          </div>
+        ) : null}
+        {boardMode && !calendarMode && !ganttMode && boardQuery.isError ? (
+          <Alert
+            type="error"
+            showIcon
+            message="看板加载失败"
+            description={errorMessage(
+              boardQuery.error,
+              '看板只使用当前查询与权限结果；请检查列配置或刷新后重试。',
+            )}
+            action={<Button size="small" onClick={() => boardQuery.refetch()}>重试</Button>}
+          />
+        ) : null}
+        {boardMode && !calendarMode && !ganttMode && boardQuery.data ? (
+          <div className="project-work-item-board-shell" data-testid="project-work-item-board">
+            <Space wrap>
+              <Tag color="blue">可见卡片 {
+                boardQuery.data.columns.reduce((total, column) => total + column.visibleCount, 0)
+              }</Tag>
+              <Tag>候选评估 {boardQuery.data.evaluatedCandidates}</Tag>
+              {boardQuery.data.candidateBoundReached
+                ? <Tag color="orange">候选预算已截断</Tag>
+                : null}
+              <Typography.Text type="secondary">
+                拖放或使用方向键移动；流程动作会在服务端重新鉴权。
+              </Typography.Text>
+            </Space>
+            <div className="project-work-item-board">
+              {boardQuery.data.columns.map((column, columnIndex) => (
+                <section
+                  className={`project-work-item-board-column${column.wipExceeded ? ' is-wip-exceeded' : ''}`}
+                  key={column.column.key}
+                  data-testid={`board-column-${column.column.key}`}
+                >
+                  <header>
+                    <Space wrap>
+                      <strong>{column.column.label}</strong>
+                      <Tag color={column.wipExceeded ? 'red' : 'default'}>
+                        {column.visibleCount}
+                        {column.column.wipLimit > 0 ? ` / ${column.column.wipLimit}` : ''}
+                      </Tag>
+                    </Space>
+                    <Input
+                      aria-label={`${column.column.label} WIP 上限`}
+                      className="project-work-item-board-wip"
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={column.column.wipLimit}
+                      onChange={(event) => {
+                        const value = Math.max(0, Math.min(100, Number(event.target.value) || 0))
+                        setBoardColumnsOverride(boardColumns.map((candidate) =>
+                          candidate.key === column.column.key
+                            ? { ...candidate, wipLimit: value }
+                            : candidate))
+                      }}
+                    />
+                  </header>
+                  {column.lanes.map((lane) => (
+                    <div
+                      className="project-work-item-board-lane"
+                      key={lane.key}
+                      data-testid={`board-lane-${column.column.key}-${lane.key}`}
+                      onDragOver={(event) => event.preventDefault()}
+                      onDrop={(event) => {
+                        event.preventDefault()
+                        if (draggedBoardCard) {
+                          moveBoardCard(draggedBoardCard, column, lane.key)
+                        }
+                      }}
+                    >
+                      {boardQuery.data.swimlaneField ? (
+                        <Typography.Text className="project-work-item-board-lane-label" type="secondary">
+                          {lane.label}
+                        </Typography.Text>
+                      ) : null}
+                      {lane.cards.map((card) => (
+                        <article
+                          className="project-work-item-board-card"
+                          key={card.workItemId}
+                          tabIndex={0}
+                          draggable={!boardMoveMutation.isPending}
+                          aria-label={`${card.displayKey} ${card.title}`}
+                          onDragStart={() => setDraggedBoardCard(card)}
+                          onDragEnd={() => setDraggedBoardCard(undefined)}
+                          onClick={() => navigate(
+                            `/project-spaces/${space.id}/work-items/${card.workItemId}`,
+                          )}
+                          onKeyDown={(event) => keyboardBoardMove(
+                            event,
+                            card,
+                            columnIndex,
+                            lane,
+                          )}
+                        >
+                          <Space wrap size="small">
+                            <Tag>{card.displayKey}</Tag>
+                            <Tag color="blue">{card.moveActions.length} 个可用动作</Tag>
+                          </Space>
+                          <strong title={card.title}>{card.title}</strong>
+                          <Typography.Text type="secondary">
+                            ↑↓ 排序 · ←→ 跨列
+                          </Typography.Text>
+                        </article>
+                      ))}
+                      {!lane.cards.length ? (
+                        <div className="project-work-item-board-empty">拖放到此列</div>
+                      ) : null}
+                    </div>
+                  ))}
+                </section>
+              ))}
+            </div>
+          </div>
+        ) : null}
+        {treeMode && !boardMode && !calendarMode && !ganttMode && treeQuery.isError ? (
           <Alert
             type="error"
             showIcon
@@ -682,7 +1787,7 @@ function WorkItemCollection({ space }: { space: UserProjectSpace }) {
             action={<Button size="small" onClick={() => treeQuery.refetch()}>重试</Button>}
           />
         ) : null}
-        {treeMode && treeQuery.data ? (
+        {treeMode && !boardMode && !calendarMode && !ganttMode && treeQuery.data ? (
           <div className="project-work-item-tree" data-testid="project-work-item-tree">
             <Space wrap>
               <Tag color="blue">可见节点 {treeQuery.data.aggregate.visibleNodeCount}</Tag>
@@ -1423,6 +2528,61 @@ function formatBytes(value: number) {
   if (value < 1024) return `${value} B`
   if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`
   return `${(value / 1024 / 1024).toFixed(1)} MB`
+}
+
+function shiftDate(value: string, days: number) {
+  const date = new Date(`${value}T00:00:00Z`)
+  date.setUTCDate(date.getUTCDate() + days)
+  return date.toISOString().slice(0, 10)
+}
+
+function dateDistance(start: string, end: string) {
+  return Math.round(
+    (Date.parse(`${end}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`))
+      / (24 * 60 * 60 * 1000),
+  )
+}
+
+function calendarWindow(anchor: string, mode: 'month' | 'week' | 'day') {
+  const date = new Date(`${anchor}T00:00:00Z`)
+  if (mode === 'day') return { startDate: anchor, endDate: anchor }
+  if (mode === 'week') {
+    const mondayOffset = (date.getUTCDay() + 6) % 7
+    const startDate = shiftDate(anchor, -mondayOffset)
+    return { startDate, endDate: shiftDate(startDate, 6) }
+  }
+  const year = date.getUTCFullYear()
+  const month = date.getUTCMonth()
+  const startDate = new Date(Date.UTC(year, month, 1)).toISOString().slice(0, 10)
+  const endDate = new Date(Date.UTC(year, month + 1, 0)).toISOString().slice(0, 10)
+  return { startDate, endDate }
+}
+
+function shiftCalendarAnchor(
+  anchor: string,
+  mode: 'month' | 'week' | 'day',
+  direction: -1 | 1,
+) {
+  if (mode === 'day') return shiftDate(anchor, direction)
+  if (mode === 'week') return shiftDate(anchor, direction * 7)
+  const date = new Date(`${anchor}T00:00:00Z`)
+  date.setUTCMonth(date.getUTCMonth() + direction)
+  return date.toISOString().slice(0, 10)
+}
+
+function ganttBarStyle(
+  start: string,
+  end: string,
+  windowStart: string,
+  windowEnd: string,
+) {
+  const total = Math.max(1, dateDistance(windowStart, windowEnd) + 1)
+  const offset = Math.max(0, dateDistance(windowStart, start))
+  const duration = Math.max(1, dateDistance(start, end) + 1)
+  return {
+    '--gantt-left': `${Math.min(100, offset / total * 100)}%`,
+    '--gantt-width': `${Math.max(2, Math.min(100 - offset / total * 100, duration / total * 100))}%`,
+  } as CSSProperties
 }
 
 function useOnlineStatus() {

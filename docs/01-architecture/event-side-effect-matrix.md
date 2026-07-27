@@ -193,3 +193,29 @@ workspace audience 只表示“该 workspace 的已连接客户端需要丢弃�
 - 兼容全量重建：`POST /api/admin/search-governance/reindex`，仅管理员显式调用并写审计。
 - Worker、普通搜索和 realtime Handler 均不得调用全量重建。
 - 历史事件补投、dead-letter replay 和 realtime transport 恢复不得通过直接改表执行。
+
+## 8. S14-M1 看板副作用边界
+
+- render、偏好读取和 WIP 告警不发布业务事件；渲染统计只做 project 私有低基数 upsert，不携带 user、WorkItem、标题、字段值、策略或动作正文。
+- 状态/节点拖拽不定义 `board.moved` 领域权威事件。它只调用 S08/S09 规范公共命令，由既有 workflow/node transaction 负责 history、activity、audit/outbox；board receipt 与排序必须和调用结果同事务成败。
+- caller-stable request ID 与 request hash 的精确重放只返回原 `MoveResult`，不重复流程动作、history、activity、audit 或 outbox。乐观冲突、权限收紧和动作不匹配在提交前失败，不能留下半流转或伪排序。
+- realtime/online/focus 只使看板查询失效并触发 REST 重读；客户端不把信号或本地拖拽位置当作状态、节点或授权事实。
+
+## 9. S14-M2 日历副作用边界
+
+- 日历 render、偏好读取、窗口索引重建和低基数统计不发布领域事件；V111 不保存 WorkItem 标题、正文、字段快照、策略或身份。
+- 日期移动/拉伸只调用 canonical WorkItem update，由既有 transaction 发布 activity、audit 和 outbox。日历不定义第二个日期领域事件，也不直接写字段 JSONB。
+- 精确重放只返回原 DateMutationResult，不重复 update、audit 或 outbox；冲突、非法区间、失效 capability 和收权在提交前失败，不能留下半区间或伪窗口索引。
+- realtime/online/focus 只触发 REST 重新渲染；客户端缓存和 signal 不是日期、可见性或权限事实。
+
+## 10. S14-M3 甘特副作用边界
+
+- 甘特 render、偏好读取、排期索引重建、关键路径派生和低基数统计不发布领域事件；V112 不保存标题、字段、关系正文、父链或授权快照。
+- 日期移动/拉伸继续调用 M2 canonical date mutation；甘特不定义 `gantt.moved` 或关键路径领域事件，也不自动改写依赖事项。
+- dependency/hierarchy/realtime 变化只使受权查询失效并重新派生行、线与关键路径；客户端缓存、线条和降级原因不是关系、层级或权限事实。
+
+## 11. S14-M4 基线与时间线副作用边界
+
+- baseline create/delete 写个人视图事实和不可变 command receipt，不发布 WorkItem、relation、workflow 或 audit 替代事件；exact replay 不重复条目、依赖或副作用。
+- baseline compare、timeline render 和 index rebuild 是读取/派生操作，不发布领域事件。timeline 只引用既有 activity/audit/workflow/relation 来源。
+- 收权、过期或删除后旧 baseline 内容失败关闭；realtime/online/focus 只触发当前受权 REST 重读，客户端差异和时间线缓存不是授权或 history。

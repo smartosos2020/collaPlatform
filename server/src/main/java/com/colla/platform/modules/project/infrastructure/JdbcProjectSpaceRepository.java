@@ -145,6 +145,86 @@ public class JdbcProjectSpaceRepository implements ProjectSpaceRepository {
             spaceId
         );
         jdbcTemplate.update(
+            "delete from project_work_item_timeline_index where workspace_id = ? and space_id = ?",
+            workspaceId,
+            spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_work_item_schedule_baseline_commands where workspace_id = ? and space_id = ?",
+            workspaceId,
+            spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_work_item_schedule_baseline_dependencies where workspace_id = ? and space_id = ?",
+            workspaceId,
+            spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_work_item_schedule_baseline_entries where workspace_id = ? and space_id = ?",
+            workspaceId,
+            spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_work_item_schedule_baselines where workspace_id = ? and space_id = ?",
+            workspaceId,
+            spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_work_item_gantt_schedule_index where workspace_id = ? and space_id = ?",
+            workspaceId,
+            spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_work_item_gantt_preferences where workspace_id = ? and space_id = ?",
+            workspaceId,
+            spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_work_item_gantt_projection_stats where workspace_id = ? and space_id = ?",
+            workspaceId,
+            spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_work_item_calendar_commands where workspace_id = ? and space_id = ?",
+            workspaceId,
+            spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_work_item_calendar_window_index where workspace_id = ? and space_id = ?",
+            workspaceId,
+            spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_work_item_calendar_preferences where workspace_id = ? and space_id = ?",
+            workspaceId,
+            spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_work_item_calendar_projection_stats where workspace_id = ? and space_id = ?",
+            workspaceId,
+            spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_work_item_board_commands where workspace_id = ? and space_id = ?",
+            workspaceId,
+            spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_work_item_board_orders where workspace_id = ? and space_id = ?",
+            workspaceId,
+            spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_work_item_board_preferences where workspace_id = ? and space_id = ?",
+            workspaceId,
+            spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_work_item_board_projection_stats where workspace_id = ? and space_id = ?",
+            workspaceId,
+            spaceId
+        );
+        jdbcTemplate.update(
             "delete from project_work_item_saved_view_commands where workspace_id = ? and space_id = ?",
             workspaceId,
             spaceId

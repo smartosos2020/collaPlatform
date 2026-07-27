@@ -243,6 +243,30 @@ M37 后 Base 记录可以作为关系源：
 - 平台对象类型规则表和 Java resolver 的类型来源仍是两套，需要后续收敛。
 - 对象关系图谱仍停留在各模块详情内的局部关系展示，尚未形成全局关系浏览页面。
 
+## S14-M1 看板对象边界
+
+- BoardView、ColumnGroup、Swimlane、CardProjection、MoveIntent、偏好、排序与命令回执不是新的 platform objectType，不注册 resolver、收藏、最近访问、搜索 identity 或独立 deep link。
+- 每张卡只引用既有 canonical `work_item` identity；标题、display key、状态、动作与字段投影在每次 render 时经 S13 查询和 S11 当前权限最小化，V110 不复制这些内容。
+- 列/泳道 key、WIP 和 rank 是展示配置或可重建排序，不是 WorkItem 状态、节点 token、层级、依赖、日期或权限事实。移动成功后的对象 identity 仍是同一个 `work_item`。
+
+## S14-M2 日历对象边界
+
+- CalendarView、DateBinding、CalendarEvent、RangeWindow、窗口索引、偏好和日期命令回执不是新的 platform objectType，不注册 resolver、收藏、搜索 identity 或独立 deep link。
+- 每个 CalendarEvent 只引用既有 canonical `work_item` identity；标题、日期、动作与可见性每次都经 S13 查询、S11 data scope 和 published snapshot capability 最小化，V111 不复制 WorkItem 正文或授权。
+- 全天/区间/跨日、timezone、display date 与 overlap lane 都是日期权威字段的有界展示派生。窗口索引可删除重建，不成为日期、关系、层级或权限权威。
+
+## S14-M3 甘特对象边界
+
+- GanttView、ScheduleBar、HierarchyRow、DependencyLine、CriticalPath、展开状态和排期索引不是新的 platform objectType，不注册 resolver、收藏、搜索 identity 或独立对象权限。
+- 每一行和排期条只引用既有 canonical `work_item` identity；依赖只引用既有 relation identity/version，层级只引用 S10 公共投影，V112 不复制标题、字段、关系、父子或授权。
+- critical/float、可见父级、zoom 和 schedule index 是有界展示派生，可删除重建，不成为 WorkItem、日期、关系、层级或权限事实。
+
+## S14-M4 基线与时间线对象边界
+
+- ScheduleBaseline、BaselineEntry、BaselineDependency、Diff、TimelineEvent 和 timeline index 不是 platform objectType，不注册 resolver、收藏、搜索 identity 或独立对象权限。
+- baseline 只持有既有 `work_item`/relation identity、来源版本和日期/可见父级；名称属于创建者个人展示事实，标题和权限每次通过当前投影获得。
+- TimelineEvent 只引用现有 activity/audit/workflow/relation 来源 identity；去重与 index 可重建，不创建新的 history、actor 或业务事件。
+
 ## S11 WorkItem 权限投影
 
 - `work_item` identity、space/type binding 与对象版本不因权限策略改变；权限是对同一规范对象的服务端 decision，不创建新的平台对象类型。

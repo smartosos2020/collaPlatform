@@ -44,7 +44,11 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
     UserWorkItemQueryController.class,
     UserWorkItemViewController.class,
     UserWorkItemTreeViewController.class,
-    UserWorkItemSavedViewController.class
+    UserWorkItemSavedViewController.class,
+    UserWorkItemBoardController.class,
+    UserWorkItemCalendarController.class,
+    UserWorkItemGanttController.class,
+    UserWorkItemScheduleController.class
 })
 public class WorkItemTypeExceptionHandler {
     @ExceptionHandler(WorkItemTypeException.class)
@@ -166,8 +170,17 @@ public class WorkItemTypeExceptionHandler {
                  "NODE_TASK_ASSIGNEE_INVALID", "INVALID_RELATION_KEY",
                  "INVALID_RELATION_REASON", "INVALID_HIERARCHY_DIRECTION",
                  "INVALID_HIERARCHY_CURSOR", "INVALID_HIERARCHY_INHERITANCE_FIELD",
-                 "HIERARCHY_CONFIRMATION_REQUIRED" ->
+                 "HIERARCHY_CONFIRMATION_REQUIRED", "INVALID_BOARD_SCHEMA",
+                 "INVALID_BOARD_CONFIGURATION", "INVALID_BOARD_FIELD",
+                 "INVALID_BOARD_MOVE", "INVALID_CALENDAR_CONFIGURATION",
+                 "INVALID_CALENDAR_WINDOW", "INVALID_CALENDAR_TIMEZONE",
+                 "INVALID_CALENDAR_DATE", "INVALID_CALENDAR_MUTATION",
+                 "CALENDAR_TYPE_REQUIRED" ->
                 HttpStatus.BAD_REQUEST;
+            case "BOARD_COLUMN_UNMAPPED", "BOARD_LANE_BUDGET_EXCEEDED",
+                 "CALENDAR_WINDOW_BUDGET_EXCEEDED", "INVALID_CALENDAR_RANGE",
+                 "CALENDAR_DATE_CAPABILITY_UNAVAILABLE" ->
+                HttpStatus.UNPROCESSABLE_ENTITY;
             default -> HttpStatus.CONFLICT;
         };
     }
