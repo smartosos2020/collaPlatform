@@ -24,6 +24,8 @@ public interface PlatformObjectRepository {
 
     List<PlatformObjectReference> listRecentAccesses(UUID workspaceId, UUID userId, int limit);
 
+    void removeRecentAccess(UUID workspaceId, UUID userId, String objectType, UUID objectId);
+
     void addFavorite(UUID workspaceId, UUID userId, String objectType, UUID objectId);
 
     void removeFavorite(UUID workspaceId, UUID userId, String objectType, UUID objectId);

@@ -3,6 +3,10 @@ package com.colla.platform.modules.platform.api;
 import com.colla.platform.modules.platform.application.InternalLinkService;
 import com.colla.platform.modules.platform.application.PlatformObjectService;
 import com.colla.platform.modules.platform.application.PlatformObjectResolverRegistry;
+import com.colla.platform.modules.platform.application.DashboardPersonalizationService;
+import com.colla.platform.modules.platform.application.PersonalizationCommandService;
+import com.colla.platform.modules.platform.contract.DashboardPersonalization.CardPreference;
+import com.colla.platform.modules.platform.contract.DashboardPersonalization.DashboardLayout;
 import com.colla.platform.modules.platform.domain.PlatformModels.ParsedInternalLink;
 import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectCard;
 import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectChoicePage;
@@ -30,15 +34,21 @@ public class PlatformObjectController {
     private final PlatformObjectResolverRegistry resolverRegistry;
     private final InternalLinkService internalLinkService;
     private final PlatformObjectService platformObjectService;
+    private final DashboardPersonalizationService personalizationService;
+    private final PersonalizationCommandService personalizationCommandService;
 
     public PlatformObjectController(
         PlatformObjectResolverRegistry resolverRegistry,
         InternalLinkService internalLinkService,
-        PlatformObjectService platformObjectService
+        PlatformObjectService platformObjectService,
+        DashboardPersonalizationService personalizationService,
+        PersonalizationCommandService personalizationCommandService
     ) {
         this.resolverRegistry = resolverRegistry;
         this.internalLinkService = internalLinkService;
         this.platformObjectService = platformObjectService;
+        this.personalizationService = personalizationService;
+        this.personalizationCommandService = personalizationCommandService;
     }
 
     @GetMapping("/objects/{type}/{id}/summary")
@@ -114,6 +124,35 @@ public class PlatformObjectController {
         platformObjectService.removeFavorite(currentUser(authentication), type, id);
     }
 
+    @PostMapping("/personalization/favorites/{type}/{id}")
+    public PlatformObjectSummary setFavorite(
+        @PathVariable String type,
+        @PathVariable UUID id,
+        @Valid @RequestBody FavoriteCommand request,
+        Authentication authentication
+    ) {
+        return personalizationCommandService.setFavorite(
+            currentUser(authentication), type, id, request.requestId(), request.favorite()
+        );
+    }
+
+    @GetMapping("/personalization/dashboard")
+    public DashboardLayout dashboardLayout(Authentication authentication) {
+        CurrentUser user = currentUser(authentication);
+        return personalizationService.view(user.workspaceId(), user.id());
+    }
+
+    @PostMapping("/personalization/dashboard")
+    public DashboardLayout updateDashboardLayout(
+        @Valid @RequestBody DashboardLayoutCommand request,
+        Authentication authentication
+    ) {
+        CurrentUser user = currentUser(authentication);
+        return personalizationService.update(
+            user.workspaceId(), user.id(), request.requestId(), request.expectedVersion(), request.cards()
+        );
+    }
+
     @PostMapping("/links/resolve")
     public ParsedInternalLink resolveLink(@Valid @RequestBody ResolveLinkRequest request, Authentication authentication) {
         return internalLinkService.resolve(currentUser(authentication), request.link());
@@ -124,5 +163,15 @@ public class PlatformObjectController {
     }
 
     public record ResolveLinkRequest(@NotBlank String link) {
+    }
+
+    public record FavoriteCommand(@NotBlank String requestId, boolean favorite) {
+    }
+
+    public record DashboardLayoutCommand(
+        @NotBlank String requestId,
+        long expectedVersion,
+        List<CardPreference> cards
+    ) {
     }
 }

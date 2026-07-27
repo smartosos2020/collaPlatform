@@ -7,6 +7,9 @@ import com.colla.platform.modules.im.infrastructure.ImRepository;
 import com.colla.platform.modules.notification.infrastructure.NotificationRepository;
 import com.colla.platform.modules.platform.application.PlatformObjectService;
 import com.colla.platform.modules.project.infrastructure.ProjectRepository;
+import com.colla.platform.modules.project.contract.PersonalWorkQuery;
+import com.colla.platform.modules.project.contract.DraftSummaryQuery;
+import com.colla.platform.modules.platform.contract.DashboardPersonalization;
 import com.colla.platform.modules.workspace.domain.WorkspaceModels.WorkspaceDashboard;
 import com.colla.platform.shared.auth.CurrentUser;
 import org.springframework.stereotype.Service;
@@ -22,6 +25,9 @@ public class WorkspaceDashboardService {
     private final BaseRepository baseRepository;
     private final PlatformObjectService platformObjectService;
     private final ApprovalService approvalService;
+    private final PersonalWorkQuery personalWorkService;
+    private final DraftSummaryQuery draftSummaryQuery;
+    private final DashboardPersonalization personalizationService;
 
     public WorkspaceDashboardService(
         ProjectRepository projectRepository,
@@ -30,7 +36,10 @@ public class WorkspaceDashboardService {
         KnowledgeContentRepository contentRepository,
         BaseRepository baseRepository,
         PlatformObjectService platformObjectService,
-        ApprovalService approvalService
+        ApprovalService approvalService,
+        PersonalWorkQuery personalWorkService,
+        DraftSummaryQuery draftSummaryQuery,
+        DashboardPersonalization personalizationService
     ) {
         this.projectRepository = projectRepository;
         this.imRepository = imRepository;
@@ -39,6 +48,9 @@ public class WorkspaceDashboardService {
         this.baseRepository = baseRepository;
         this.platformObjectService = platformObjectService;
         this.approvalService = approvalService;
+        this.personalWorkService = personalWorkService;
+        this.draftSummaryQuery = draftSummaryQuery;
+        this.personalizationService = personalizationService;
     }
 
     public WorkspaceDashboard dashboard(CurrentUser currentUser) {
@@ -53,6 +65,7 @@ public class WorkspaceDashboardService {
             .limit(DASHBOARD_LIMIT)
             .toList();
         return new WorkspaceDashboard(
+            personalWorkService.dashboard(currentUser),
             projectRepository.listMyIssues(currentUser.workspaceId(), currentUser.id()).stream()
                 .filter(issue -> !"closed".equals(issue.status()))
                 .limit(DASHBOARD_LIMIT)
@@ -65,7 +78,9 @@ public class WorkspaceDashboardService {
             platformObjectService.summaries(currentUser, "knowledge_content", recentItems.stream().map(item -> item.id()).toList()),
             recentBases,
             platformObjectService.recent(currentUser, DASHBOARD_LIMIT),
-            platformObjectService.favorites(currentUser, DASHBOARD_LIMIT)
+            platformObjectService.favorites(currentUser, DASHBOARD_LIMIT),
+            draftSummaryQuery.listOwn(currentUser, DASHBOARD_LIMIT),
+            personalizationService.view(currentUser.workspaceId(), currentUser.id())
         );
     }
 }

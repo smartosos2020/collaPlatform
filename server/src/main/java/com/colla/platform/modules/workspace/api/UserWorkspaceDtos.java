@@ -5,6 +5,9 @@ import com.colla.platform.modules.im.domain.ImModels.ConversationSummary;
 import com.colla.platform.modules.notification.domain.NotificationModels.NotificationItem;
 import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectSummary;
 import com.colla.platform.modules.project.domain.ProjectModels.IssueSummary;
+import com.colla.platform.modules.project.contract.PersonalWorkQuery.PersonalWorkPage;
+import com.colla.platform.modules.project.contract.DraftSummaryQuery.DraftSummary;
+import com.colla.platform.modules.platform.contract.DashboardPersonalization.DashboardLayout;
 import com.colla.platform.modules.workspace.domain.WorkspaceModels.WorkspaceDashboard;
 import java.util.List;
 
@@ -14,6 +17,7 @@ final class UserWorkspaceDtos {
 
     static UserWorkspaceDashboardView dashboard(WorkspaceDashboard dashboard) {
         return new UserWorkspaceDashboardView(
+            dashboard.personalWork(),
             dashboard.myIssues(),
             dashboard.approvalTodos(),
             dashboard.unreadMessageCount(),
@@ -24,6 +28,8 @@ final class UserWorkspaceDtos {
             dashboard.recentBases(),
             dashboard.recentObjects(),
             dashboard.favoriteObjects(),
+            dashboard.draftSummaries(),
+            dashboard.dashboardLayout(),
             new UserWorkspaceNavigationSummary(
                 dashboard.myIssues().size(),
                 dashboard.recentKnowledgeContents().size(),
@@ -36,6 +42,7 @@ final class UserWorkspaceDtos {
     }
 
     record UserWorkspaceDashboardView(
+        PersonalWorkPage personalWork,
         List<IssueSummary> myIssues,
         List<?> approvalTodos,
         long unreadMessageCount,
@@ -46,6 +53,8 @@ final class UserWorkspaceDtos {
         List<BaseSummary> recentBases,
         List<PlatformObjectSummary> recentObjects,
         List<PlatformObjectSummary> favoriteObjects,
+        List<DraftSummary> draftSummaries,
+        DashboardLayout dashboardLayout,
         UserWorkspaceNavigationSummary navigationSummary,
         List<String> availableActions
     ) {

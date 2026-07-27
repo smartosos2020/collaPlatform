@@ -38,6 +38,17 @@ class SearchProjectionDomainEventHandlerTests {
         verify(service).applyProjection(event.workspaceId(), "message", event.aggregateId(), 4, true);
     }
 
+    @Test
+    void projectsCanonicalWorkItemFromPublicMinimalEvent() {
+        SearchIndexService service = mock(SearchIndexService.class);
+        SearchProjectionDomainEventHandler handler = new SearchProjectionDomainEventHandler(service);
+        EventMessage event = event("work_item.changed", "work_item", 23);
+
+        handler.handle(event);
+
+        verify(service).applyProjection(event.workspaceId(), "work_item", event.aggregateId(), 23, false);
+    }
+
     private static EventMessage event(String eventType, String aggregateType, long sequence) {
         return new EventMessage(
             UUID.randomUUID(),

@@ -40,11 +40,24 @@ public final class SearchModels {
         UUID maintainerId,
         String knowledgeStatus,
         Instant updatedFrom,
-        Instant updatedTo
+        Instant updatedTo,
+        List<UUID> spaceIds,
+        List<String> objectTypes,
+        List<String> objectStatuses,
+        List<String> participantRoles
     ) {
     }
 
-    public record SearchResponse(String query, String searchScope, List<SearchResult> items) {
+    public record SearchFacet(String key, String value, int count) {
+    }
+
+    public record SearchResponse(
+        String query,
+        String searchScope,
+        List<SearchResult> items,
+        List<SearchFacet> facets,
+        String nextCursor
+    ) {
     }
 
     public record AdminGovernanceSearchResult(

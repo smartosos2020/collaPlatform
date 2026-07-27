@@ -30,6 +30,7 @@ public class JdbcNotificationRepository implements NotificationRepository {
                 select id, notification_type, title, body, target_type, target_id, web_path, read_at, created_at
                 from notifications
                 where workspace_id = ? and recipient_id = ?
+                  and invalidated_at is null
                   and notification_type not like 'admin_%'
                   and notification_type not like 'governance_%'
                 """);
@@ -65,6 +66,7 @@ public class JdbcNotificationRepository implements NotificationRepository {
                 select count(*)
                 from notifications
                 where workspace_id = ? and recipient_id = ? and read_at is null
+                  and invalidated_at is null
                   and notification_type not like 'admin_%'
                   and notification_type not like 'governance_%'
                 """,
@@ -124,6 +126,7 @@ public class JdbcNotificationRepository implements NotificationRepository {
                 update notifications
                 set read_at = coalesce(read_at, now())
                 where workspace_id = ? and recipient_id = ? and id = ?
+                  and invalidated_at is null
                   and read_at is null
                   and notification_type not like 'admin_%'
                   and notification_type not like 'governance_%'
@@ -149,6 +152,7 @@ public class JdbcNotificationRepository implements NotificationRepository {
                 update notifications
                 set read_at = coalesce(read_at, now())
                 where workspace_id = ? and recipient_id = ? and id in (%s) and read_at is null
+                  and invalidated_at is null
                   and notification_type not like 'admin_%%'
                   and notification_type not like 'governance_%%'
                 """.formatted(placeholders),
@@ -162,6 +166,7 @@ public class JdbcNotificationRepository implements NotificationRepository {
             """
                 update notifications set read_at = coalesce(read_at, now())
                 where workspace_id = ? and recipient_id = ? and read_at is null
+                  and invalidated_at is null
                   and notification_type not like 'admin_%'
                   and notification_type not like 'governance_%'
                 """,
@@ -213,6 +218,51 @@ public class JdbcNotificationRepository implements NotificationRepository {
             source
         );
         return !Boolean.FALSE.equals(enabled);
+    }
+
+    @Override
+    public List<UUID> workItemTargetIds(UUID workspaceId, UUID recipientId, int limit) {
+        return jdbcTemplate.queryForList(
+            """
+                select distinct target_id
+                  from notifications
+                 where workspace_id=? and recipient_id=?
+                   and invalidated_at is null
+                   and target_type='work_item' and target_id is not null
+                 order by target_id
+                 limit ?
+                """,
+            UUID.class,
+            workspaceId,
+            recipientId,
+            Math.min(Math.max(limit, 1), 1000)
+        );
+    }
+
+    @Override
+    public int invalidateWorkItemTargets(
+        UUID workspaceId,
+        UUID recipientId,
+        List<UUID> targetIds
+    ) {
+        if (targetIds == null || targetIds.isEmpty()) {
+            return 0;
+        }
+        String placeholders = String.join(",", targetIds.stream().map(ignored -> "?").toList());
+        List<Object> args = new ArrayList<>();
+        args.add(workspaceId);
+        args.add(recipientId);
+        args.addAll(targetIds);
+        return jdbcTemplate.update(
+            """
+                update notifications
+                   set invalidated_at=now()
+                 where workspace_id=? and recipient_id=?
+                   and target_type='work_item' and target_id in (%s)
+                   and invalidated_at is null
+                """.formatted(placeholders),
+            args.toArray()
+        );
     }
 
     private NotificationItem mapNotification(ResultSet rs, int rowNum) throws SQLException {

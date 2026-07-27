@@ -32,6 +32,11 @@ public class SearchController {
         @RequestParam(required = false) String knowledgeStatus,
         @RequestParam(required = false) String updatedFrom,
         @RequestParam(required = false) String updatedTo,
+        @RequestParam(required = false) List<UUID> spaceIds,
+        @RequestParam(required = false) List<String> objectTypes,
+        @RequestParam(required = false) List<String> objectStatuses,
+        @RequestParam(required = false) List<String> participantRoles,
+        @RequestParam(required = false) String cursor,
         Authentication authentication
     ) {
         return searchService.search(
@@ -45,7 +50,12 @@ public class SearchController {
             maintainerId,
             knowledgeStatus,
             updatedFrom,
-            updatedTo
+            updatedTo,
+            spaceIds,
+            objectTypes,
+            objectStatuses,
+            participantRoles,
+            cursor
         );
     }
 

@@ -2,11 +2,11 @@
 title: 项目协作平台目标架构
 status: target
 program: PROJECT-PLATFORM
-program_revision: 31
+program_revision: 33
 domain_contract_version: 1
 domain_contract_status: frozen-s01-m3
 migration_contract_version: 1
-stage_review_status: s11-archived-s12-active
+stage_review_status: s12-archived-s13-active
 updated_at: 2026-07-27
 ---
 
@@ -1223,3 +1223,46 @@ S09 完成路线已经独立归档，S10 在 Program revision 27 激活为唯一
 - 激活点是 `PROJECT-PLATFORM-S12-M1-T01`。Revision 31 只冻结执行与验收合同，不声明任何 S12 schema、API、projection、consumer 或 UI 已实现。
 - S12 最终证据必须覆盖空库与升级 Flyway、六身份、跨空间、并发收权、hidden 零披露、索引乱序/重建、通知去重、离线/重连、长名称和 1440/1366/820 真实隔离浏览器。
 - S12 不实现 S13 查询 DSL/保存视图、S14 看板/日历/甘特、S16 产能排期、S17 自动化或 S18 跨空间同步；这些 Stage 保持 Planned。
+
+### 28.5 S12-M1 已实现边界
+
+- `project.contract.PersonalWorkQuery` 冻结 `PersonalWorkItem`、四类 `WorkBucket`、多值 `BucketReason`、签名 cursor、capability 与 deep-link 公共读合同；workspace dashboard 只依赖该 contract，不引用 project 私有 application/domain/infrastructure。
+- V102 建立 `project_personal_work_projections`、失效水位和命令回执三张 project owner 表。投影只保存 workspace/user/WorkItem/bucket/source/version/time，不保存标题、字段值、策略或 subject 私有信息；投影和水位随用户/WorkItem 清理，回执终态不可变。
+- 服务端候选端口以活动空间成员、participant 与 node task 为唯一来源，一次 SQL 有界扫描，按绑定 snapshot 缓存 configuration，并以最多 200 项一批的 S11 contextual decision 过滤后才计算分组、数量和游标。同一 WorkItem 可有多个 reason，但每个 bucket 只返回一份最小摘要。
+- cursor 使用 workspace/user/updated-at/WorkItem identity 与 HMAC 签名，不能跨用户复用或伪造；每页最多 100 个可见项、候选扫描最多 500 项并显式返回 truncated，不声明 S13 查询能力或生产容量。
+- `work_item.changed` 与 `node_task.lifecycle` 只按公开最小事件使已知用户投影失效，重复和乱序通过 source version 水位收敛；下一次读取重新查询 project 事实与 S11 decision，不从投影恢复授权或标题。
+- `/api/personal-work` 与 workspace dashboard 交付我的待办、负责、参与、关注四类入口、空态、服务端计数、受权 deep link 和窄屏展示。M1 不接管 platform recent/favorite、owner draft、search 或 notification；这些仍由 M2-M4 分别交付。
+
+### 28.6 S12-M2 已实现边界
+
+- platform 继续拥有 `object_recent_accesses` 与 `object_favorites` 规范引用；读取逐项调用实时 resolver，非 available 引用立即从当前用户投影清理，因此旧 title/path/count 不进入响应。
+- `project.contract.DraftSummaryQuery` 是 workspace 可依赖的 owner 草稿端口。project 只返回当前用户更新、仍在活动空间且具有活动成员身份的配置草稿最小摘要、状态、版本、更新时间与恢复路径，不复制 snapshot 或 diagnostics。
+- V103 新增 platform owner 的 `platform_dashboard_card_layouts` 与 `platform_personalization_commands`。稳定 card key、全目录 replace、唯一 position、expected version 与 caller-stable request ID 共同保证重放稳定、未知卡片失败关闭和多标签冲突显式刷新。
+- 收藏命令使用相同持久回执并继续依赖 `(workspace,user,objectType,objectId)` 唯一事实；recent/favorite/card 每次 REST 重读重新校准，realtime 只作为失效提示，不携带标题或授权快照。
+- workspace Dashboard/Web 已交付最近、收藏、本人草稿、卡片显隐/上移、长名称、空态、冲突提示和 1440/1366/820 响应式入口。M2 不声明全局搜索、动态、提醒或催办闭环。
+
+### 28.7 S12-M3 已实现边界
+
+- V104 扩展 search owner 的可重建投影，WorkItem 文档只保存 workspace/object/space/type/status/source version、display key、标题、类型名、规范路径和时间；不索引 JSONB 字段、hidden 内容、权限策略或 subject。
+- `work_item.changed` v1 由 search projection consumer 按 aggregate sequence 水位幂等处理；单对象重新投影先清除旧条目，因此归档、删除和恢复不会保留幽灵标题。管理员 batch rebuild 使用 UUID cursor 续跑，只改投影而不改 project 事实。
+- `/api/search` 的空间、对象类型、状态和参与角色使用固定白名单与集合硬限，SQL 仅生成有界占位符。召回最多扫描 500 项，WorkItem 每 200 项调用一次 `platform.contract.PlatformSearchProjectionProvider`，由 project owner 以绑定 snapshot、真实空间/participant/字段上下文和 S11 decision 返回允许 identity。
+- unavailable 结果在 facet、页、cursor、分数和响应前移除；facet 只统计当前可见页，签名 cursor 绑定 workspace/user/query/filters。稳定排序以相关度、更新时间、类型和 identity 收敛，不声明 S13 DSL、保存视图或生产 SLO。
+- WorkItem 的 title/path/deep-link 必须以 resolver 当前摘要校准；知识 block/comment 保留 owner 生成的授权锚点，旧 issue 继续只经显式 legacy map。低基数指标只记录 user-content scope 的请求、耗时与可见结果数，不把 query、identity 或标题作为 tag。
+- Web 搜索页已交付项目空间、对象类型、状态、参与角色筛选、空态/错误、长名称、签名分页与规范 WorkItem 深链，并覆盖 1440/1366/820。M3 不实现保存视图、动态、提醒、催办或通知。
+
+### 28.8 S12-M4 已实现边界与 S13 准入
+
+- `project.contract.PersonalCollaborationQuery` 冻结 PersonalActivity、read watermark、Reminder/Preference/Dispatch、NudgeReceipt 和 ConsistencyResult；所有动态与提醒先从 `PersonalWorkQuery` 获取当前受权 WorkItem，hidden 对象不参与摘要、计数、游标或通知。
+- V105 建立 project owner 的动态已读、提醒偏好和不可变催办回执，并给 notification owner 增加 `invalidated_at`。催办仅允许可见 WorkItem 的 owner/assignee/node-task 接收者，使用 caller-stable request ID/hash、30 分钟冷却、audit 与 `notification.created`；提醒以 user/WorkItem/dueAt/state 去重，不引入 S17 任意规则。
+- notification 在列表和未读计数前，通过 `PlatformSearchProjectionProvider.allowed` 批量重校准 WorkItem target；收权后只标记 notification 自有事实失效，不读取 project 私表，也不发携带正文的实时信号。活动已读与催办本身不伪装成 notification realtime 状态变化。
+- 一致性 dry-run/rebuild 仅检查和清理当前用户的可丢弃个人投影；WorkItem、node task、收藏、通知和审计事实不被恢复流程改写。Web 已交付动态已读、提醒偏好/派发和催办反馈，并覆盖六身份、长名称、离线/重载及 1440/1366/820。
+- S12 四个 Milestone、48 个 Task 完成并 Go，当前 Stage 置 `none`。S13 只有在独立归档/激活循环后才能建立查询 DSL、表格/列表/树形视图；必须复用 S11 decision 与 S12 最小对象/搜索合同，不得把 search index、personal projection 或 notification 当授权权威。
+
+## 29. Revision 33 激活的 S13 工程边界
+
+- S13 固定为 4 个 Milestone、48 个 Task：统一查询 DSL，表格/紧凑列表，树形层级，个人/共享保存视图与 `route-final`；入口为 `PROJECT-PLATFORM-S13-M1-T01`。
+- 查询 AST 只允许注册节点、类型化值、published snapshot capability 与深度/集合/页大小预算；禁止任意 SQL、脚本、动态列名或无 capability 的 JSONB 全表扫描。
+- 过滤、排序、分组、聚合、计数、cursor、cell、批量动作、导出和共享视图执行都必须在服务端复用 S11 decision/data scope。search index、personal projection、保存视图和浏览器状态都不是内容或授权权威。
+- 树形视图只通过 S10 canonical hierarchy 公共边界查询根、子节点和祖先路径，不复制 parent/edge 权威；hidden 节点不得从子数、路径断点、聚合或错误外形中被枚举。
+- 保存视图只持有版本化查询与展示配置，不保存结果、标题、字段值、角色或授权快照。分享、复制、移交、撤销、收藏和删除使用持久回执、expected version、audit/outbox，并且分享永不扩张底层内容权限。
+- S13 不实现 S14 看板/日历/甘特、S16 产能排期、S17 自动化或 S18 跨空间同步；这些 Stage 保持 Planned。

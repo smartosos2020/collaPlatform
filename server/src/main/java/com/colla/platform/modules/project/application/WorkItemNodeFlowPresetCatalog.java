@@ -173,7 +173,17 @@ public final class WorkItemNodeFlowPresetCatalog {
         } else {
             node.put("quorumCount", quorumCount);
         }
-        node.set("configuration", objectMapper.createObjectNode());
+        ObjectNode configuration = objectMapper.createObjectNode();
+        if ("manual".equals(kind)) {
+            configuration.putObject("schedule")
+                .put("plannedDelayMinutes", 0)
+                .put("dueAfterMinutes", 1440)
+                .put("escalationAfterMinutes", 60)
+                .put("timeZone", "UTC")
+                .put("calendar", "elapsed")
+                .put("pausePolicy", "not_supported");
+        }
+        node.set("configuration", configuration);
         node.put("sortOrder", sortOrder);
     }
 

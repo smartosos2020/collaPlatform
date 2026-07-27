@@ -43,6 +43,51 @@ export type NotificationFilters = {
   limit?: number
 }
 
+export type PersonalActivity = {
+  sequence: number
+  workItemId: string
+  spaceId: string
+  displayKey: string
+  title: string
+  activityType: string
+  sourceVersion: number
+  occurredAt: string
+  deepLink: string
+}
+
+export type PersonalActivityPage = {
+  items: PersonalActivity[]
+  nextBeforeSequence?: number | null
+  readThroughSequence: number
+  unreadCount: number
+  truncated: boolean
+  generatedAt: string
+}
+
+export type PersonalReminder = {
+  workItemId: string
+  spaceId: string
+  displayKey: string
+  title: string
+  dueAt: string
+  state: 'approaching' | 'due' | 'overdue'
+  deepLink: string
+}
+
+export type PersonalReminderView = {
+  items: PersonalReminder[]
+  timezone: string
+  evaluatedAt: string
+  enabled: boolean
+}
+
+export type PersonalReminderPreference = {
+  timezone: string
+  approachingMinutes: number
+  enabled: boolean
+  updatedAt: string
+}
+
 export function listNotifications(filters: NotificationFilters = {}) {
   const params = new URLSearchParams()
   if (filters.unreadOnly !== undefined) {
@@ -86,4 +131,37 @@ export function listNotificationPreferences() {
 
 export function updateNotificationPreference(sourceType: string, enabled: boolean) {
   return apiPut<NotificationPreference[]>(`/notifications/preferences/${sourceType}`, { enabled })
+}
+
+export function listPersonalActivities(limit = 30) {
+  return apiGet<PersonalActivityPage>(`/personal-work/activities?limit=${limit}`)
+}
+
+export function markPersonalActivitiesRead(throughSequence: number) {
+  return apiPost<{ readThroughSequence: number; updatedAt: string }>('/personal-work/activities:read', {
+    throughSequence,
+  })
+}
+
+export function listPersonalReminders(timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC') {
+  return apiGet<PersonalReminderView>(`/personal-work/reminders?timezone=${encodeURIComponent(timezone)}`)
+}
+
+export function dispatchPersonalReminders(timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC') {
+  return apiPost<{ considered: number; emitted: number; dispatchedAt: string }>('/personal-work/reminders:dispatch', {
+    timezone,
+    requestId: crypto.randomUUID(),
+  })
+}
+
+export function getPersonalReminderPreference() {
+  return apiGet<PersonalReminderPreference>('/personal-work/reminder-preference')
+}
+
+export function updatePersonalReminderPreference(preference: {
+  timezone: string
+  approachingMinutes: number
+  enabled: boolean
+}) {
+  return apiPut<PersonalReminderPreference>('/personal-work/reminder-preference', preference)
 }

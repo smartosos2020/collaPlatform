@@ -97,6 +97,24 @@ public final class WorkItemPermissionDecisionService {
         return List.copyOf(results);
     }
 
+    public List<PermissionDecision> decideContextBatch(List<ContextDecisionInput> inputs) {
+        if (inputs == null || inputs.isEmpty() || inputs.size() > MAX_BATCH_SIZE) {
+            throw failure("INVALID_PERMISSION_BATCH", "Permission batch must contain 1 to 200 decisions");
+        }
+        List<PermissionDecision> results = new ArrayList<>(inputs.size());
+        for (ContextDecisionInput input : inputs) {
+            results.add(decide(
+                input.configuration(),
+                input.subject(),
+                input.spaceId(),
+                input.workItemId(),
+                input.action(),
+                input.context()
+            ));
+        }
+        return List.copyOf(results);
+    }
+
     public void require(PermissionDecision decision) {
         if (!decision.allowed()) {
             throw failure(
@@ -112,6 +130,16 @@ public final class WorkItemPermissionDecisionService {
         UUID spaceId,
         UUID workItemId,
         String action
+    ) {
+    }
+
+    public record ContextDecisionInput(
+        RuntimeConfiguration configuration,
+        SubjectContext subject,
+        UUID spaceId,
+        UUID workItemId,
+        String action,
+        EvaluationContext context
     ) {
     }
 }

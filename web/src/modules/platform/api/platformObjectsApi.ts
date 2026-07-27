@@ -144,3 +144,10 @@ export function removeObjectFavorite(objectType: string, objectId: string) {
     `/platform/objects/${encodeURIComponent(objectType)}/${encodeURIComponent(objectId)}/favorite/remove`,
   )
 }
+
+export function setObjectFavorite(objectType: string, objectId: string, favorite: boolean, requestId: string) {
+  return apiPost<PlatformObjectSummary>(
+    `/platform/personalization/favorites/${encodeURIComponent(objectType)}/${encodeURIComponent(objectId)}`,
+    { requestId, favorite },
+  )
+}

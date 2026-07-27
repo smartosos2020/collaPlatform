@@ -1,5 +1,6 @@
 package com.colla.platform.modules.search.infrastructure;
 
+import com.colla.platform.modules.platform.contract.PlatformSearchProjectionProvider.SearchDocument;
 import com.colla.platform.modules.search.domain.SearchModels.SearchResult;
 import com.colla.platform.modules.search.domain.SearchModels.SearchFilters;
 import java.util.List;
@@ -12,7 +13,8 @@ public interface SearchRepository {
         "base",
         "base_table",
         "base_record",
-        "message"
+        "message",
+        "work_item"
     );
 
     List<SearchResult> search(UUID workspaceId, UUID userId, String query, SearchFilters filters, int limit);
@@ -28,6 +30,16 @@ public interface SearchRepository {
     );
 
     RebuildPage rebuildBatch(UUID workspaceId, String objectType, UUID afterId, int limit);
+
+    boolean projectDocument(UUID workspaceId, SearchDocument document, long sourceVersion);
+
+    RebuildPage rebuildDocuments(
+        UUID workspaceId,
+        String objectType,
+        UUID afterId,
+        List<SearchDocument> documents,
+        int limit
+    );
 
     enum ProjectionOperation {
         UPSERT("upsert"),

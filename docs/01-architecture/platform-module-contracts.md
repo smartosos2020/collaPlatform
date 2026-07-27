@@ -239,6 +239,14 @@ M2 不实现 Worker lease、dead-letter、replay、handler registry 或独立进
 - S11-M4 的用户 explanation、治理 trace、request adapter、角色 mutation、策略 preview、consistency scan 和 legacy disposition 均属于 project 公共 API/应用边界；治理 trace 需要治理权限与内容访问交集，enterprise governance 不能反向取得 WorkItem 内容。
 - 通用 permission 模块继续拥有公共申请/审批/授予/拒绝/撤回事实；project 只提交规范 WorkItem identity 与有界申请合同，不允许 permission 模块读取 project 私表或把通用 ACL 当作 snapshot policy 的第二权威。
 - S11-M5 的 Web 配置器只写 S06 草稿 API；成员详情只读服务端 capability/explanation/access projection。运行 DTO 必须移除 `permissionModel`，禁止前端接收后按角色、selector 或 deny 正文补算授权。
+- S12-M1 的 `project.contract.PersonalWorkQuery` 是 workspace dashboard 可依赖的唯一个人 WorkItem 聚合端口。返回 `PersonalWorkItem`、四类 bucket、多值 reason、capability、签名 cursor 与规范 deep link；workspace 不得引用 project 私有 application/domain/infrastructure，也不得读 project 表拼列表。
+- `project_personal_work_projections` 与失效水位是 project 私有可重建数据，只保存 workspace/user/object/bucket/source/version/time。`work_item.changed` 和 `node_task.lifecycle` 只使投影失效；下一次读经 participant/node-task owner 事实、绑定 snapshot 与 S11 decision 重校准，事件和投影都不携带标题、字段值、策略或 subject 私有信息。
+- S12-M2 的 `project.contract.DraftSummaryQuery` 是 workspace 读取 project 配置草稿的唯一公共端口；返回本人可见的最小摘要与 owner 解释的恢复路径，禁止 workspace/platform 读取配置草稿表或复制 snapshot。
+- `platform.contract.DashboardPersonalization` 冻结稳定 card key、position/hidden、layout version 与全目录替换合同。platform 拥有 recent/favorite、card layout 与命令回执；所有对象标题和路径只由实时 resolver 返回，非 available 引用清理后不回显旧快照。
+- S12-M3 的 `platform.contract.PlatformSearchProjectionProvider` 是 owner 向 search 提供最小可重建文档和 `view` decision 的横向公共端口。project 实现只输出 display key、标题、类型、空间、状态、来源版本与规范链接；decision 每批不超过 200 个 identity，只返回允许 identity。search 不得引用 project application/domain/infrastructure、读取 project 私表或自行解释空间、participant、字段和策略。
+- S12-M4 的 `project.contract.PersonalCollaborationQuery` 是动态、提醒、催办与一致性恢复的公共入口。动态和提醒先通过 `PersonalWorkQuery` 取得当前可见 WorkItem；催办再校准空间、对象、接收者与冷却，并以不可变 receipt、audit 和 `notification.created` 交付。notification 仅通过 `PlatformSearchProjectionProvider.allowed` 重校准 WorkItem target，不读取 project 私表；权限收紧后以 `invalidated_at` 排除旧通知，未读数与列表使用同一可见集合。
+- `project_personal_activity_read_states`、`project_reminder_preferences`、`project_nudge_receipts` 由 project owner 独占；`notifications.invalidated_at` 由 notification owner 独占。动态、提醒和一致性 rebuild 不修改 WorkItem、node task、收藏或通知规范事实，也不把提醒/催办扩展为 S17 任意规则。
+- `SearchFilters` 只接受空间、对象类型、状态、参与角色、知识元数据和时间的固定白名单；`SearchFacet` 与签名 `SearchCursor` 只从 decision/resolver 后的 available 集合生成。索引与管理员 rebuild 都不是授权、计数或对象内容权威。
 
 ## 15. 非目标
 

@@ -153,6 +153,7 @@ public class JdbcPlatformObjectRepository implements PlatformObjectRepository {
                 select object_type, object_id, web_path, deep_link, title_snapshot, last_accessed_at touched_at
                 from object_recent_accesses
                 where workspace_id = ? and user_id = ?
+                  and (expires_at is null or expires_at > now())
                 order by last_accessed_at desc
                 limit ?
                 """,
@@ -160,6 +161,17 @@ public class JdbcPlatformObjectRepository implements PlatformObjectRepository {
             workspaceId,
             userId,
             Math.min(Math.max(limit, 1), 50)
+        );
+    }
+
+    @Override
+    public void removeRecentAccess(UUID workspaceId, UUID userId, String objectType, UUID objectId) {
+        jdbcTemplate.update(
+            """
+                delete from object_recent_accesses
+                where workspace_id = ? and user_id = ? and object_type = ? and object_id = ?
+                """,
+            workspaceId, userId, objectType, objectId
         );
     }
 

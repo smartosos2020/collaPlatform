@@ -35,4 +35,12 @@ public interface NotificationRepository {
     void upsertPreference(UUID workspaceId, UUID userId, String sourceType, boolean enabled);
 
     boolean isEnabled(UUID workspaceId, UUID userId, String notificationType);
+
+    List<UUID> workItemTargetIds(UUID workspaceId, UUID recipientId, int limit);
+
+    int invalidateWorkItemTargets(
+        UUID workspaceId,
+        UUID recipientId,
+        List<UUID> targetIds
+    );
 }

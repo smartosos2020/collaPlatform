@@ -3,6 +3,7 @@ package com.colla.platform.modules.search.infrastructure;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.colla.platform.modules.search.infrastructure.SearchRepository.ProjectionOperation;
+import com.colla.platform.modules.search.application.SearchIndexService;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -17,6 +18,9 @@ class SearchProjectionPersistenceIntegrationTests {
 
     @Autowired
     private SearchRepository searchRepository;
+
+    @Autowired
+    private SearchIndexService searchIndexService;
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
@@ -65,5 +69,25 @@ class SearchProjectionPersistenceIntegrationTests {
         assertThat(waterline.get("source_version")).isEqualTo(5L);
         assertThat(waterline.get("operation")).isEqualTo("delete");
         assertThat(indexed).isZero();
+    }
+
+    @Test
+    void canonicalWorkItemProjectionSchemaAndResumableRebuildAreAvailable() {
+        Integer projectionColumns = jdbcTemplate.queryForObject(
+            """
+                select count(*)
+                from information_schema.columns
+                where table_schema = 'public'
+                  and table_name = 'search_index_entries'
+                  and column_name in ('space_id', 'object_subtype', 'object_status', 'source_version')
+                """,
+            Integer.class
+        );
+
+        var page = searchIndexService.rebuildBatch(DEFAULT_WORKSPACE_ID, "work_item", null, 10);
+
+        assertThat(projectionColumns).isEqualTo(4);
+        assertThat(page.objectType()).isEqualTo("work_item");
+        assertThat(page.processed()).isBetween(0, 10);
     }
 }

@@ -12,8 +12,13 @@ import com.colla.platform.modules.search.domain.SearchModels.AdminGovernanceSear
 import com.colla.platform.modules.search.domain.SearchModels.AdminGovernanceSearchResult;
 import com.colla.platform.modules.search.domain.SearchModels.SearchFilters;
 import com.colla.platform.modules.search.domain.SearchModels.SearchResult;
+import com.colla.platform.modules.search.domain.SearchModels.SearchFacet;
 import com.colla.platform.modules.search.infrastructure.SearchRepository;
+import com.colla.platform.modules.platform.contract.PlatformSearchProjectionProvider;
 import com.colla.platform.shared.auth.CurrentUser;
+import com.colla.platform.shared.auth.JwtTokenProperties;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
@@ -23,6 +28,12 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import java.util.Set;
+import java.util.Base64;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -35,6 +46,9 @@ public class SearchService {
     private final KnowledgeContentRepository contentRepository;
     private final PermissionService permissionService;
     private final AuditService auditService;
+    private final PlatformSearchProjectionProvider workItemSearchProvider;
+    private final JwtTokenProperties tokenProperties;
+    private final MeterRegistry meterRegistry;
 
     public SearchService(
         SearchRepository searchRepository,
@@ -42,7 +56,10 @@ public class SearchService {
         PlatformObjectResolverRegistry objectResolverRegistry,
         KnowledgeContentRepository contentRepository,
         PermissionService permissionService,
-        AuditService auditService
+        AuditService auditService,
+        List<PlatformSearchProjectionProvider> searchProjectionProviders,
+        JwtTokenProperties tokenProperties,
+        MeterRegistry meterRegistry
     ) {
         this.searchRepository = searchRepository;
         this.searchIndexService = searchIndexService;
@@ -50,6 +67,12 @@ public class SearchService {
         this.contentRepository = contentRepository;
         this.permissionService = permissionService;
         this.auditService = auditService;
+        this.workItemSearchProvider = searchProjectionProviders.stream()
+            .filter(provider -> "work_item".equals(provider.objectType()))
+            .findFirst()
+            .orElseThrow(() -> new IllegalStateException("WorkItem search projection provider is required"));
+        this.tokenProperties = tokenProperties;
+        this.meterRegistry = meterRegistry;
     }
 
     public SearchResponse search(
@@ -63,13 +86,38 @@ public class SearchService {
         UUID maintainerId,
         String knowledgeStatus,
         String updatedFrom,
-        String updatedTo
+        String updatedTo,
+        List<UUID> spaceIds,
+        List<String> objectTypes,
+        List<String> objectStatuses,
+        List<String> participantRoles,
+        String cursor
     ) {
+        Timer.Sample timer = Timer.start(meterRegistry);
         String normalizedQuery = query == null ? "" : query.trim();
         if (normalizedQuery.length() < 2) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Search query must be at least 2 characters");
         }
         int boundedLimit = Math.max(1, Math.min(limit, 50));
+        List<UUID> safeSpaces = normalizeUuids(spaceIds, 20, "spaceIds");
+        List<String> safeTypes = normalizeValues(
+            objectTypes,
+            Set.of("issue", "knowledge_content", "base", "base_table", "base_record", "message", "work_item"),
+            10,
+            "objectTypes"
+        );
+        List<String> safeStatuses = normalizeValues(
+            objectStatuses,
+            Set.of("active", "draft", "resolved", "closed", "archived"),
+            10,
+            "objectStatuses"
+        );
+        List<String> safeRoles = normalizeValues(
+            participantRoles,
+            Set.of("owner", "assignee", "collaborator", "watcher"),
+            4,
+            "participantRoles"
+        );
         SearchFilters filters = new SearchFilters(
             knowledgeBaseId,
             directoryId,
@@ -78,13 +126,30 @@ public class SearchService {
             maintainerId,
             normalizeKnowledgeStatus(knowledgeStatus),
             parseInstantOrDate(updatedFrom, false),
-            parseInstantOrDate(updatedTo, true)
+            parseInstantOrDate(updatedTo, true),
+            safeSpaces,
+            safeTypes,
+            safeStatuses,
+            safeRoles
         );
-        List<SearchResult> items = searchRepository.search(currentUser.workspaceId(), currentUser.id(), normalizedQuery, filters, boundedLimit).stream()
+        int offset = decodeCursor(currentUser, normalizedQuery, filters, cursor);
+        int scanLimit = 500;
+        List<SearchResult> candidates = searchRepository.search(
+            currentUser.workspaceId(), currentUser.id(), normalizedQuery, filters, scanLimit
+        );
+        Set<UUID> allowedWorkItems = allowedWorkItems(currentUser, candidates, Set.copyOf(safeRoles));
+        List<SearchResult> visible = candidates.stream()
             .filter(result -> isUserContentResult(result.objectType()))
+            .filter(result -> safeRoles.isEmpty() || "work_item".equals(result.objectType()))
+            .filter(result -> !"work_item".equals(result.objectType()) || allowedWorkItems.contains(result.objectId()))
             .map(result -> hydrateResult(currentUser, result))
-            .limit(boundedLimit)
+            .filter(result -> "available".equals(result.accessState()))
             .toList();
+        List<SearchResult> items = visible.stream().skip(offset).limit(boundedLimit).toList();
+        boolean hasMore = visible.size() > offset + items.size();
+        String nextCursor = hasMore && !items.isEmpty()
+            ? encodeCursor(currentUser, normalizedQuery, filters, offset + items.size())
+            : null;
         if (items.isEmpty() && knowledgeBaseId != null) {
             auditService.log(
                 currentUser,
@@ -94,7 +159,22 @@ public class SearchService {
                 Map.of("query", normalizedQuery)
             );
         }
-        return new SearchResponse(normalizedQuery, "user_content", items);
+        List<SearchFacet> facets = items.stream()
+            .collect(java.util.stream.Collectors.groupingBy(
+                SearchResult::objectType,
+                java.util.TreeMap::new,
+                java.util.stream.Collectors.counting()
+            ))
+            .entrySet().stream()
+            .map(entry -> new SearchFacet("objectType", entry.getKey(), Math.toIntExact(entry.getValue())))
+            .toList();
+        meterRegistry.counter("colla.search.query.total", "scope", "user_content").increment();
+        meterRegistry.summary("colla.search.visible.results", "scope", "user_content").record(items.size());
+        timer.stop(Timer.builder("colla.search.query.duration")
+            .description("Permission-calibrated user content search duration")
+            .tag("scope", "user_content")
+            .register(meterRegistry));
+        return new SearchResponse(normalizedQuery, "user_content", items, facets, nextCursor);
     }
 
     public AdminGovernanceSearchResponse searchGovernance(CurrentUser currentUser, String query, int limit) {
@@ -174,8 +254,12 @@ public class SearchService {
             result.objectId(),
             summary.title() == null ? result.title() : summary.title(),
             result.excerpt(),
-            result.webPath() == null ? summary.webPath() : result.webPath(),
-            summary.deepLink() == null ? result.deepLink() : summary.deepLink(),
+            "work_item".equals(result.objectType())
+                ? summary.webPath()
+                : result.webPath() == null ? summary.webPath() : result.webPath(),
+            "work_item".equals(result.objectType())
+                ? summary.deepLink()
+                : summary.deepLink() == null ? result.deepLink() : summary.deepLink(),
             result.score(),
             result.updatedAt(),
             summary.accessState().name(),
@@ -194,7 +278,98 @@ public class SearchService {
     }
 
     private boolean isUserContentResult(String objectType) {
-        return List.of("issue", "knowledge_content", "base", "base_table", "base_record", "message", "approval").contains(objectType);
+        return List.of("issue", "knowledge_content", "base", "base_table", "base_record", "message", "approval", "work_item").contains(objectType);
+    }
+
+    private List<UUID> normalizeUuids(List<UUID> values, int max, String field) {
+        if (values == null) return List.of();
+        List<UUID> result = values.stream().filter(java.util.Objects::nonNull).distinct().toList();
+        if (result.size() > max) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, field + " exceeds hard limit");
+        }
+        return result;
+    }
+
+    private Set<UUID> allowedWorkItems(
+        CurrentUser user,
+        List<SearchResult> candidates,
+        Set<String> participantRoles
+    ) {
+        List<UUID> ids = candidates.stream()
+            .filter(result -> "work_item".equals(result.objectType()))
+            .map(SearchResult::objectId)
+            .distinct()
+            .toList();
+        java.util.LinkedHashSet<UUID> allowed = new java.util.LinkedHashSet<>();
+        for (int offset = 0; offset < ids.size(); offset += PlatformSearchProjectionProvider.MAX_DECISION_BATCH_SIZE) {
+            allowed.addAll(workItemSearchProvider.allowed(
+                user,
+                ids.subList(offset, Math.min(ids.size(), offset + PlatformSearchProjectionProvider.MAX_DECISION_BATCH_SIZE)),
+                participantRoles
+            ));
+        }
+        return Set.copyOf(allowed);
+    }
+
+    private List<String> normalizeValues(List<String> values, Set<String> allowed, int max, String field) {
+        if (values == null) return List.of();
+        List<String> result = values.stream()
+            .filter(java.util.Objects::nonNull)
+            .map(value -> value.trim().toLowerCase(Locale.ROOT))
+            .filter(value -> !value.isBlank())
+            .distinct()
+            .toList();
+        if (result.size() > max || !allowed.containsAll(result)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid " + field + " filter");
+        }
+        return result;
+    }
+
+    private String encodeCursor(CurrentUser user, String query, SearchFilters filters, int offset) {
+        String payload = user.workspaceId() + "|" + user.id() + "|" + queryHash(query, filters) + "|" + offset;
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(
+            (payload + "|" + sign(payload)).getBytes(StandardCharsets.UTF_8)
+        );
+    }
+
+    private int decodeCursor(CurrentUser user, String query, SearchFilters filters, String cursor) {
+        if (cursor == null || cursor.isBlank()) return 0;
+        try {
+            String decoded = new String(Base64.getUrlDecoder().decode(cursor), StandardCharsets.UTF_8);
+            String[] parts = decoded.split("\\|", -1);
+            String payload = String.join("|", parts[0], parts[1], parts[2], parts[3]);
+            if (parts.length != 5
+                || !parts[0].equals(user.workspaceId().toString())
+                || !parts[1].equals(user.id().toString())
+                || !parts[2].equals(queryHash(query, filters))
+                || !MessageDigest.isEqual(
+                    sign(payload).getBytes(StandardCharsets.US_ASCII),
+                    parts[4].getBytes(StandardCharsets.US_ASCII)
+                )) {
+                throw new IllegalArgumentException("cursor binding");
+            }
+            int offset = Integer.parseInt(parts[3]);
+            if (offset < 0 || offset > 450) throw new IllegalArgumentException("cursor range");
+            return offset;
+        } catch (RuntimeException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Search cursor is invalid", exception);
+        }
+    }
+
+    private String queryHash(String query, SearchFilters filters) {
+        return sign(query + "|" + filters).substring(0, 16);
+    }
+
+    private String sign(String value) {
+        try {
+            Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(new SecretKeySpec(tokenProperties.getAccessSecret().getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+            return Base64.getUrlEncoder().withoutPadding().encodeToString(
+                mac.doFinal(value.getBytes(StandardCharsets.UTF_8))
+            );
+        } catch (Exception exception) {
+            throw new IllegalStateException("Unable to sign search cursor", exception);
+        }
     }
 
     private List<AdminGovernanceSearchResult> governanceCatalog() {

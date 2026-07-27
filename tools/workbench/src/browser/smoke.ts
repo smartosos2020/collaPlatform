@@ -81,6 +81,27 @@ export async function isolatedProjectPlatformS11Smoke(
   )
 }
 
+export async function isolatedProjectPlatformS12Smoke(
+  root: string,
+  spec: string,
+  databasePort = 5432,
+  apiPort = 18120,
+  webPort = 15220,
+): Promise<void> {
+  if (!/^project-platform-s12-[a-z0-9-]+\.spec\.ts$/.test(spec)) {
+    throw new Error(`Unsupported PROJECT-PLATFORM-S12 browser spec: ${spec}`)
+  }
+  return isolatedRouteSmoke(
+    root,
+    spec,
+    'colla_s12_e2e',
+    databasePort,
+    apiPort,
+    webPort,
+    'all',
+  )
+}
+
 async function isolatedRouteSmoke(
   root: string,
   spec: string,
@@ -88,14 +109,61 @@ async function isolatedRouteSmoke(
   databasePort: number,
   apiPort: number,
   webPort: number,
+  suite = 'route-final',
 ): Promise<void> {
   const database = `${databasePrefix}_${randomUUID().replaceAll('-', '').slice(0, 8)}`; const logs = join(root, '.local-logs'); mkdirSync(logs, { recursive: true })
   let server: ChildProcess | undefined; let web: ChildProcess | undefined
+  let databaseContainer = 'colla-postgres'
+  let effectiveDatabasePort = databasePort
+  let temporaryDatabaseContainer: string | undefined
   try {
-    runSync('mvn', ['-q', '-f', 'server/pom.xml', '-DskipTests', 'package'], { cwd: root }); runSync('docker', ['exec', 'colla-postgres', 'createdb', '-U', 'colla', database])
-    server = background('java', ['-jar', 'server/target/colla-platform-server-0.1.0-SNAPSHOT.jar'], root, { COLLA_DATASOURCE_URL: `jdbc:postgresql://127.0.0.1:${databasePort}/${database}`, COLLA_DATASOURCE_USERNAME: 'colla', COLLA_DATASOURCE_PASSWORD: ['colla', 'dev', 'password'].join('_'), SERVER_PORT: String(apiPort), CORS_ALLOWED_ORIGINS: `http://127.0.0.1:${webPort}` }, join(logs, 'm5-isolated-server.out.log'), join(logs, 'm5-isolated-server.err.log'))
+    if (!databaseReady(databaseContainer)) {
+      temporaryDatabaseContainer = `colla-workbench-postgres-${randomUUID().replaceAll('-', '').slice(0, 8)}`
+      runSync('docker', [
+        'run', '--detach', '--rm', '--name', temporaryDatabaseContainer,
+        '--env', 'POSTGRES_USER=colla',
+        '--env', `POSTGRES_PASSWORD=${['colla', 'dev', 'password'].join('_')}`,
+        '--env', 'POSTGRES_DB=postgres',
+        '--publish', '127.0.0.1::5432',
+        'postgres:16-alpine',
+      ])
+      databaseContainer = temporaryDatabaseContainer
+      await waitDatabaseReady(databaseContainer)
+      const port = runSync('docker', ['port', databaseContainer, '5432/tcp'])
+      effectiveDatabasePort = Number(port.trim().split(':').at(-1))
+      if (!Number.isInteger(effectiveDatabasePort) || effectiveDatabasePort <= 0) {
+        throw new Error(`Cannot resolve isolated PostgreSQL port from: ${port}`)
+      }
+    }
+    runSync('mvn', ['-q', '-f', 'server/pom.xml', '-DskipTests', 'package'], { cwd: root }); runSync('docker', ['exec', databaseContainer, 'createdb', '-U', 'colla', database])
+    server = background('java', ['-jar', 'server/target/colla-platform-server-0.1.0-SNAPSHOT.jar'], root, { COLLA_DATASOURCE_URL: `jdbc:postgresql://127.0.0.1:${effectiveDatabasePort}/${database}`, COLLA_DATASOURCE_USERNAME: 'colla', COLLA_DATASOURCE_PASSWORD: ['colla', 'dev', 'password'].join('_'), COLLA_EVENT_WORKER_ENABLED: 'true', COLLA_EVENT_WORKER_CONCURRENCY: '2', COLLA_EVENT_WORKER_QUEUE_CAPACITY: '0', COLLA_EVENT_WORKER_CLAIM_BATCH: '2', COLLA_EVENT_WORKER_EXPECTED_INSTANCES: '1', SERVER_PORT: String(apiPort), CORS_ALLOWED_ORIGINS: `http://127.0.0.1:${webPort}` }, join(logs, 'm5-isolated-server.out.log'), join(logs, 'm5-isolated-server.err.log'))
     web = background('pnpm', ['dev', '--host', '127.0.0.1', '--port', String(webPort)], join(root, 'web'), { VITE_API_BASE_URL: `http://127.0.0.1:${apiPort}/api`, VITE_WS_BASE_URL: `ws://127.0.0.1:${apiPort}/ws/events` }, join(logs, 'm5-isolated-web.out.log'), join(logs, 'm5-isolated-web.err.log'))
-    await waitReady(`http://127.0.0.1:${apiPort}/actuator/health`); await waitReady(`http://127.0.0.1:${webPort}`)
-    await run('pnpm', ['exec', 'playwright', 'test', '--config', 'e2e/playwright.config.ts', spec], { cwd: join(root, 'web'), env: { COLLA_E2E_SUITE: 'route-final', COLLA_E2E_ISOLATED: 'true', COLLA_E2E_API_BASE_URL: `http://127.0.0.1:${apiPort}/api`, COLLA_E2E_WEB_BASE_URL: `http://127.0.0.1:${webPort}` } })
-  } finally { await stopTree(web); await stopTree(server); runSync('docker', ['exec', 'colla-postgres', 'dropdb', '--if-exists', '--force', '-U', 'colla', database], { allowFailure: true }) }
+    await waitReady(`http://127.0.0.1:${apiPort}/actuator/health`, 180000)
+    await waitReady(`http://127.0.0.1:${webPort}`, 120000)
+    await run('pnpm', ['exec', 'playwright', 'test', '--config', 'e2e/playwright.config.ts', spec], { cwd: join(root, 'web'), env: { COLLA_E2E_SUITE: suite, COLLA_E2E_ISOLATED: 'true', COLLA_E2E_API_BASE_URL: `http://127.0.0.1:${apiPort}/api`, COLLA_E2E_WEB_BASE_URL: `http://127.0.0.1:${webPort}` } })
+  } finally {
+    await stopTree(web)
+    await stopTree(server)
+    runSync('docker', ['exec', databaseContainer, 'dropdb', '--if-exists', '--force', '-U', 'colla', database], { allowFailure: true })
+    if (temporaryDatabaseContainer) {
+      runSync('docker', ['stop', temporaryDatabaseContainer], { allowFailure: true })
+    }
+  }
+}
+
+function databaseReady(container: string): boolean {
+  return runSync(
+    'docker',
+    ['exec', container, 'pg_isready', '-U', 'colla', '-d', 'postgres'],
+    { allowFailure: true },
+  ).includes('accepting connections')
+}
+
+async function waitDatabaseReady(container: string): Promise<void> {
+  const deadline = Date.now() + 90_000
+  while (Date.now() < deadline) {
+    if (databaseReady(container)) return
+    await new Promise((resolve) => setTimeout(resolve, 1_000))
+  }
+  throw new Error(`Timed out waiting for isolated PostgreSQL container ${container}`)
 }

@@ -28,6 +28,8 @@ public interface WorkItemRepository {
 
     List<WorkItem> list(UUID workspaceId, UUID spaceId, UUID typeId, UUID cursor, int limit);
 
+    List<WorkItem> listForSearchRebuild(UUID workspaceId, UUID afterId, int limit);
+
     List<WorkItem> searchRelationTargets(
         UUID workspaceId,
         UUID spaceId,

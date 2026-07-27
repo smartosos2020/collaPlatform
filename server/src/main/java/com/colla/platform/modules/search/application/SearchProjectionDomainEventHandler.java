@@ -38,7 +38,8 @@ public class SearchProjectionDomainEventHandler implements DomainEventHandler {
         "base.record.deleted",
         "message.created",
         "message.edited",
-        "message.revoked"
+        "message.revoked",
+        "work_item.changed"
     );
     private static final Descriptor DESCRIPTOR = new Descriptor(
         "search.projection",

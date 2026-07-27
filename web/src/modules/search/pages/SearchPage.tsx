@@ -5,7 +5,7 @@ import { useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
 import { resolveNavigationPath } from '../../../shared/client/collaClient'
-import { searchAll, type SearchFilters, type SearchResult } from '../api/searchApi'
+import { listSearchSpaceChoices, searchAll, type SearchFilters, type SearchResult } from '../api/searchApi'
 import { objectTypeText } from '../../platform/objectTypeLabels'
 import { listKnowledgeBases } from '../../knowledgeBases/api/knowledgeBasesApi'
 
@@ -20,9 +20,18 @@ export function SearchPage() {
     contentType: params.get('contentType') || undefined,
     knowledgeStatus: params.get('knowledgeStatus') || undefined,
     tags: params.getAll('tags').filter(Boolean),
+    spaceIds: params.getAll('spaceIds').filter(Boolean),
+    objectTypes: params.getAll('objectTypes').filter(Boolean),
+    objectStatuses: params.getAll('objectStatuses').filter(Boolean),
+    participantRoles: params.getAll('participantRoles').filter(Boolean),
+    cursor: params.get('cursor') || undefined,
   }), [params])
 
   const spacesQuery = useQuery({ queryKey: ['knowledge-bases', 'search-filter'], queryFn: () => listKnowledgeBases() })
+  const projectSpacesQuery = useQuery({
+    queryKey: ['platform-object-choices', 'project-space', 'search-filter'],
+    queryFn: listSearchSpaceChoices,
+  })
 
   const searchQuery = useQuery({
     queryKey: ['search', normalizedQuery, searchFilters],
@@ -42,6 +51,7 @@ export function SearchPage() {
   const updateFilter = (key: 'knowledgeBaseId' | 'contentType' | 'knowledgeStatus' | 'tags', value?: string) => {
     const next = new URLSearchParams(params)
     next.delete(key)
+    next.delete('cursor')
     if (value?.trim()) {
       if (key === 'tags') {
         value.split(',').map((tag) => tag.trim()).filter(Boolean).forEach((tag) => next.append('tags', tag))
@@ -52,12 +62,27 @@ export function SearchPage() {
     setParams(next)
   }
 
+  const updateMultiFilter = (key: 'spaceIds' | 'objectTypes' | 'objectStatuses' | 'participantRoles', values: string[]) => {
+    const next = new URLSearchParams(params)
+    next.delete(key)
+    next.delete('cursor')
+    values.forEach((value) => next.append(key, value))
+    setParams(next)
+  }
+
+  const loadNextPage = () => {
+    if (!searchQuery.data?.nextCursor) return
+    const next = new URLSearchParams(params)
+    next.set('cursor', searchQuery.data.nextCursor)
+    setParams(next)
+  }
+
   return (
     <div className="page-stack">
       <Space className="page-toolbar">
         <div>
           <Typography.Title level={3}>全局搜索</Typography.Title>
-          <Typography.Text type="secondary">搜索事项、知识内容、Base、数据表、表格记录和消息</Typography.Text>
+          <Typography.Text type="secondary">搜索工作项、事项、知识内容、Base、数据表、表格记录和消息</Typography.Text>
         </div>
         <Input.Search
           className="global-search-page-input"
@@ -69,7 +94,62 @@ export function SearchPage() {
         />
       </Space>
 
-      <Space wrap className="search-filter-bar" aria-label="知识内容筛选">
+      <Space wrap className="search-filter-bar" aria-label="搜索筛选">
+        <Select
+          mode="multiple"
+          allowClear
+          placeholder="全部项目空间"
+          value={searchFilters.spaceIds}
+          loading={projectSpacesQuery.isLoading}
+          options={(projectSpacesQuery.data?.items ?? []).map((space) => ({
+            value: space.objectId,
+            label: space.title ?? space.objectId,
+          }))}
+          onChange={(value) => updateMultiFilter('spaceIds', value)}
+        />
+        <Select
+          mode="multiple"
+          allowClear
+          placeholder="全部对象类型"
+          value={searchFilters.objectTypes}
+          options={[
+            { value: 'work_item', label: '工作项' },
+            { value: 'issue', label: '事项' },
+            { value: 'knowledge_content', label: '知识内容' },
+            { value: 'base', label: 'Base' },
+            { value: 'base_table', label: '数据表' },
+            { value: 'base_record', label: '表格记录' },
+            { value: 'message', label: '消息' },
+          ]}
+          onChange={(value) => updateMultiFilter('objectTypes', value)}
+        />
+        <Select
+          mode="multiple"
+          allowClear
+          placeholder="全部工作项状态"
+          value={searchFilters.objectStatuses}
+          options={[
+            { value: 'active', label: '进行中' },
+            { value: 'draft', label: '草稿' },
+            { value: 'resolved', label: '已解决' },
+            { value: 'closed', label: '已关闭' },
+            { value: 'archived', label: '已归档' },
+          ]}
+          onChange={(value) => updateMultiFilter('objectStatuses', value)}
+        />
+        <Select
+          mode="multiple"
+          allowClear
+          placeholder="全部参与角色"
+          value={searchFilters.participantRoles}
+          options={[
+            { value: 'owner', label: '负责人' },
+            { value: 'assignee', label: '经办人' },
+            { value: 'collaborator', label: '协作者' },
+            { value: 'watcher', label: '关注者' },
+          ]}
+          onChange={(value) => updateMultiFilter('participantRoles', value)}
+        />
         <Select
           allowClear
           placeholder="全部知识库"
@@ -159,6 +239,9 @@ export function SearchPage() {
             </section>
           ))}
           {!searchQuery.isLoading && (searchQuery.data?.items.length ?? 0) === 0 ? <Empty description="没有匹配结果" /> : null}
+          {searchQuery.data?.nextCursor ? (
+            <Button onClick={loadNextPage} loading={searchQuery.isFetching}>下一页</Button>
+          ) : null}
         </Space>
       )}
     </div>

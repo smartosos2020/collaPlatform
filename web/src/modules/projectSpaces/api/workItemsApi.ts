@@ -201,6 +201,24 @@ export function putWorkItemParticipant(
   )
 }
 
+export function nudgeWorkItemParticipant(
+  spaceId: string,
+  workItemId: string,
+  recipientId: string,
+) {
+  return apiPost<{
+    receiptId: string
+    workItemId: string
+    recipientId: string
+    status: 'accepted'
+    createdAt: string
+    replayed: boolean
+  }>(`/personal-work/spaces/${spaceId}/work-items/${workItemId}/nudges`, {
+    recipientId,
+    requestId: crypto.randomUUID(),
+  })
+}
+
 export function listWorkItemActivities(spaceId: string, workItemId: string) {
   return apiGet<{ items: WorkItemActivity[]; nextBeforeSequence?: number | null }>(
     `/project-spaces/${spaceId}/work-items/${workItemId}/activities`,

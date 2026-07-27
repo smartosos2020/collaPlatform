@@ -49,6 +49,7 @@ import {
   listWorkItemComments,
   listWorkItemParticipants,
   listWorkItems,
+  nudgeWorkItemParticipant,
   putWorkItemParticipant,
   transitionWorkItem,
   updateWorkItem,
@@ -495,6 +496,11 @@ function WorkItemCollaboration({
     },
     onError: (error) => message.error(errorMessage(error, '添加参与者失败')),
   })
+  const nudgeMutation = useMutation({
+    mutationFn: (userId: string) => nudgeWorkItemParticipant(space.id, item.id, userId),
+    onSuccess: () => message.success('催办已发送'),
+    onError: (error) => message.error(errorMessage(error, '催办不可用或仍在冷却期')),
+  })
   const attachmentMutation = useMutation({
     mutationFn: async (file: File) => {
       setUploadProgress(0)
@@ -578,7 +584,22 @@ function WorkItemCollaboration({
                   loading={participantsQuery.isLoading}
                   dataSource={participantsQuery.data?.items ?? []}
                   renderItem={(value) => (
-                    <List.Item extra={<Tag>{value.role}</Tag>}>
+                    <List.Item
+                      extra={(
+                        <Space>
+                          <Tag>{value.role}</Tag>
+                          {['owner', 'assignee'].includes(value.role) ? (
+                            <Button
+                              size="small"
+                              loading={nudgeMutation.isPending}
+                              onClick={() => nudgeMutation.mutate(value.userId)}
+                            >
+                              催办
+                            </Button>
+                          ) : null}
+                        </Space>
+                      )}
+                    >
                       <List.Item.Meta
                         avatar={<Avatar>{(value.displayName ?? '?').slice(0, 1)}</Avatar>}
                         title={value.displayName ?? value.userId}

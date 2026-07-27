@@ -265,6 +265,27 @@ public class JdbcWorkItemRepository implements WorkItemRepository {
     }
 
     @Override
+    public List<WorkItem> listForSearchRebuild(UUID workspaceId, UUID afterId, int limit) {
+        return jdbcTemplate.query(
+            ITEM_SELECT + """
+                 join project_spaces ps
+                   on ps.workspace_id = wi.workspace_id and ps.id = wi.space_id
+                 where wi.workspace_id = ?
+                   and wi.status <> 'archived'
+                   and ps.status = 'active'
+                   and (?::uuid is null or wi.id > ?)
+                 order by wi.id
+                 limit ?
+                """,
+            this::mapItem,
+            workspaceId,
+            afterId,
+            afterId,
+            limit
+        );
+    }
+
+    @Override
     public List<WorkItem> searchRelationTargets(
         UUID workspaceId,
         UUID spaceId,

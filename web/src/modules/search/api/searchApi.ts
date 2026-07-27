@@ -1,7 +1,7 @@
 import { apiGet } from '../../../shared/api/httpClient'
 
 export type SearchResult = {
-  objectType: 'issue' | 'knowledge_content' | 'base' | 'base_table' | 'base_record' | 'message'
+  objectType: 'issue' | 'knowledge_content' | 'base' | 'base_table' | 'base_record' | 'message' | 'work_item'
   objectId: string
   title?: string | null
   excerpt?: string | null
@@ -22,10 +22,17 @@ export type SearchResult = {
   contentType?: 'space' | 'folder' | 'markdown' | null
   hitSource?: 'title' | 'body_block' | 'comment' | 'tags' | 'directory_path' | string | null
 }
+export type SearchFacet = {
+  field: 'objectType' | string
+  value: string
+  count: number
+}
 export type SearchResponse = {
   query: string
   searchScope: 'user_content'
   items: SearchResult[]
+  facets: SearchFacet[]
+  nextCursor?: string | null
 }
 
 export type SearchFilters = {
@@ -37,6 +44,21 @@ export type SearchFilters = {
   knowledgeStatus?: string
   updatedFrom?: string
   updatedTo?: string
+  spaceIds?: string[]
+  objectTypes?: string[]
+  objectStatuses?: string[]
+  participantRoles?: string[]
+  cursor?: string
+}
+
+export type SearchSpaceChoice = {
+  objectId: string
+  title?: string | null
+}
+
+export function listSearchSpaceChoices() {
+  const params = new URLSearchParams({ types: 'project_space', source: 'all', limit: '50', offset: '0' })
+  return apiGet<{ items: SearchSpaceChoice[] }>(`/platform/object-choices?${params}`)
 }
 
 export function searchAll(query: string, limit = 20, filters: SearchFilters = {}) {
@@ -49,5 +71,10 @@ export function searchAll(query: string, limit = 20, filters: SearchFilters = {}
   if (filters.updatedFrom) params.set('updatedFrom', filters.updatedFrom)
   if (filters.updatedTo) params.set('updatedTo', filters.updatedTo)
   filters.tags?.forEach((tag) => params.append('tags', tag))
+  filters.spaceIds?.forEach((spaceId) => params.append('spaceIds', spaceId))
+  filters.objectTypes?.forEach((objectType) => params.append('objectTypes', objectType))
+  filters.objectStatuses?.forEach((status) => params.append('objectStatuses', status))
+  filters.participantRoles?.forEach((role) => params.append('participantRoles', role))
+  if (filters.cursor) params.set('cursor', filters.cursor)
   return apiGet<SearchResponse>(`/search?${params}`)
 }

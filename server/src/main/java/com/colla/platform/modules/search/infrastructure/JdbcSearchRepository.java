@@ -1,5 +1,6 @@
 package com.colla.platform.modules.search.infrastructure;
 
+import com.colla.platform.modules.platform.contract.PlatformSearchProjectionProvider.SearchDocument;
 import com.colla.platform.modules.search.domain.SearchModels.SearchResult;
 import com.colla.platform.modules.search.domain.SearchModels.SearchFilters;
 import com.colla.platform.modules.search.infrastructure.SearchRepository.ProjectionOperation;
@@ -94,7 +95,24 @@ public class JdbcSearchRepository implements SearchRepository {
             filterSql.append(" and s.updated_at < ?\n");
             args.add(Timestamp.from(filters.updatedTo()));
         }
-
+        if (filters != null && filters.spaceIds() != null && !filters.spaceIds().isEmpty()) {
+            filterSql.append(" and s.space_id in (")
+                .append(String.join(", ", java.util.Collections.nCopies(filters.spaceIds().size(), "?")))
+                .append(")\n");
+            args.addAll(filters.spaceIds());
+        }
+        if (filters != null && filters.objectTypes() != null && !filters.objectTypes().isEmpty()) {
+            filterSql.append(" and s.object_type in (")
+                .append(String.join(", ", java.util.Collections.nCopies(filters.objectTypes().size(), "?")))
+                .append(")\n");
+            args.addAll(filters.objectTypes());
+        }
+        if (filters != null && filters.objectStatuses() != null && !filters.objectStatuses().isEmpty()) {
+            filterSql.append(" and s.object_status in (")
+                .append(String.join(", ", java.util.Collections.nCopies(filters.objectStatuses().size(), "?")))
+                .append(")\n");
+            args.addAll(filters.objectStatuses());
+        }
         for (int i = 0; i < 11; i++) {
             args.add(userId);
         }
@@ -318,8 +336,9 @@ public class JdbcSearchRepository implements SearchRepository {
                               where m.workspace_id = s.workspace_id and m.id = s.object_id and m.deleted_at is null and m.revoked_at is null
                           )
                       )
+                      or s.object_type = 'work_item'
                   )
-                order by score desc, s.updated_at desc
+                order by score desc, s.updated_at desc, s.object_type, s.object_id
                 limit ?
                 """.formatted(filterSql),
             this::mapResult,
@@ -386,6 +405,104 @@ public class JdbcSearchRepository implements SearchRepository {
         }
         indexObject(workspaceId, objectType, objectId);
         return true;
+    }
+
+    @Override
+    @Transactional
+    public boolean projectDocument(UUID workspaceId, SearchDocument document, long sourceVersion) {
+        requireSupportedObjectType(document.objectType());
+        if (sourceVersion < 0) {
+            throw new IllegalArgumentException("Search projection version must be non-negative");
+        }
+        int accepted = jdbcTemplate.update(
+            """
+                insert into search_projection_versions
+                    (workspace_id, object_type, object_id, source_version, operation, updated_at)
+                values (?, ?, ?, ?, 'upsert', now())
+                on conflict (workspace_id, object_type, object_id)
+                do update set source_version = excluded.source_version,
+                              operation = excluded.operation,
+                              updated_at = now()
+                where search_projection_versions.source_version <= excluded.source_version
+                """,
+            workspaceId,
+            document.objectType(),
+            document.objectId(),
+            sourceVersion
+        );
+        if (accepted == 0) return false;
+        jdbcTemplate.update(
+            """
+                insert into search_index_entries
+                    (workspace_id, object_type, object_id, title, excerpt, web_path, deep_link,
+                     search_text, updated_at, indexed_at, space_id, object_subtype, object_status, source_version)
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, now(), ?, ?, ?, ?)
+                on conflict (workspace_id, object_type, object_id)
+                do update set title = excluded.title,
+                              excerpt = excluded.excerpt,
+                              web_path = excluded.web_path,
+                              deep_link = excluded.deep_link,
+                              search_text = excluded.search_text,
+                              updated_at = excluded.updated_at,
+                              indexed_at = now(),
+                              space_id = excluded.space_id,
+                              object_subtype = excluded.object_subtype,
+                              object_status = excluded.object_status,
+                              source_version = excluded.source_version
+                """,
+            workspaceId,
+            document.objectType(),
+            document.objectId(),
+            document.title(),
+            document.excerpt(),
+            document.webPath(),
+            document.deepLink(),
+            document.searchText(),
+            Timestamp.from(document.updatedAt()),
+            document.spaceId(),
+            document.objectSubtype(),
+            document.objectStatus(),
+            document.sourceVersion()
+        );
+        return true;
+    }
+
+    @Override
+    @Transactional
+    public RebuildPage rebuildDocuments(
+        UUID workspaceId,
+        String objectType,
+        UUID afterId,
+        List<SearchDocument> documents,
+        int limit
+    ) {
+        requireSupportedObjectType(objectType);
+        int boundedLimit = Math.min(Math.max(limit, 1), 250);
+        jdbcTemplate.query(
+            "select pg_advisory_xact_lock(hashtext(?))",
+            resultSet -> { },
+            "search-index-rebuild:" + workspaceId + ":" + objectType
+        );
+        if (afterId == null) {
+            jdbcTemplate.update(
+                "delete from search_index_entries where workspace_id = ? and object_type = ?",
+                workspaceId,
+                objectType
+            );
+            jdbcTemplate.update(
+                "delete from search_projection_versions where workspace_id = ? and object_type = ?",
+                workspaceId,
+                objectType
+            );
+        }
+        for (SearchDocument document : documents) {
+            if (!objectType.equals(document.objectType())) {
+                throw new IllegalArgumentException("Search document type does not match rebuild type");
+            }
+            projectDocument(workspaceId, document, document.sourceVersion());
+        }
+        UUID nextCursor = documents.isEmpty() ? afterId : documents.get(documents.size() - 1).objectId();
+        return new RebuildPage(objectType, nextCursor, documents.size(), documents.size() < boundedLimit);
     }
 
     @Override

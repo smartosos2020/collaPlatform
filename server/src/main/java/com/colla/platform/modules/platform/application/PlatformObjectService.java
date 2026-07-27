@@ -118,16 +118,36 @@ public class PlatformObjectService {
 
     public List<PlatformObjectSummary> recent(CurrentUser currentUser, int limit) {
         return objectRepository.listRecentAccesses(currentUser.workspaceId(), currentUser.id(), limit).stream()
-            .map(reference -> resolveReference(currentUser, reference))
+            .map(reference -> {
+                PlatformObjectSummary summary = resolveReference(currentUser, reference);
+                if (summary.accessState() != ObjectAccessState.available) {
+                    objectRepository.removeRecentAccess(
+                        currentUser.workspaceId(), currentUser.id(), reference.objectType(), reference.objectId()
+                    );
+                }
+                return summary;
+            })
             .filter(summary -> summary.accessState() == ObjectAccessState.available)
             .toList();
     }
 
     public List<PlatformObjectSummary> favorites(CurrentUser currentUser, int limit) {
         return objectRepository.listFavorites(currentUser.workspaceId(), currentUser.id(), limit).stream()
-            .map(reference -> resolveReference(currentUser, reference))
+            .map(reference -> {
+                PlatformObjectSummary summary = resolveReference(currentUser, reference);
+                if (summary.accessState() != ObjectAccessState.available) {
+                    objectRepository.removeFavorite(
+                        currentUser.workspaceId(), currentUser.id(), reference.objectType(), reference.objectId()
+                    );
+                }
+                return summary;
+            })
             .filter(summary -> summary.accessState() == ObjectAccessState.available)
             .toList();
+    }
+
+    public PlatformObjectSummary summary(CurrentUser currentUser, String objectType, UUID objectId) {
+        return resolverRegistry.resolve(currentUser, PlatformObjectTypes.canonicalize(objectType), objectId);
     }
 
     public List<PlatformObjectSummary> summaries(CurrentUser currentUser, String objectType, List<UUID> objectIds) {
