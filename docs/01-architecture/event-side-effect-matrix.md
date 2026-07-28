@@ -245,3 +245,28 @@ workspace audience 只表示“该 workspace 的已连接客户端需要丢弃�
 - detail get、健康/偏差/阻塞派生和 projection upsert 不发布领域事件；投影失败被隔离，不能回滚或替代 canonical plan/register/delivery 读取。
 - 详情偏好保存成功后同事务写 `project_detail.preference_saved` audit 和版本 1 `project.detail.preference.changed` outbox；payload 只含 space identity 与偏好版本，不含标题、信号、健康原因或来源清单。
 - exact replay 返回原偏好，不重复 audit/outbox；expected version 冲突在副作用前失败。realtime/online/focus 只失效详情查询并 REST 校准，客户端缓存和离线笔记不是健康或验收事实。
+
+## 16. S16-M1 工作日历与估分副作用边界
+
+- calendar/estimate 保存成功后同事务写 `project_resource.*_saved` audit 和版本 1 `project.resource.changed` outbox；payload 只含 kind、aggregate identity/version，不含时区、日期、估分值、标题或成员。
+- caller-stable request ID/hash 的精确重放返回原响应，不重复 calendar exceptions、estimate、audit 或 outbox。expected version、非法 timezone/unit 和当前权限冲突在副作用前失败。
+- get、ScheduleProjection 派生和 REST 校准不发布领域事件。realtime/online/focus 只能失效查询；离线草稿、客户端完成日期和缓存不能升级为资源事实。
+
+## 17. S16-M2 实际工时副作用边界
+
+- worklog create/update/submit/withdraw/void 成功后同事务追加 revision、receipt、audit 和 `project.resource.worklog.changed`；payload 只含 operation/version/state。
+- exact replay 返回原响应，不重复 revision/audit/outbox；版本、代理、日期和状态冲突在副作用前失败。
+- list、variance、realtime/online/focus 只读或触发 REST 校准；客户端草稿和偏差显示不是工时、提交或授权事实。
+
+## 18. S16-M3 人员负荷与产能副作用边界
+
+- allocation create/update/end/archive 与 capacity rule 保存成功后同事务写精确 receipt、audit 和 `project.resource.capacity.changed`；payload 只含 operation、identity 和 version。
+- exact replay 不重复 allocation/rule、audit 或 outbox；expected version、成员、比例、窗口与 WorkItem 冲突在副作用前失败。
+- capacity get、负荷桶/信号派生和可重建 index 不发布领域事件。realtime/online/focus 只触发当前受权 REST 重读；客户端负荷、空隙或缓存不是分配、授权或利用率事实。
+
+## 19. S16-M4 人员排期与调整副作用边界
+
+- schedule get、行/条/标记派生、preview 和 disposable index/stats 更新不发布领域事件，也不写 WorkItem、Plan、Milestone 或 Allocation。
+- adjustment commit 只调用 M3 canonical allocation mutation；allocation audit/outbox 是唯一业务变更副作用。M4 receipt 只保证 orchestration 精确回放，不重复 canonical 命令。
+- preference save 成功后写 `project_resource.schedule_preference_saved` audit 与 `project.resource.schedule.changed` 最小失效事件；exact replay 不重复偏好、audit/outbox。
+- realtime/online/focus 只触发当前受权 REST 重读；客户端条、冲突标记、预览与离线输入不是提交、授权或组织利用率事实。

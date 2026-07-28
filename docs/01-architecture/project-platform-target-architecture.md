@@ -2,11 +2,11 @@
 title: 项目协作平台目标架构
 status: target
 program: PROJECT-PLATFORM
-program_revision: 39
+program_revision: 41
 domain_contract_version: 1
 domain_contract_status: frozen-s01-m3
 migration_contract_version: 1
-stage_review_status: s15-archived-s16-active
+stage_review_status: s16-archived-s17-active
 updated_at: 2026-07-28
 ---
 
@@ -1405,8 +1405,44 @@ S09 完成路线已经独立归档，S10 在 Program revision 27 激活为唯一
 
 ### 29.17 S16 激活边界
 
-- S15 完成路线已通过独立 archive-only 工作循环归档；S16 已在 Program revision 39 激活，唯一入口为 `PROJECT-PLATFORM-S16-M1-T01`。
+- S15 完成路线已通过独立 archive-only 工作循环归档；S16 在 Program revision 39 激活，并已于 revision 40 完成 M1-M4、V118-V121 和真实隔离 route-final。
+
+## S16-M1 工作日历与估分目标边界
+
+- project owner 持有空间级 WorkCalendar、CalendarException、WorkItem identity/version 绑定的 Estimate 和精确命令回执；所有 identity 都受 workspace/space 复合 FK 约束。
+- point/hour/day 是不可互换的显式单位。只有 hour/day 通过当前 IANA timezone、工作周和例外派生最多 730 天的可解释完成日期；point 返回不可比而不使用隐式换算率。
+- WorkItem 标题、日期、计划、里程碑、成员和权限不复制到 V118。估分列表在每次读取时通过 canonical WorkItem 公共服务重校准，收权引用完整省略。
+- `project.resource.changed` 只携带 kind/version 的最小失效事实；浏览器收到变化后只能丢弃缓存并 REST 校准。实际工时、人员负荷、产能和资源调整仍是 M2-M4 未交付范围。
+
+## S16-M2 实际工时与修订目标边界
+
+- Worklog current pointer 与不可变 WorklogRevision 分离；create/update/submit/withdraw/void 每次只追加一个 revision，并由 expected version 和 caller-stable receipt 保证并发及重放。
+- 工时只引用 canonical WorkItem 和 workspace user identity；当前读取经 WorkItem owner 服务重校准。代理只允许空间 owner/admin 且必须保留 immutable reason。
+- 只有 submitted 工时参与 estimate/actual 偏差；point 或缺失日历显式不可比。偏差不改写 Estimate、Plan、Milestone、WorkItem 或成员事实。
 - S16 当前路线包含 4 个 Milestone、48 个 Task：M1 工作日历/估分/排期规则，M2 实际工时/不可变修订，M3 人员分配/负荷/产能冲突，M4 资源排期甘特/调整与 Stage 收口。
 - WorkCalendar、Estimate、Worklog、Allocation 与 Capacity 可以建立各自唯一事实，但只能通过公共合同引用 canonical WorkItem、Plan/Milestone、用户、日期、关系、流程与权限；不得把 assignee、计划日期或 S15 健康复制为 S16 权威。
 - 所有跨事项、人员和空间的列表、计数、空隙、冲突、曲线和导出继续执行 S11 当前 decision/data scope；enterprise governance 不获得私有内容旁路。
 - S16 激活只声明规划范围，不声明实现事实；不得提前实现 S17 自动化、S18 跨空间同步或 S19 组织级度量，确定性预算也不代表生产 headcount、容量、利用率或 SLO。
+
+## S16-M3 人员负荷与产能目标边界
+
+- V120 建立 project-owned Allocation、CapacityRule、可重建 LoadIndex 和精确命令回执；workspace/space/user/work-item identity 均由复合边界约束。
+- 分配生命周期只改变 S16 Allocation，不改写 WorkItem assignee、Plan/Milestone、日历、估分或工时。每次读取重新校准当前空间成员和 canonical WorkItem 可见性。
+- CapacityFoundation 结合 WorkCalendar、当前 active Allocation 和 submitted Worklog 派生最多 366 个桶；信号携带窗口、规则和解释，缺失或截断显式降级。
+- load index、Web 缓存与 realtime signal 都不授权；owner/admin 可 mutation，member/guest 只读，空间外和 enterprise governance 无内容旁路。
+
+## S16-M4 人员排期与 Stage 收口边界
+
+- V121 建立个人 SchedulePreference、可重建 ScheduleIndex/Stats 和 Adjustment receipt；ResourceSchedule/Row/AssignmentBar/ConflictMarker/AdjustmentResult 固定 schema v1。
+- 排期聚合只消费 M3 当前 `CapacityFoundation` 的受权 allocations/buckets。最多 200 行、500 条、366 个标记和 366 天窗口，触达上界显式 `truncated`。
+- preview 无副作用；commit 通过 canonical Allocation update 完成，exact replay 在旧 expected version 校验前返回原响应，新 request 仍以 expected version 失败关闭。
+- S16 四个 Milestone、48 个 Task、V118-V121 与六身份真实隔离 route-final 已完成；Program revision 40 的 current_stage 为 none。S17 只有在独立 archive-only 工作循环后才能激活。
+
+### 29.18 S16 归档与 S17 激活边界
+
+- S16 完成路线已通过独立 archive-only 工作循环归档；S17 在 Program revision 41 激活，当前唯一入口是 `PROJECT-PLATFORM-S17-M1-T01`。
+- S17 当前路线包含 5 个 Milestone、60 个 Task：M1 事件目录与规则模型，M2 受控字段/流程/关系/通知操作，M3 时间触发，M4 Webhook/连接器，M5 管理 UI、运行历史、限额和 Stage 收口。
+- S17 必须复用 S03 版本化 outbox/envelope、可靠投递、重试/死信合同，以及 S07-S10 canonical resolver/command/event SPI；不得建立第二套通用事件总线或直接读写 owner 私表。
+- 所有触发匹配、条件读取、操作执行、历史查询、通知与 Webhook payload 都必须执行 S11 当前 decision/data scope；enterprise governance 不获得私有内容旁路。
+- 自动化定义只允许声明式 trigger-condition-action，禁止任意脚本、SQL 或代码插件；外部凭据只保存 owner 引用，Webhook 必须具备 SSRF 防护、签名、重放保护、超时、限流和脱敏。
+- 本次激活只声明 S17 规划范围，不声明任何规则、执行器、调度器或连接器实现事实；不得提前实现 S18 跨空间同步或 S19 组织级度量。

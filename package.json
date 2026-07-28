@@ -33,6 +33,7 @@
     "smoke:s11-m5-isolated": "pnpm workbench browser smoke-project-platform-s11-isolated",
     "smoke:s14-isolated": "pnpm workbench browser smoke-project-platform-s14-isolated",
     "smoke:s15-isolated": "pnpm workbench browser smoke-project-platform-s15-isolated",
+    "smoke:s16-isolated": "pnpm workbench browser smoke-project-platform-s16-isolated",
     "smoke:dual-api": "node deploy/smoke/dual-api-smoke.mjs",
     "smoke:dual-gateway": "node deploy/smoke/dual-gateway-smoke.mjs",
     "smoke:multi-instance-state": "node deploy/smoke/multi-instance-state-smoke.mjs",

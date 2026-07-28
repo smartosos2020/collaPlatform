@@ -50,7 +50,7 @@ class WorkItemGanttFoundationIntegrationTests {
                     """,
                 Boolean.class
             ));
-            assertEquals("117", jdbc.queryForObject(
+            assertEquals("121", jdbc.queryForObject(
                 "select max(version) from flyway_schema_history", String.class
             ));
         } finally {

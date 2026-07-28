@@ -11,7 +11,7 @@ tracked_paused_programs: KB-PRODUCT, PLATFORM-SCALE
 
 | Program | Status | Current Stage | Remaining Commitment | Source |
 | --- | --- | --- | --- | --- |
-| PROJECT-PLATFORM | Active | PROJECT-PLATFORM-S16 | S01-S15 已归档；S16 M1-M4、48 个 Task 已激活，当前入口 S16-M1-T01 | `project-platform-program.md` |
+| PROJECT-PLATFORM | Active | PROJECT-PLATFORM-S17 | S01-S16 已归档；S17 M1-M5、60 个 Task 已激活，当前入口 PROJECT-PLATFORM-S17-M1-T01 | `project-platform-program.md` |
 | PLATFORM-SCALE | Paused | none | S05-M1 已完成；M2-M5 待核心功能、接口、数据模型和负载模型稳定后恢复 | `platform-scale-program.md` |
 | KB-PRODUCT | Paused | none | KB-PRODUCT-M12-T06 至 T10：真实参与者试用、反馈、复验和 Go/No-Go | `../../99-archive/superseded-roadmaps/kb-product-roadmap-paused-2026-07-18.md` |
 

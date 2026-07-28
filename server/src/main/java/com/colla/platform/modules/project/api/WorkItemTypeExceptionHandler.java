@@ -52,7 +52,11 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
     UserProjectPlanController.class,
     UserProjectRegisterController.class,
     UserProjectDeliveryController.class,
-    UserProjectDetailController.class
+    UserProjectDetailController.class,
+    UserResourcePlanningController.class,
+    UserResourceWorklogController.class,
+    UserResourceCapacityController.class,
+    UserResourceScheduleController.class
 })
 public class WorkItemTypeExceptionHandler {
     @ExceptionHandler(WorkItemTypeException.class)
@@ -211,7 +215,11 @@ public class WorkItemTypeExceptionHandler {
                  "PROJECT_DELIVERABLE_REASON_REQUIRED",
                  "PROJECT_DELIVERABLE_PARTICIPANT_INVALID",
                  "PROJECT_DELIVERABLE_TRACE_INVALID",
-                 "PROJECT_DETAIL_PREFERENCE_INVALID" ->
+                 "PROJECT_DETAIL_PREFERENCE_INVALID",
+                 "RESOURCE_CALENDAR_INVALID", "RESOURCE_ESTIMATE_INVALID",
+                 "RESOURCE_WORKLOG_INVALID", "RESOURCE_CAPACITY_INVALID",
+                 "RESOURCE_SCHEDULE_INVALID",
+                 "RESOURCE_MEMBER_INVALID" ->
                 HttpStatus.BAD_REQUEST;
             case "BOARD_COLUMN_UNMAPPED", "BOARD_LANE_BUDGET_EXCEEDED",
                  "CALENDAR_WINDOW_BUDGET_EXCEEDED", "INVALID_CALENDAR_RANGE",

@@ -165,6 +165,10 @@ import {
 import { ProjectRegisterPanel } from './ProjectRegisterPanel'
 import { ProjectDeliveryPanel } from './ProjectDeliveryPanel'
 import { ProjectDetailPanel } from './ProjectDetailPanel'
+import { ResourcePlanningPanel } from './ResourcePlanningPanel'
+import { ResourceWorklogPanel } from './ResourceWorklogPanel'
+import { ResourceCapacityPanel } from './ResourceCapacityPanel'
+import { ResourceSchedulePanel } from './ResourceSchedulePanel'
 
 export function ProjectWorkItemsPanel({
   space,
@@ -178,6 +182,10 @@ export function ProjectWorkItemsPanel({
     : (
       <>
         <ProjectDetailPanel space={space} />
+        <ResourcePlanningPanel space={space} />
+        <ResourceWorklogPanel space={space} />
+        <ResourceCapacityPanel space={space} />
+        <ResourceSchedulePanel space={space} />
         <ProjectPlanPanel space={space} />
         <ProjectRegisterPanel space={space} />
         <ProjectDeliveryPanel space={space} />

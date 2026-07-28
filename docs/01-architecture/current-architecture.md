@@ -493,6 +493,20 @@ S01 已确定 ProjectSpace + versioned WorkItemType + WorkItem、规范 JSONB + 
 - 所有读写先验证当前活动空间成员，随后由 M1-M3 服务各自重校准来源权限；enterprise admin 和 non-member 无内容旁路，隐藏来源不进入标题、数量、信号、原因或错误外形。
 - Web 已交付健康状态、阻塞计数、可解释信号、计划偏差、个人偏好、REST 校准和离线本地输入，并通过 1440/1366/820、六身份、跨空间、幂等及并发冲突真实隔离验收。S15 四个 Milestone、48 个 Task 已完成，S16 尚未激活。
 
-## S16 激活状态
+## S16 归档与 S17 激活状态
 
-S15 完成路线已归档，S16 在 Program revision 39 激活。当前代码仍停留在 V117 的 S15 已实现事实；S16 工作日历、估分、实际工时、人员负荷、产能冲突和资源排期尚无实现事实，唯一入口为 `PROJECT-PLATFORM-S16-M1-T01`。
+S16-M1-M4 已交付 V118-V121 日历/例外/显式估分、实际工时/不可变修订、人员分配/产能规则、资源排期与 canonical 调整；Web 支持 1440/1366/820、离线输入、重叠条交互及六身份当前权限校准。S16 完成路线已归档，S17 在 Program revision 41 激活，当前入口为 `PROJECT-PLATFORM-S17-M1-T01`。本次激活只建立规划边界，当前代码尚未实现 S17 自动化规则、调度或连接器。
+
+## S16-M3 人员负荷与产能当前实现
+
+- project 模块通过 `/api/project-spaces/{spaceId}/resource-planning/capacity` 聚合当前日历、分配和已提交工时；V120 保存分配、规则、可重建负荷索引和精确命令回执。
+- 分配创建、调整、结束与归档使用 expected version 和 caller-stable request hash；成功后追加 audit 与 `project.resource.capacity.changed`，精确回放不重复副作用。
+- 每个最多 366 天的负荷桶携带可用分钟、分配分钟、实际分钟和 underloaded/full/overloaded 解释。缓存/索引不授权，也不形成组织利用率事实。
+- 当前成员可读，owner/admin 可写；guest 只读，空间外和 enterprise governance 不可见。M4 将在这些公共合同上构建资源排期与调整。
+
+## S16-M4 人员排期与资源调整当前实现
+
+- project 模块通过 `/api/project-spaces/{spaceId}/resource-planning/schedule` 组合 M3 当前 `CapacityFoundation`，派生最多 200 行、500 条分配条和 366 个冲突标记；不读取其他 owner 私表。
+- V121 保存个人排期窗口偏好、可重建 index、低基数 stats 与精确调整回执。index/stats 可删除且不授权，偏好窗口最大 366 天。
+- 调整 preview 无副作用；commit 只调用 canonical allocation update，先执行 exact receipt replay、再执行 expected version 校验，新请求冲突失败关闭。
+- Web 对重叠分配条分层并限制轨道高度，支持键盘、REST 校准、离线输入保留与 1440/1366/820。六身份、跨空间、回放与 route-final 已通过。

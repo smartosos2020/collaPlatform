@@ -224,6 +224,12 @@ async function verify(options: WorkCycleOptions): Promise<void> {
       && /^project-platform-s15-[a-z0-9-]+\.spec\.ts$/.test(
         browserSpecs[0].replaceAll('\\', '/').split('/').at(-1) ?? '',
       )
+    const isolatedS16Route = evidenceKind === 'real'
+      && evidenceEnvironment === 'isolated'
+      && browserSpecs.length === 1
+      && /^project-platform-s16-[a-z0-9-]+\.spec\.ts$/.test(
+        browserSpecs[0].replaceAll('\\', '/').split('/').at(-1) ?? '',
+      )
     let command = `node ${args.join(' ')}`
     let output: string
     if (isolatedS11Route) {
@@ -255,6 +261,12 @@ async function verify(options: WorkCycleOptions): Promise<void> {
       await isolatedProjectPlatformS15Smoke(repositoryRoot, spec)
       command = `pnpm workbench browser smoke-project-platform-s15-isolated --spec ${spec}`
       output = `PROJECT-PLATFORM-S15 isolated browser smoke passed: ${spec}.\n`
+    } else if (isolatedS16Route) {
+      const { isolatedProjectPlatformS16Smoke } = await import('../browser/smoke.js')
+      const spec = browserSpecs[0].replaceAll('\\', '/').split('/').at(-1)!
+      await isolatedProjectPlatformS16Smoke(repositoryRoot, spec)
+      command = `pnpm workbench browser smoke-project-platform-s16-isolated --spec ${spec}`
+      output = `PROJECT-PLATFORM-S16 isolated browser smoke passed: ${spec}.\n`
     } else {
       output = await run('node', args, {
         cwd: webRoot,

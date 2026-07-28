@@ -296,3 +296,27 @@ M37 后 Base 记录可以作为关系源：
 - ProjectDetail、HealthSignal、HealthStatus、Deviation、BlockingSummary、详情偏好和健康投影不是新的 platform objectType，不注册 resolver、搜索、收藏或跨空间 deep link。
 - 详情只组合既有 Plan/Register/Deliverable 当前受权 identity/version；信号的 rule/explanation/observedAt 是有界派生，不复制来源标题、正文、ACL、成员或历史。
 - V117 健康投影是用户/空间级、五分钟过期的可删除低基数索引；它不授权、不冻结健康、不成为 S16 产能或 S19 管理度量权威。
+
+## S16-M1 工作日历与估分对象边界
+
+- WorkCalendar、CalendarException、Estimate 和 ScheduleProjection 是 project 内资源规划事实或派生，不注册新的 platform objectType、resolver、搜索、收藏或跨空间 deep link。
+- Estimate 只绑定既有 canonical `work_item` identity/version；WorkItem 标题、状态、字段、日期和权限在当前读取时由 owner 服务决定，收权引用完整省略。
+- ScheduleProjection 只说明当前日历与估分下的起止日期或不可比/截断原因；它不是计划、甘特 baseline、人员分配、实际工时或承诺日期。
+
+## S16-M2 实际工时对象边界
+
+- Worklog 和 WorklogRevision 是 project 内资源事实，不注册新的 platform objectType、resolver、搜索、收藏或跨空间 deep link。
+- Worklog 只引用 canonical `work_item` 和用户 identity；修订历史不复制事项标题、成员显示名、计划、流程或授权。
+- Variance 是 current Estimate/Calendar 与 submitted Worklog 的即时派生，不是新对象、绩效指标、产能或 S19 组织度量。
+
+## S16-M3 人员负荷与产能对象边界
+
+- Allocation 与 CapacityRule 是 project 内资源事实，不注册新的 platform objectType、resolver、搜索、收藏或跨空间 deep link。
+- Allocation 只保存 canonical WorkItem/user identity、窗口、比例、状态和版本；不复制事项标题、assignee、成员、计划、流程、权限或日历。
+- LoadBucket、CapacitySignal 与 Conflict 是最多 366 天的当前派生，load index 可重建；它们不是新对象、授权、绩效指标或组织利用率事实。
+
+## S16-M4 人员排期与调整对象边界
+
+- ResourceSchedule、ResourceRow、AssignmentBar、ConflictMarker 和 AdjustmentResult 是 project 内当前投影/命令结果，不注册新的 platform objectType、resolver、搜索、收藏或跨空间 deep link。
+- AssignmentBar 引用既有 Allocation/WorkItem/user identity 与 source version；不复制事项标题、成员显示名、计划、里程碑、流程或权限。
+- 排期偏好是个人展示事实；schedule index/stats 是可重建低基数数据。它们均不创建人员、分配、授权、绩效或 S19 组织度量权威。

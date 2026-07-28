@@ -108,6 +108,90 @@ body,
   }
 }
 
+.resource-schedule-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.resource-schedule-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.resource-schedule-row {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.7fr) minmax(360px, 1.3fr);
+  gap: 12px;
+  align-items: center;
+}
+
+.resource-schedule-person {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.resource-schedule-track {
+  position: relative;
+  min-height: 72px;
+  max-height: 184px;
+  overflow: auto;
+  border: 1px solid var(--ant-color-border, #d9d9d9);
+  border-radius: 8px;
+  background: repeating-linear-gradient(
+    90deg,
+    #fafafa,
+    #fafafa 9.5%,
+    #f0f0f0 10%
+  );
+}
+
+.resource-assignment-bar {
+  position: absolute;
+  top: var(--resource-bar-top);
+  left: var(--resource-bar-left);
+  width: var(--resource-bar-width);
+  min-width: 30px;
+  height: 26px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 6px;
+  background: #1677ff;
+  color: #fff;
+  cursor: pointer;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.resource-conflict-marker {
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #ff4d4f;
+  box-shadow: 0 0 0 2px #fff;
+}
+
+@media (max-width: 820px) {
+  .resource-schedule-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .resource-schedule-track {
+    min-width: 560px;
+  }
+
+  .resource-schedule-grid {
+    overflow-x: auto;
+  }
+}
+
 body {
   background: #f5f7fb;
 }
@@ -5358,6 +5442,55 @@ body {
   display: grid;
   grid-template-columns: minmax(220px, 0.65fr) minmax(360px, 1.35fr);
   gap: 16px;
+}
+
+.resource-planning-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 20px;
+}
+
+.resource-planning-form {
+  width: 100%;
+}
+
+.resource-planning-unit-note {
+  margin: 14px 0;
+}
+
+.resource-planning-offline {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 8px;
+}
+
+.resource-worklog-layout {
+  display: grid;
+  gap: 16px;
+}
+
+.resource-worklog-reason {
+  margin-top: 12px;
+}
+
+.resource-worklog-offline {
+  display: grid;
+  gap: 8px;
+}
+
+.resource-capacity-layout {
+  display: grid;
+  gap: 16px;
+}
+
+@media (max-width: 900px) {
+  .resource-planning-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .resource-planning-offline {
+    grid-column: auto;
+  }
 }
 
 .project-detail-preference,

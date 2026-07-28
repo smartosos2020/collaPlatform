@@ -328,3 +328,30 @@ M2 不实现 Worker lease、dead-letter、replay、handler registry 或独立进
 - `ProjectDetailService` 只组合 `ProjectPlanService`、`ProjectRegisterService` 和 `ProjectDeliveryService` 公共合同。来源服务先执行当前成员/权限校准，详情层不得全量读取后在浏览器过滤。
 - projection index 写入失败不阻断 canonical 详情；任何缓存、realtime signal、fingerprint 或旧健康状态都不能授权。online/focus/reconnect 只触发 REST 重读。
 - 个人偏好使用 caller-stable request ID/hash、expected version、精确回执、audit/outbox；V117 owner manifest、复合 FK、过期索引和空间清理顺序由架构门禁保护。
+
+## 25. S16-M1 工作日历与估分模块边界
+
+- project owner 独占 V118 calendar、exception、estimate 和 command receipt；其他 owner 不得读取这些私表拼装日期、估分、可用性、人员负荷或权限。
+- Estimate 只保存 canonical WorkItem identity/source version、显式 unit/amount 和 aggregate version；每次读取通过 `WorkItemService` 公共应用边界重校准，不复制标题、字段、计划、里程碑、成员或策略。
+- WorkCalendar 使用 IANA timezone、ISO 工作周和日期例外。ScheduleProjection 是最多 730 天的即时派生，不持表、不反写 S14 日期/S15 计划，也不把 point 换算成时间。
+- `AuditLog` 与 `TransactionalOutbox` 仍是唯一跨 owner 写边；V118 复合 FK、owner manifest、空间清理顺序和 caller-stable exact receipt 由架构门禁保护。
+
+## 26. S16-M2 实际工时模块边界
+
+- project owner 独占 V119 worklog/current revision/receipt 表；其他 owner 不得读取私表拼装人员、工时、偏差、审批状态或权限。
+- Worklog 只引用 canonical WorkItem 与 workspace user；WorkItem 当前可见性通过 owner 服务校准，代理边界由空间成员角色和 immutable reason 决定。
+- revision 触发器禁止正常 update/delete；空间清理由受控 session flag 删除。submitted 偏差是有界派生，不创建 estimate、plan、capacity 或 utilization 权威。
+
+## 27. S16-M3 人员负荷与产能模块边界
+
+- project owner 独占 V120 allocation、capacity rule、load index 和 command receipt；其他 owner 不得读取私表拼装人员、负荷、空隙、冲突或权限。
+- Allocation 只引用 canonical WorkItem 与 workspace user；成员及事项当前可见性通过公共服务校准，不改写 WorkItem assignee、日历、估分、工时或计划。
+- CapacityFoundation 最多返回 200 个分配与 366 个桶，结合当前日历和 submitted worklog 即时派生。load index 可删除重建，不能授权或形成组织利用率事实。
+- audit/outbox 是唯一跨 owner 写边；V120 复合边界、owner manifest、空间清理顺序和 caller-stable exact receipt 由架构门禁保护。
+
+## 28. S16-M4 人员排期与调整模块边界
+
+- project owner 独占 V121 preference、disposable schedule index/stats 与 adjustment receipt；其他 owner 不得读取私表拼装排期、冲突、权限或利用率。
+- `ResourceScheduleService` 只组合 `ResourceCapacityService` 当前公开响应。行、条和标记携带来源 identity/version/window，不复制 WorkItem 标题、成员资料、计划或里程碑内容。
+- adjustment preview 无写入，commit 只调用 `ResourceCapacityService.mutate` canonical command；M4 不直接更新 V120 allocation，也不改写 WorkItem assignee/日期。
+- current member gate、exact replay、owner manifest、复合 FK 和空间清理顺序由架构门禁保护；enterprise governance 无内容旁路。
