@@ -296,3 +296,27 @@ workspace audience 只表示“该 workspace 的已连接客户端需要丢弃�
 - 真实 run 在首次稳定 source claim 时原子消费 space/rule/actor/action 四项日限额；exact execution replay 命中原 receipt，不重复计数或副作用。
 - quota pause/resume 成功后写 exact governance receipt、`project_automation.quota_*` audit 和 `project.automation.management.changed` 最小失效事件；重放返回原 QuotaState。
 - preference save 只修改当前用户展示事实。realtime/online/focus 只能触发 REST 校准，客户端健康、计数、进度和暂停按钮不是授权或治理成功事实。
+
+## 24. S18-M1 跨空间授权副作用边界
+
+- grant create/revise/request/confirm/pause/resume/revoke/archive 成功后，同一事务写 caller-stable response receipt、`project_cross_space.grant_*` audit 和版本 1 `project.cross-space.grant.changed` outbox。
+- request ID/hash 精确重放只返回原响应；expected version、非法状态、单方激活、失效 published snapshot、成员收权或空间归档在副作用前失败。
+- 事件 payload 只含 change、source/target space identity、grant version/status；不含类型名称、字段、实例、成员、ACL、确认理由或 scope 正文。realtime 只使查询失效，不能授权。
+
+## 25. S18-M2 跨空间关系副作用边界
+
+- policy create/request/confirm/pause/resume/revoke/archive、intent create/accept/reject/cancel 与 relation withdraw 成功后，同一事务写 caller-stable response receipt、`project_cross_space.relation_*` audit 和版本 1 `project.cross-space.relation.changed` 最小失效事件。
+- intent accept 先在事务内通过 S10 `CrossSpaceRelationCommand` 创建唯一 edge/history，再把 intent 标为 linked；任一步失败整体回滚，因此不存在单端边、幽灵边或重复 history。
+- endpoint reference、foundation、relation read 是只读操作，不发布事件。事件 payload 只含 aggregate identity 和 operation，不含对端标题、字段、状态、路径、关系数、拒绝理由或权限快照。
+
+## 26. S18-M3 跨空间同步副作用边界
+
+- rule create/revise/request/confirm/pause/resume/revoke/archive 写 exact receipt、治理 audit 与最小失效 outbox；相同 request ID/hash 精确重放不重复版本或副作用。
+- run 按 rule version/direction/origin/input fingerprint 去重；字段与状态步骤只调用 canonical WorkItem command。expected version、收权或链深失败时不写业务字段，冲突只追加安全指纹和稳定分类。
+- conflict resolve/compensate/dead-letter 追加治理 receipt/audit，并更新同步 run 终态；它们不伪造或回写原 WorkItem/关系历史。foundation/run detail 与 REST 校准是只读操作。
+
+## 27. S18-M4 跨团队全景副作用边界
+
+- panorama、audit lineage、health 和 diagnostic 查询只组合当前受权公共响应，不发布业务事件、不修改 M1-M3 事实。
+- preference save 只写当前用户展示事实并使用 expected version；slice stats 是可重建低基数缓存，失败不阻断 canonical 响应且不授权。
+- offline/realtime/focus 只触发 REST 重新校准。全景计数、健康标签和截断标记不得被下游当作 S19 指标或治理成功事实。

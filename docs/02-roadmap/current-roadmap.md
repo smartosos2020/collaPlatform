@@ -1,140 +1,138 @@
 ---
-title: PROJECT-PLATFORM-S18 跨空间授权、关系和数据同步当前执行路线
+title: PROJECT-PLATFORM-S19 度量、效能、治理和管理驾驶舱当前执行路线
 status: active
-route: PROJECT-PLATFORM-S18
+route: PROJECT-PLATFORM-S19
 program: PROJECT-PLATFORM
 program_doc: docs/00-product/initiatives/project-platform-program.md
-program_revision: 43
-stage: PROJECT-PLATFORM-S18
-stage_final_milestone: PROJECT-PLATFORM-S18-M4
+program_revision: 45
+stage: PROJECT-PLATFORM-S19
+stage_final_milestone: PROJECT-PLATFORM-S19-M4
 last_code_check: 2026-07-28
 source_rule: 本文件是唯一执行路线入口；长期专项只提供 Stage 索引，不直接执行。
 ---
 
-# PROJECT-PLATFORM-S18 跨空间授权、关系和数据同步
+# PROJECT-PLATFORM-S19 度量、效能、治理和管理驾驶舱
 
 ## 1. Stage 目标
 
-在 S17 自动化规则、时间触发、连接器、运行治理和限额完成并归档的基础上，交付工作项类型跨空间授权、跨空间关系建立与最小可见性、单向/双向字段和状态同步，以及跨团队全景视图与协作审计。S18 只拥有跨空间授权规则、同步规则/运行/冲突/补偿和治理回执；WorkItem、类型定义、关系边、流程状态、成员、权限、自动化、审计、事件和凭据仍由既有 owner 持有。
+在 S18 跨空间授权、关系、同步、全景和协作审计完成并归档的基础上，建立版本化指标语义、维度与时间窗口，交付权限过滤准确的图表/看板/跨空间数据源、可解释且可关闭的风险预警，以及只面向治理事实的管理驾驶舱和审计报表。S19 只拥有指标定义/版本、图表与看板配置、风险策略/信号、治理报表定义/运行和精确治理回执；WorkItem、流程、关系、权限、成员、资源、自动化、审计、事件和跨空间授权/同步事实仍由既有 owner 持有。
 
-跨空间能力必须由双方显式授权并在每次读取、建链和同步执行时重新校准 S11 当前 decision/data scope。S17 自动化、Webhook 或连接器不能充当授权或同步权威；S10 继续持有 canonical relation edge。撤销、收权、归档、映射变化、冲突和补偿必须失败关闭且不泄漏标题、字段、状态、成员、关系数量或空间存在性，也不得提前实现 S19 组织级度量。
+所有指标、聚合、预警和治理报表必须在服务端逐项复用 S11 当前 decision/data scope 及各 owner 公共合同。未知、缺失、过期、截断和无权限不能折算为零；enterprise-admin 不自动获得私有内容。个人级排名、绩效评分、隐式授权、私表 join、浏览器补聚合和无来源数字均禁止，S20 场景模板不得提前实现。
 
 ## 2. 固定输入与当前事实
 
-- S17 完成路线已归档；当前 schema 为 V126，规则/不可变版本、受控执行、时间调度、Webhook/连接器、管理历史与四维限额均已交付。
-- S02 ProjectSpace 与成员边界是空间身份和成员事实权威；跨空间授权不能创建隐式成员或绕过最后管理员保护。
-- S03 可靠事件基线提供版本化 envelope、outbox、handler registry、幂等投递、重试、死信和重放；S18 不建立第二套事件总线。
-- S06 published snapshot、S07 canonical WorkItem identity/runtime 和 S08/S09 状态/节点流分别拥有类型、实例与流程权威；同步只通过公共 resolver/command/event 合同协作。
-- S10 relation definition/edge/history/hierarchy 是关系唯一权威；S18 只决定跨空间端点是否可建立关系，并调用规范关系命令。
-- S11 snapshot v5 decision/data scope 在授权、关系、同步、全景和审计投影中持续失败关闭；enterprise-admin 不自动获得私有内容。
-- S12-S16 的工作台、查询/保存视图、高级视图、项目治理和资源事实可作为当前受权展示或同步输入，但均不成为 S18 权威。
-- S17 caller-stable receipt、audit/outbox、可靠执行和受控 connector security boundary 可复用；禁止读取 rule/run/connector/quota 私表。
-- identity、permission、audit、event、notification、realtime 和 credential 只通过公共合同使用；缓存、索引、统计和审计投影均不授权。
-- owner、space-admin、member、guest、non-member、enterprise-admin 六身份，以及 source/target 双空间组合，构成最低真实回归矩阵。
+- S18 完成路线已归档；当前 schema 为 V130，跨空间 grant、canonical relation 调用、版本化同步/冲突/补偿和当前受权全景已交付。
+- S03 可靠事件、S07 canonical WorkItem、S08/S09 流程、S10 关系/层级和 S11 snapshot v5 decision/data scope 继续分别拥有事件、实例、流程、关系和权限权威。
+- S12-S14 的个人工作、统一查询、保存视图、看板/日历/甘特/时间线提供当前受权展示与查询合同，不构成组织指标语义。
+- S15 计划/里程碑/治理台账/交付评审、S16 日历/估分/工时/产能/排期和 S17 自动化运行/连接器/限额只能通过公共最小合同进入指标或风险证据。
+- S18 跨空间 grant、relation、sync 和 panorama 只提供当前受权最小 identity/version/status/source；S19 不读取 V127-V130 私表，也不把 panorama health 直接升级为 KPI。
+- identity、permission、audit、event、notification、realtime、file 和 credential 只通过公共合同使用；缓存、物化、索引、统计、图表和报表均不授权。
+- 指标必须绑定定义版本、维度版本、时区、日历、窗口、分母、过滤、来源版本、freshness 与 truncation，结果可重复计算和解释。
+- owner、space-admin、member、guest、non-member、enterprise-admin 六身份，以及单空间/跨空间组合，构成最低真实回归矩阵。
 
 ## 3. 执行规则
 
 1. 每轮只推进一个 Milestone；每个 Task 必须有唯一 Verification Contract、fresh Acceptance Evidence 和执行报告行。
-2. CrossSpaceGrant、RelationPolicy、SyncRule、SyncRun、Conflict 和 Compensation 使用版本化合同、稳定 identity、显式生命周期和 workspace/source-space/target-space 复合边界。
-3. 授权由 source/target 双方显式同意，范围只能收窄；grant 不创建成员、不复制 ACL、不缓存授权，撤销后新访问和新副作用立即失败关闭。
-4. 类型、实例、字段、状态和关系只保存稳定 identity/version/mapping，不复制标题、正文、动态值、成员、流程历史或关系边。
-5. 跨空间建链同时校验 source 可见/relate、target 可见/accept-link、当前 grant 和 S10 relation definition；无目标可见性只返回 forbidden reference。
-6. 字段/状态同步必须冻结方向、映射、触发、冲突、循环、重试和补偿；每步执行前重新校准双方权限并调用 canonical command。
-7. 写命令包含 caller-stable request ID、expected version、request hash、持久 receipt、audit/outbox 和精确重放；并发只允许一胜一冲突。
-8. 撤销、收权、归档和删除不静默删除历史关系或同步运行；新执行停止，既有事实按版本化保留/脱敏/补偿合同处理。
-9. realtime 只失效授权、关系、同步和全景查询；online/focus/reconnect 后 REST 校准，离线输入保留但不伪造授权、建链或同步成功。
-10. M1-M3 使用影响范围门禁；M4 执行完整 Flyway、后端、前端、协作、架构、安全、双空间六身份真实隔离浏览器和 `route-final`。
+2. MetricDefinition、MetricVersion、Dimension、Window、DataSource、Chart、Dashboard、RiskPolicy、RiskSignal 和 GovernanceReport 使用稳定 identity、不可变版本和显式生命周期。
+3. 指标表达式只允许注册 measure/dimension/aggregation/window 运算，不允许任意 SQL、脚本、模板执行、反射或私表名称。
+4. 查询计划在服务端对每个来源重新校准当前权限与 data scope；无权数据不进入分子、分母、facet、游标、图例、健康、风险或错误外形。
+5. 未知、缺失、过期、截断、抑制和无样本必须显式表达；禁止用零、正常或成功掩盖不完整证据。
+6. 跨空间聚合只消费当前 active grant 下 owner 公共最小投影；撤销、收权、归档后新查询和新报表立即失败关闭。
+7. 风险信号绑定策略版本、来源 identity/version、窗口和解释；确认、关闭、抑制、重开和失效不改写来源事实。
+8. 管理驾驶舱只展示治理元数据、配置健康、审计覆盖和受保护聚合；不提供个人排名、绩效评分或企业角色内容旁路。
+9. 写命令使用 caller-stable request ID、expected version、request hash、持久 receipt、audit/outbox 和精确重放；并发只允许一胜一冲突。
+10. M1-M3 使用影响范围门禁；M4 执行完整 Flyway、后端、前端、协作、架构、安全、单/跨空间六身份真实隔离浏览器和 `route-final`。
 
 ## 4. Milestone 总览
 
 | Milestone | 目标 | 依赖 | 执行报告 | 状态 |
 | --- | --- | --- | --- | --- |
-| PROJECT-PLATFORM-S18-M1 | 工作项类型跨空间授权 | S17 归档；Program revision 43 | `docs/90-reports/project-platform-s18-m1-execution-report.md` | Pending |
-| PROJECT-PLATFORM-S18-M2 | 跨空间关系建立和可见性 | M1 | `docs/90-reports/project-platform-s18-m2-execution-report.md` | Pending |
-| PROJECT-PLATFORM-S18-M3 | 单向/双向字段与状态同步 | M1-M2 | `docs/90-reports/project-platform-s18-m3-execution-report.md` | Pending |
-| PROJECT-PLATFORM-S18-M4 | 跨团队全景视图、协作审计与 Stage 收口 | M1-M3 | `docs/90-reports/project-platform-s18-m4-execution-report.md` | Pending |
+| PROJECT-PLATFORM-S19-M1 | 指标语义层、维度和时间窗口 | S18 归档；Program revision 45 | `docs/90-reports/project-platform-s19-m1-execution-report.md` | Pending |
+| PROJECT-PLATFORM-S19-M2 | 图表、看板和跨空间数据源 | M1 | `docs/90-reports/project-platform-s19-m2-execution-report.md` | Pending |
+| PROJECT-PLATFORM-S19-M3 | 延期、阻塞、质量和资源风险预警 | M1-M2 | `docs/90-reports/project-platform-s19-m3-execution-report.md` | Pending |
+| PROJECT-PLATFORM-S19-M4 | 空间治理、配置健康、审计报表和 Stage 收口 | M1-M3 | `docs/90-reports/project-platform-s19-m4-execution-report.md` | Pending |
 
 ## 5. 详细任务
 
-### PROJECT-PLATFORM-S18-M1 工作项类型跨空间授权
+### PROJECT-PLATFORM-S19-M1 指标语义层、维度和时间窗口
 
 | 任务 | 内容 | 验收标准 | 状态 |
 | --- | --- | --- | --- |
-| PROJECT-PLATFORM-S18-M1-T01 | 审计 S02 空间/成员、S06 类型快照、S07 实例、S10 关系、S11 权限及 S17 幂等事实 | API、表、owner、调用方、迁移、预算、复用能力和禁止依赖可定位；不依赖旧会话结论 | Pending |
-| PROJECT-PLATFORM-S18-M1-T02 | 冻结 CrossSpaceGrant、GrantVersion、GrantScope、GrantParty 与 GrantReceipt 合同 | schema version、identity、双方、类型范围、生命周期、错误、历史和上限明确 | Pending |
-| PROJECT-PLATFORM-S18-M1-T03 | 设计授权、不可变版本、双方确认、撤销历史和命令回执 Flyway schema | workspace/source/target-space 复合边界、唯一性、FK、索引、清理与 owner 完整 | Pending |
-| PROJECT-PLATFORM-S18-M1-T04 | 实现草稿、请求、双方确认、激活、修订、暂停、撤销和归档 | 双方显式 owner/admin 同意；expected version、request hash、audit/outbox 和精确重放完整 | Pending |
-| PROJECT-PLATFORM-S18-M1-T05 | 实现最小类型、方向、操作和实例范围授权 | 只引用 published type/version；范围不能隐式扩张，未知/未来 schema 失败关闭 | Pending |
-| PROJECT-PLATFORM-S18-M1-T06 | 建立双空间当前权限与成员重校准 | grant 不创建成员或 ACL；任一方收权、停用、归档后访问立即失败关闭 | Pending |
-| PROJECT-PLATFORM-S18-M1-T07 | 定义既有实例、历史活动、撤销和重新授权语义 | 撤销不删除 owner 事实；新访问/副作用停止，历史按最小披露和版本解释 | Pending |
-| PROJECT-PLATFORM-S18-M1-T08 | 交付授权请求、双方确认、范围预览和历史 Web | 1440/1366/820、键盘、长名称、loading、空态/错误和授权来源可理解 | Pending |
-| PROJECT-PLATFORM-S18-M1-T09 | 接入 realtime 失效、离线输入、多标签冲突和 REST 校准 | 缓存不授权；恢复不重复确认，收权后旧类型/空间/数量不闪现 | Pending |
-| PROJECT-PLATFORM-S18-M1-T10 | 完成六身份、双空间组合、并发、撤销、归档、重放和最小披露测试 | 无类型/空间/实例/成员/数量泄漏、单方激活、重复版本或 enterprise 旁路 | Pending |
-| PROJECT-PLATFORM-S18-M1-T11 | 执行授权数、类型范围、历史、权限端口和渲染预算 | SQL/端口/内存/DOM 上界可复现；不声明生产跨团队规模或 SLO | Pending |
-| PROJECT-PLATFORM-S18-M1-T12 | 同步目标/当前架构、模块/对象/事件合同并完成 M1 checkpoint | 只声明授权事实；跨空间关系、字段/状态同步和全景仍由 M2-M4 交付 | Pending |
+| PROJECT-PLATFORM-S19-M1-T01 | 审计 S11-S18 权限、查询、视图、计划、资源、自动化和跨空间公共事实 | API、owner、schema、版本、时间语义、预算、复用能力和禁止依赖可定位；不依赖旧会话结论 | Pending |
+| PROJECT-PLATFORM-S19-M1-T02 | 冻结 MetricDefinition、MetricVersion、Measure、Dimension、Window 与 MetricResult 合同 | identity、schema version、单位、分子/分母、维度、窗口、时区、freshness、错误和上限明确 | Pending |
+| PROJECT-PLATFORM-S19-M1-T03 | 设计指标定义、不可变版本、维度目录、命令回执和可重建结果索引 Flyway schema | 复合边界、唯一性、FK、索引、不可变历史、过期、清理和 owner 完整 | Pending |
+| PROJECT-PLATFORM-S19-M1-T04 | 实现指标草稿、校验、发布、修订、停用、归档和精确重放 | 已发布版本不可变；expected version、request hash、audit/outbox 与精确回放完整 | Pending |
+| PROJECT-PLATFORM-S19-M1-T05 | 实现注册 measure/dimension、日历、时区、滚动/固定窗口和比较区间 | 窗口边界、DST、空样本、迟到事实和版本切换可复现；禁止隐式时区或分母 | Pending |
+| PROJECT-PLATFORM-S19-M1-T06 | 实现受限指标表达式、类型/单位检查和确定性计算计划 | 只允许注册运算；未知字段、私表、SQL、脚本、非确定函数和未来 schema 失败关闭 | Pending |
+| PROJECT-PLATFORM-S19-M1-T07 | 接入逐来源权限、数据范围、最小样本、抑制、缺失与截断语义 | 隐藏对象不进入任何聚合外形；unknown/suppressed/stale/truncated 不折算为零 | Pending |
+| PROJECT-PLATFORM-S19-M1-T08 | 交付指标目录、语义编辑、窗口预览、版本 diff 和来源解释 Web | 1440/1366/820、键盘、长名称、loading、空态/错误、单位/窗口/来源可理解 | Pending |
+| PROJECT-PLATFORM-S19-M1-T09 | 接入 realtime 失效、离线草稿、多标签冲突和 REST 校准 | 缓存不授权；恢复不重复发布，旧指标结果/维度/数量不闪现 | Pending |
+| PROJECT-PLATFORM-S19-M1-T10 | 完成六身份、跨空间、并发、DST、空样本、收权、截断和重放测试 | 无对象/成员/维度/分母/数量泄漏、重复版本、错误归零或 enterprise 旁路 | Pending |
+| PROJECT-PLATFORM-S19-M1-T11 | 执行定义/维度/窗口、查询计划、SQL/端口/内存和渲染预算 | 固定夹具与上界可复现；不声明生产数据规模、指标延迟或 SLO | Pending |
+| PROJECT-PLATFORM-S19-M1-T12 | 同步目标/当前架构、模块/对象/事件合同并完成 M1 checkpoint | 只声明指标语义事实；图表、风险预警和管理驾驶舱仍由 M2-M4 交付 | Pending |
 
-### PROJECT-PLATFORM-S18-M2 跨空间关系建立和可见性
-
-| 任务 | 内容 | 验收标准 | 状态 |
-| --- | --- | --- | --- |
-| PROJECT-PLATFORM-S18-M2-T01 | 复核 M1 grant、S10 relation/hierarchy、S11 端点权限和未关闭阻断 | 12 项逐项可追溯；S18 不复制 relation edge/history 或类型/实例权威 | Pending |
-| PROJECT-PLATFORM-S18-M2-T02 | 冻结 CrossSpaceRelationPolicy、LinkIntent、EndpointReference 与 LinkReceipt 合同 | identity、方向、定义版本、双方 capability、生命周期、错误和上限明确 | Pending |
-| PROJECT-PLATFORM-S18-M2-T03 | 设计关系策略、建链意图、双方确认和治理回执 Flyway schema | 只保存授权/意图/版本/回执；复合边界、唯一性、索引、清理和 owner 完整 | Pending |
-| PROJECT-PLATFORM-S18-M2-T04 | 实现 source relate、target accept-link 与当前 grant 的原子判定 | 双方权限、类型矩阵、方向、基数和定义版本均失败关闭；无客户端过滤 | Pending |
-| PROJECT-PLATFORM-S18-M2-T05 | 通过 S10 canonical command 创建、读取和撤销跨空间关系 | S18 不直接写 relation 私表；并发单赢家，无单端边、幽灵边或双重历史 | Pending |
-| PROJECT-PLATFORM-S18-M2-T06 | 实现端点最小引用、反向可见性和 404/403 外形 | 不可见目标只返回 forbidden reference；不泄露标题、类型、状态、路径或关系数 | Pending |
-| PROJECT-PLATFORM-S18-M2-T07 | 实现撤销、收权、归档、删除和 definition 升级语义 | 既有边按 S10 历史保留/投影；新建链停止，不静默重写端点或方向 | Pending |
-| PROJECT-PLATFORM-S18-M2-T08 | 交付跨空间关系选择、确认、反向引用和治理 Web | 1440/1366/820、键盘、长名称、loading、空态/错误和双方授权来源可理解 | Pending |
-| PROJECT-PLATFORM-S18-M2-T09 | 接入 realtime、离线选择、多标签冲突、收权和 REST 校准 | 离线不丢意图；恢复不重复建边，旧目标/反向/计数不闪现 | Pending |
-| PROJECT-PLATFORM-S18-M2-T10 | 完成六身份、双空间、并发、重复边、环、撤销、收权和归档测试 | 无端点/标题/状态/路径/数量泄漏、半边、重复历史或 enterprise 旁路 | Pending |
-| PROJECT-PLATFORM-S18-M2-T11 | 执行关系候选、端点解析、建链端口、影响和渲染预算 | 固定夹具与上界可复现；不声明生产关系图容量、延迟或 SLO | Pending |
-| PROJECT-PLATFORM-S18-M2-T12 | 同步授权/关系/最小披露/审计合同并完成 M2 checkpoint | 当前事实与 M3 同步输入清楚；关系边继续由 S10 唯一持有 | Pending |
-
-### PROJECT-PLATFORM-S18-M3 单向/双向字段与状态同步
+### PROJECT-PLATFORM-S19-M2 图表、看板和跨空间数据源
 
 | 任务 | 内容 | 验收标准 | 状态 |
 | --- | --- | --- | --- |
-| PROJECT-PLATFORM-S18-M3-T01 | 复核 M1-M2 授权/关系、字段/流程公共命令、S03/S17 可靠执行和未关闭阻断 | 24 项逐项可追溯；同步不复制 WorkItem、字段、状态、关系或权限权威 | Pending |
-| PROJECT-PLATFORM-S18-M3-T02 | 冻结 SyncRule、RuleVersion、FieldMapping、StateMapping、Direction 与 Trigger 合同 | identity、版本、方向、转换、触发、错误、生命周期、保留和上限明确 | Pending |
-| PROJECT-PLATFORM-S18-M3-T03 | 设计同步规则、不可变版本、运行/步骤、回执、冲突和补偿 Flyway schema | 复合边界、唯一性、fencing、索引、不可变历史、清理和 owner 完整 | Pending |
-| PROJECT-PLATFORM-S18-M3-T04 | 实现规则草稿、校验、双方发布、启停、修订和归档 | 映射/type/capability/grant 校验完整；已发布版本不可变且运行绑定确切版本 | Pending |
-| PROJECT-PLATFORM-S18-M3-T05 | 实现单向字段和状态同步 | 只调用 canonical field/state/node command；expected version、权限和输入指纹可追溯 | Pending |
-| PROJECT-PLATFORM-S18-M3-T06 | 实现双向同步、origin/causation、循环检测和稳定去重 | 同一变化不会回响；链深、扇出和重试有界，禁止任意脚本或隐式转换 | Pending |
-| PROJECT-PLATFORM-S18-M3-T07 | 实现冲突分类、人工选择、自动策略、补偿、重试和死信 | 冲突不静默覆盖；补偿不伪造原事实，重放不重复已成功副作用 | Pending |
-| PROJECT-PLATFORM-S18-M3-T08 | 交付映射编辑、预览、运行历史、冲突和补偿 Web | 1440/1366/820、键盘、长字段、loading、空态/错误和来源版本可理解 | Pending |
-| PROJECT-PLATFORM-S18-M3-T09 | 接入收权/撤销、realtime、离线草稿、多标签冲突和 REST 校准 | 每步重校准双方权限；旧字段/状态/冲突数不闪现，不伪造同步成功 | Pending |
-| PROJECT-PLATFORM-S18-M3-T10 | 完成六身份、双空间、并发、循环、部分失败、收权、重试和补偿测试 | 无字段/状态/错误/数量泄漏、丢更新、无限回响、重复副作用或 enterprise 旁路 | Pending |
-| PROJECT-PLATFORM-S18-M3-T11 | 执行规则/映射/扇出、run/step、worker、冲突和渲染预算 | 固定夹具与上界可复现；不声明生产同步吞吐、延迟或 SLO | Pending |
-| PROJECT-PLATFORM-S18-M3-T12 | 同步规则/运行/冲突/补偿/事件合同并完成 M3 checkpoint | 当前事实与 M4 全景/治理输入清楚；S19 指标仍未实现 | Pending |
+| PROJECT-PLATFORM-S19-M2-T01 | 复核 M1 语义层、S13 查询、S14 视图、S18 grant/全景和未关闭阻断 | 12 项逐项可追溯；图表不建立第二套指标、权限或跨空间授权权威 | Pending |
+| PROJECT-PLATFORM-S19-M2-T02 | 冻结 DataSourceBinding、ChartDefinition、Dashboard、Layout、Filter 与 QueryResult 合同 | identity、版本、来源、指标、维度、可视化、过滤、截断、错误和上限明确 | Pending |
+| PROJECT-PLATFORM-S19-M2-T03 | 设计数据源绑定、图表/看板版本、个人偏好、回执和可重建缓存 Flyway schema | 只保存配置、identity/version 与低基数派生；复合边界、过期、清理和 owner 完整 | Pending |
+| PROJECT-PLATFORM-S19-M2-T04 | 实现 permission-scoped 数据源解析和有界查询计划 | 只调用 owner 公共合同；逐来源授权、窗口和指标版本固定，无私表 join 或全量后过滤 | Pending |
+| PROJECT-PLATFORM-S19-M2-T05 | 实现单空间/跨空间聚合、去重、分子分母和来源对账 | active grant、当前 data scope、最小样本与截断一致；收权后结果立即失败关闭 | Pending |
+| PROJECT-PLATFORM-S19-M2-T06 | 实现表格、指标卡、折线、柱状、堆叠与分布图的来源解释和安全钻取 | 图例、facet、tooltip、游标、空态和 drilldown 不泄漏隐藏对象或数量 | Pending |
+| PROJECT-PLATFORM-S19-M2-T07 | 实现看板草稿、发布、布局、过滤、个人偏好、分享和精确回放 | 发布版本不可变；分享只引用受权配置，不复制数据或扩大接收者权限 | Pending |
+| PROJECT-PLATFORM-S19-M2-T08 | 交付图表设计器、跨空间数据源和响应式管理看板 Web | 1440/1366/820、键盘、长标签、loading、空态/错误、freshness/truncation 可用 | Pending |
+| PROJECT-PLATFORM-S19-M2-T09 | 接入 realtime、离线布局、多标签冲突、收权和 REST 校准 | 离线不伪造保存/分享；恢复不重复写入，旧 series/facet/count 不闪现 | Pending |
+| PROJECT-PLATFORM-S19-M2-T10 | 完成六身份、单/跨空间、并发、分享、撤销、截断和钻取测试 | 无标题/成员/维度/series/数量泄漏、错分母、重复数据或 enterprise 旁路 | Pending |
+| PROJECT-PLATFORM-S19-M2-T11 | 执行数据源/图表/看板、聚合、缓存、查询端口和 DOM 预算 | 固定夹具与上界可复现；不声明生产看板并发、刷新延迟或 SLO | Pending |
+| PROJECT-PLATFORM-S19-M2-T12 | 同步语义/数据源/图表/看板合同并完成 M2 checkpoint | 当前事实与 M3 风险输入清楚；图表结果不成为权限或风险结论权威 | Pending |
 
-### PROJECT-PLATFORM-S18-M4 跨团队全景视图、协作审计与 Stage 收口
+### PROJECT-PLATFORM-S19-M3 延期、阻塞、质量和资源风险预警
 
 | 任务 | 内容 | 验收标准 | 状态 |
 | --- | --- | --- | --- |
-| PROJECT-PLATFORM-S18-M4-T01 | 审计 M1-M3 实现、报告、迁移、边界和未关闭 gap | 36 个任务逐项可追溯；阻断项 Reopen，不以 Remaining Gap 弱化完成标准 | Pending |
-| PROJECT-PLATFORM-S18-M4-T02 | 冻结 CrossTeamPanorama、CollaborationSlice、AuditEntry、Health 与 Diagnostic 合同 | 来源、窗口、排序、解释、截断、版本、错误、权限和上限明确 | Pending |
-| PROJECT-PLATFORM-S18-M4-T03 | 设计全景偏好、可重建索引/统计和治理回执 Flyway schema | 只保存低基数派生/identity/version；复合边界、索引、过期、清理和 owner 完整 | Pending |
-| PROJECT-PLATFORM-S18-M4-T04 | 聚合授权、关系、同步、冲突和补偿的当前受权最小事实 | 只调用 owner 公共合同；无私表 join、重复事实、全量后过滤或跨空间旁路 | Pending |
-| PROJECT-PLATFORM-S18-M4-T05 | 实现跨团队全景、过滤、深链、截断和来源解释 | 隐藏空间/端点/字段不进入标题、数量、facet、游标、健康或错误外形 | Pending |
-| PROJECT-PLATFORM-S18-M4-T06 | 实现协作审计、授权链、关系来源、同步 lineage 和治理诊断 | 审计可追溯但不复制内容；每个结论绑定 source identity/version 与当前权限 | Pending |
-| PROJECT-PLATFORM-S18-M4-T07 | 实现受控暂停/恢复、撤销、冲突处理、补偿和治理回放 | 危险动作需理由、当前双方权限、expected version、request hash 和 receipt | Pending |
-| PROJECT-PLATFORM-S18-M4-T08 | 交付完整全景、授权/关系/同步历史、冲突与治理响应式 Web | 1440/1366/820、长名称、键盘、loading、空态/错误和来源可用 | Pending |
-| PROJECT-PLATFORM-S18-M4-T09 | 完成六身份、双空间、并发、收权、离线和组合规模预算验收 | 固定夹具与 SQL/端口/内存/DOM 上界可复现；无空间/关系/同步/错误泄漏 | Pending |
-| PROJECT-PLATFORM-S18-M4-T10 | 执行完整 PostgreSQL/Flyway、后端、前端、协作、架构、安全和真实隔离浏览器门禁 | full gate 无阻断；双空间、六身份、关键视口和 route-final 证据 fresh | Pending |
-| PROJECT-PLATFORM-S18-M4-T11 | 同步当前架构、Program、专项索引、模块/对象/事件/运维合同并复核 S19 准入 | 文档只声明已实现事实；S19 继续复用当前权限、审计和有界聚合边界 | Pending |
-| PROJECT-PLATFORM-S18-M4-T12 | 给出 S18 Go/Reopen，完成 route-final 并把当前 Stage 置 none | 四份报告、48 Task、工作上下文和文档一致；仅无阻断时 Completed | Pending |
+| PROJECT-PLATFORM-S19-M3-T01 | 复核 M1-M2 指标/看板、计划/流程/关系/资源公共合同和未关闭阻断 | 24 项逐项可追溯；风险信号不复制 WorkItem、流程、资源、权限或指标事实 | Pending |
+| PROJECT-PLATFORM-S19-M3-T02 | 冻结 RiskPolicy、PolicyVersion、RiskSignal、EvidenceReference、Ack 与 Closure 合同 | identity、版本、严重度、窗口、来源、解释、生命周期、错误和上限明确 | Pending |
+| PROJECT-PLATFORM-S19-M3-T03 | 设计风险策略、不可变版本、信号、证据引用、回执和可重建统计 Flyway schema | 复合边界、唯一性、去重、索引、历史、过期、清理和 owner 完整 | Pending |
+| PROJECT-PLATFORM-S19-M3-T04 | 实现计划/里程碑/日历驱动的延期和临期风险 | 日期、基线、窗口、时区和当前权限可解释；无日期/收权/归档后不伪造正常 | Pending |
+| PROJECT-PLATFORM-S19-M3-T05 | 实现流程停滞、关系阻塞和依赖传播风险 | 只读公共状态/关系快照；环、隐藏端点、链深和扇出有界且不泄漏路径 | Pending |
+| PROJECT-PLATFORM-S19-M3-T06 | 实现质量与资源风险的受限证据组合 | 只组合已注册指标及当前缺陷/评审/产能公共事实；禁止个人绩效和隐式利用率评分 | Pending |
+| PROJECT-PLATFORM-S19-M3-T07 | 实现策略发布、信号去重、冷却、确认、关闭、抑制、重开和失效 | 每个动作绑定策略/来源版本与 receipt；关闭不改写来源，证据变化可重算 | Pending |
+| PROJECT-PLATFORM-S19-M3-T08 | 交付风险策略、信号列表、证据解释、确认/关闭和深链 Web | 1440/1366/820、键盘、长解释、loading、空态/错误和来源版本可理解 | Pending |
+| PROJECT-PLATFORM-S19-M3-T09 | 接入 realtime、离线输入、多标签冲突、收权和 REST 校准 | 离线不伪造关闭；恢复不重复动作，旧风险/严重度/数量不闪现 | Pending |
+| PROJECT-PLATFORM-S19-M3-T10 | 完成六身份、跨空间、并发、环、迟到事实、收权、关闭和重放测试 | 无对象/成员/路径/证据/数量泄漏、重复信号、幽灵关闭或 enterprise 旁路 | Pending |
+| PROJECT-PLATFORM-S19-M3-T11 | 执行策略/信号/证据、评估端口、链深/扇出、worker 和渲染预算 | 固定夹具与上界可复现；不声明生产风险覆盖、预测准确率或 SLO | Pending |
+| PROJECT-PLATFORM-S19-M3-T12 | 同步风险策略/信号/证据/事件合同并完成 M3 checkpoint | 当前事实与 M4 治理输入清楚；预警不成为来源事实或人员评价 | Pending |
+
+### PROJECT-PLATFORM-S19-M4 空间治理、配置健康、审计报表和 Stage 收口
+
+| 任务 | 内容 | 验收标准 | 状态 |
+| --- | --- | --- | --- |
+| PROJECT-PLATFORM-S19-M4-T01 | 审计 M1-M3 实现、报告、迁移、边界和未关闭 gap | 36 个任务逐项可追溯；阻断项 Reopen，不以 Remaining Gap 弱化完成标准 | Pending |
+| PROJECT-PLATFORM-S19-M4-T02 | 冻结 GovernanceOverview、ConfigHealth、AuditReport、ReportRun、Export 与 Diagnostic 合同 | 来源、窗口、排序、解释、截断、版本、权限、保留、错误和上限明确 | Pending |
+| PROJECT-PLATFORM-S19-M4-T03 | 设计治理偏好、报表定义/运行、导出回执和可重建健康统计 Flyway schema | 只保存治理配置/identity/version/低基数派生；索引、过期、清理和 owner 完整 | Pending |
+| PROJECT-PLATFORM-S19-M4-T04 | 聚合空间生命周期、成员治理、配置、权限、自动化和跨空间公共元数据 | 只调用 owner 公共合同；无内容私表 join、全量后过滤、个人排名或企业内容旁路 | Pending |
+| PROJECT-PLATFORM-S19-M4-T05 | 实现配置完整性、版本漂移、过期策略、失败运行和审计覆盖健康 | 每个结论绑定 source identity/version；unknown/stale/truncated 显式且不伪造 healthy | Pending |
+| PROJECT-PLATFORM-S19-M4-T06 | 实现审计报表、过滤、保留、脱敏、导出和来源校验 | 导出逐行重校准当前权限；隐藏内容不进入字段、数量、文件名、facet 或错误外形 | Pending |
+| PROJECT-PLATFORM-S19-M4-T07 | 实现治理报表草稿/发布/运行、受控确认/关闭和精确回放 | 危险动作需理由、当前权限、expected version、request hash、receipt 与审计 | Pending |
+| PROJECT-PLATFORM-S19-M4-T08 | 交付完整管理驾驶舱、配置健康、风险、审计报表和导出响应式 Web | 1440/1366/820、长名称、键盘、loading、空态/错误、来源/freshness 可用 | Pending |
+| PROJECT-PLATFORM-S19-M4-T09 | 完成六身份、单/跨空间、并发、收权、离线和组合规模预算验收 | 固定夹具与 SQL/端口/内存/DOM 上界可复现；无空间/成员/配置/审计泄漏 | Pending |
+| PROJECT-PLATFORM-S19-M4-T10 | 执行完整 PostgreSQL/Flyway、后端、前端、协作、架构、安全和真实隔离浏览器门禁 | full gate 无阻断；单/跨空间、六身份、关键视口和 route-final 证据 fresh | Pending |
+| PROJECT-PLATFORM-S19-M4-T11 | 同步当前架构、Program、专项索引、模块/对象/事件/运维合同并复核 S20 准入 | 文档只声明已实现事实；S20 模板只能消费已发布公共能力 | Pending |
+| PROJECT-PLATFORM-S19-M4-T12 | 给出 S19 Go/Reopen，完成 route-final 并把当前 Stage 置 none | 四份报告、48 Task、工作上下文和文档一致；仅无阻断时 Completed | Pending |
 
 ## 6. Stage 验收
 
-- 跨空间 grant、双方确认、撤销、历史与类型/实例范围拥有唯一 versioned authority，不创建隐式成员或 ACL。
-- 跨空间关系在双方权限和最小披露下调用 S10 canonical relation command；无半边、重复边、标题/状态/路径或数量泄漏。
-- 单向/双向字段和状态同步具有不可变规则版本、映射、origin/causation、循环防护、冲突、补偿、重试、死信和精确回执。
-- 每次读取、建链和同步步骤都重新执行双方当前 decision/data scope；收权、撤销、归档和删除后失败关闭。
-- 全景和协作审计只聚合当前受权最小事实；索引、统计、缓存、realtime 和审计投影均不授权或成为 S19 指标。
-- 幂等、乐观锁、realtime、离线、多标签、长名称、1440/1366/820、双空间和六身份闭环通过。
+- 指标定义、不可变版本、measure/dimension/window/timezone、单位、分子分母、freshness 和来源拥有唯一可重复语义。
+- 单空间/跨空间数据源、图表和看板逐来源执行当前权限与最小样本/截断规则；无标题、成员、维度、series 或数量泄漏。
+- 延期、阻塞、质量和资源风险绑定策略/来源版本，证据可解释，确认/关闭/抑制/重开可追溯且不改写来源。
+- 管理驾驶舱只展示治理元数据、配置健康、风险和审计覆盖，不提供企业内容旁路、个人排名或绩效评分。
+- 未知、缺失、过期、截断、抑制和无样本显式表达，不折算为零、正常或成功。
+- 幂等、乐观锁、realtime、离线、多标签、长名称、1440/1366/820、单/跨空间和六身份闭环通过。
 - 完整 PostgreSQL/Flyway、后端、前端、协作、架构、安全与真实隔离浏览器 `route-final` 无阻断。
-- S18 不实现 S19 组织级度量/驾驶舱或 S20 场景模板，也不把本地预算表述为生产吞吐、容量或 SLO。
+- S19 不实现 S20 场景模板或 S21 旧模型退出，也不把本地预算表述为生产吞吐、指标延迟、预测准确率或 SLO。
 
 ## 7. 起始点
 
-S17 完成路线已归档，S18 在 Program revision 43 激活。当前唯一合法入口为 `PROJECT-PLATFORM-S18-M1-T01`；M1 完成前不得推进 M2，且不得提前实现 S19。
+S18 完成路线已归档，S19 在 Program revision 45 激活。当前唯一合法入口为 `PROJECT-PLATFORM-S19-M1-T01`；M1 完成前不得推进 M2，且不得提前实现 S20。

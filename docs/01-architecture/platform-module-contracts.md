@@ -383,3 +383,28 @@ M2 不实现 Worker lease、dead-letter、replay、handler registry 或独立进
 - `AutomationManagementService` 只组合 `AutomationRuleService`、`AutomationExecutionService`、`AutomationConnectorService` 与 `AutomationQuotaService` 的当前公开响应；统计、健康和诊断均为有界低基数派生。
 - `AutomationQuotaService` 在真实执行事务内按 space/rule/actor/action 消费稳定 claim；caller-stable source receipt 防止重放重复计数。暂停/恢复使用 current owner/admin gate、expected version、reason 和 exact governance receipt。
 - preference、quota、diagnostic、Web cache 与 realtime signal 均不授权。S17 不定义跨空间成员、关系或字段同步；S18 必须建立独立 versioned authority。
+
+## 33. S18-M1 跨空间授权模块边界
+
+- project 模块的 `CrossSpaceGrantService` 是 grant 生命周期与 scope version 的唯一 application owner；Controller 只映射协议，`JdbcCrossSpaceGrantRepository` 只持有 V127 grant/version/receipt 私表。
+- 空间身份和状态通过 `ProjectSpaceRepository` 公共合同读取，双方类型版本通过 `PublishedSnapshotAdapter` 校验；grant 不写成员、ACL、类型、实例、关系、流程、自动化或 credential 私表。
+- 受保护授权入口同时检查 active grant、scope operation、source/target 当前空间状态和双方确认者当前 owner/admin 身份。调用方不得缓存成功 decision 或从 Web/realtime 推导授权。
+- 成功命令通过稳定 AuditLog/TransactionalOutbox 公共端口写治理证据；payload 只含 grant/space identity、状态、版本和 change，不含类型/字段/成员正文。
+
+## 34. S18-M2 跨空间关系模块边界
+
+- `CrossSpaceRelationService` 只拥有 V128 policy、intent 和 exact receipt；它通过 `CrossSpaceGrantService.requireActiveGrant`、`PublishedSnapshotAdapter`、`WorkItemRelationAccessDecisionService` 与 `WorkItemRepository` 公共合同重校准双方当前能力和 endpoint binding。
+- `CrossSpaceRelationCommand` 是 S10 的唯一跨空间 canonical edge 公共命令。其 JDBC adapter 独占 cross-space edge/history 私表、事务图锁、唯一 active edge、基数、环、withdraw history 和 endpoint version 判定；S18 repository 不引用这些表。
+- Controller 只公开 foundation、policy lifecycle、intent lifecycle、minimal endpoint reference、canonical relation reference 与 reasoned withdrawal；404/403 外形不泄露对端标题、字段、状态、路径或数量。
+- 客户端 cache、realtime、offline draft 和 intent 均不授权。每次 accept/withdraw 以当前 grant/policy/space/member/definition/endpoint decision 为准，成功后追加 exact receipt、audit 与最小 outbox。
+
+## 35. S18-M3 跨空间同步模块边界
+
+- `CrossSpaceSyncService` 独占 V129 rule/version/run/step/conflict/receipt；`CrossSpaceWorkItemCommand` 是同步调用规范 WorkItem 字段/状态命令的最小公共端口，adapter 才可调用 `WorkItemService`。
+- 同步服务只通过 `CrossSpaceGrantService`、`CrossSpaceRelationRepository` 的 policy 合同、S10 `CrossSpaceRelationCommand` 和当前 access decision 校准。它不得读取关系、事项、字段、流程、成员或权限私表。
+- run/step/conflict 只保存 identity、版本、方向、指纹、稳定错误和治理终态。AuditLog/TransactionalOutbox 仍是唯一横向写端口；缓存、统计、Web 与 realtime 均不授权。
+
+## 36. S18-M4 跨团队全景模块边界
+
+- `CrossTeamPanoramaService` 只调用 `CrossSpaceGrantService`、`CrossSpaceRelationService` 和 `CrossSpaceSyncService` 公共 foundation，不读取 V127-V129 私表。
+- V130 preference/stats/receipt 由 project owner 独占；stats 可删除重建且不授权。全景、health、diagnostic 与 Web cache 都不是 S19 指标权威。

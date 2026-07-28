@@ -125,6 +125,58 @@ public class JdbcProjectSpaceRepository implements ProjectSpaceRepository {
     public void deleteSpace(UUID workspaceId, UUID spaceId) {
         jdbcTemplate.execute("set local colla.project_space_cleanup = 'on'");
         jdbcTemplate.update(
+            "delete from project_cross_team_panorama_preferences where workspace_id = ? and space_id = ?",
+            workspaceId, spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_cross_team_panorama_slice_stats where workspace_id = ? and space_id = ?",
+            workspaceId, spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_cross_team_panorama_governance_receipts where workspace_id = ? and space_id = ?",
+            workspaceId, spaceId
+        );
+        jdbcTemplate.update(
+            """
+                delete from project_cross_space_sync_rules
+                 where workspace_id = ?
+                   and (source_space_id = ? or target_space_id = ?)
+                """,
+            workspaceId,
+            spaceId,
+            spaceId
+        );
+        jdbcTemplate.update(
+            """
+                delete from project_work_item_cross_space_relations
+                 where workspace_id = ?
+                   and (source_space_id = ? or target_space_id = ?)
+                """,
+            workspaceId,
+            spaceId,
+            spaceId
+        );
+        jdbcTemplate.update(
+            """
+                delete from project_cross_space_relation_policies
+                 where workspace_id = ?
+                   and (source_space_id = ? or target_space_id = ?)
+                """,
+            workspaceId,
+            spaceId,
+            spaceId
+        );
+        jdbcTemplate.update(
+            """
+                delete from project_cross_space_grants
+                 where workspace_id = ?
+                   and (source_space_id = ? or target_space_id = ?)
+                """,
+            workspaceId,
+            spaceId,
+            spaceId
+        );
+        jdbcTemplate.update(
             "delete from project_permission_decision_evidence where workspace_id = ? and space_id = ?",
             workspaceId,
             spaceId

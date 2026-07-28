@@ -15,7 +15,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 
 @Testcontainers
 class WorkItemConfigurationMigrationMatrixIntegrationTests {
-    private static final String LATEST = "126";
+    private static final String LATEST = "130";
     private static final UUID WORKSPACE_ID =
         UUID.fromString("00000000-0000-0000-0000-000000000001");
     private static final UUID USER_ID =

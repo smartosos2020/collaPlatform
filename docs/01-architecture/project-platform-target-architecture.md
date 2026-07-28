@@ -2,11 +2,11 @@
 title: 项目协作平台目标架构
 status: target
 program: PROJECT-PLATFORM
-program_revision: 43
+program_revision: 45
 domain_contract_version: 1
 domain_contract_status: frozen-s01-m3
 migration_contract_version: 1
-stage_review_status: s17-archived-s18-active
+stage_review_status: s19-active
 updated_at: 2026-07-28
 ---
 
@@ -1491,4 +1491,45 @@ S09 完成路线已经独立归档，S10 在 Program revision 27 激活为唯一
 - S18 当前路线固定为 4 个 Milestone、48 个 Task：M1 工作项类型跨空间授权，M2 跨空间关系与最小可见性，M3 单向/双向字段与状态同步，M4 跨团队全景、协作审计与 Stage 收口。
 - grant 必须由 source/target 双方显式确认，不能创建隐式成员或复制 ACL；每次读取、建链和同步步骤重新执行 S11 当前 decision/data scope，enterprise governance 无内容旁路。
 - S10 继续持有 canonical relation edge；S18 只拥有跨空间授权、同步规则/运行/冲突/补偿和治理回执。S17 自动化、Webhook 或 connector 不能充当跨空间授权或同步权威。
-- 本次激活只声明规划和验收边界，不声明任何 S18 schema、API、worker、索引或 UI 已实现；S19 组织级度量继续保持 Planned。
+- revision 43 激活时只声明规划和验收边界；后续实现事实按以下 M1-M4 章节累积。S19 组织级度量继续保持 Planned。
+
+### 29.26 S18-M1 跨空间授权实现边界
+
+- V127 建立 `CrossSpaceGrant`、不可变 `GrantVersion` 和 caller-stable `GrantReceipt`。grant 复合边界固定 workspace/source-space/target-space，空间 identity 不可修订；每次修订创建新 scope version 并清除双方旧确认。
+- scope schema v1 只允许 `source_to_target`、`target_to_source`、`bidirectional`，以及 `reference`、`relate`、`read_fields`、`sync_fields`、`sync_state` 的显式最小集合；每个类型范围绑定双方完整 published snapshot identity/version，未知、未来或不完整 schema 失败关闭。
+- 生命周期固定为 draft -> requested -> active，并支持 paused/resume、revoked -> archived。active 只有 source/target 当前 owner/admin 分别确认后成立；grant 不创建成员或 ACL，空间/用户停用、成员收权、授权暂停/撤销后新访问和副作用立即禁止。
+- 写命令使用 request ID/hash、expected version、不可变 response receipt、audit 和最小 `project.cross-space.grant.changed` outbox；事件只用于失效，浏览器在 online/focus/reconnect 后经 REST 重新校准。
+- M1 只交付授权事实和治理 Web，不创建 relation edge、不读取 S10 私表、不执行字段/状态同步，也不生成 S19 组织级度量。
+
+### 29.27 S18-M2 跨空间关系实现边界
+
+- V128 建立 S18-owned `CrossSpaceRelationPolicy`、`LinkIntent` 与 caller-stable receipt；policy 绑定 exact grant/versioned published type definitions、relation key、方向和双方 capability，intent 绑定 exact policy/endpoint version。
+- S10 通过公共 `CrossSpaceRelationCommand` 唯一持有 `project_work_item_cross_space_relations` canonical edge 与不可变 history；S18 application service 不读取或写入该私表，也不复制 S10 同空间 relation/history。
+- 建链按 source `relate`、target `accept_link` 双端当前权限执行；active grant、policy version、definition hash/type matrix、方向、基数、endpoint active/version、重复边和 64 层环均在一个事务内失败关闭，并发只有一个 active edge/history。
+- 最小 `EndpointReference` 只返回 opaque reference、type key、active flag 和 version。隐藏端点统一 forbidden reference，不通过标题、字段、状态、路径、数量、facet 或错误外形泄漏。
+- grant/策略暂停、撤销、空间归档、成员收权或 definition 升级立即停止新 intent/edge；既有 edge 不静默改写，按 S10 active/withdrawn history 继续受权投影。Web 在 realtime/online/focus 后经 REST 重校准，离线不能确认或建链。
+- M2 不执行字段或状态同步；M3 将只在当前 active grant、policy 和 canonical edge 上建立 versioned mapping/run/conflict/compensation，不把 relation intent 当同步成功事实。
+
+### 29.28 S18-M3 字段与状态同步实现边界
+
+- V129 建立 `SyncRule`、不可变 `RuleVersion`、`SyncRun`、不可变 `SyncStep`、`SyncConflict` 和 caller-stable receipt；规则固定 grant/policy/canonical relation identities，修订生成新版本并清除旧双方确认。
+- 字段映射只允许显式 source/target key 与 `copy`，状态映射只允许显式 source state、target from-state 和 canonical action；script、SQL、模板、隐式转换和未知 schema 失败关闭。
+- 每次执行重新校准 active grant 的 `read_fields/sync_fields/sync_state`、active canonical edge、双方确认者当前 manager 身份和两个 endpoint version。变更只调用 `CrossSpaceWorkItemCommand`，S18 不读写 WorkItem/field/workflow 私表。
+- run 绑定 exact rule version、origin/causation/input fingerprint、0-8 chain depth 和最多 50 steps；稳定来源精确重放不重复 canonical command。冲突保存安全指纹与稳定错误，不保存字段/状态内容。
+- M3 Web 对当前成员展示有界规则/运行/冲突事实，owner/admin 执行双确认、暂停/恢复与冲突治理；offline/realtime 只触发 REST 校准。M4 只能通过公共最小快照组合全景，不跨私表 join。
+
+### 29.29 S18-M4 全景与协作审计实现边界
+
+- V130 只保存个人偏好、可重建低基数 slice stats 与 caller-stable governance receipt；索引/统计过期可重建且从不授权。
+- `CrossTeamPanoramaService` 组合 M1-M3 当前公共 foundation，返回最多 200 条 grant/relation/sync/conflict identity/version/status/source 与同源 audit lineage；不返回标题、字段、流程正文、成员或权限快照。
+- health 仅以当前受权计数、open conflict 和显式 truncation 生成 healthy/attention/unknown 解释，不形成 S19 指标语义、跨组织报表或容量 SLO。
+- S18 route-final 完成后 `current_stage` 为 none；S19 只有在独立归档/激活后才可建立版本化指标语义。
+
+### 29.30 S18 归档与 S19 激活边界
+
+- S18 完成路线已通过独立 archive-only 工作循环归档至 `docs/99-archive/superseded-roadmaps/project-platform-s18-roadmap-completed-2026-07-28.md`；S19 在 Program revision 45 激活，当前唯一入口是 `PROJECT-PLATFORM-S19-M1-T01`。
+- S19 当前路线固定为 4 个 Milestone、48 个 Task：M1 指标语义/维度/时间窗口，M2 图表/看板/跨空间数据源，M3 延期/阻塞/质量/资源风险，M4 空间治理/配置健康/审计报表与 Stage 收口。
+- 指标、图表、风险和治理响应必须逐来源重校准 S11 当前 decision/data scope，并只消费 S13-S18 owner 的公共最小合同；S19 不读取查询、计划、资源、自动化或跨空间私表。
+- Metric definition/version、dimension、window、chart/dashboard configuration、risk policy/signal 与 governance report 是 S19 唯一新增权威；物化结果、缓存、统计、图表和报表不授权。
+- 未知、缺失、过期、截断、抑制和无样本必须显式表达，不能折算为零、正常或成功。enterprise-admin 不自动获得私有内容，个人排名和绩效评分禁止。
+- revision 45 激活只声明规划和验收边界，不声明任何 S19 schema、API、worker 或 UI 已实现；S20 场景模板继续保持 Planned。

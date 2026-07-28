@@ -13,6 +13,7 @@ export async function runCommand({ command, options, root }: CommandContext): Pr
     isolatedProjectPlatformS15Smoke,
     isolatedProjectPlatformS16Smoke,
     isolatedProjectPlatformS17Smoke,
+    isolatedProjectPlatformS18Smoke,
   } = await import('../browser/smoke.js')
   if (command === 'browser smoke-im' || command === 'browser smoke-ui-split') {
     await browserSmoke(root, command.endsWith('smoke-im') ? 'e2e/im-smoke.spec.ts' : 'e2e/ui-split-v1-smoke.spec.ts', {
@@ -112,6 +113,18 @@ export async function runCommand({ command, options, root }: CommandContext): Pr
       optionNumber(options, 'database-port', 5432),
       optionNumber(options, 'api-port', 18170),
       optionNumber(options, 'web-port', 15270),
+    )
+    return
+  }
+  if (command === 'browser smoke-project-platform-s18-isolated') {
+    const spec = optionString(options, 'spec')
+    if (!spec) throw new Error('--spec is required')
+    await isolatedProjectPlatformS18Smoke(
+      root,
+      spec,
+      optionNumber(options, 'database-port', 5432),
+      optionNumber(options, 'api-port', 18180),
+      optionNumber(options, 'web-port', 15280),
     )
     return
   }

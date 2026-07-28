@@ -546,9 +546,18 @@ S16-M1-M4 已交付 V118-V121 日历/例外/显式估分、实际工时/不可�
 - 调整 preview 无副作用；commit 只调用 canonical allocation update，先执行 exact receipt replay、再执行 expected version 校验，新请求冲突失败关闭。
 - Web 对重叠分配条分层并限制轨道高度，支持键盘、REST 校准、离线输入保留与 1440/1366/820。六身份、跨空间、回放与 route-final 已通过。
 
-## S17 归档与 S18 当前执行边界
+## S18 完成与 S19 当前执行边界
 
-- S17 完成路线已归档；当前已实现事实仍止于 V126 的自动化规则、运行、调度、连接器、管理与限额，相关事实继续由 project owner 持有。
-- Program revision 43 已激活 S18，当前唯一执行入口为 `PROJECT-PLATFORM-S18-M1-T01`，路线包含 4 个 Milestone、48 个 Pending Task。
-- 当前代码尚未交付 S18 的跨空间 grant、关系授权、同步规则/运行/冲突/补偿、跨团队全景或协作审计 schema/API/worker/UI；S17 自动化和连接器也不具备这些语义。
-- S18 实现必须复用 S10 canonical relation、S11 当前 decision/data scope 与既有公共 resolver/command/event 合同，不能通过当前跨空间空集、企业治理角色或缓存推导已授权能力。
+- S18 完成路线已归档；当前已实现事实止于 V130 的跨空间授权、关系命令调用、同步/冲突/补偿、全景与协作审计，相关事实继续由既有 owner 和 project S18 owner 持有。
+- Program revision 45 已激活 S19 为 4 个 Milestone、48 个 Task；当前唯一执行入口为 `PROJECT-PLATFORM-S19-M1-T01`，尚无 S19 schema、API、worker 或 UI 实现事实。
+- S18-M1 已新增 V127 `project_cross_space_grants`、不可变 grant version 与精确 command receipt。`CrossSpaceGrantService` 持有草稿、修订、请求、双方确认、暂停、恢复、撤销和归档编排；scope 只保存方向、最小操作及双方已发布类型/版本 identity，不复制类型标题、字段、实例、成员或 ACL。
+- 每个 grant 必须由 source/target 空间当前 owner/admin 分别确认；空间停用/归档、确认者收权/停用或 grant 暂停/撤销后，受保护入口立即失败关闭。enterprise-admin、缓存、realtime 和 S17 自动化/连接器均不授权。
+- Web 已提供授权草稿、范围预览、双方确认、暂停/恢复、撤销/归档和离线/online/focus REST 校准；请求 ID/hash、expected version、receipt、audit 与最小 `project.cross-space.grant.changed` outbox 构成同一事务闭包。
+- S18-M2 已新增 V128 versioned relation policy、双端 link intent、exact receipt，以及由 S10 公共 `CrossSpaceRelationCommand` 唯一持有的 canonical cross-space edge/history 扩展。策略与 intent 每步重新校准 active grant、已发布定义、source `relate`、target `accept_link`、endpoint version、方向、基数和环；并发由事务锁与唯一 active edge 保证单赢家。
+- 端点引用与反向关系只暴露 opaque identity、type key、active/version 和 policy provenance，不返回标题、字段、状态路径或关系数。grant 暂停/撤销或任一方收权会停止新建链，既有 edge/history 仍由 S10 按 withdrawn/retained projection 解释。
+- Web 已交付策略请求/双方确认、受权 ID 选择、目标接受、反向引用、暂停/恢复/撤销治理，以及 offline/online/focus REST 校准；1440/1366/820、六身份、并发重复、环和最小披露通过真实隔离验收。
+- S18-M3 已新增 V129 同步规则、不可变规则版本、运行、步骤、冲突和精确回执。每个运行绑定 active grant/policy/canonical relation 与双方当前确认者；字段和状态变更只经 `CrossSpaceWorkItemCommand` 的 canonical update/transition 执行。
+- 同步规则只允许声明式 `copy` 字段映射和显式状态 action；origin/input fingerprint 去重、8 层链深、50 步、expected endpoint version、冲突/补偿/死信均有界，run/step 不保存字段值。Web 已交付规则双确认、执行历史、冲突治理、响应式与离线 REST 校准。
+- S18-M4 已新增 V130 个人全景偏好、低基数可重建 slice stats 和治理回执。`CrossTeamPanoramaService` 只组合 M1 grant、M2 relation 与 M3 sync 公共响应，生成最多 200 条当前受权 slice/audit lineage 和 healthy/attention/unknown 解释，不读取它们的私表。
+- Web 已交付授权/关系/同步/冲突全景、来源版本、健康解释、紧凑偏好、1440/1366/820 与 offline/online/focus 校准。S18 四个 Milestone、48 个 Task 与 V127-V130 已完成并归档。
+- S19 必须逐来源复用 S11 当前 decision/data scope 与 S13-S18 owner 公共合同；未知、缺失、过期、截断和无样本不能归零，指标/图表/风险/报表不授权，enterprise-admin 无内容旁路，个人排名和绩效评分禁止。

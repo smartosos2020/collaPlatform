@@ -57,7 +57,8 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
     UserResourceWorklogController.class,
     UserResourceCapacityController.class,
     UserResourceScheduleController.class,
-    UserAutomationRuleController.class
+    UserAutomationRuleController.class,
+    UserCrossSpaceCollaborationController.class
 })
 public class WorkItemTypeExceptionHandler {
     @ExceptionHandler(WorkItemTypeException.class)
@@ -117,7 +118,10 @@ public class WorkItemTypeExceptionHandler {
     private String apiCode(String sourceCode) {
         return switch (sourceCode) {
             case "TYPE_NOT_FOUND", "FIELD_NOT_FOUND", "LAYOUT_NOT_FOUND", "LAYOUT_NODE_NOT_FOUND",
-                 "SPACE_NOT_FOUND", "NOT_FOUND_OR_HIDDEN" -> "not_found_or_hidden";
+                 "SPACE_NOT_FOUND", "NOT_FOUND_OR_HIDDEN", "CROSS_SPACE_NOT_FOUND",
+                 "CROSS_SPACE_GRANT_NOT_FOUND", "CROSS_SPACE_RELATION_NOT_FOUND",
+                 "CROSS_SPACE_SYNC_NOT_FOUND" ->
+                "not_found_or_hidden";
             case "TYPE_KEY_CONFLICT" -> "type_key_conflict";
             case "FIELD_KEY_CONFLICT" -> "field_key_conflict";
             case "VERSION_CONFLICT", "FIELD_VERSION_CONFLICT", "LAYOUT_VERSION_CONFLICT" -> "version_conflict";
@@ -134,11 +138,22 @@ public class WorkItemTypeExceptionHandler {
     private HttpStatus status(String code) {
         return switch (code) {
             case "TYPE_NOT_FOUND", "FIELD_NOT_FOUND", "LAYOUT_NOT_FOUND", "LAYOUT_NODE_NOT_FOUND",
-                 "SPACE_NOT_FOUND", "NOT_FOUND_OR_HIDDEN" -> HttpStatus.NOT_FOUND;
-            case "FORBIDDEN" -> HttpStatus.FORBIDDEN;
+                 "SPACE_NOT_FOUND", "NOT_FOUND_OR_HIDDEN", "CROSS_SPACE_NOT_FOUND",
+                 "CROSS_SPACE_GRANT_NOT_FOUND", "CROSS_SPACE_RELATION_NOT_FOUND",
+                 "CROSS_SPACE_SYNC_NOT_FOUND" ->
+                HttpStatus.NOT_FOUND;
+            case "FORBIDDEN", "CROSS_SPACE_GRANT_FORBIDDEN",
+                 "CROSS_SPACE_REFERENCE_FORBIDDEN",
+                 "CROSS_SPACE_RELATION_FORBIDDEN",
+                 "CROSS_SPACE_SYNC_FORBIDDEN",
+                 "CROSS_SPACE_SYNC_REFERENCE_FORBIDDEN" -> HttpStatus.FORBIDDEN;
             case "RELATION_TYPE_MATRIX_REJECTED", "RELATION_SELF_EDGE_REJECTED",
                  "RELATION_SOURCE_CARDINALITY_EXCEEDED", "RELATION_TARGET_CARDINALITY_EXCEEDED",
                  "RELATION_CYCLE_DETECTED", "RELATION_ENDPOINT_NOT_ACTIVE",
+                 "CROSS_SPACE_RELATION_ENDPOINT_NOT_ACTIVE",
+                 "CROSS_SPACE_RELATION_SOURCE_CARDINALITY_EXCEEDED",
+                 "CROSS_SPACE_RELATION_TARGET_CARDINALITY_EXCEEDED",
+                 "CROSS_SPACE_RELATION_CYCLE_DETECTED",
                  "HIERARCHY_CANONICAL_GRAPH_INVALID", "HIERARCHY_EDGE_BUDGET_EXCEEDED",
                  "HIERARCHY_PATH_BUDGET_EXCEEDED", "HIERARCHY_INHERITANCE_BUDGET_EXCEEDED" ->
                 HttpStatus.UNPROCESSABLE_ENTITY;
@@ -227,8 +242,16 @@ public class WorkItemTypeExceptionHandler {
                  "AUTOMATION_EXECUTION_INVALID", "AUTOMATION_RECIPIENT_INVALID",
                  "AUTOMATION_CONNECTOR_INVALID", "AUTOMATION_DELIVERY_INVALID",
                  "AUTOMATION_MANAGEMENT_INVALID", "AUTOMATION_GOVERNANCE_INVALID",
+                 "CROSS_SPACE_RELATION_POLICY_INVALID",
+                 "CROSS_SPACE_RELATION_INTENT_INVALID",
+                 "CROSS_SPACE_RELATION_COMMAND_INVALID",
+                 "CROSS_SPACE_SYNC_RULE_INVALID",
+                 "CROSS_SPACE_SYNC_COMMAND_INVALID",
+                 "CROSS_TEAM_PANORAMA_COMMAND_INVALID",
                  "WEBHOOK_TARGET_REJECTED", "WEBHOOK_DNS_UNAVAILABLE" ->
                 HttpStatus.BAD_REQUEST;
+            case "CROSS_SPACE_SYNC_REAUTHORIZE_REQUIRED" ->
+                HttpStatus.UNPROCESSABLE_ENTITY;
             case "BOARD_COLUMN_UNMAPPED", "BOARD_LANE_BUDGET_EXCEEDED",
                  "CALENDAR_WINDOW_BUDGET_EXCEEDED", "INVALID_CALENDAR_RANGE",
                  "CALENDAR_DATE_CAPABILITY_UNAVAILABLE" ->

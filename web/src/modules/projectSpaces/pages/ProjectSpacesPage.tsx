@@ -44,6 +44,10 @@ import {
   type UserProjectSpace,
 } from '../api/projectSpacesApi'
 import { ProjectSpaceMembersPanel } from '../components/ProjectSpaceMembersPanel'
+import { CrossSpaceGrantsPanel } from '../components/CrossSpaceGrantsPanel'
+import { CrossSpaceRelationsPanel } from '../components/CrossSpaceRelationsPanel'
+import { CrossSpaceSyncPanel } from '../components/CrossSpaceSyncPanel'
+import { CrossTeamPanoramaPanel } from '../components/CrossTeamPanoramaPanel'
 import { ProjectWorkItemFieldsPanel } from '../components/ProjectWorkItemFieldsPanel'
 import { ProjectWorkItemConfigurationDraftPanel } from '../components/ProjectWorkItemConfigurationDraftPanel'
 import { ProjectWorkItemLayoutsPanel } from '../components/ProjectWorkItemLayoutsPanel'
@@ -354,8 +358,9 @@ function ProjectSpaceOverview({ space }: { space: UserProjectSpace }) {
   })
 
   return (
-    <section className="project-space-overview-grid">
-      <Card className="content-card project-space-active-types" title={<Space><TagsOutlined />可用工作项类型</Space>}>
+    <>
+      <section className="project-space-overview-grid">
+        <Card className="content-card project-space-active-types" title={<Space><TagsOutlined />可用工作项类型</Space>}>
         {typesQuery.isLoading ? <Skeleton active paragraph={{ rows: 2 }} /> : null}
         {typesQuery.isError ? <Alert type="error" showIcon message="工作项类型加载失败" action={<Button size="small" onClick={() => typesQuery.refetch()}>重试</Button>} /> : null}
         {!typesQuery.isLoading && !typesQuery.isError && typesQuery.data?.length === 0 ? (
@@ -388,8 +393,15 @@ function ProjectSpaceOverview({ space }: { space: UserProjectSpace }) {
         <Typography.Paragraph type="secondary">
           这里是团队成员的日常协作入口。企业治理、全局风险和审计检索只在管理后台提供。
         </Typography.Paragraph>
-      </Card>
-    </section>
+        </Card>
+      </section>
+      {space.currentUserRole === 'owner' || space.currentUserRole === 'admin'
+        ? <CrossSpaceGrantsPanel space={space} />
+        : null}
+      <CrossSpaceRelationsPanel space={space} />
+      <CrossSpaceSyncPanel space={space} />
+      <CrossTeamPanoramaPanel space={space} />
+    </>
   )
 }
 

@@ -343,3 +343,26 @@ M37 后 Base 记录可以作为关系源：
 - AutomationManagement、ManagementPreference、QuotaState、QuotaReceipt、GovernanceReceipt、Health 与 Diagnostic 是 project 内管理/治理事实或派生，不注册新的 platform objectType、resolver、搜索、收藏或跨空间 deep link。
 - 管理聚合只引用既有 Rule/Run/Step/Connector/Delivery identity/version；不复制 WorkItem、流程、关系、通知、成员、凭据、payload 或权限快照。
 - quota 只记录低基数 type/key/window/count/limit/pause/version；health/diagnostic 可重建且不形成生产容量、可靠性、组织度量或 S18 同步事实。
+
+## S18-M1 跨空间授权对象边界
+
+- CrossSpaceGrant、GrantVersion、GrantScope、GrantParty 和 GrantReceipt 是 project 内跨空间治理事实，不注册新的 platform objectType、全局 resolver、收藏或搜索入口。
+- GrantScope 只保存双方 space/type/published-version identity、方向、操作和可选实例 identity；不复制空间/类型标题、字段定义/值、状态、成员、ACL、WorkItem 或关系边。
+- GrantVersion 不可变；修订创建新版本并要求双方重新确认。撤销和归档保留历史，但不授权新读取、建链或同步副作用。
+
+## S18-M2 跨空间关系对象边界
+
+- CrossSpaceRelationPolicy、LinkIntent 和 LinkReceipt 是 S18 project 内治理事实，不注册 platform objectType、搜索、收藏或全局 resolver。policy 只引用 grant、space、published definition 和 relation key identity/version/hash。
+- CanonicalCrossSpaceRelation 与 RelationHistory 是 S10 relation owner 的 edge/history 扩展；它们引用两个空间的 canonical WorkItem identity/version 和 policy provenance，但不复制标题、字段、状态正文、路径、ACL 或成员。
+- EndpointReference 是按当前调用身份计算的最小响应，不持久化内容。intent requested/linked/rejected/cancelled 与 edge active/withdrawn 分离，失败、撤销、收权和升级都不会伪造半边或重写历史。
+
+## S18-M3 跨空间同步对象边界
+
+- SyncRule、RuleVersion、SyncRun、SyncStep、SyncConflict 和 SyncReceipt 是 project 内编排/治理事实，不注册 platform objectType、resolver、搜索、收藏或 deep link。
+- RuleVersion 保存声明式 mapping 与 hash；run/step/conflict 只保存 endpoint identity/version、origin/causation、输入指纹、状态和稳定错误，不复制 WorkItem 标题、字段值、流程状态、成员或 ACL。
+- 补偿、死信和 resolved 是同步编排终态，不改写 canonical WorkItem 或 relation history；M4 全景只能引用这些有界 identity/version 事实。
+
+## S18-M4 跨团队全景对象边界
+
+- CrossTeamPanorama、CollaborationSlice、CollaborationAuditEntry、Health 与 Diagnostic 是请求期受权投影，不注册 platform objectType、resolver、搜索或收藏。
+- Preference 是个人展示事实；SliceStats 可重建。二者都不复制内容、不授权，也不形成组织 KPI、绩效评价或 S19 指标定义。
