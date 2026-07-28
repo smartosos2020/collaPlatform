@@ -48,6 +48,10 @@ import { CrossSpaceGrantsPanel } from '../components/CrossSpaceGrantsPanel'
 import { CrossSpaceRelationsPanel } from '../components/CrossSpaceRelationsPanel'
 import { CrossSpaceSyncPanel } from '../components/CrossSpaceSyncPanel'
 import { CrossTeamPanoramaPanel } from '../components/CrossTeamPanoramaPanel'
+import { MetricDashboardsPanel } from '../components/MetricDashboardsPanel'
+import { MetricGovernancePanel } from '../components/MetricGovernancePanel'
+import { MetricRisksPanel } from '../components/MetricRisksPanel'
+import { MetricSemanticsPanel } from '../components/MetricSemanticsPanel'
 import { ProjectWorkItemFieldsPanel } from '../components/ProjectWorkItemFieldsPanel'
 import { ProjectWorkItemConfigurationDraftPanel } from '../components/ProjectWorkItemConfigurationDraftPanel'
 import { ProjectWorkItemLayoutsPanel } from '../components/ProjectWorkItemLayoutsPanel'
@@ -401,6 +405,10 @@ function ProjectSpaceOverview({ space }: { space: UserProjectSpace }) {
       <CrossSpaceRelationsPanel space={space} />
       <CrossSpaceSyncPanel space={space} />
       <CrossTeamPanoramaPanel space={space} />
+      <MetricSemanticsPanel space={space} />
+      <MetricDashboardsPanel space={space} />
+      <MetricRisksPanel space={space} />
+      <MetricGovernancePanel space={space} />
     </>
   )
 }

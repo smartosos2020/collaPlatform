@@ -1,138 +1,154 @@
 ---
-title: PROJECT-PLATFORM-S19 度量、效能、治理和管理驾驶舱当前执行路线
+title: PROJECT-PLATFORM-S20 研发、市场、HR 和交付场景模板当前执行路线
 status: active
-route: PROJECT-PLATFORM-S19
+route: PROJECT-PLATFORM-S20
 program: PROJECT-PLATFORM
 program_doc: docs/00-product/initiatives/project-platform-program.md
-program_revision: 45
-stage: PROJECT-PLATFORM-S19
-stage_final_milestone: PROJECT-PLATFORM-S19-M4
-last_code_check: 2026-07-28
+program_revision: 47
+stage: PROJECT-PLATFORM-S20
+stage_final_milestone: PROJECT-PLATFORM-S20-M5
+last_code_check: 2026-07-29
 source_rule: 本文件是唯一执行路线入口；长期专项只提供 Stage 索引，不直接执行。
 ---
 
-# PROJECT-PLATFORM-S19 度量、效能、治理和管理驾驶舱
+# PROJECT-PLATFORM-S20 研发、市场、HR 和交付场景模板
 
 ## 1. Stage 目标
 
-在 S18 跨空间授权、关系、同步、全景和协作审计完成并归档的基础上，建立版本化指标语义、维度与时间窗口，交付权限过滤准确的图表/看板/跨空间数据源、可解释且可关闭的风险预警，以及只面向治理事实的管理驾驶舱和审计报表。S19 只拥有指标定义/版本、图表与看板配置、风险策略/信号、治理报表定义/运行和精确治理回执；WorkItem、流程、关系、权限、成员、资源、自动化、审计、事件和跨空间授权/同步事实仍由既有 owner 持有。
+在 S02-S19 的空间、动态配置、统一 WorkItem、流程、关系、权限、查询、计划、资源、自动化、跨空间协作和治理能力完成的基础上，交付研发、市场活动、HR 招聘和客户交付四类可安装场景模板，并完成模板差异化、升级、解绑和真实场景验收。
 
-所有指标、聚合、预警和治理报表必须在服务端逐项复用 S11 当前 decision/data scope 及各 owner 公共合同。未知、缺失、过期、截断和无权限不能折算为零；enterprise-admin 不自动获得私有内容。个人级排名、绩效评分、隐式授权、私表 join、浏览器补聚合和无来源数字均禁止，S20 场景模板不得提前实现。
+S20 只拥有场景模板目录、不可变版本、多类型组件清单、安装计划/运行/步骤、差异/升级决策和精确命令回执。类型、字段、布局、流程、关系、权限、视图、计划、资源、自动化、指标和 WorkItem 事实仍由既有 owner 持有；场景安装必须调用公共配置/发布合同，不得直接写 owner 私表或把模板升级静默覆盖本地调整。
 
 ## 2. 固定输入与当前事实
 
-- S18 完成路线已归档；当前 schema 为 V130，跨空间 grant、canonical relation 调用、版本化同步/冲突/补偿和当前受权全景已交付。
-- S03 可靠事件、S07 canonical WorkItem、S08/S09 流程、S10 关系/层级和 S11 snapshot v5 decision/data scope 继续分别拥有事件、实例、流程、关系和权限权威。
-- S12-S14 的个人工作、统一查询、保存视图、看板/日历/甘特/时间线提供当前受权展示与查询合同，不构成组织指标语义。
-- S15 计划/里程碑/治理台账/交付评审、S16 日历/估分/工时/产能/排期和 S17 自动化运行/连接器/限额只能通过公共最小合同进入指标或风险证据。
-- S18 跨空间 grant、relation、sync 和 panorama 只提供当前受权最小 identity/version/status/source；S19 不读取 V127-V130 私表，也不把 panorama health 直接升级为 KPI。
-- identity、permission、audit、event、notification、realtime、file 和 credential 只通过公共合同使用；缓存、物化、索引、统计、图表和报表均不授权。
-- 指标必须绑定定义版本、维度版本、时区、日历、窗口、分母、过滤、来源版本、freshness 与 truncation，结果可重复计算和解释。
-- owner、space-admin、member、guest、non-member、enterprise-admin 六身份，以及单空间/跨空间组合，构成最低真实回归矩阵。
+- S19 完成路线已归档；当前 schema 为 V134，指标语义、看板、风险和治理报表均已交付并通过真实隔离 route-final。
+- S03-S06 已提供类型预置、完整配置快照、草稿/发布、单类型模板安装、三方合并、升级与解绑合同；S20 在其上编排多类型场景包。
+- S07-S10 分别拥有 canonical WorkItem、状态/节点流程与关系/层级事实；场景清单只保存稳定配置 identity/key/version。
+- S11 当前 decision/data scope、S12-S19 的查询/视图/计划/资源/自动化/同步/指标公共合同持续生效；模板不能创建隐式成员、ACL、内容访问或企业角色旁路。
+- 安装、重试、升级、解绑和回滚使用 caller-stable request ID、expected version、request hash、不可变 receipt、audit/outbox 和逐步状态。
+- 本地覆盖与上游版本使用三方差异；未知 schema、缺失 owner capability、冲突未决、收权、空间停用和越权动作失败关闭。
+- owner、space-admin、member、guest、non-member、enterprise-admin 六身份，以及空空间、已有配置空间、本地调整、离线和多标签组合，构成最低真实回归矩阵。
 
 ## 3. 执行规则
 
 1. 每轮只推进一个 Milestone；每个 Task 必须有唯一 Verification Contract、fresh Acceptance Evidence 和执行报告行。
-2. MetricDefinition、MetricVersion、Dimension、Window、DataSource、Chart、Dashboard、RiskPolicy、RiskSignal 和 GovernanceReport 使用稳定 identity、不可变版本和显式生命周期。
-3. 指标表达式只允许注册 measure/dimension/aggregation/window 运算，不允许任意 SQL、脚本、模板执行、反射或私表名称。
-4. 查询计划在服务端对每个来源重新校准当前权限与 data scope；无权数据不进入分子、分母、facet、游标、图例、健康、风险或错误外形。
-5. 未知、缺失、过期、截断、抑制和无样本必须显式表达；禁止用零、正常或成功掩盖不完整证据。
-6. 跨空间聚合只消费当前 active grant 下 owner 公共最小投影；撤销、收权、归档后新查询和新报表立即失败关闭。
-7. 风险信号绑定策略版本、来源 identity/version、窗口和解释；确认、关闭、抑制、重开和失效不改写来源事实。
-8. 管理驾驶舱只展示治理元数据、配置健康、审计覆盖和受保护聚合；不提供个人排名、绩效评分或企业角色内容旁路。
-9. 写命令使用 caller-stable request ID、expected version、request hash、持久 receipt、audit/outbox 和精确重放；并发只允许一胜一冲突。
-10. M1-M3 使用影响范围门禁；M4 执行完整 Flyway、后端、前端、协作、架构、安全、单/跨空间六身份真实隔离浏览器和 `route-final`。
+2. ScenarioTemplate、TemplateVersion、ComponentManifest、InstallPlan、InstallRun、InstallStep、UpgradeDiff 和 CommandReceipt 使用稳定 identity、不可变版本和显式生命周期。
+3. 场景清单只能引用注册 owner capability 与公开模板 key/version；禁止 SQL、脚本、反射、任意表达式、私表名称和内容样本。
+4. 安装逐组件预检、执行、验证和记账；重放不得重复创建类型、发布版本、关系、视图、规则或指标配置。
+5. 本地差异必须保留；升级通过 base/upstream/local 三方比较生成冲突，未解决冲突不得发布或标记成功。
+6. 模板目录和预览不授权；每次安装/升级/解绑重新校准当前 manager、空间状态及各 owner capability。
+7. 失败步骤保留安全诊断和补偿建议，不保存凭据、成员、内容或隐藏对象；部分失败不得伪造成已安装。
+8. UI 明确显示来源版本、组件范围、本地差异、冲突、运行步骤和可恢复动作；离线只保留输入，不伪造成功。
+9. M1-M4 使用影响范围门禁；M5 执行完整 Flyway、后端、前端、协作、架构、安全和六身份真实隔离 route-final。
+10. S20 不删除旧 project/issue 模型、不切换 legacy 写、不执行真人团队试用；这些仅属于 S21。
 
 ## 4. Milestone 总览
 
 | Milestone | 目标 | 依赖 | 执行报告 | 状态 |
 | --- | --- | --- | --- | --- |
-| PROJECT-PLATFORM-S19-M1 | 指标语义层、维度和时间窗口 | S18 归档；Program revision 45 | `docs/90-reports/project-platform-s19-m1-execution-report.md` | Pending |
-| PROJECT-PLATFORM-S19-M2 | 图表、看板和跨空间数据源 | M1 | `docs/90-reports/project-platform-s19-m2-execution-report.md` | Pending |
-| PROJECT-PLATFORM-S19-M3 | 延期、阻塞、质量和资源风险预警 | M1-M2 | `docs/90-reports/project-platform-s19-m3-execution-report.md` | Pending |
-| PROJECT-PLATFORM-S19-M4 | 空间治理、配置健康、审计报表和 Stage 收口 | M1-M3 | `docs/90-reports/project-platform-s19-m4-execution-report.md` | Pending |
+| PROJECT-PLATFORM-S20-M1 | 研发项目模板 | S19 归档；Program revision 47 | `docs/90-reports/project-platform-s20-m1-execution-report.md` | Pending |
+| PROJECT-PLATFORM-S20-M2 | 市场活动模板 | M1 | `docs/90-reports/project-platform-s20-m2-execution-report.md` | Pending |
+| PROJECT-PLATFORM-S20-M3 | HR 招聘模板 | M1-M2 | `docs/90-reports/project-platform-s20-m3-execution-report.md` | Pending |
+| PROJECT-PLATFORM-S20-M4 | 客户交付模板 | M1-M3 | `docs/90-reports/project-platform-s20-m4-execution-report.md` | Pending |
+| PROJECT-PLATFORM-S20-M5 | 模板安装、差异化、升级验证与 Stage 收口 | M1-M4 | `docs/90-reports/project-platform-s20-m5-execution-report.md` | Pending |
 
 ## 5. 详细任务
 
-### PROJECT-PLATFORM-S19-M1 指标语义层、维度和时间窗口
+### PROJECT-PLATFORM-S20-M1 研发项目模板
 
 | 任务 | 内容 | 验收标准 | 状态 |
 | --- | --- | --- | --- |
-| PROJECT-PLATFORM-S19-M1-T01 | 审计 S11-S18 权限、查询、视图、计划、资源、自动化和跨空间公共事实 | API、owner、schema、版本、时间语义、预算、复用能力和禁止依赖可定位；不依赖旧会话结论 | Pending |
-| PROJECT-PLATFORM-S19-M1-T02 | 冻结 MetricDefinition、MetricVersion、Measure、Dimension、Window 与 MetricResult 合同 | identity、schema version、单位、分子/分母、维度、窗口、时区、freshness、错误和上限明确 | Pending |
-| PROJECT-PLATFORM-S19-M1-T03 | 设计指标定义、不可变版本、维度目录、命令回执和可重建结果索引 Flyway schema | 复合边界、唯一性、FK、索引、不可变历史、过期、清理和 owner 完整 | Pending |
-| PROJECT-PLATFORM-S19-M1-T04 | 实现指标草稿、校验、发布、修订、停用、归档和精确重放 | 已发布版本不可变；expected version、request hash、audit/outbox 与精确回放完整 | Pending |
-| PROJECT-PLATFORM-S19-M1-T05 | 实现注册 measure/dimension、日历、时区、滚动/固定窗口和比较区间 | 窗口边界、DST、空样本、迟到事实和版本切换可复现；禁止隐式时区或分母 | Pending |
-| PROJECT-PLATFORM-S19-M1-T06 | 实现受限指标表达式、类型/单位检查和确定性计算计划 | 只允许注册运算；未知字段、私表、SQL、脚本、非确定函数和未来 schema 失败关闭 | Pending |
-| PROJECT-PLATFORM-S19-M1-T07 | 接入逐来源权限、数据范围、最小样本、抑制、缺失与截断语义 | 隐藏对象不进入任何聚合外形；unknown/suppressed/stale/truncated 不折算为零 | Pending |
-| PROJECT-PLATFORM-S19-M1-T08 | 交付指标目录、语义编辑、窗口预览、版本 diff 和来源解释 Web | 1440/1366/820、键盘、长名称、loading、空态/错误、单位/窗口/来源可理解 | Pending |
-| PROJECT-PLATFORM-S19-M1-T09 | 接入 realtime 失效、离线草稿、多标签冲突和 REST 校准 | 缓存不授权；恢复不重复发布，旧指标结果/维度/数量不闪现 | Pending |
-| PROJECT-PLATFORM-S19-M1-T10 | 完成六身份、跨空间、并发、DST、空样本、收权、截断和重放测试 | 无对象/成员/维度/分母/数量泄漏、重复版本、错误归零或 enterprise 旁路 | Pending |
-| PROJECT-PLATFORM-S19-M1-T11 | 执行定义/维度/窗口、查询计划、SQL/端口/内存和渲染预算 | 固定夹具与上界可复现；不声明生产数据规模、指标延迟或 SLO | Pending |
-| PROJECT-PLATFORM-S19-M1-T12 | 同步目标/当前架构、模块/对象/事件合同并完成 M1 checkpoint | 只声明指标语义事实；图表、风险预警和管理驾驶舱仍由 M2-M4 交付 | Pending |
+| PROJECT-PLATFORM-S20-M1-T01 | 审计 S03-S19 配置模板、类型、流程、关系、权限、查询、计划、自动化和指标公共合同 | API、owner、schema、版本、预算、复用能力和禁止依赖可定位；不依赖旧会话结论 | Pending |
+| PROJECT-PLATFORM-S20-M1-T02 | 冻结 ScenarioTemplate、TemplateVersion、ComponentManifest 与 ValidationResult 合同 | identity、schema version、场景、组件、依赖、能力、错误、生命周期和上限明确 | Pending |
+| PROJECT-PLATFORM-S20-M1-T03 | 设计场景目录、不可变版本、组件清单、安装记录、步骤和命令回执 Flyway schema | 复合边界、唯一性、FK、索引、不可变历史、清理和 owner 完整 | Pending |
+| PROJECT-PLATFORM-S20-M1-T04 | 建立注册组件类型、依赖拓扑、稳定 key 和确定性清单哈希 | 未知组件/未来 schema/环/重复 key/越界扇出失败关闭；同版本可重复解释 | Pending |
+| PROJECT-PLATFORM-S20-M1-T05 | 定义项目、需求、任务、缺陷、版本和迭代类型配置 | 字段、布局、状态/节点流程、角色和动作完整且只引用公开配置合同 | Pending |
+| PROJECT-PLATFORM-S20-M1-T06 | 定义研发层级、依赖、缺陷关联、版本/迭代关系和约束 | 方向、端点类型、基数、循环与删除语义明确；关系事实仍由 S10 持有 | Pending |
+| PROJECT-PLATFORM-S20-M1-T07 | 定义研发查询、看板、计划、自动化、风险和度量组件 | 只引用已发布公共能力；查询/规则/指标不含私表、脚本或权限快照 | Pending |
+| PROJECT-PLATFORM-S20-M1-T08 | 交付研发模板目录、组件预览、依赖解释和响应式 Web | 1440/1366/820、键盘、长名称、loading、空态/错误和来源版本可理解 | Pending |
+| PROJECT-PLATFORM-S20-M1-T09 | 接入 realtime 失效、离线预览、多标签和 REST 校准 | 缓存不授权；离线不安装，恢复后旧目录/组件/版本不闪现 | Pending |
+| PROJECT-PLATFORM-S20-M1-T10 | 完成六身份、清单重放、未知组件、环、收权和最小披露测试 | 无成员/内容/隐藏类型/数量泄漏、重复版本或 enterprise 旁路 | Pending |
+| PROJECT-PLATFORM-S20-M1-T11 | 执行清单/组件/依赖、解析端口、SQL/内存和渲染预算 | 固定夹具与上界可复现；不声明生产项目规模、安装吞吐或 SLO | Pending |
+| PROJECT-PLATFORM-S20-M1-T12 | 同步目标/当前架构、模块/对象/事件合同并完成 M1 checkpoint | 只声明研发模板目录事实；市场、HR、交付和统一安装仍由 M2-M5 交付 | Pending |
 
-### PROJECT-PLATFORM-S19-M2 图表、看板和跨空间数据源
-
-| 任务 | 内容 | 验收标准 | 状态 |
-| --- | --- | --- | --- |
-| PROJECT-PLATFORM-S19-M2-T01 | 复核 M1 语义层、S13 查询、S14 视图、S18 grant/全景和未关闭阻断 | 12 项逐项可追溯；图表不建立第二套指标、权限或跨空间授权权威 | Pending |
-| PROJECT-PLATFORM-S19-M2-T02 | 冻结 DataSourceBinding、ChartDefinition、Dashboard、Layout、Filter 与 QueryResult 合同 | identity、版本、来源、指标、维度、可视化、过滤、截断、错误和上限明确 | Pending |
-| PROJECT-PLATFORM-S19-M2-T03 | 设计数据源绑定、图表/看板版本、个人偏好、回执和可重建缓存 Flyway schema | 只保存配置、identity/version 与低基数派生；复合边界、过期、清理和 owner 完整 | Pending |
-| PROJECT-PLATFORM-S19-M2-T04 | 实现 permission-scoped 数据源解析和有界查询计划 | 只调用 owner 公共合同；逐来源授权、窗口和指标版本固定，无私表 join 或全量后过滤 | Pending |
-| PROJECT-PLATFORM-S19-M2-T05 | 实现单空间/跨空间聚合、去重、分子分母和来源对账 | active grant、当前 data scope、最小样本与截断一致；收权后结果立即失败关闭 | Pending |
-| PROJECT-PLATFORM-S19-M2-T06 | 实现表格、指标卡、折线、柱状、堆叠与分布图的来源解释和安全钻取 | 图例、facet、tooltip、游标、空态和 drilldown 不泄漏隐藏对象或数量 | Pending |
-| PROJECT-PLATFORM-S19-M2-T07 | 实现看板草稿、发布、布局、过滤、个人偏好、分享和精确回放 | 发布版本不可变；分享只引用受权配置，不复制数据或扩大接收者权限 | Pending |
-| PROJECT-PLATFORM-S19-M2-T08 | 交付图表设计器、跨空间数据源和响应式管理看板 Web | 1440/1366/820、键盘、长标签、loading、空态/错误、freshness/truncation 可用 | Pending |
-| PROJECT-PLATFORM-S19-M2-T09 | 接入 realtime、离线布局、多标签冲突、收权和 REST 校准 | 离线不伪造保存/分享；恢复不重复写入，旧 series/facet/count 不闪现 | Pending |
-| PROJECT-PLATFORM-S19-M2-T10 | 完成六身份、单/跨空间、并发、分享、撤销、截断和钻取测试 | 无标题/成员/维度/series/数量泄漏、错分母、重复数据或 enterprise 旁路 | Pending |
-| PROJECT-PLATFORM-S19-M2-T11 | 执行数据源/图表/看板、聚合、缓存、查询端口和 DOM 预算 | 固定夹具与上界可复现；不声明生产看板并发、刷新延迟或 SLO | Pending |
-| PROJECT-PLATFORM-S19-M2-T12 | 同步语义/数据源/图表/看板合同并完成 M2 checkpoint | 当前事实与 M3 风险输入清楚；图表结果不成为权限或风险结论权威 | Pending |
-
-### PROJECT-PLATFORM-S19-M3 延期、阻塞、质量和资源风险预警
+### PROJECT-PLATFORM-S20-M2 市场活动模板
 
 | 任务 | 内容 | 验收标准 | 状态 |
 | --- | --- | --- | --- |
-| PROJECT-PLATFORM-S19-M3-T01 | 复核 M1-M2 指标/看板、计划/流程/关系/资源公共合同和未关闭阻断 | 24 项逐项可追溯；风险信号不复制 WorkItem、流程、资源、权限或指标事实 | Pending |
-| PROJECT-PLATFORM-S19-M3-T02 | 冻结 RiskPolicy、PolicyVersion、RiskSignal、EvidenceReference、Ack 与 Closure 合同 | identity、版本、严重度、窗口、来源、解释、生命周期、错误和上限明确 | Pending |
-| PROJECT-PLATFORM-S19-M3-T03 | 设计风险策略、不可变版本、信号、证据引用、回执和可重建统计 Flyway schema | 复合边界、唯一性、去重、索引、历史、过期、清理和 owner 完整 | Pending |
-| PROJECT-PLATFORM-S19-M3-T04 | 实现计划/里程碑/日历驱动的延期和临期风险 | 日期、基线、窗口、时区和当前权限可解释；无日期/收权/归档后不伪造正常 | Pending |
-| PROJECT-PLATFORM-S19-M3-T05 | 实现流程停滞、关系阻塞和依赖传播风险 | 只读公共状态/关系快照；环、隐藏端点、链深和扇出有界且不泄漏路径 | Pending |
-| PROJECT-PLATFORM-S19-M3-T06 | 实现质量与资源风险的受限证据组合 | 只组合已注册指标及当前缺陷/评审/产能公共事实；禁止个人绩效和隐式利用率评分 | Pending |
-| PROJECT-PLATFORM-S19-M3-T07 | 实现策略发布、信号去重、冷却、确认、关闭、抑制、重开和失效 | 每个动作绑定策略/来源版本与 receipt；关闭不改写来源，证据变化可重算 | Pending |
-| PROJECT-PLATFORM-S19-M3-T08 | 交付风险策略、信号列表、证据解释、确认/关闭和深链 Web | 1440/1366/820、键盘、长解释、loading、空态/错误和来源版本可理解 | Pending |
-| PROJECT-PLATFORM-S19-M3-T09 | 接入 realtime、离线输入、多标签冲突、收权和 REST 校准 | 离线不伪造关闭；恢复不重复动作，旧风险/严重度/数量不闪现 | Pending |
-| PROJECT-PLATFORM-S19-M3-T10 | 完成六身份、跨空间、并发、环、迟到事实、收权、关闭和重放测试 | 无对象/成员/路径/证据/数量泄漏、重复信号、幽灵关闭或 enterprise 旁路 | Pending |
-| PROJECT-PLATFORM-S19-M3-T11 | 执行策略/信号/证据、评估端口、链深/扇出、worker 和渲染预算 | 固定夹具与上界可复现；不声明生产风险覆盖、预测准确率或 SLO | Pending |
-| PROJECT-PLATFORM-S19-M3-T12 | 同步风险策略/信号/证据/事件合同并完成 M3 checkpoint | 当前事实与 M4 治理输入清楚；预警不成为来源事实或人员评价 | Pending |
+| PROJECT-PLATFORM-S20-M2-T01 | 复核 M1 场景合同、市场需求与未关闭阻断 | 12 项逐项可追溯；市场模板不复制研发配置或建立新权限权威 | Pending |
+| PROJECT-PLATFORM-S20-M2-T02 | 冻结 Campaign、Content、Asset、Channel、Placement 与 Review 组件语义 | 类型、字段、流程、关系、角色、状态、来源和上限明确 | Pending |
+| PROJECT-PLATFORM-S20-M2-T03 | 定义活动、内容、素材、渠道、投放和复盘类型配置 | 完整 snapshot 可校验、可版本化；附件/文件只保存公共引用 | Pending |
+| PROJECT-PLATFORM-S20-M2-T04 | 定义内容评审、素材审批、渠道发布和活动关闭流程 | 轻量/节点流边界明确；审批、权限和副作用调用 owner 公共合同 | Pending |
+| PROJECT-PLATFORM-S20-M2-T05 | 定义活动-内容-素材-渠道-投放关系与可见性 | 端点、方向、基数、归档和隐藏引用语义完整；无关系私表写入 | Pending |
+| PROJECT-PLATFORM-S20-M2-T06 | 定义市场日历、列表、看板、保存视图和复盘面板 | 查询逐次受权；隐藏内容不进入 facet、计数、游标或空态 | Pending |
+| PROJECT-PLATFORM-S20-M2-T07 | 定义受控提醒、评审通知、渠道检查和复盘指标引用 | 只使用注册自动化 action 和指标语义；禁止任意 webhook/脚本或凭据 | Pending |
+| PROJECT-PLATFORM-S20-M2-T08 | 交付市场模板预览、流程/关系图和响应式 Web | 1440/1366/820、键盘、长渠道名、loading、空态/错误可用 | Pending |
+| PROJECT-PLATFORM-S20-M2-T09 | 接入目录版本失效、离线、多标签和 REST 校准 | 离线不安装或发布；恢复不重复写入或闪现隐藏内容 | Pending |
+| PROJECT-PLATFORM-S20-M2-T10 | 完成六身份、附件引用、流程、关系、收权和重放测试 | 无内容/文件/渠道/数量泄漏、重复副作用或 enterprise 旁路 | Pending |
+| PROJECT-PLATFORM-S20-M2-T11 | 执行类型/关系/视图/自动化/指标组件和渲染预算 | 固定夹具与上界可复现；不声明生产投放规模、外部可用性或 SLO | Pending |
+| PROJECT-PLATFORM-S20-M2-T12 | 同步市场场景合同并完成 M2 checkpoint | 当前事实与 HR 模板输入清楚；不提前实现统一安装/升级 | Pending |
 
-### PROJECT-PLATFORM-S19-M4 空间治理、配置健康、审计报表和 Stage 收口
+### PROJECT-PLATFORM-S20-M3 HR 招聘模板
 
 | 任务 | 内容 | 验收标准 | 状态 |
 | --- | --- | --- | --- |
-| PROJECT-PLATFORM-S19-M4-T01 | 审计 M1-M3 实现、报告、迁移、边界和未关闭 gap | 36 个任务逐项可追溯；阻断项 Reopen，不以 Remaining Gap 弱化完成标准 | Pending |
-| PROJECT-PLATFORM-S19-M4-T02 | 冻结 GovernanceOverview、ConfigHealth、AuditReport、ReportRun、Export 与 Diagnostic 合同 | 来源、窗口、排序、解释、截断、版本、权限、保留、错误和上限明确 | Pending |
-| PROJECT-PLATFORM-S19-M4-T03 | 设计治理偏好、报表定义/运行、导出回执和可重建健康统计 Flyway schema | 只保存治理配置/identity/version/低基数派生；索引、过期、清理和 owner 完整 | Pending |
-| PROJECT-PLATFORM-S19-M4-T04 | 聚合空间生命周期、成员治理、配置、权限、自动化和跨空间公共元数据 | 只调用 owner 公共合同；无内容私表 join、全量后过滤、个人排名或企业内容旁路 | Pending |
-| PROJECT-PLATFORM-S19-M4-T05 | 实现配置完整性、版本漂移、过期策略、失败运行和审计覆盖健康 | 每个结论绑定 source identity/version；unknown/stale/truncated 显式且不伪造 healthy | Pending |
-| PROJECT-PLATFORM-S19-M4-T06 | 实现审计报表、过滤、保留、脱敏、导出和来源校验 | 导出逐行重校准当前权限；隐藏内容不进入字段、数量、文件名、facet 或错误外形 | Pending |
-| PROJECT-PLATFORM-S19-M4-T07 | 实现治理报表草稿/发布/运行、受控确认/关闭和精确回放 | 危险动作需理由、当前权限、expected version、request hash、receipt 与审计 | Pending |
-| PROJECT-PLATFORM-S19-M4-T08 | 交付完整管理驾驶舱、配置健康、风险、审计报表和导出响应式 Web | 1440/1366/820、长名称、键盘、loading、空态/错误、来源/freshness 可用 | Pending |
-| PROJECT-PLATFORM-S19-M4-T09 | 完成六身份、单/跨空间、并发、收权、离线和组合规模预算验收 | 固定夹具与 SQL/端口/内存/DOM 上界可复现；无空间/成员/配置/审计泄漏 | Pending |
-| PROJECT-PLATFORM-S19-M4-T10 | 执行完整 PostgreSQL/Flyway、后端、前端、协作、架构、安全和真实隔离浏览器门禁 | full gate 无阻断；单/跨空间、六身份、关键视口和 route-final 证据 fresh | Pending |
-| PROJECT-PLATFORM-S19-M4-T11 | 同步当前架构、Program、专项索引、模块/对象/事件/运维合同并复核 S20 准入 | 文档只声明已实现事实；S20 模板只能消费已发布公共能力 | Pending |
-| PROJECT-PLATFORM-S19-M4-T12 | 给出 S19 Go/Reopen，完成 route-final 并把当前 Stage 置 none | 四份报告、48 Task、工作上下文和文档一致；仅无阻断时 Completed | Pending |
+| PROJECT-PLATFORM-S20-M3-T01 | 复核 M1-M2 场景合同、HR 隐私边界和未关闭阻断 | 24 项逐项可追溯；候选人信息不进入模板目录、错误或治理旁路 | Pending |
+| PROJECT-PLATFORM-S20-M3-T02 | 冻结 HiringPlan、Position、Candidate、Interview、Offer 与 Onboarding 语义 | 类型、字段分类、流程、关系、角色、保留、错误和上限明确 | Pending |
+| PROJECT-PLATFORM-S20-M3-T03 | 定义招聘计划、职位、候选人、面试、Offer 和入职类型配置 | 敏感字段默认受限；完整 snapshot 可校验、版本化和解释 | Pending |
+| PROJECT-PLATFORM-S20-M3-T04 | 定义职位审批、候选人阶段、面试会签、Offer 和入职流程 | 节点负责人和字段权限分离；流程不扩大候选人可见范围 | Pending |
+| PROJECT-PLATFORM-S20-M3-T05 | 定义计划-职位-候选人-面试-入职关系与最小引用 | 隐藏候选人只返回 forbidden reference；无姓名、评价、数量泄漏 | Pending |
+| PROJECT-PLATFORM-S20-M3-T06 | 定义招聘看板、面试日历、待办、保存视图和受限指标 | 服务端当前 data scope 过滤；禁止个人排名、面试官绩效和隐式评分 | Pending |
+| PROJECT-PLATFORM-S20-M3-T07 | 定义面试提醒、会签通知、Offer 到期和入职检查自动化 | 只使用注册 action；通知接收者在执行时重新校准当前权限 | Pending |
+| PROJECT-PLATFORM-S20-M3-T08 | 交付 HR 模板预览、敏感字段说明和响应式 Web | 1440/1366/820、键盘、长名称、loading、空态/错误和隐私解释可用 | Pending |
+| PROJECT-PLATFORM-S20-M3-T09 | 接入收权、realtime、离线、多标签和 REST 校准 | 收权后旧候选人组件/计数不闪现；离线不安装或发布 | Pending |
+| PROJECT-PLATFORM-S20-M3-T10 | 完成六身份、字段权限、节点职责、收权、归档和重放测试 | 无候选人/评价/成员/数量泄漏、重复通知或 enterprise 旁路 | Pending |
+| PROJECT-PLATFORM-S20-M3-T11 | 执行敏感字段/流程/关系/查询/自动化与渲染预算 | 固定夹具与上界可复现；不声明生产招聘规模、评分准确率或 SLO | Pending |
+| PROJECT-PLATFORM-S20-M3-T12 | 同步 HR 隐私和场景合同并完成 M3 checkpoint | 当前事实与客户交付模板输入清楚；不提前实现 S21 迁移/试用 | Pending |
+
+### PROJECT-PLATFORM-S20-M4 客户交付模板
+
+| 任务 | 内容 | 验收标准 | 状态 |
+| --- | --- | --- | --- |
+| PROJECT-PLATFORM-S20-M4-T01 | 复核 M1-M3 场景合同、交付/验收公共能力和未关闭阻断 | 36 项逐项可追溯；交付模板不复制计划、风险、文件或验收权威 | Pending |
+| PROJECT-PLATFORM-S20-M4-T02 | 冻结 DeliveryProject、Task、Risk、Deliverable、Review 与 Acceptance 语义 | 类型、字段、流程、关系、角色、证据、错误和上限明确 | Pending |
+| PROJECT-PLATFORM-S20-M4-T03 | 定义交付项目、任务、风险、交付物、评审和验收类型配置 | 完整 snapshot 可校验、版本化；文件和验收只保存公共引用 | Pending |
+| PROJECT-PLATFORM-S20-M4-T04 | 定义交付阶段、里程碑、评审、整改、签署和关闭流程 | 状态/节点流与 S15 计划/交付评审边界明确；无第二事实 | Pending |
+| PROJECT-PLATFORM-S20-M4-T05 | 定义项目-任务-风险-交付物-验收关系与追溯 | 端点、方向、基数、版本和归档语义完整；隐藏引用失败关闭 | Pending |
+| PROJECT-PLATFORM-S20-M4-T06 | 定义计划/甘特/风险/交付台账/审计和治理视图 | 只组合 owner 公共响应；无私表 join、全量后过滤或内容旁路 | Pending |
+| PROJECT-PLATFORM-S20-M4-T07 | 定义到期提醒、评审通知、风险升级和验收检查自动化 | 受控 action、精确 receipt 和当前权限完整；失败不伪造交付成功 | Pending |
+| PROJECT-PLATFORM-S20-M4-T08 | 交付客户交付模板预览、追溯图和响应式 Web | 1440/1366/820、键盘、长名称、loading、空态/错误和来源可用 | Pending |
+| PROJECT-PLATFORM-S20-M4-T09 | 接入收权、离线、多标签、realtime 和 REST 校准 | 离线不安装/签署；收权后旧交付物、风险或计数不闪现 | Pending |
+| PROJECT-PLATFORM-S20-M4-T10 | 完成六身份、文件/验收引用、收权、部分失败和重放测试 | 无客户内容/证据/成员/数量泄漏、重复签署或 enterprise 旁路 | Pending |
+| PROJECT-PLATFORM-S20-M4-T11 | 执行类型/流程/关系/视图/自动化/治理和渲染预算 | 固定夹具与上界可复现；不声明生产项目规模、交付时效或 SLO | Pending |
+| PROJECT-PLATFORM-S20-M4-T12 | 同步交付场景合同并完成 M4 checkpoint | 四类场景目录完整；统一安装、差异化和升级由 M5 收口 | Pending |
+
+### PROJECT-PLATFORM-S20-M5 模板安装、差异化、升级验证与 Stage 收口
+
+| 任务 | 内容 | 验收标准 | 状态 |
+| --- | --- | --- | --- |
+| PROJECT-PLATFORM-S20-M5-T01 | 审计 M1-M4 实现、报告、清单、边界和未关闭 gap | 48 个任务逐项可追溯；阻断项 Reopen，不以 Remaining Gap 弱化完成标准 | Pending |
+| PROJECT-PLATFORM-S20-M5-T02 | 冻结 InstallPlan、InstallRun、InstallStep、UpgradeDiff、Conflict 与 Receipt 合同 | 预检、顺序、状态、版本、重试、补偿、冲突、错误和上限明确 | Pending |
+| PROJECT-PLATFORM-S20-M5-T03 | 完成安装运行/步骤、差异、升级决策和精确命令回执 schema | 复合边界、fencing、幂等、不可变历史、索引、清理和 owner 完整 | Pending |
+| PROJECT-PLATFORM-S20-M5-T04 | 实现四类模板预检、依赖拓扑、安装计划和 dry-run | 缺失 capability、未知版本、key 冲突、收权和空间停用在写前失败关闭 | Pending |
+| PROJECT-PLATFORM-S20-M5-T05 | 通过公共 owner 服务执行多类型配置安装与逐步验证 | 不直接写 owner 私表；每步绑定 exact source/target version，重放无重复事实 | Pending |
+| PROJECT-PLATFORM-S20-M5-T06 | 实现本地调整、base/upstream/local 差异、冲突解决和升级 | 本地修改不被静默覆盖；未决冲突不发布，升级结果可重复解释 | Pending |
+| PROJECT-PLATFORM-S20-M5-T07 | 实现部分失败重试、受控解绑、补偿建议和历史 | 已成功 owner 事实不伪删除；恢复从安全步骤继续且 receipt 精确 | Pending |
+| PROJECT-PLATFORM-S20-M5-T08 | 交付目录/预检/安装/步骤/差异/冲突/升级完整响应式 Web | 1440/1366/820、键盘、长名称、loading、空态/错误和恢复动作可用 | Pending |
+| PROJECT-PLATFORM-S20-M5-T09 | 完成四场景、六身份、已有配置、本地差异、离线和组合预算验收 | 无内容/成员/隐藏配置/数量泄漏、重复安装、丢失覆盖或 enterprise 旁路 | Pending |
+| PROJECT-PLATFORM-S20-M5-T10 | 执行完整 PostgreSQL/Flyway、后端、前端、协作、架构、安全和真实隔离浏览器门禁 | full gate 无阻断；四场景、六身份、关键视口和 route-final 证据 fresh | Pending |
+| PROJECT-PLATFORM-S20-M5-T11 | 同步当前架构、Program、专项索引、模块/对象/事件合同并复核 S21 准入 | 文档只声明已实现事实；S21 旧模型退出和真人试用仍未实现 | Pending |
+| PROJECT-PLATFORM-S20-M5-T12 | 给出 S20 Go/Reopen，完成 route-final 并把当前 Stage 置 none | 五份报告、60 Task、工作上下文和文档一致；仅无阻断时 Completed | Pending |
 
 ## 6. Stage 验收
 
-- 指标定义、不可变版本、measure/dimension/window/timezone、单位、分子分母、freshness 和来源拥有唯一可重复语义。
-- 单空间/跨空间数据源、图表和看板逐来源执行当前权限与最小样本/截断规则；无标题、成员、维度、series 或数量泄漏。
-- 延期、阻塞、质量和资源风险绑定策略/来源版本，证据可解释，确认/关闭/抑制/重开可追溯且不改写来源。
-- 管理驾驶舱只展示治理元数据、配置健康、风险和审计覆盖，不提供企业内容旁路、个人排名或绩效评分。
-- 未知、缺失、过期、截断、抑制和无样本显式表达，不折算为零、正常或成功。
-- 幂等、乐观锁、realtime、离线、多标签、长名称、1440/1366/820、单/跨空间和六身份闭环通过。
-- 完整 PostgreSQL/Flyway、后端、前端、协作、架构、安全与真实隔离浏览器 `route-final` 无阻断。
-- S19 不实现 S20 场景模板或 S21 旧模型退出，也不把本地预算表述为生产吞吐、指标延迟、预测准确率或 SLO。
+- 研发、市场、HR 和交付四类模板具有版本化清单、稳定组件 key、依赖拓扑和来源解释。
+- 四类模板可预检、安装、重放、差异化、升级、冲突解决和解绑；本地调整不被静默覆盖。
+- 安装只调用配置、流程、关系、权限、视图、计划、资源、自动化、指标等 owner 公共合同，不写私表或创建第二权威。
+- 每次安装/升级/解绑重新校准当前权限；缓存、目录、预览、运行历史和统计均不授权。
+- 四场景、六身份、既有配置、本地覆盖、并发、离线、多标签、1440/1366/820 闭环通过。
+- 完整 PostgreSQL/Flyway、后端、前端、协作、架构、安全与真实隔离浏览器 route-final 无阻断。
+- S20 不删除旧 project/issue 模型、不执行全量迁移或真人团队试用；这些只属于 S21。
 
 ## 7. 起始点
 
-S18 完成路线已归档，S19 在 Program revision 45 激活。当前唯一合法入口为 `PROJECT-PLATFORM-S19-M1-T01`；M1 完成前不得推进 M2，且不得提前实现 S20。
+S19 完成路线已通过独立 archive-only 工作循环归档，S20 在 Program revision 47 激活。当前唯一合法入口为 `PROJECT-PLATFORM-S20-M1-T01`；M1 完成前不得推进 M2，且不得提前实现 S21。

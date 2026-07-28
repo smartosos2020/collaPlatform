@@ -58,7 +58,11 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
     UserResourceCapacityController.class,
     UserResourceScheduleController.class,
     UserAutomationRuleController.class,
-    UserCrossSpaceCollaborationController.class
+    UserCrossSpaceCollaborationController.class,
+    UserMetricSemanticController.class,
+    UserMetricDashboardController.class,
+    UserMetricRiskController.class,
+    UserMetricGovernanceController.class
 })
 public class WorkItemTypeExceptionHandler {
     @ExceptionHandler(WorkItemTypeException.class)
@@ -248,6 +252,18 @@ public class WorkItemTypeExceptionHandler {
                  "CROSS_SPACE_SYNC_RULE_INVALID",
                  "CROSS_SPACE_SYNC_COMMAND_INVALID",
                  "CROSS_TEAM_PANORAMA_COMMAND_INVALID",
+                 "METRIC_DEFINITION_INVALID", "METRIC_EXPRESSION_INVALID",
+                 "METRIC_WINDOW_INVALID", "METRIC_COMMAND_INVALID",
+                 "METRIC_PREVIEW_INVALID",
+                 "DASHBOARD_DEFINITION_INVALID", "DASHBOARD_SOURCE_INVALID",
+                 "DASHBOARD_CHART_INVALID", "DASHBOARD_METRIC_MISMATCH",
+                 "DASHBOARD_LAYOUT_INVALID", "DASHBOARD_FILTER_INVALID",
+                 "DASHBOARD_COMMAND_INVALID", "DASHBOARD_QUERY_INVALID",
+                 "DASHBOARD_DRILLDOWN_INVALID", "DASHBOARD_PREFERENCE_INVALID",
+                 "RISK_POLICY_INVALID", "RISK_POLICY_COMMAND_INVALID",
+                 "RISK_EVALUATION_INVALID", "RISK_SIGNAL_ACTION_INVALID",
+                 "GOVERNANCE_REPORT_INVALID", "GOVERNANCE_REPORT_RUN_INVALID",
+                 "GOVERNANCE_EXPORT_INVALID",
                  "WEBHOOK_TARGET_REJECTED", "WEBHOOK_DNS_UNAVAILABLE" ->
                 HttpStatus.BAD_REQUEST;
             case "CROSS_SPACE_SYNC_REAUTHORIZE_REQUIRED" ->

@@ -384,7 +384,7 @@ class WorkItemStateFlowFoundationIntegrationTests {
             latest.clean();
             Flyway.configure().dataSource(dataSource()).target(baseline).load().migrate();
             latest.migrate();
-            assertEquals("130", latest.info().current().getVersion().getVersion());
+            assertEquals("134", latest.info().current().getVersion().getVersion());
             assertEquals(0, latest.migrate().migrationsExecuted);
         }
     }

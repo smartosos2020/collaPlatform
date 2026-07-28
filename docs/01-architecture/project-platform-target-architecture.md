@@ -2,12 +2,12 @@
 title: 项目协作平台目标架构
 status: target
 program: PROJECT-PLATFORM
-program_revision: 45
+program_revision: 47
 domain_contract_version: 1
 domain_contract_status: frozen-s01-m3
 migration_contract_version: 1
-stage_review_status: s19-active
-updated_at: 2026-07-28
+stage_review_status: s19-archived-s20-active
+updated_at: 2026-07-29
 ---
 
 # 项目协作平台目标架构
@@ -1533,3 +1533,48 @@ S09 完成路线已经独立归档，S10 在 Program revision 27 激活为唯一
 - Metric definition/version、dimension、window、chart/dashboard configuration、risk policy/signal 与 governance report 是 S19 唯一新增权威；物化结果、缓存、统计、图表和报表不授权。
 - 未知、缺失、过期、截断、抑制和无样本必须显式表达，不能折算为零、正常或成功。enterprise-admin 不自动获得私有内容，个人排名和绩效评分禁止。
 - revision 45 激活只声明规划和验收边界，不声明任何 S19 schema、API、worker 或 UI 已实现；S20 场景模板继续保持 Planned。
+
+### 29.31 S19-M1 指标语义实现边界
+
+- V131 建立 project-owned MetricDefinition、不可变 MetricVersion、版本化 Dimension 目录、exact command receipt 与可重建 MetricResult index；后者带 expiry 且不授权，不是第二份业务事实。
+- `MetricSemanticService` 是表达式、单位与窗口语义 owner。表达式只允许注册 measure/dimension 及 count/sum/average/ratio，最多 4 维、500 预览样本；SQL、脚本、模板、反射、私表名称、非确定函数和未来 schema 失败关闭。
+- M1 的 measure 目录只声明 S13-S18 owner 公共最小合同名称，不直接查询其私表；预览输入必须是调用者已通过当前 S11 decision/data scope 得到的显式受权样本。M2 才实现逐来源 DataSourceBinding 与真实聚合。
+- Window 固定 IANA timezone、ISO-8601 calendar、rolling/fixed、day/week/month 与 comparison period；Java calendar arithmetic 处理 DST，窗口 identity/边界与版本共同进入可重复解释。
+- MetricResult 显式区分 ready、unknown、no_sample、suppressed、stale 与 truncated。隐藏样本在聚合外形形成前移除，少于 3 个有效样本抑制；所有不完整状态 value 为空，不能伪装为零或正常。
+- 配置写使用 current owner/admin gate、expected version、request hash、不可变 response receipt、audit 与 `project.metric.changed`。成员/guest 只读，non-member 与 enterprise-admin 无内容旁路。
+- M1 Web 只提供目录、编辑、窗口预览、版本 diff 与来源解释；缓存、localStorage、realtime 和多标签只触发 REST 校准，不授权或代表发布成功。图表/看板、风险和治理驾驶舱仍由 M2-M4 交付。
+
+### 29.32 S19-M2 图表、看板和跨空间数据源实现边界
+
+- V132 建立 DataSourceBinding、ChartDefinition/Version、Dashboard/Version、Layout、Filter、Preference、exact receipt 与 permission-scoped 可重建 cache；只保存配置、identity/version 和低基数派生，缓存带 expiry 且不授权。
+- DataSourceBinding 只允许 `work_item_query`、`saved_view` 和 `cross_space_panorama` 注册来源，分别调用 S13 query/saved-view 与 S18 panorama 公共合同。每个来源在执行时重校准当前 S11 decision/data scope 或 active grant，不读取 owner 私表、不先全量查询再在浏览器过滤。
+- Chart 固定 published Metric identity/version、维度、窗口和来源版本。单/跨空间聚合在隐藏对象进入 series/facet/count 前完成授权；撤权后立即 `no_sample`，所有 unknown/suppressed/stale/truncated 结果隐藏 series、facet、数量和来源版本，不折算为零。
+- 表格、指标卡、折线、柱状、堆叠柱和分布图共用一个服务端 QueryResult；Dashboard 最多 12 个 binding、24 个 chart，每图 50 series/500 points，安全钻取每页只返回最多 100 个当前受权 opaque identity。
+- dashboard save/publish/share/unshare/disable/revise/archive 使用 expected version、request hash、不可变 response receipt、audit/outbox 和精确重放。分享仅引用当前受权配置，不复制结果、不创建成员/ACL，也不让 enterprise governance 旁路空间内容。
+- Web 的 realtime、online/focus、localStorage 与多标签只负责 REST 失效和离线设计；离线禁用发布/分享/查询并不伪造成功。M3 只能消费已发布 metric/dashboard identity/version 作为受限输入，图表结果本身不是风险结论、来源事实或权限权威。
+
+### 29.33 S19-M3 延期、阻塞、质量与资源风险实现边界
+
+- V133 建立 RiskPolicy、不可变 PolicyVersion、RiskSignal、EvidenceReference、不可变 action/command receipt 与可重建低基数 stats；复合 workspace/space 边界、去重、冷却、索引、过期和空间清理已进入 schema。
+- `MetricRiskEvidenceResolver` 只消费 S15 `ProjectDetailService` 与 S16 `ResourceCapacityService` 当前公共响应。延期、停滞、阻塞、质量和资源证据携带 source identity/version/observedAt/explanation；不读取 owner 私表或复制 WorkItem、流程路径、成员、ACL、工时和字段值。
+- 资源证据只给出空间级当前冲突数量，禁止人员排名、绩效、生产利用率与预测准确率。关系/流程传播通过 owner 已公开的有界健康信号解释，风险层固定 8 层/50 扇出预算且不暴露隐藏端点路径。
+- policy save/publish 与 signal acknowledge/close/suppress/reopen/invalidate 使用 current manager gate、expected version、request hash、exact response receipt、audit/outbox。证据 fingerprint 变化可重新打开 closed/invalidated 信号，治理动作不改写来源。
+- Web 提供策略目录、不可变发布、当前信号、证据解释和治理动作；realtime/online/focus/storage 只触发 REST 校准，离线不伪造评估或关闭。六身份、跨空间隐藏、回放、并发冲突和 1440/1366/820 已通过真实隔离验收。
+- M4 只能组合 M1-M3 公共治理元数据，不能读取它们的私表，也不能把风险信号升级为企业内容旁路或 S20 场景模板事实。
+
+### 29.34 S19-M4 治理驾驶舱、审计报表与 Stage 收口
+
+- V134 建立 GovernanceReport、ReportRun、ExportReceipt 与 exact command receipt；只保存治理配置、source fingerprint、低基数结果和导出元数据，run/export/command 由 immutable trigger 保护。
+- `MetricGovernanceService` 只调用 M1 `MetricSemanticService`、M2 `MetricDashboardService` 与 M3 `MetricRiskService` 公共 foundation；不读取 V131-V133 私表，不提供空间外或 enterprise 内容旁路。
+- ConfigHealth 固定 component/status/visibleCount/sourceVersion/truncated/explanation；任一来源截断时状态为 `unknown` 且数量清零，不伪装 healthy。报表运行绑定 report version 与 source fingerprint。
+- export 在每次请求重新执行 current manager gate 并重新生成当前 GovernanceOverview；最多 500 行，只输出治理元数据，隐藏内容、成员、标题、字段、facet 和文件名不进入响应。
+- Web 交付指标/看板/风险汇总、配置健康、报表定义、运行和受控导出，支持 realtime/online/focus REST 校准、离线失败关闭与 1440/1366/820。六身份、脱敏导出和真实隔离 route-final 已通过。
+- S19 四份报告、48 个 Task 与 V131-V134 完成，Program revision 46 的 `current_stage` 为 `none`。S20 场景模板只有在独立归档/激活后才能消费这些公开能力。
+
+### 29.35 S19 归档与 S20 激活边界
+
+- S19 完成路线已通过独立 archive-only 工作循环归档至 `docs/99-archive/superseded-roadmaps/project-platform-s19-roadmap-completed-2026-07-29.md`；S20 在 Program revision 47 激活，当前唯一入口是 `PROJECT-PLATFORM-S20-M1-T01`。
+- S20 当前路线固定为 5 个 Milestone、60 个 Task：M1 研发项目模板，M2 市场活动模板，M3 HR 招聘模板，M4 客户交付模板，M5 安装、差异化、升级验证和 Stage 收口。
+- S20 只拥有场景目录/版本/组件清单、安装运行/步骤、差异/升级决策和精确回执；类型、字段、布局、流程、关系、权限、视图、计划、资源、自动化、指标与 WorkItem 继续由 S03-S19 owner 持有。
+- 场景安装必须调用 owner 公共合同并逐次重校准当前 manager/空间状态；目录、预览、缓存、运行历史和统计不授权，enterprise-admin 无内容旁路。
+- base/upstream/local 三方差异必须保留本地调整，未决冲突、未知 schema、缺失 capability、收权和停用失败关闭。revision 47 激活不声明任何 S20 schema、API、安装或 UI 已实现，S21 旧模型退出、全量迁移和真人试用保持 Planned。

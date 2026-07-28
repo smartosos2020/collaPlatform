@@ -7170,6 +7170,28 @@ body {
   margin-block: 34px;
 }
 
+.metric-semantics-panel .metric-catalog-item {
+  height: auto;
+  min-height: 44px;
+  overflow-wrap: anywhere;
+  text-align: left;
+  white-space: normal;
+}
+
+.metric-semantics-panel .metric-version-diff,
+.metric-semantics-panel .ant-alert {
+  margin-top: 16px;
+}
+
+@media (max-width: 820px) {
+  .metric-semantics-panel .ant-card-head {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+    padding-block: 12px;
+  }
+}
+
 .project-space-fact-list {
   display: flex;
   flex-direction: column;
@@ -9070,5 +9092,69 @@ body {
 @media (max-width: 900px) {
   .automation-rules-layout {
     grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.metric-dashboards-panel .ant-alert,
+.metric-dashboards-panel .dashboard-version-explain,
+.metric-risks-panel .ant-alert,
+.metric-governance-panel .ant-alert {
+  margin-bottom: 16px;
+}
+
+.metric-risk-signal {
+  display: block;
+}
+
+.metric-risk-signal > .ant-card {
+  width: 100%;
+}
+
+.dashboard-catalog-item {
+  height: auto;
+  min-height: 40px;
+  overflow-wrap: anywhere;
+  text-align: left;
+  white-space: normal;
+}
+
+.metric-dashboard-results {
+  margin-top: 20px;
+}
+
+.metric-dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.metric-chart-series {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 420px;
+  overflow: auto;
+}
+
+.metric-chart-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.8fr) minmax(180px, 1.5fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+
+@media (max-width: 1000px) {
+  .metric-dashboard-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 820px) {
+  .metric-chart-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .metric-chart-series {
+    max-height: none;
   }
 }

@@ -366,3 +366,29 @@ M37 后 Base 记录可以作为关系源：
 
 - CrossTeamPanorama、CollaborationSlice、CollaborationAuditEntry、Health 与 Diagnostic 是请求期受权投影，不注册 platform objectType、resolver、搜索或收藏。
 - Preference 是个人展示事实；SliceStats 可重建。二者都不复制内容、不授权，也不形成组织 KPI、绩效评价或 S19 指标定义。
+
+## S19-M1 指标语义对象边界
+
+- MetricDefinition 是稳定配置 identity；MetricVersion 冻结 expression、window、definition hash、publisher 与发布时间。草稿修订不改写已发布版本，current pointer 只是定义聚合内引用。
+- Measure 是注册公共数值语义，Dimension 是带版本、值类型、来源合同与 cardinality limit 的目录项；二者不复制 WorkItem、流程、计划、资源、自动化、成员、ACL 或跨空间内容。
+- Window 固定 kind/amount/unit/timezone/calendar/comparison；WindowBounds 是请求期可重复派生。MetricResult 带定义版本、显式完整性状态、nullable value/分子/分母、来源解释和观测时间。
+- MetricResult index 可删除重建且不授权；Metric、Dimension、Window 与 Result 均不注册新的 platform objectType、全局 resolver、搜索、收藏或跨空间 deep link。M1 不创建 Chart、Dashboard、RiskSignal 或 GovernanceReport。
+
+## S19-M2 图表与看板对象边界
+
+- DataSourceBinding 是 dashboard 内稳定 binding key，固定 source kind/space identities、可选 SavedView identity 与 published Metric identity/version；不复制查询结果、成员、ACL 或 grant。
+- ChartDefinition 是稳定 chart identity/key；ChartVersion 冻结 visualization、binding、metric version、维度、过滤、series/point budget 与 drilldown capability。DashboardVersion 冻结 charts、layout、filters 和 chart-version refs，历史版本不可更新。
+- Dashboard 分享只改变配置引用 scope；Preference 是当前用户 compact/filter 展示事实。QueryResult、series、facet、tooltip 和 DrilldownResult 是请求期受权投影，cache 可删除重建且不授权。
+- Chart、Dashboard 和结果不注册新的 platform objectType、全局 resolver、搜索或收藏；M2 不创建 RiskPolicy、RiskSignal 或 GovernanceReport，也不允许风险阶段把图表像素/缓存当来源事实。
+
+## S19-M3 风险策略与信号对象边界
+
+- RiskPolicy 是稳定配置 identity；RiskPolicyVersion 冻结信号类型、严重度、冷却窗口、definition hash 与发布者。草稿修订不改写历史版本。
+- RiskSignal 绑定确切 policy/version、signal type、dedupe key 与 evidence fingerprint；EvidenceReference 仅保存公共来源 type/opaque identity/version/observedAt/explanation，不复制标题、字段、流程路径、成员、ACL 或资源明细。
+- acknowledge/close/suppress/reopen/invalidate 是不可变治理动作；它们不改写 ProjectPlan、WorkItem、Relation、Deliverable 或 Capacity 来源。证据变化通过新 fingerprint 重算，不能产生幽灵关闭。
+- RiskPolicy、RiskSignal 与可重建 stats 不注册新的 platform objectType、搜索、收藏或企业内容入口；它们不授权，不构成人员评价、预测准确率或生产 SLO。
+
+## S19-M4 治理报表对象边界
+
+- GovernanceOverview 与 ConfigHealth 是请求期当前受权投影；AuditReport 是版本化配置，ReportRun 固定 report version/source fingerprint/result，ExportReceipt 固定 format/row count/truncation/content hash。
+- 报表和导出不注册 platform objectType、搜索或收藏，不复制内容、成员、ACL、指标样本或风险来源；所有结果不授权且可按保留策略清理。

@@ -320,3 +320,30 @@ workspace audience 只表示“该 workspace 的已连接客户端需要丢弃�
 - panorama、audit lineage、health 和 diagnostic 查询只组合当前受权公共响应，不发布业务事件、不修改 M1-M3 事实。
 - preference save 只写当前用户展示事实并使用 expected version；slice stats 是可重建低基数缓存，失败不阻断 canonical 响应且不授权。
 - offline/realtime/focus 只触发 REST 重新校准。全景计数、健康标签和截断标记不得被下游当作 S19 指标或治理成功事实。
+
+## 28. S19-M1 指标语义副作用边界
+
+- metric save/publish/disable/revise/archive 成功后同事务写 exact response receipt、`project_metric.*` audit、版本 1 `project.metric.changed` 业务失效事件及现有 `project_space.changed` realtime 校准事件；payload 只含 space/metric identity、change 和 version。
+- caller-stable request ID/hash 精确重放返回原响应，不重复不可变 MetricVersion、audit 或 outbox；expected version、未知 measure/dimension、非法单位/窗口或当前权限冲突在副作用前失败。
+- catalog、version diff、window resolve、preview 与 disposable result index 不发布业务事件，也不写 S11-S18 owner 私表。preview 对无权/缺失/抑制/过期/截断/无样本只返回显式状态。
+- offline/localStorage/storage/realtime/online/focus 只能保存本地草稿或触发当前受权 REST 重读；客户端结果、缓存和按钮状态不是指标发布、授权或组织绩效事实。
+
+## 29. S19-M2 图表与看板副作用边界
+
+- dashboard save/publish/disable/revise/archive/share/unshare 成功后同事务写 exact response receipt、`project_dashboard.*` audit、版本 1 `project.dashboard.changed` 与 `project_space.changed` 最小失效事件；payload 只含 space/dashboard identity、change 和 version。
+- publish 原子创建不可变 ChartVersion 与 DashboardVersion 并推进 current pointer；caller-stable request ID/hash 精确重放原响应，不重复版本、audit 或 outbox。expected version、metric version、binding 或 layout 冲突在副作用前失败。
+- foundation/query/drilldown 和 preference read 不发布业务事件；query 只读 owner 公共合同。个人 preference 只更新当前用户展示事实，不改变发布配置、分享 scope、数据或授权。
+- share/unshare 只改变配置可见 scope，不复制 series/cache 或创建成员/ACL。realtime、offline/localStorage/storage/online/focus 只触发 REST 校准或保存本地设计，离线不伪造发布、分享、查询或钻取成功。
+
+## 30. S19-M3 风险策略与信号副作用边界
+
+- save/publish policy 使用 current manager gate、expected version 与 exact request hash；publish 只追加不可变 PolicyVersion、audit、`project.risk.changed` 与最小 `project_space.changed`，不执行来源业务命令。
+- evaluate 只读取当前 `ProjectDetailService`/`ResourceCapacityService` 公共响应，按 policy/version/type/fingerprint 去重并更新有界 RiskSignal；没有受权证据时不创建信号，也不把缺失折算为正常。
+- acknowledge/close/suppress/reopen/invalidate 写不可变 action receipt 并绑定 signal/evidence version；关闭和抑制不更新计划、关系、交付或资源来源，证据指纹变化可重开。
+- Web realtime/online/focus/storage 只触发 REST 校准；离线禁用发布、评估与治理动作，不闪现旧风险、严重度、证据或数量。
+
+## 31. S19-M4 治理报表副作用边界
+
+- save report、run 和 export 使用 current manager gate、expected version 或 caller-stable request hash，并写 exact receipt/audit/minimal `project.governance.changed`；重放不重复运行、导出或事件。
+- overview/foundation 是只读公共服务组合。export 每次重算当前受权 overview 后生成 bounded rows/content hash，不读取缓存授权或历史内容。
+- realtime/online/focus 只触发 REST 重新校准，离线禁用保存、运行和导出；UI 计数、健康、文件内容和 signal 均不授权。

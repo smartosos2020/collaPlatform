@@ -408,3 +408,30 @@ M2 不实现 Worker lease、dead-letter、replay、handler registry 或独立进
 
 - `CrossTeamPanoramaService` 只调用 `CrossSpaceGrantService`、`CrossSpaceRelationService` 和 `CrossSpaceSyncService` 公共 foundation，不读取 V127-V129 私表。
 - V130 preference/stats/receipt 由 project owner 独占；stats 可删除重建且不授权。全景、health、diagnostic 与 Web cache 都不是 S19 指标权威。
+
+## 37. S19-M1 指标语义模块边界
+
+- `MetricSemanticService` 独占 V131 definition/version/dimension/command/result-index 表；其他 owner 不得读取这些私表重解释指标语义，S19 也不得读取 S11-S18 私表拼装样本。
+- measure/dimension catalog 只列出 owner 公共合同、值类型、单位、版本和基数上限。M1 preview 只处理显式受权样本，不充当 M2 DataSourceBinding 或生产聚合器。
+- `WorkItemRelationAccessDecisionService` 在每次目录、保存、发布与预览时重校准空间成员/manager；缓存、维度目录、结果索引、realtime 与 enterprise RBAC 均不授权。
+- `AuditLog` 与 `TransactionalOutbox` 是唯一横向写端口；命令 receipt 精确重放原响应，不重复 MetricVersion、audit 或 outbox。
+
+## 38. S19-M2 图表与看板模块边界
+
+- `MetricDashboardService` 独占 V132 binding/chart/dashboard/version/preference/command/cache 表；`MetricSemanticService` 继续独占 metric semantics，图表不得建立第二套表达式、窗口或分母权威。
+- `MetricDataSourceResolver` 只调用 `WorkItemQueryService`、`WorkItemSavedViewService` 和 `CrossTeamPanoramaService` 公共方法。它不注入或读取这些 owner 的 repository/private table，也不接受任意 SQL、脚本或客户端样本。
+- 每次 foundation/query/drilldown/preference 重新执行当前空间 visibility；写操作重新执行 manager gate。跨空间来源只消费当前 active panorama slice，撤权排除不是 truncation，缓存、分享、realtime 和 enterprise RBAC 均不授权。
+- `AuditLog` 与 `TransactionalOutbox` 仍是唯一横向写端口。发布创建不可变 ChartVersion/DashboardVersion；caller-stable receipt 精确重放且不重复版本、audit 或事件。
+
+## 39. S19-M3 风险策略与信号模块边界
+
+- `MetricRiskService` 独占 V133 policy/version/signal/action/command/stats 表；风险层不读取计划、交付、资源、关系、流程、指标或权限私表，也不把图表像素或缓存当来源事实。
+- `MetricRiskEvidenceResolver` 只调用 `ProjectDetailService.get` 与 `ResourceCapacityService.get` 公共合同。延期、阻塞、停滞与质量保留当前可见 source identity/version/explanation；资源只输出空间级冲突数量，不持久化人员、工时、负荷排行或隐式利用率。
+- 每次 foundation/evaluate/action 重新校准当前空间权限；owner/admin 可配置与治理，member/guest 只读，non-member 和 enterprise governance 无内容旁路。证据缺失不生成“正常”信号，截断目录显式声明不完整。
+- caller-stable request hash、expected version、dedupe fingerprint、cooldown、不可变 action receipt、audit 与最小 outbox 构成写闭包；关闭不改写来源，证据指纹变化可重新打开信号。
+
+## 40. S19-M4 治理报表模块边界
+
+- `MetricGovernanceService` 独占 V134 report/run/export/command 表，只调用 `MetricSemanticService`、`MetricDashboardService` 与 `MetricRiskService` 公共 foundation；不得读取其 repository 或私表。
+- overview/report/export 每次重新校准 current space visibility；save/run/export 要求 manager。ReportRun 与 ExportReceipt 不授权，enterprise governance 无内容旁路。
+- ConfigHealth 与导出只包含 component/status/count/sourceVersion/explanation 低基数治理元数据；truncated 统一变为 unknown，隐藏内容和成员事实不进入字段、数量、文件名或错误外形。

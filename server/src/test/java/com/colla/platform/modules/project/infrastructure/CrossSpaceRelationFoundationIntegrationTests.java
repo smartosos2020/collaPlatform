@@ -47,7 +47,7 @@ class CrossSpaceRelationFoundationIntegrationTests {
                    'idx_project_work_item_cross_space_relations_target'
                  )
                 """, Boolean.class));
-            assertEquals("130", jdbc.queryForObject(
+            assertEquals("134", jdbc.queryForObject(
                 "select max(version) from flyway_schema_history", String.class
             ));
         }

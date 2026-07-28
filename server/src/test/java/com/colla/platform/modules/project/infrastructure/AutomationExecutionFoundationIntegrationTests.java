@@ -54,7 +54,7 @@ class AutomationExecutionFoundationIntegrationTests {
                     """,
                 Boolean.class
             ));
-            assertEquals("130", jdbc.queryForObject(
+            assertEquals("134", jdbc.queryForObject(
                 "select max(version) from flyway_schema_history", String.class
             ));
         } finally {

@@ -16,7 +16,7 @@ class CrossTeamPanoramaFoundationIntegrationTests {
             Flyway flyway = Flyway.configure().dataSource(
                 postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword()
             ).load();
-            assertTrue(flyway.migrate().migrationsExecuted >= 130);
+            assertTrue(flyway.migrate().migrationsExecuted >= 134);
             assertEquals(0, flyway.migrate().migrationsExecuted);
             org.postgresql.ds.PGSimpleDataSource dataSource =
                 new org.postgresql.ds.PGSimpleDataSource();
@@ -32,7 +32,7 @@ class CrossTeamPanoramaFoundationIntegrationTests {
                    'project_cross_team_panorama_governance_receipts'
                  )
                 """, Integer.class));
-            assertEquals("130", jdbc.queryForObject(
+            assertEquals("134", jdbc.queryForObject(
                 "select max(version) from flyway_schema_history", String.class
             ));
         }

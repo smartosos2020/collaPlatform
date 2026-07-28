@@ -87,6 +87,7 @@ public class JdbcProjectSpaceRepository implements ProjectSpaceRepository {
             memberId,
             ownerId
         );
+        createMetricDimensions(workspaceId, spaceId);
         return spaceId;
     }
 
@@ -119,11 +120,120 @@ public class JdbcProjectSpaceRepository implements ProjectSpaceRepository {
             actorId,
             actorId
         );
+        createMetricDimensions(workspaceId, spaceId);
     }
 
     @Override
     public void deleteSpace(UUID workspaceId, UUID spaceId) {
         jdbcTemplate.execute("set local colla.project_space_cleanup = 'on'");
+        jdbcTemplate.update(
+            "delete from project_governance_commands where workspace_id = ? and space_id = ?",
+            workspaceId, spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_governance_exports where workspace_id = ? and space_id = ?",
+            workspaceId, spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_governance_report_runs where workspace_id = ? and space_id = ?",
+            workspaceId, spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_governance_reports where workspace_id = ? and space_id = ?",
+            workspaceId, spaceId
+        );
+        jdbcTemplate.update(
+            "update project_risk_policies set current_version_id = null where workspace_id = ? and space_id = ?",
+            workspaceId, spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_risk_stats where workspace_id = ? and space_id = ?",
+            workspaceId, spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_risk_commands where workspace_id = ? and space_id = ?",
+            workspaceId, spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_risk_signal_actions where workspace_id = ? and space_id = ?",
+            workspaceId, spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_risk_signals where workspace_id = ? and space_id = ?",
+            workspaceId, spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_risk_policy_versions where workspace_id = ? and space_id = ?",
+            workspaceId, spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_risk_policies where workspace_id = ? and space_id = ?",
+            workspaceId, spaceId
+        );
+        jdbcTemplate.update(
+            "update project_dashboards set current_version_id = null where workspace_id = ? and space_id = ?",
+            workspaceId, spaceId
+        );
+        jdbcTemplate.update(
+            "update project_chart_definitions set current_version_id = null where workspace_id = ? and space_id = ?",
+            workspaceId, spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_dashboard_query_cache where workspace_id = ? and space_id = ?",
+            workspaceId, spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_dashboard_commands where workspace_id = ? and space_id = ?",
+            workspaceId, spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_dashboard_preferences where workspace_id = ? and space_id = ?",
+            workspaceId, spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_dashboard_versions where workspace_id = ? and space_id = ?",
+            workspaceId, spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_chart_versions where workspace_id = ? and space_id = ?",
+            workspaceId, spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_chart_definitions where workspace_id = ? and space_id = ?",
+            workspaceId, spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_metric_data_source_bindings where workspace_id = ? and space_id = ?",
+            workspaceId, spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_dashboards where workspace_id = ? and space_id = ?",
+            workspaceId, spaceId
+        );
+        jdbcTemplate.update(
+            "update project_metric_definitions set current_version_id = null where workspace_id = ? and space_id = ?",
+            workspaceId, spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_metric_result_index where workspace_id = ? and space_id = ?",
+            workspaceId, spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_metric_commands where workspace_id = ? and space_id = ?",
+            workspaceId, spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_metric_versions where workspace_id = ? and space_id = ?",
+            workspaceId, spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_metric_dimensions where workspace_id = ? and space_id = ?",
+            workspaceId, spaceId
+        );
+        jdbcTemplate.update(
+            "delete from project_metric_definitions where workspace_id = ? and space_id = ?",
+            workspaceId, spaceId
+        );
         jdbcTemplate.update(
             "delete from project_cross_team_panorama_preferences where workspace_id = ? and space_id = ?",
             workspaceId, spaceId
@@ -684,6 +794,24 @@ public class JdbcProjectSpaceRepository implements ProjectSpaceRepository {
             workspaceId,
             spaceId
         );
+    }
+
+    private void createMetricDimensions(UUID workspaceId, UUID spaceId) {
+        jdbcTemplate.update("""
+            insert into project_metric_dimensions(
+              id,workspace_id,space_id,dimension_key,version,label,value_type,
+              source_contract,cardinality_limit,status
+            )
+            select gen_random_uuid(),?,?,d.dimension_key,1,d.label,d.value_type,
+                   d.source_contract,d.cardinality_limit,'active'
+              from (values
+                ('status','状态','string','WorkItemQueryService.authorizedFacet',32),
+                ('type','工作项类型','string','WorkItemQueryService.authorizedFacet',64),
+                ('calendar_day','日历日','date','MetricSemanticService.window',366),
+                ('space','受权空间','uuid','CrossSpaceGrantService.authorizedSpaceReference',50)
+              ) as d(dimension_key,label,value_type,source_contract,cardinality_limit)
+            on conflict (workspace_id,space_id,dimension_key,version) do nothing
+            """, workspaceId, spaceId);
     }
 
     @Override

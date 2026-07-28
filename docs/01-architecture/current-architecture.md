@@ -549,7 +549,7 @@ S16-M1-M4 已交付 V118-V121 日历/例外/显式估分、实际工时/不可�
 ## S18 完成与 S19 当前执行边界
 
 - S18 完成路线已归档；当前已实现事实止于 V130 的跨空间授权、关系命令调用、同步/冲突/补偿、全景与协作审计，相关事实继续由既有 owner 和 project S18 owner 持有。
-- Program revision 45 已激活 S19 为 4 个 Milestone、48 个 Task；当前唯一执行入口为 `PROJECT-PLATFORM-S19-M1-T01`，尚无 S19 schema、API、worker 或 UI 实现事实。
+- Program revision 45 已激活 S19 为 4 个 Milestone、48 个 Task；S19-M1/M2/M3 已交付 V131-V133 指标语义、数据源、图表/看板、风险策略/信号 API 与 Web，下一合法入口为 `PROJECT-PLATFORM-S19-M4-T01`。
 - S18-M1 已新增 V127 `project_cross_space_grants`、不可变 grant version 与精确 command receipt。`CrossSpaceGrantService` 持有草稿、修订、请求、双方确认、暂停、恢复、撤销和归档编排；scope 只保存方向、最小操作及双方已发布类型/版本 identity，不复制类型标题、字段、实例、成员或 ACL。
 - 每个 grant 必须由 source/target 空间当前 owner/admin 分别确认；空间停用/归档、确认者收权/停用或 grant 暂停/撤销后，受保护入口立即失败关闭。enterprise-admin、缓存、realtime 和 S17 自动化/连接器均不授权。
 - Web 已提供授权草稿、范围预览、双方确认、暂停/恢复、撤销/归档和离线/online/focus REST 校准；请求 ID/hash、expected version、receipt、audit 与最小 `project.cross-space.grant.changed` outbox 构成同一事务闭包。
@@ -561,3 +561,44 @@ S16-M1-M4 已交付 V118-V121 日历/例外/显式估分、实际工时/不可�
 - S18-M4 已新增 V130 个人全景偏好、低基数可重建 slice stats 和治理回执。`CrossTeamPanoramaService` 只组合 M1 grant、M2 relation 与 M3 sync 公共响应，生成最多 200 条当前受权 slice/audit lineage 和 healthy/attention/unknown 解释，不读取它们的私表。
 - Web 已交付授权/关系/同步/冲突全景、来源版本、健康解释、紧凑偏好、1440/1366/820 与 offline/online/focus 校准。S18 四个 Milestone、48 个 Task 与 V127-V130 已完成并归档。
 - S19 必须逐来源复用 S11 当前 decision/data scope 与 S13-S18 owner 公共合同；未知、缺失、过期、截断和无样本不能归零，指标/图表/风险/报表不授权，enterprise-admin 无内容旁路，个人排名和绩效评分禁止。
+
+## S19-M1 指标语义、维度与时间窗口当前实现
+
+- project 模块通过 `/api/project-spaces/{spaceId}/metrics` 提供 schema v1 的 MetricDefinition 目录、草稿保存、不可变发布、修订/停用/归档和有界窗口预览；当前成员可读，owner/admin 可写，空间外与 enterprise governance 统一隐藏。
+- V131 保存定义、不可变版本、版本化维度目录、caller-stable 命令回执和可重建结果索引。定义 identity/key、复合 workspace/space 边界、current version FK、唯一版本号、过期索引、不可变 trigger 和空间清理顺序已进入 schema。
+- 表达式只接受注册 measure、dimension 与 count/sum/average/ratio；最多 4 个维度、500 个预览样本。SQL、脚本、模板、反射、私表名称、未知字段/未来 schema 和单位不匹配均在持久化前失败关闭。
+- Window 固定 IANA 时区、ISO-8601 日历、rolling/fixed、day/week/month 以及 previous-period 比较；边界使用 calendar arithmetic 处理 DST，不假设自然日恒为 24 小时。窗口外迟到样本不进入当前结果。
+- 预览只接收调用方显式标记为当前受权的有界样本；无权样本在聚合前移除，少于 3 个有效样本抑制。`unknown/no_sample/suppressed/stale/truncated` 的 value 均为空，不折算为 0。
+- Web 已交付指标目录、语义编辑、窗口配置、不可变发布、版本 diff、来源说明、离线本地草稿与 online/focus/storage REST 校准；支持 1440/1366/820。M2 在该已发布语义之上实现图表、看板和跨空间数据源，不改写 M1 权威。
+
+## S19-M2 图表、看板与跨空间数据源当前实现
+
+- project 模块通过 `/api/project-spaces/{spaceId}/metric-dashboards` 提供 DataSourceBinding、ChartDefinition、Dashboard、Layout、Filter、QueryResult、偏好和安全钻取 schema v1。当前成员可读，owner/admin 可保存、发布、分享和治理，空间外及 enterprise governance 不可见。
+- V132 保存当前数据源绑定、图表/看板草稿、不可变图表/看板版本、个人偏好、exact command receipt 与带 permission/query fingerprint 和 expiry 的低基数可重建 cache；cache、图表结果和分享配置均不授权。
+- `MetricDataSourceResolver` 只调用 S13 `WorkItemQueryService.execute`、`WorkItemSavedViewService.get` 和 S18 `CrossTeamPanoramaService.get` 公共合同。WorkItem 初始聚合版本 0 被保留为合法来源版本；查询按 owner 服务先授权后聚合，不读取 S11/S13/S14/S18 私表。
+- 每个 Dashboard 最多 12 个 binding、24 个 chart；每图最多 50 series、500 point，drilldown 每页最多 100 个当前可见 opaque identity。表格、指标卡、折线、柱状、堆叠和分布共用同一服务端结果合同。
+- chart 固定不可变 metric identity/version、维度、window 与 source version。active grant 被撤销后跨空间样本立即排除并返回 `no_sample`；suppressed/stale/truncated/unknown 时 series、facet、count 与 source version 全部隐藏。
+- 发布版本不可变，保存/发布/分享/撤销分享/停用/修订/归档使用 expected version、request hash、exact response receipt、audit 和 `project.dashboard.changed`/`project_space.changed`。分享只把配置 scope 设为 space，不复制结果或扩大成员权限。
+- Web 已交付目录、设计器、跨空间 binding、响应式结果、来源/freshness/truncation 解释、localStorage 离线布局、多标签同步及 realtime/online/focus REST 校准；支持 1440/1366/820。M3 风险策略/信号尚未实现，图表结果不得作为风险或权限权威。
+
+## S19-M3 延期、阻塞、质量与资源风险当前实现
+
+- project 模块通过 `/api/project-spaces/{spaceId}/metric-risks` 提供 RiskPolicy 草稿/不可变发布、当前 RiskSignal、评估和 acknowledge/close/suppress/reopen/invalidate schema v1；owner/admin 治理，member/guest 只读，空间外与 enterprise governance 隐藏。
+- V133 保存 policy/version/signal/evidence/action/command/stats 六类表；policy version 与 action/command receipt 不可变，signal 以 policy/version/type/fingerprint 去重，cooldown、复合边界、过期索引和空间清理已落地。
+- `MetricRiskEvidenceResolver` 只调用 S15 ProjectDetail 与 S16 ResourceCapacity 公共服务。延期、阻塞、停滞和质量保留当前可见 source identity/version/explanation；资源只保存空间级冲突数量，不保存人员、工时、负荷排行或隐式利用率。
+- 关闭/抑制不改写来源；证据 fingerprint 变化会重算并可重新打开信号。目录最多 50 policy/200 signal，每个信号 20 evidence，链深 8、扇出 50；截断显式说明数量不完整。
+- Web 已交付策略、版本、信号、证据解释与治理动作，支持 REST/realtime/online/focus/storage 校准、离线失败关闭和 1440/1366/820；六身份、跨空间隐藏、精确重放及并发版本冲突已通过真实隔离验收。M4 才实现 GovernanceOverview、ConfigHealth、AuditReport、Export 与 Stage 收口。
+
+## S19-M4 治理驾驶舱、审计报表与完成状态
+
+- project 模块通过 `/api/project-spaces/{spaceId}/metric-governance` 提供当前 GovernanceOverview、ConfigHealth、AuditReport、ReportRun 和 ExportReceipt schema v1。
+- V134 保存报表定义、不可变运行、不可变导出回执和 exact command receipt；最多 50 份报表、100 次运行和 500 行导出，空间清理与 owner manifest 已覆盖。
+- 聚合只调用 M1-M3 公共 foundation；ConfigHealth 绑定 source version，来源截断时显式 `unknown` 且不返回误导数量。导出逐次重算当前受权治理元数据，不保存成员、内容、标题、字段或权限快照。
+- Web 已交付完整驾驶舱、健康解释、报表目录/运行/导出、离线失败关闭和 1440/1366/820；owner/admin 可写，member/guest 只读，空间外与 enterprise governance 隐藏。
+- S19 四个 Milestone、48 个 Task 与 V131-V134 已完成；Program revision 46 的 `current_stage` 为 `none`。S20 仍为 Planned，须独立归档 S19 后激活。
+
+## S19 归档与 S20 当前执行边界
+
+- S19 完成路线已归档至 `docs/99-archive/superseded-roadmaps/project-platform-s19-roadmap-completed-2026-07-29.md`；Program revision 47 已激活 S20 的 5 个 Milestone、60 个 Task，当前唯一入口为 `PROJECT-PLATFORM-S20-M1-T01`。
+- S20 复用现有单类型配置模板、草稿/发布、三方合并和 S03-S19 公共合同，新增权威仅限场景目录/版本/组件清单、安装运行/步骤、差异/升级决策和精确回执。
+- 本次激活只冻结规划与验收边界；尚未实现任何 S20 schema、API、安装编排或 UI。S21 的旧模型删除、全量迁移、全仓最终验证和真人团队试用不得提前执行。
