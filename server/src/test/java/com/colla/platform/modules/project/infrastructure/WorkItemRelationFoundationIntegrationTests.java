@@ -18,7 +18,7 @@ class WorkItemRelationFoundationIntegrationTests {
             Flyway flyway = Flyway.configure()
                 .dataSource(container.getJdbcUrl(), container.getUsername(), container.getPassword())
                 .load();
-            assertEquals(121, flyway.migrate().migrationsExecuted);
+            assertEquals(126, flyway.migrate().migrationsExecuted);
             assertEquals(0, flyway.migrate().migrationsExecuted);
 
             org.postgresql.ds.PGSimpleDataSource dataSource = new org.postgresql.ds.PGSimpleDataSource();

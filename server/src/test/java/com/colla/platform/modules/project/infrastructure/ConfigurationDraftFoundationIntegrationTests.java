@@ -44,9 +44,9 @@ class ConfigurationDraftFoundationIntegrationTests {
             insertIdentityAndLegacyDraft(jdbc);
 
             Flyway latest = Flyway.configure().dataSource(dataSource).load();
-            assertEquals(42, latest.migrate().migrationsExecuted);
+            assertEquals(47, latest.migrate().migrationsExecuted);
             assertEquals(0, latest.migrate().migrationsExecuted);
-            assertEquals("121", jdbc.queryForObject("select max(version) from flyway_schema_history", String.class));
+            assertEquals("126", jdbc.queryForObject("select max(version) from flyway_schema_history", String.class));
             assertEquals("superseded", jdbc.queryForObject(
                 "select status from project_work_item_type_versions where id=?",
                 String.class,

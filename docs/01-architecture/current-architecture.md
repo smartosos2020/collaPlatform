@@ -1,7 +1,7 @@
 ---
 title: 当前技术架构
 status: active
-last_code_check: 2026-07-27
+last_code_check: 2026-07-28
 ---
 
 # 当前技术架构
@@ -14,7 +14,7 @@ Colla Platform 当前是模块化单体：
 
 - 后端：单个 Spring Boot 应用，按业务模块分包。
 - 前端：单个 React SPA，用户工作台和管理后台使用独立 Shell、导航和路由边界。
-- 数据库：单个 PostgreSQL schema，通过 Flyway V001-V101 演进。
+- 数据库：单个 PostgreSQL schema，通过 Flyway V001-V126 演进。
 - 基础设施：Redis、MinIO、WebSocket、平台对象、权限、事件、审计和搜索由模块共享。
 - 交付：本地 Docker 依赖；生产基线是 maintenance、双 API、Worker、Event Gateway、双协作节点的 Docker Compose + Nginx。
 
@@ -495,7 +495,42 @@ S01 已确定 ProjectSpace + versioned WorkItemType + WorkItem、规范 JSONB + 
 
 ## S16 归档与 S17 激活状态
 
-S16-M1-M4 已交付 V118-V121 日历/例外/显式估分、实际工时/不可变修订、人员分配/产能规则、资源排期与 canonical 调整；Web 支持 1440/1366/820、离线输入、重叠条交互及六身份当前权限校准。S16 完成路线已归档，S17 在 Program revision 41 激活，当前入口为 `PROJECT-PLATFORM-S17-M1-T01`。本次激活只建立规划边界，当前代码尚未实现 S17 自动化规则、调度或连接器。
+S16-M1-M4 已交付 V118-V121 日历/例外/显式估分、实际工时/不可变修订、人员分配/产能规则、资源排期与 canonical 调整；Web 支持 1440/1366/820、离线输入、重叠条交互及六身份当前权限校准。S16 完成路线已归档，S17 在 Program revision 41 激活；S17-M1 已交付 V122 规则模型，当前入口为 `PROJECT-PLATFORM-S17-M2-T01`。
+
+## S17-M1 自动化规则模型当前实现
+
+- project 模块通过 `/api/project-spaces/{spaceId}/automation` 提供 schema v1 规则目录、事件目录、操作目录、草稿保存、不可变发布和启停/归档命令。
+- V122 保存 AutomationRule、不可变 RuleVersion、公共事件目录镜像、精确命令回执和低基数统计；所有表属于 project owner，规则不注册为新的 platform object。
+- 条件仅接受最多 64 节点、8 层的声明式 all/any/not/compare，引用和操作符有固定 allowlist；script、SQL、code 和 template 形状失败关闭。
+- 规则配置只允许当前 active 空间 owner/admin；member/guest 只读，空间外和 enterprise governance 不可见。exact replay、expected version、audit 与 `project.automation.rule.changed` 同事务。
+- Web 已交付规则目录和 Trigger → Condition → Action 编辑器、REST 校准、离线本地输入及 1440/1366/820 响应式体验。M2 的 run/step、业务操作执行和 worker 尚未实现。
+
+## S17-M2 自动化执行当前实现
+
+- project 模块通过 `/api/project-spaces/{spaceId}/automation/runs` 与规则 execute 命令提供 schema v1 的 AutomationRun、RunStep 和精确 ActionReceipt。
+- V123 保存运行、步骤、操作回执和可重建统计；source、run 与 step 分层去重，运行绑定不可变 RuleVersion，并携带 attempt、lease 与 fencing 元数据。
+- 字段更新、状态/节点流转和创建关联项分别调用 canonical WorkItem/Workflow/Relation 公共命令；通知只追加 `notification.created` 公共事件，不写 owner 私表。
+- 手工执行限 owner/admin；当前成员只读运行历史，空间外与 enterprise governance 隐藏。dry-run 明确跳过全部业务副作用，错误只返回稳定代码。
+- Web 已交付规则预览、真实执行、步骤结果与 REST 校准。M3 时间调度、M4 外部连接器仍未实现。
+
+## S17-M3 时间触发当前实现
+
+- V124 保存 schedule、cursor/lease/fencing 与唯一 fire receipt；触发只接受 cron、固定时间、临期、超期和停留时间声明。
+- IANA timezone、DST、missed policy、cooldown、最多 20 次追赶和 200 个候选均为显式有界合同。M4 外部连接器仍未实现。
+
+## S17-M4 连接器当前实现
+
+- V125 保存连接器元数据/凭据引用、投递、不可变尝试、死信和精确回执；真实 secret 不入库。
+- HTTPS 目标逐次执行 DNS/IP allow policy，禁止重定向、内网/元数据和 userinfo；payload 64 KiB 上限，使用 timestamp、nonce 与 HMAC v1。
+- owner/admin 配置、测试与治理，当前成员只读；空间外及 enterprise governance 隐藏。Web 显式区分 dry-run 与真实投递。
+
+## S17-M5 自动化管理与 Stage 收口当前实现
+
+- project 模块通过 `/api/project-spaces/{spaceId}/automation/management` 聚合规则、运行、步骤、连接器、投递、四维限额、个人偏好和低基数诊断；聚合只调用 M1/M2/M4 公共服务，不跨 owner 私表 join。
+- V126 保存个人管理偏好、空间/规则/actor/action 日窗口限额、执行 claim receipt 和治理 receipt。稳定执行来源只消费一次配额；暂停/恢复要求 owner/admin、理由、expected version 与 exact request hash。
+- 管理响应最多返回 100 条各类事实，diagnostic/health 仅为当前受权可解释派生，不授权、不复制业务 payload、响应正文、secret 或隐藏对象。
+- Web 已交付规则/运行/连接器摘要、过滤偏好、配额进度和暂停/恢复，真实隔离验证覆盖 1440/1366/820、当前成员、空间外/enterprise 隐藏、跨空间空集与精确回放。
+- S17 五个 Milestone、60 个 Task、V122-V126 与 route-final 已完成，Program revision 42 的 `current_stage` 为 `none`。S18 只可在独立归档/激活后建立跨空间授权、关系和同步。
 
 ## S16-M3 人员负荷与产能当前实现
 
@@ -510,3 +545,10 @@ S16-M1-M4 已交付 V118-V121 日历/例外/显式估分、实际工时/不可�
 - V121 保存个人排期窗口偏好、可重建 index、低基数 stats 与精确调整回执。index/stats 可删除且不授权，偏好窗口最大 366 天。
 - 调整 preview 无副作用；commit 只调用 canonical allocation update，先执行 exact receipt replay、再执行 expected version 校验，新请求冲突失败关闭。
 - Web 对重叠分配条分层并限制轨道高度，支持键盘、REST 校准、离线输入保留与 1440/1366/820。六身份、跨空间、回放与 route-final 已通过。
+
+## S17 归档与 S18 当前执行边界
+
+- S17 完成路线已归档；当前已实现事实仍止于 V126 的自动化规则、运行、调度、连接器、管理与限额，相关事实继续由 project owner 持有。
+- Program revision 43 已激活 S18，当前唯一执行入口为 `PROJECT-PLATFORM-S18-M1-T01`，路线包含 4 个 Milestone、48 个 Pending Task。
+- 当前代码尚未交付 S18 的跨空间 grant、关系授权、同步规则/运行/冲突/补偿、跨团队全景或协作审计 schema/API/worker/UI；S17 自动化和连接器也不具备这些语义。
+- S18 实现必须复用 S10 canonical relation、S11 当前 decision/data scope 与既有公共 resolver/command/event 合同，不能通过当前跨空间空集、企业治理角色或缓存推导已授权能力。

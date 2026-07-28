@@ -186,6 +186,27 @@ export async function isolatedProjectPlatformS16Smoke(
   )
 }
 
+export async function isolatedProjectPlatformS17Smoke(
+  root: string,
+  spec: string,
+  databasePort = 5432,
+  apiPort = 18170,
+  webPort = 15270,
+): Promise<void> {
+  if (!/^project-platform-s17-[a-z0-9-]+\.spec\.ts$/.test(spec)) {
+    throw new Error(`Unsupported PROJECT-PLATFORM-S17 browser spec: ${spec}`)
+  }
+  return isolatedRouteSmoke(
+    root,
+    spec,
+    'colla_s17_e2e',
+    databasePort,
+    apiPort,
+    webPort,
+    'all',
+  )
+}
+
 async function isolatedRouteSmoke(
   root: string,
   spec: string,

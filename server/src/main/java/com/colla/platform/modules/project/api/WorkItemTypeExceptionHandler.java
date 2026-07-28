@@ -56,7 +56,8 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
     UserResourcePlanningController.class,
     UserResourceWorklogController.class,
     UserResourceCapacityController.class,
-    UserResourceScheduleController.class
+    UserResourceScheduleController.class,
+    UserAutomationRuleController.class
 })
 public class WorkItemTypeExceptionHandler {
     @ExceptionHandler(WorkItemTypeException.class)
@@ -219,7 +220,14 @@ public class WorkItemTypeExceptionHandler {
                  "RESOURCE_CALENDAR_INVALID", "RESOURCE_ESTIMATE_INVALID",
                  "RESOURCE_WORKLOG_INVALID", "RESOURCE_CAPACITY_INVALID",
                  "RESOURCE_SCHEDULE_INVALID",
-                 "RESOURCE_MEMBER_INVALID" ->
+                 "RESOURCE_MEMBER_INVALID",
+                 "AUTOMATION_RULE_INVALID", "AUTOMATION_RULE_TOO_LARGE",
+                 "AUTOMATION_TRIGGER_INVALID", "AUTOMATION_CONDITION_INVALID",
+                 "AUTOMATION_ACTION_INVALID", "AUTOMATION_RULE_COMMAND_INVALID",
+                 "AUTOMATION_EXECUTION_INVALID", "AUTOMATION_RECIPIENT_INVALID",
+                 "AUTOMATION_CONNECTOR_INVALID", "AUTOMATION_DELIVERY_INVALID",
+                 "AUTOMATION_MANAGEMENT_INVALID", "AUTOMATION_GOVERNANCE_INVALID",
+                 "WEBHOOK_TARGET_REJECTED", "WEBHOOK_DNS_UNAVAILABLE" ->
                 HttpStatus.BAD_REQUEST;
             case "BOARD_COLUMN_UNMAPPED", "BOARD_LANE_BUDGET_EXCEEDED",
                  "CALENDAR_WINDOW_BUDGET_EXCEEDED", "INVALID_CALENDAR_RANGE",

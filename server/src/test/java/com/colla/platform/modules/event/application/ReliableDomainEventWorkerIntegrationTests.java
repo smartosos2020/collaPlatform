@@ -128,7 +128,8 @@ class ReliableDomainEventWorkerIntegrationTests {
     void queuedDeliveriesKeepTheirLeaseUntilExecutionStarts() throws Exception {
         Duration originalLease = deliveryProperties.getLeaseDuration();
         try {
-            deliveryProperties.setLeaseDuration(Duration.ofSeconds(3));
+            Duration testLease = Duration.ofMinutes(2);
+            deliveryProperties.setLeaseDuration(testLease);
             append("queued-lease-active");
             append("queued-lease-waiting");
             handler.block();
@@ -140,9 +141,10 @@ class ReliableDomainEventWorkerIntegrationTests {
             pollUntilHandlerStarts(workerA, Duration.ofSeconds(3));
             workerA.pollOnce();
             awaitProcessing(2);
-            Thread.sleep(3_300);
+            Instant claimedLeaseBoundary = latestProcessingLease();
+            awaitAllProcessingLeasesAfter(claimedLeaseBoundary);
 
-            assertThat(coordinator.recoverExpired(coordinator.currentTime())).isZero();
+            assertThat(coordinator.recoverExpired(claimedLeaseBoundary.plusNanos(1))).isZero();
             handler.release();
             awaitProcessed(2);
             assertThat(jdbcTemplate.queryForObject(
@@ -304,6 +306,31 @@ class ReliableDomainEventWorkerIntegrationTests {
         assertThat(coordinator.stats(Instant.now()).processing()).isEqualTo(expected);
     }
 
+    private Instant latestProcessingLease() {
+        return jdbcTemplate.queryForObject(
+            "select max(lease_until) from domain_event_handler_deliveries where status = 'processing'",
+            (rs, rowNum) -> rs.getTimestamp(1).toInstant()
+        );
+    }
+
+    private void awaitAllProcessingLeasesAfter(Instant boundary) throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15);
+        Instant earliestLease = Instant.EPOCH;
+        while (System.nanoTime() < deadline) {
+            earliestLease = jdbcTemplate.queryForObject(
+                "select min(lease_until) from domain_event_handler_deliveries where status = 'processing'",
+                (rs, rowNum) -> rs.getTimestamp(1).toInstant()
+            );
+            if (earliestLease.isAfter(boundary)) {
+                return;
+            }
+            Thread.sleep(20);
+        }
+        assertThat(earliestLease)
+            .as("all active and queued deliveries should renew beyond %s", boundary)
+            .isAfter(boundary);
+    }
+
     @TestConfiguration
     static class HandlerConfiguration {
         @Bean
@@ -330,7 +357,7 @@ class ReliableDomainEventWorkerIntegrationTests {
             eventIds.add(event.eventId());
             started.countDown();
             try {
-                release.await(5, TimeUnit.SECONDS);
+                release.await(30, TimeUnit.SECONDS);
             } catch (InterruptedException exception) {
                 Thread.currentThread().interrupt();
                 throw new DomainEventTransientFailureException("handler interrupted");

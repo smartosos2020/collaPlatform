@@ -5493,6 +5493,17 @@ body {
   }
 }
 
+.automation-execution-toolbar {
+  width: 100%;
+  margin-bottom: 16px;
+}
+
+.automation-execution-toolbar .ant-select,
+.automation-execution-toolbar .ant-input {
+  min-width: 240px;
+  flex: 1 1 260px;
+}
+
 .project-detail-preference,
 .project-detail-health,
 .project-detail-sources,
@@ -9030,5 +9041,34 @@ body {
 
   .project-delivery-detail {
     grid-column: auto;
+  }
+}
+
+.automation-rules-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.85fr) minmax(360px, 1.15fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.automation-rules-layout .ant-list-item {
+  cursor: pointer;
+  border-radius: 8px;
+  padding-inline: 10px;
+}
+
+.automation-rules-layout .ant-list-item.is-selected {
+  background: var(--color-primary-soft, #eef5ff);
+}
+
+.automation-rule-form,
+.automation-rule-form > .ant-space-item,
+.automation-rule-form .ant-select {
+  width: 100%;
+}
+
+@media (max-width: 900px) {
+  .automation-rules-layout {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

@@ -270,3 +270,29 @@ workspace audience 只表示“该 workspace 的已连接客户端需要丢弃�
 - adjustment commit 只调用 M3 canonical allocation mutation；allocation audit/outbox 是唯一业务变更副作用。M4 receipt 只保证 orchestration 精确回放，不重复 canonical 命令。
 - preference save 成功后写 `project_resource.schedule_preference_saved` audit 与 `project.resource.schedule.changed` 最小失效事件；exact replay 不重复偏好、audit/outbox。
 - realtime/online/focus 只触发当前受权 REST 重读；客户端条、冲突标记、预览与离线输入不是提交、授权或组织利用率事实。
+
+## 20. S17-M1 自动化规则模型副作用边界
+
+- rule save/publish/enable/disable/archive 成功后同事务写 exact command receipt、`project_automation.rule_*` audit 和版本 1 `project.automation.rule.changed` outbox；payload 只含 change、space/rule identity 和 version。
+- caller-stable request ID/hash 精确重放只返回原响应，不重复 RuleVersion、audit 或 outbox；expected version、非法 event/condition/action 和权限冲突在副作用前失败。
+- catalog/list/get、条件校验、stats 和 REST 校准不消费或发布业务动作。M1 不创建 automation run/step，不更新 WorkItem/流程/关系，也不发送通知或 Webhook。
+
+## 21. S17-M2 自动化执行副作用边界
+
+- enabled 规则消费五类版本 1 project 公共事件；同一 eventId/rule/version 只创建一个 run，同一 source/step 只保存一个 ActionReceipt。
+- 字段、状态/节点、创建事项/关系操作只调用 canonical project command；通知操作只追加带稳定 dedupe key 的 `notification.created`，exact replay 不重复副作用。
+- run 完成追加 `project_automation.run_*` audit 与 `project.automation.run.changed` 最小事件。dry-run、list、REST 校准和 stats 不产生业务副作用。
+- 步骤失败记录稳定错误并终止后续步骤；已完成回执不会被重放覆盖。M2 不调度时间触发，也不发起外部网络投递。
+
+## 22. S17-M4 连接器副作用边界
+
+- connector 保存和 delivery 治理成功后写 audit 与 `project.automation.connector.changed` 最小失效事件。
+- dry-run 只落 succeeded 尝试，不发网络；真实投递携带 timestamp/nonce/HMAC，精确 request replay 不重复成功投递。
+- 瞬时失败进入有界退避，永久失败或第六次失败进入 dead-letter；重放/放弃追加治理事实且不删除历史。
+
+## 23. S17-M5 自动化管理与限额副作用边界
+
+- management get、历史/诊断派生和 quota list 是只读操作，不发布领域事件；它们只组合当前受权公共响应。
+- 真实 run 在首次稳定 source claim 时原子消费 space/rule/actor/action 四项日限额；exact execution replay 命中原 receipt，不重复计数或副作用。
+- quota pause/resume 成功后写 exact governance receipt、`project_automation.quota_*` audit 和 `project.automation.management.changed` 最小失效事件；重放返回原 QuotaState。
+- preference save 只修改当前用户展示事实。realtime/online/focus 只能触发 REST 校准，客户端健康、计数、进度和暂停按钮不是授权或治理成功事实。

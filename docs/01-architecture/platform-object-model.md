@@ -320,3 +320,26 @@ M37 后 Base 记录可以作为关系源：
 - ResourceSchedule、ResourceRow、AssignmentBar、ConflictMarker 和 AdjustmentResult 是 project 内当前投影/命令结果，不注册新的 platform objectType、resolver、搜索、收藏或跨空间 deep link。
 - AssignmentBar 引用既有 Allocation/WorkItem/user identity 与 source version；不复制事项标题、成员显示名、计划、里程碑、流程或权限。
 - 排期偏好是个人展示事实；schedule index/stats 是可重建低基数数据。它们均不创建人员、分配、授权、绩效或 S19 组织度量权威。
+
+## S17-M1 自动化规则对象边界
+
+- AutomationRule、RuleVersion、Trigger、Condition、Action、EventCatalog 和 ActionCatalog 是 project 内配置事实，不注册新的 platform objectType、resolver、搜索、收藏或跨空间 deep link。
+- RuleVersion 冻结规则定义与 hash，不冻结事件 payload、WorkItem、流程、关系、通知、成员、权限或凭据；EventCatalog 只引用 S03 公共事件合同。
+- 条件解释、目录字段、规则计数和 stats 是有界配置投影，不是授权、执行结果、业务 history 或 S19 组织度量。
+
+## S17-M2 自动化执行对象边界
+
+- AutomationRun、RunStep、ActionReceipt 与 ExecutionContext 是 project 内执行事实，不注册 platform objectType、resolver、搜索、收藏或跨空间 deep link。
+- run/step 只保存规则版本、actor、输入指纹、状态、稳定错误和受控结果；不复制 WorkItem、流程、关系、通知内容、成员资料或授权快照。
+- execution stats 可删除重建且不授权；运行历史上限 100、每次执行上限 8 步，不构成生产吞吐或 SLO。
+
+## S17-M4 连接器对象边界
+
+- Connector、Delivery、Attempt 与 DeadLetter 是 project 内自动化事实，不注册 platform objectType。
+- Connector 仅保存目标 URI 和 credential reference；Delivery 仅保存 payload hash/version/nonce 与最小状态，不复制业务 payload、响应正文或 secret。
+
+## S17-M5 自动化管理对象边界
+
+- AutomationManagement、ManagementPreference、QuotaState、QuotaReceipt、GovernanceReceipt、Health 与 Diagnostic 是 project 内管理/治理事实或派生，不注册新的 platform objectType、resolver、搜索、收藏或跨空间 deep link。
+- 管理聚合只引用既有 Rule/Run/Step/Connector/Delivery identity/version；不复制 WorkItem、流程、关系、通知、成员、凭据、payload 或权限快照。
+- quota 只记录低基数 type/key/window/count/limit/pause/version；health/diagnostic 可重建且不形成生产容量、可靠性、组织度量或 S18 同步事实。

@@ -355,3 +355,31 @@ M2 不实现 Worker lease、dead-letter、replay、handler registry 或独立进
 - `ResourceScheduleService` 只组合 `ResourceCapacityService` 当前公开响应。行、条和标记携带来源 identity/version/window，不复制 WorkItem 标题、成员资料、计划或里程碑内容。
 - adjustment preview 无写入，commit 只调用 `ResourceCapacityService.mutate` canonical command；M4 不直接更新 V120 allocation，也不改写 WorkItem assignee/日期。
 - current member gate、exact replay、owner manifest、复合 FK 和空间清理顺序由架构门禁保护；enterprise governance 无内容旁路。
+
+## 29. S17-M1 自动化规则模型模块边界
+
+- project owner 独占 V122 rule、immutable version、event catalog mirror、command receipt 和低基数 stats；其他 owner 不得读取这些私表拼装规则、权限或业务副作用。
+- EventCatalog 只声明 S03 公共 envelope 的稳定 event type/version/allowed fields，不复制 `domain_events`、delivery、receipt 或 producer 私表；未知事件和版本失败关闭。
+- ActionCatalog 只声明 canonical owner、版本与副作用类别。M1 不执行字段、流程、关系、通知或 Webhook，也不建立第二个可靠 worker。
+- 条件 DSL 只接受有界声明式节点和安全引用，不提供脚本、SQL、模板或任意代码入口。当前空间 owner/admin 配置，所有成员读取仍重新校准空间 membership。
+- `AuditLog` 和 `TransactionalOutbox` 是唯一跨 owner 写边；exact receipt、复合 FK、不可变 RuleVersion 和 owner manifest 由架构门禁保护。
+
+## 30. S17-M2 自动化执行模块边界
+
+- project owner 独占 V123 run、step、action receipt 和 disposable stats；其他 owner 不得读取这些私表拼装执行历史、权限或副作用。
+- `AutomationExecutionService` 只调用 `WorkItemService`、`WorkItemRelationService`、`SubjectDirectory`、`AuditLog` 与 `TransactionalOutbox` 公共合同，不直接写 WorkItem、流程、关系、成员或通知私表。
+- 每个 run 绑定确切 RuleVersion，最多 8 步；source/run/step/receipt 各自稳定去重。dry-run 只生成 skipped step，不能升级为真实成功。
+- S03 handler 仅匹配最多 20 条 enabled 规则；执行前重新校准当前空间可见性，运行历史缓存和统计均不授权。
+
+## 31. S17-M4 连接器模块边界
+
+- project owner 独占 V125 connector/delivery/attempt/dead-letter/receipt；credential owner 只通过 `AutomationCredentialResolver` 返回短生命周期字符数组。
+- 网络策略禁止非 HTTPS、重定向、私网、loopback、link-local、multicast 和元数据地址；每次尝试重新解析。
+- 外部响应只保存状态码、稳定错误和时长，不保存 secret、签名或响应正文。重放/放弃要求当前权限与 10-512 字符理由。
+
+## 32. S17-M5 自动化管理与限额模块边界
+
+- project owner 独占 V126 management preference、quota state、quota claim receipt 和 governance receipt；其他 owner 不得读取这些私表拼装管理视图、执行权限或组织指标。
+- `AutomationManagementService` 只组合 `AutomationRuleService`、`AutomationExecutionService`、`AutomationConnectorService` 与 `AutomationQuotaService` 的当前公开响应；统计、健康和诊断均为有界低基数派生。
+- `AutomationQuotaService` 在真实执行事务内按 space/rule/actor/action 消费稳定 claim；caller-stable source receipt 防止重放重复计数。暂停/恢复使用 current owner/admin gate、expected version、reason 和 exact governance receipt。
+- preference、quota、diagnostic、Web cache 与 realtime signal 均不授权。S17 不定义跨空间成员、关系或字段同步；S18 必须建立独立 versioned authority。

@@ -2,11 +2,11 @@
 title: 项目协作平台目标架构
 status: target
 program: PROJECT-PLATFORM
-program_revision: 41
+program_revision: 43
 domain_contract_version: 1
 domain_contract_status: frozen-s01-m3
 migration_contract_version: 1
-stage_review_status: s16-archived-s17-active
+stage_review_status: s17-archived-s18-active
 updated_at: 2026-07-28
 ---
 
@@ -1446,3 +1446,49 @@ S09 完成路线已经独立归档，S10 在 Program revision 27 激活为唯一
 - 所有触发匹配、条件读取、操作执行、历史查询、通知与 Webhook payload 都必须执行 S11 当前 decision/data scope；enterprise governance 不获得私有内容旁路。
 - 自动化定义只允许声明式 trigger-condition-action，禁止任意脚本、SQL 或代码插件；外部凭据只保存 owner 引用，Webhook 必须具备 SSRF 防护、签名、重放保护、超时、限流和脱敏。
 - 本次激活只声明 S17 规划范围，不声明任何规则、执行器、调度器或连接器实现事实；不得提前实现 S18 跨空间同步或 S19 组织级度量。
+
+### 29.19 S17-M1 规则模型目标边界
+
+- V122 已建立 project-owned AutomationRule、不可变 RuleVersion、EventCatalog mirror、exact receipt 和低基数 stats；EventCatalog 只引用 S03 公共 event type/version/fields。
+- Trigger/Condition/Action 固定 schema v1。Condition 最多 64 节点、8 层，Action 最多 8 个；任意脚本、SQL、模板或代码插件失败关闭。
+- 规则配置只允许当前 active space owner/admin，读取对当前成员开放；空间外和 enterprise governance 不获得规则内容旁路。
+- M1 仅声明 ActionCatalog，不执行字段/流程/关系/通知/Webhook，也不创建 run/step、调度器或连接器。当前入口切换为 `PROJECT-PLATFORM-S17-M2-T01`。
+
+### 29.20 S17-M2 受控执行目标边界
+
+- V123 已建立 project-owned AutomationRun、RunStep、ActionReceipt 与可重建 stats；执行绑定确切 RuleVersion，并按 source/run/step/action receipt 分层幂等。
+- 字段更新、状态/节点流转、创建关联项与通知均经 canonical public command/event 合同；任何脚本、SQL、私表写入和任意网络操作继续禁止。
+- owner/admin 可手工执行或无副作用预览，当前成员可读取最小运行历史；空间外和 enterprise governance 无旁路。
+- M3 将在此 run/receipt 基线上增加 timezone/DST、cursor、lease/fencing 与有界追赶；M4 Webhook 和连接器尚未实现。
+
+### 29.21 S17-M3 时间触发目标边界
+
+- V124 已建立 schedule、cursor、lease/fencing 与 fire receipt，窗口重放不能重复触发。
+- timezone/DST、错过策略、冷却和追赶均显式有界；日期和停留事实继续由 canonical owner 提供。M4 连接器尚未实现。
+
+### 29.22 S17-M4 连接器目标边界
+
+- V125 已建立 connector/delivery/attempt/dead-letter/receipt；credential 仅保存公共 owner reference。
+- HTTPS、DNS/IP、无重定向、HMAC/nonce、超时、分类重试与 reasoned replay/abandon 均为服务器端失败关闭合同。
+- M5 只聚合当前受权管理事实、限额与诊断，并执行 Stage route-final；S18 跨空间同步仍未实现。
+
+### 29.23 S17-M5 管理、限额与 Stage 收口边界
+
+- V126 已建立个人管理偏好、四维日窗口 QuotaState、稳定执行 claim receipt 和 reasoned governance receipt；所有记录具有 workspace/space 复合边界和 project 唯一 owner。
+- AutomationManagement 只组合当前 Rule/Run/Step/Connector/Delivery 公共响应，返回有界 health/diagnostic。派生、统计、缓存和 realtime signal 均不授权。
+- 真实执行按 space/rule/actor/action 原子 claim；exact source replay 不重复消费。暂停/恢复要求 current owner/admin、理由、expected version、request hash、audit/outbox 和精确回放。
+- Web 已覆盖当前成员读、owner 治理、空间外/enterprise 隐藏、跨空间空集和 1440/1366/820。S17 五个 Milestone、60 个 Task、V122-V126 与真实隔离 route-final 完成，Program revision 42 的 `current_stage` 为 `none`。
+
+### 29.24 S17 Go 与 S18 准入
+
+- S18 可复用 S11 当前 decision/data scope、S10 canonical relation、S17 caller-stable receipt/audit/outbox 与受控 connector security boundary，但不得读取 S17 rule/run/connector/quota 私表。
+- 跨空间授权、关系和同步必须拥有独立 versioned rule、方向、映射、冲突、循环、补偿、撤销和历史语义；S17 Webhook 或自动化规则不能充当授权或同步权威。
+- S17 完成路线必须先经独立 archive-only 工作循环归档，S18 才能从 Planned 改为 Active。本段只冻结准入，不实现任何 S18 schema、API、worker 或 UI。
+
+### 29.25 S17 归档与 S18 激活边界
+
+- S17 完成路线已通过独立 archive-only 工作循环归档至 `docs/99-archive/superseded-roadmaps/project-platform-s17-roadmap-completed-2026-07-28.md`；S18 在 Program revision 43 激活，当前唯一入口是 `PROJECT-PLATFORM-S18-M1-T01`。
+- S18 当前路线固定为 4 个 Milestone、48 个 Task：M1 工作项类型跨空间授权，M2 跨空间关系与最小可见性，M3 单向/双向字段与状态同步，M4 跨团队全景、协作审计与 Stage 收口。
+- grant 必须由 source/target 双方显式确认，不能创建隐式成员或复制 ACL；每次读取、建链和同步步骤重新执行 S11 当前 decision/data scope，enterprise governance 无内容旁路。
+- S10 继续持有 canonical relation edge；S18 只拥有跨空间授权、同步规则/运行/冲突/补偿和治理回执。S17 自动化、Webhook 或 connector 不能充当跨空间授权或同步权威。
+- 本次激活只声明规划和验收边界，不声明任何 S18 schema、API、worker、索引或 UI 已实现；S19 组织级度量继续保持 Planned。

@@ -169,6 +169,10 @@ import { ResourcePlanningPanel } from './ResourcePlanningPanel'
 import { ResourceWorklogPanel } from './ResourceWorklogPanel'
 import { ResourceCapacityPanel } from './ResourceCapacityPanel'
 import { ResourceSchedulePanel } from './ResourceSchedulePanel'
+import { AutomationRulesPanel } from './AutomationRulesPanel'
+import { AutomationExecutionPanel } from './AutomationExecutionPanel'
+import { AutomationConnectorsPanel } from './AutomationConnectorsPanel'
+import { AutomationManagementPanel } from './AutomationManagementPanel'
 
 export function ProjectWorkItemsPanel({
   space,
@@ -186,6 +190,10 @@ export function ProjectWorkItemsPanel({
         <ResourceWorklogPanel space={space} />
         <ResourceCapacityPanel space={space} />
         <ResourceSchedulePanel space={space} />
+        <AutomationRulesPanel space={space} />
+        <AutomationExecutionPanel space={space} />
+        <AutomationConnectorsPanel space={space} />
+        <AutomationManagementPanel space={space} />
         <ProjectPlanPanel space={space} />
         <ProjectRegisterPanel space={space} />
         <ProjectDeliveryPanel space={space} />

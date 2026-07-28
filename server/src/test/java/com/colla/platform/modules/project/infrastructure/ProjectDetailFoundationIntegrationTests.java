@@ -21,7 +21,7 @@ class ProjectDetailFoundationIntegrationTests {
                     container.getPassword()
                 )
                 .load();
-            assertTrue(flyway.migrate().migrationsExecuted >= 121);
+            assertTrue(flyway.migrate().migrationsExecuted >= 126);
             assertEquals(0, flyway.migrate().migrationsExecuted);
             org.postgresql.ds.PGSimpleDataSource dataSource =
                 new org.postgresql.ds.PGSimpleDataSource();
@@ -50,7 +50,7 @@ class ProjectDetailFoundationIntegrationTests {
                     """,
                 Boolean.class
             ));
-            assertEquals("121", jdbc.queryForObject(
+            assertEquals("126", jdbc.queryForObject(
                 "select max(version) from flyway_schema_history", String.class
             ));
         } finally {
