@@ -5,8 +5,8 @@ import com.colla.platform.modules.approval.domain.ApprovalModels.ApprovalTaskSum
 import com.colla.platform.modules.im.domain.ImModels.ConversationSummary;
 import com.colla.platform.modules.notification.domain.NotificationModels.NotificationItem;
 import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectSummary;
-import com.colla.platform.modules.project.domain.ProjectModels.IssueSummary;
 import com.colla.platform.modules.project.contract.PersonalWorkQuery.PersonalWorkPage;
+import com.colla.platform.modules.project.contract.PersonalWorkQuery.PersonalWorkItem;
 import com.colla.platform.modules.project.contract.DraftSummaryQuery.DraftSummary;
 import com.colla.platform.modules.platform.contract.DashboardPersonalization.DashboardLayout;
 import java.util.List;
@@ -17,7 +17,7 @@ public final class WorkspaceModels {
 
     public record WorkspaceDashboard(
         PersonalWorkPage personalWork,
-        List<IssueSummary> myIssues,
+        List<PersonalWorkItem> myWorkItems,
         List<ApprovalTaskSummary> approvalTodos,
         long unreadMessageCount,
         List<ConversationSummary> unreadConversations,

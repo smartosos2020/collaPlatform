@@ -642,3 +642,25 @@ S16-M1-M4 已交付 V118-V121 日历/例外/显式估分、实际工时/不可�
 - Program revision 49 已激活 S21 的 5 个 Milestone、60 个 Task，当前唯一入口为 `PROJECT-PLATFORM-S21-M1-T01`。
 - 本次激活只冻结存量迁移审计、旧 issues 产品合同退出、性能/安全/备份恢复、四场景真人试用和最终 Go/No-Go 的执行与证据边界；尚未实现任何 S21 删除、迁移审计、生产批准或真人结论。
 - 当前代码仍保留 `/projects`、`/issues`、legacy DTO/API、平台对象、搜索、工作台和跨模块 legacy 引用；M1 必须先形成完整 inventory 和 removal decision，M2 才能按清单删除，禁止无证据物理清理或恢复 legacy 写。
+
+## S21-M1 旧模型退出审计当前实现
+
+- V138 新增不可变 LegacyExitAuditSnapshot、Finding 与 RemovalDecision 三类 project-owned 治理事实；历史快照、finding 和决定由数据库 trigger 阻止更新/删除。
+- `LegacyExitAuditService` 注册 API、Web、工作台、搜索、realtime、平台对象、消息转换、legacy 表、迁移历史和兼容 resolver 十类退出 surface，并对 project/issue map、迁移失败、verification、shadow 与 cutover 做确定性聚合和指纹。
+- `/api/admin/legacy-exit-audit` 每次重新校准 `project.manage`，支持快照、读取、导出和带 caller-stable request ID/hash 的 removal decision；enterprise 身份不因此取得对象内容。
+- Web 管理台提供完成度、finding、surface 决定和导出，离线禁止提交决定；真实隔离 PostgreSQL/服务/浏览器已覆盖 1440/1366/820。该证据只授权进入 M2 清理评审，不代表生产迁移完成或允许物理删表。
+
+## S21-M2 旧产品合同退出当前实现
+
+- V139 撤销 `issue` 的平台对象规则、搜索投影/索引、对象链接和 `issue.*` 权限注册；旧 `projects`、`issues` 及 migration batch/unit/map/provenance/verification/audit 事实仅作为恢复与审计证据保留。
+- 活跃产品面只暴露 `project_space` 与 `work_item`：旧 ProjectController、固定 DTO、service/repository 写路径、ProjectsPage/API client、旧 realtime/search/workspace 消费者均已退出。
+- 旧 `/issues/{id}` Web 深链只执行受权且不可枚举的 location resolve：存在活动映射时跳转规范 WorkItem，否则显示统一不可用/已停止语义，不返回旧 Issue DTO。
+- IM 与知识内容的转换统一依赖 `WorkItemCreationCommand`；工作台、搜索、通知筛选、对象选择和知识嵌入均使用 canonical `work_item`/`project_space`。
+
+## S21-M3 工程就绪当前实现
+
+- `s21-engineering-readiness.v1.json` 冻结本地隔离证据合同：只使用确定性合成的 `project_space`/`work_item` 数据，研发、市场、HR、交付各 250 个 WorkItem；明确禁止把旧 capacity-v1 的 project/issue fixture 或本地预算表述为生产 SLO。
+- `S21EngineeringReadinessIntegrationTests` 在 PostgreSQL 16 从 V001 迁移至 V139，执行索引读、聚合读、写入和数据库占用预算，验证 legacy 权限/对象注册为零及跨空间外键失败关闭。
+- 同一测试执行 quiesced `pg_dump -Fc`、SHA-256 校验、隔离数据库 `pg_restore --single-transaction`、Flyway 版本/规范事实 digest 对账，并演练中断事务回滚。Redis 被定义为可重建状态；对象存储恢复要求版本化归档、对象数量和 SHA-256，当前本地证据不声明外部生产环境已恢复。
+- route-final 使用完整 PostgreSQL/Flyway、后端、前端、协作、架构、安全门禁和真实隔离浏览器；受控运维 UI 只呈现低基数退出证据，浏览器不持有数据库或备份凭据。
+- M3 工程 Go 只表示可进入 M4 真人试用准备点。M4 的研发、市场、HR、交付原始试用证据必须由真人在 consent 后产生，AI、维护者测试和 Playwright 均不能代签。

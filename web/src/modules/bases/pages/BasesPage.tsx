@@ -34,7 +34,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
-import { listDirectoryMembers } from '../../projects/api/projectsApi'
+import { listDirectoryMembers } from '../../../shared/api/directoryApi'
 import { ObjectSummaryCard } from '../../platform/components/InternalLinkCard'
 import { ResourcePermissionsModal } from '../../permissions/components/ResourcePermissionsModal'
 import {
@@ -829,7 +829,7 @@ export function BasesPage() {
           <Form.Item noStyle shouldUpdate={(prev, next) => prev.fieldType !== next.fieldType}>
             {({ getFieldValue }) =>
               getFieldValue('fieldType') === 'object_link' ? (
-                <Form.Item name="targetTypesText" label="目标类型" extra="可选，用英文逗号分隔，例如：issue,knowledge_content,file">
+                <Form.Item name="targetTypesText" label="目标类型" extra="可选，用英文逗号分隔，例如：work_item,knowledge_content,file">
                   <Input />
                 </Form.Item>
               ) : null
@@ -1129,7 +1129,7 @@ function RecordFieldInput({ field, members }: { field: BaseField; members: Array
   }
   if (field.fieldType === 'object_link') {
     return (
-      <Form.Item name={field.id} label={field.name} rules={rules} extra="格式：document:UUID、issue:UUID、file:UUID">
+      <Form.Item name={field.id} label={field.name} rules={rules} extra="格式：knowledge_content:UUID、work_item:UUID、file:UUID">
         <Input placeholder="document:00000000-0000-0000-0000-000000000000" />
       </Form.Item>
     )

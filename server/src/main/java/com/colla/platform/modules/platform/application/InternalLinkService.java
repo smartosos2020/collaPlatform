@@ -14,7 +14,7 @@ import org.springframework.stereotype.Service;
 
 @Service
 public class InternalLinkService {
-    private static final Pattern WEB_OBJECT_PATTERN = Pattern.compile("^/(issues|docs|bases|approvals)/([0-9a-fA-F-]{36})(?:/.*)?$");
+    private static final Pattern WEB_OBJECT_PATTERN = Pattern.compile("^/(docs|bases|approvals)/([0-9a-fA-F-]{36})(?:/.*)?$");
     private static final Pattern IM_MESSAGE_PATTERN = Pattern.compile("^/im\\?(?:.*&)?messageId=([0-9a-fA-F-]{36})(?:&.*)?$");
     private static final Pattern COLLA_OBJECT_PATTERN = Pattern.compile("^colla://([a-zA-Z_-]+)/([0-9a-fA-F-]{36})(?:/.*)?$");
     private static final Pattern KNOWLEDGE_CONTENT_PATTERN = Pattern.compile(
@@ -87,7 +87,6 @@ public class InternalLinkService {
 
     private String webType(String segment) {
         return switch (segment) {
-            case "issues" -> "issue";
             case "docs" -> PlatformObjectTypes.KNOWLEDGE_CONTENT;
             case "bases" -> "base";
             case "approvals" -> "approval";

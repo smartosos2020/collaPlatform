@@ -48,6 +48,10 @@ const AdminSecurityPage = lazyRoute(
   'AdminSecurityPage',
 )
 const AdminBatchGovernancePage = lazyRoute(() => import('../modules/admin/pages/AdminBatchGovernancePage'), 'AdminBatchGovernancePage')
+const AdminLegacyExitAuditPage = lazyRoute(
+  () => import('../modules/admin/pages/AdminLegacyExitAuditPage'),
+  'AdminLegacyExitAuditPage',
+)
 const ApprovalsPage = lazyRoute(() => import('../modules/approvals/pages/ApprovalsPage'), 'ApprovalsPage')
 const AuthLoginPage = lazyRoute(() => import('../modules/auth/pages/AuthLoginPage'), 'AuthLoginPage')
 const BasesPage = lazyRoute(() => import('../modules/bases/pages/BasesPage'), 'BasesPage')
@@ -70,7 +74,6 @@ const NotificationsPage = lazyRoute(
   () => import('../modules/notifications/pages/NotificationsPage'),
   'NotificationsPage',
 )
-const ProjectsPage = lazyRoute(() => import('../modules/projects/pages/ProjectsPage'), 'ProjectsPage')
 const ProjectSpacesPage = lazyRoute(() => import('../modules/projectSpaces/pages/ProjectSpacesPage'), 'ProjectSpacesPage')
 const LegacyIssueRoute = lazyRoute(() => import('./LegacyIssueRoute'), 'LegacyIssueRoute')
 const SearchPage = lazyRoute(() => import('../modules/search/pages/SearchPage'), 'SearchPage')
@@ -127,6 +130,7 @@ export const router = createBrowserRouter([
           { path: 'system-settings', element: routeElement(<AdminSystemSettingsPage />) },
           { path: 'security', element: routeElement(<AdminSecurityPage />) },
           { path: 'batch-governance', element: routeElement(<AdminBatchGovernancePage />) },
+          { path: 'legacy-exit-audit', element: routeElement(<AdminLegacyExitAuditPage />) },
           { path: 'audit-logs', element: routeElement(<AdminAuditLogsPage />) },
           { path: '*', element: routeElement(<AppErrorPage stateOverride="404" />) },
         ],
@@ -137,8 +141,8 @@ export const router = createBrowserRouter([
           { index: true, element: routeElement(<DashboardPage />) },
           { path: 'im', element: routeElement(<MessengerPage />) },
           { path: 'messages', element: <Navigate to="/im" replace /> },
-          { path: 'projects', element: routeElement(<ProjectsPage />) },
-          { path: 'projects/:projectId', element: routeElement(<ProjectsPage />) },
+          { path: 'projects', element: <Navigate to="/project-spaces" replace /> },
+          { path: 'projects/:projectId', element: <Navigate to="/project-spaces" replace /> },
           { path: 'issues/:issueId', element: routeElement(<LegacyIssueRoute />) },
           { path: 'project-spaces', element: routeElement(<ProjectSpacesPage />) },
           { path: 'project-spaces/:spaceId', element: routeElement(<ProjectSpacesPage />) },

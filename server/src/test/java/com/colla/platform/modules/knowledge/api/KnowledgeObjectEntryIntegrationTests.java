@@ -45,10 +45,10 @@ class KnowledgeObjectEntryIntegrationTests {
             """.formatted(suffix), 200));
         UUID baseId = UUID.fromString(base.at("/base/id").asText());
 
-        JsonNode project = json(postJson(adminToken, "/api/projects", """
-            {"projectKey":"M7%s","name":"M7 Project %s","description":"choice","memberIds":[]}
-            """.formatted(suffix.substring(0, 4), suffix), 200));
-        UUID projectId = UUID.fromString(project.get("id").asText());
+        JsonNode projectSpace = json(postJson(adminToken, "/api/project-spaces", """
+            {"spaceKey":"m7-%s","name":"M7 Project Space %s","visibility":"private"}
+            """.formatted(suffix, suffix), 200));
+        UUID projectSpaceId = UUID.fromString(projectSpace.get("id").asText());
 
         JsonNode upload = json(postJson(adminToken, "/api/files/upload-url", """
             {"fileName":"m7-%s.txt","contentType":"text/plain","sizeBytes":12}
@@ -61,12 +61,12 @@ class KnowledgeObjectEntryIntegrationTests {
 
         String choices = mockMvc.perform(get("/api/platform/object-choices")
                 .header("Authorization", bearer(adminToken))
-                .param("types", "base", "project", "file", "knowledge_content")
+                .param("types", "base", "project_space", "file", "knowledge_content")
                 .param("source", "all")
                 .param("limit", "50"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.items[?(@.objectId=='" + baseId + "')]").exists())
-            .andExpect(jsonPath("$.items[?(@.objectId=='" + projectId + "')]").exists())
+            .andExpect(jsonPath("$.items[?(@.objectId=='" + projectSpaceId + "')]").exists())
             .andExpect(jsonPath("$.items[?(@.objectId=='" + fileId + "')]").exists())
             .andExpect(jsonPath("$.items[?(@.objectId=='" + knowledgeId + "')]").exists())
             .andReturn().getResponse().getContentAsString();
@@ -74,13 +74,13 @@ class KnowledgeObjectEntryIntegrationTests {
 
         String memberChoices = mockMvc.perform(get("/api/platform/object-choices")
                 .header("Authorization", bearer(memberToken))
-                .param("types", "base", "project", "file", "knowledge_content")
+                .param("types", "base", "project_space", "file", "knowledge_content")
                 .param("query", suffix)
                 .param("limit", "50"))
             .andExpect(status().isOk())
             .andReturn().getResponse().getContentAsString();
         assertFalse(memberChoices.contains("M7 Base " + suffix));
-        assertFalse(memberChoices.contains("M7 Project " + suffix));
+        assertFalse(memberChoices.contains("M7 Project Space " + suffix));
         assertFalse(memberChoices.contains("M7 Knowledge " + suffix));
     }
 

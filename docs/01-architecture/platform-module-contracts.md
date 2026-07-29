@@ -462,3 +462,23 @@ M2 不实现 Worker lease、dead-letter、replay、handler registry 或独立进
 - `ScenarioTemplateService` 独占安装计划、运行、步骤、diff/conflict、installation 与 command receipt；Controller 只暴露 manager-gated dry-run/install/retry/upgrade/detach/current-installation 合同。
 - WorkItem 类型写入只能通过 `WorkItemTypeConfigurationService` 公共服务；配置模板 key 规范化为 owner 接受的稳定 type key。流程、关系、视图、计划、自动化、通知、风险和指标组件只验证公开 owner contract/reference，不注入其 repository。
 - repository 只写 project-owned V135/V137 表；不可变 run/step/diff/conflict/command receipt 不被重试改写。解绑不级联删除 owner 配置，冲突未决不调用 owner 写端口。
+
+## 46. S21-M1 旧模型退出审计模块边界
+
+- `LegacyExitAuditService` 是 surface 注册、迁移对账、finding 分类与 removal decision 的唯一应用边界；Controller 不接触 legacy/project 私表，JDBC repository 只执行注册的低基数聚合。
+- V138 三表由 project owner 持有并 append-only。快照与导出不包含标题、字段、成员、评论或附件内容，enterprise governance 不因审计入口获得空间内容旁路。
+- removal decision 只引用稳定 surface key 与 evidence snapshot，不能恢复 legacy 写、替换 cutover、修改迁移历史或直接删除表；M2 必须以显式决定和当前代码反查共同作为删除门禁。
+
+## 47. S21-M2 Canonical project 产品合同
+
+- `WorkItemCreationCommand` 是 IM、Knowledge 等跨模块创建 WorkItem 的唯一命令合同；调用方只提供 `spaceId`、`typeId`、title、field values 与 request id，不导入 project 私有 DTO。
+- `PersonalWorkQuery` 是 Workspace 的个人工作摘要合同；返回 canonical WorkItem 标识、空间标识与 canonical web path。
+- Legacy compatibility 只保留 `GET /api/compat/work-items/legacy/issues/{issueId}/location`。该合同只返回受权后的 canonical location，不返回旧 Issue 内容、状态或成员。
+- `ProjectRepository` 仅保留 migration/history 所需的 `legacyProjectExists` 与 `isProjectMember`，不是产品仓储；旧写、聚合读和列表方法不得恢复。
+
+## 48. S21-M3 工程证据模块边界
+
+- `s21-engineering-readiness.v1.json` 是测试工具与工程报告之间的版本化证据合同，不是运行时配置、业务元模型或授权来源。验证器拒绝生产 SLO 声明、真实个人数据、旧 project/issue 活动域和未登记四场景。
+- `S21EngineeringReadinessIntegrationTests` 只通过 PostgreSQL 公共 schema 和标准备份工具生成隔离证据，不注入应用 repository，不改变生产运行角色，也不把备份文件暴露给 Web。
+- Web 受控证据索引继续调用 `LegacyExitAuditService`，每次重新校准 `project.manage`；它不执行备份/恢复、不持有基础设施凭据，也不能把 M3 工程结果写成 M4 真人结论。
+- 完整 route-final 的安全、架构、协作和浏览器结果与容量/恢复测试共同构成工程 checkpoint；任一阻断失败必须 Reopen，不能以单项 PASS 覆盖。

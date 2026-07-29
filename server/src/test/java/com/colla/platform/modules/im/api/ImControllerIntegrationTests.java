@@ -36,24 +36,10 @@ class ImControllerIntegrationTests {
     private JdbcTemplate jdbcTemplate;
 
     @Test
-    void conversationMessageMentionLinkAndUnreadFlow() throws Exception {
+    void conversationMessageMentionAndUnreadFlow() throws Exception {
         String adminToken = login("admin", "admin123456", "im-admin-device-" + UUID.randomUUID());
         String bobUsername = "bob" + UUID.randomUUID().toString().substring(0, 8);
         UUID bobId = createMember(adminToken, bobUsername, "Bob IM");
-        UUID workspaceId = currentWorkspaceId();
-        UUID issueId = UUID.randomUUID();
-        jdbcTemplate.update(
-            """
-                insert into object_links
-                    (id, workspace_id, object_type, object_id, web_path, deep_link, title_snapshot, created_at, updated_at)
-                values (?, ?, 'issue', ?, ?, ?, 'IM unread bug', now(), now())
-                """,
-            UUID.randomUUID(),
-            workspaceId,
-            issueId,
-            "/issues/" + issueId,
-            "colla://issue/" + issueId
-        );
 
         String conversationResponse = mockMvc.perform(post("/api/conversations")
                 .header("Authorization", "Bearer " + adminToken)
@@ -85,14 +71,13 @@ class ImControllerIntegrationTests {
                         {
                           "clientMessageId": "%s",
                           "messageType": "text",
-                          "content": "hi @%s see /issues/%s"
+                          "content": "hi @%s"
                         }
-                        """.formatted(UUID.randomUUID(), bobUsername, issueId)
+                        """.formatted(UUID.randomUUID(), bobUsername)
                 ))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.content").value("hi @" + bobUsername + " see /issues/" + issueId))
+            .andExpect(jsonPath("$.content").value("hi @" + bobUsername))
             .andExpect(jsonPath("$.mentions[0].username").value(bobUsername))
-            .andExpect(jsonPath("$.links[0].summary.title").value("IM unread bug"))
             .andExpect(jsonPath("$.availableActions", hasItem("reply")))
             .andReturn()
             .getResponse()
@@ -669,55 +654,17 @@ class ImControllerIntegrationTests {
     }
 
     @Test
-    void convertsMessageToIssueAndSearchesMessageWorkItems() throws Exception {
+    void retiredIssueConversionIsAbsentWhileMessageSearchRemainsAvailable() throws Exception {
         String adminToken = login("admin", "admin123456", "im-work-entry-admin-" + UUID.randomUUID());
         UUID aliceId = createMember(adminToken, "workalice" + UUID.randomUUID().toString().substring(0, 8), "Work Alice");
         UUID conversationId = createConversation(adminToken, "IM Work Entry", aliceId);
         UUID sourceMessageId = sendText(adminToken, conversationId, "login freeze after clicking captcha");
 
-        String projectResponse = mockMvc.perform(post("/api/projects")
+        mockMvc.perform(post("/api/conversations/" + conversationId + "/messages/" + sourceMessageId + "/convert-to-issue")
                 .header("Authorization", "Bearer " + adminToken)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(
-                    """
-                        {
-                          "projectKey": "IMW%s",
-                          "name": "IM Work Entry Project",
-                          "description": "IM conversion test",
-                          "memberIds": []
-                        }
-                        """.formatted(UUID.randomUUID().toString().substring(0, 6).replace("-", ""))
-                ))
-            .andExpect(status().isOk())
-            .andReturn()
-            .getResponse()
-            .getContentAsString();
-        UUID projectId = UUID.fromString(objectMapper.readTree(projectResponse).get("id").asText());
-
-        String issueResponse = mockMvc.perform(post("/api/conversations/" + conversationId + "/messages/" + sourceMessageId + "/convert-to-issue")
-                .header("Authorization", "Bearer " + adminToken)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(
-                    """
-                        {
-                          "projectId": "%s",
-                          "issueType": "bug",
-                          "title": "Captcha login freeze",
-                          "description": "Created from IM triage",
-                          "priority": "high"
-                        }
-                        """.formatted(projectId)
-                ))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.issue.issueType").value("bug"))
-            .andExpect(jsonPath("$.issue.title").value("Captcha login freeze"))
-            .andExpect(jsonPath("$.issue.description").value(org.hamcrest.Matchers.containsString("/im?conversationId=" + conversationId + "&messageId=" + sourceMessageId)))
-            .andExpect(jsonPath("$.relations[0].targetType").value("message"))
-            .andExpect(jsonPath("$.relations[0].target.objectType").value("message"))
-            .andReturn()
-            .getResponse()
-            .getContentAsString();
-        UUID issueId = UUID.fromString(objectMapper.readTree(issueResponse).get("issue").get("id").asText());
+                .content("{}"))
+            .andExpect(status().isNotFound());
 
         mockMvc.perform(get("/api/conversations/" + conversationId + "/messages/search")
                 .param("q", "login freeze")
@@ -728,9 +675,7 @@ class ImControllerIntegrationTests {
         mockMvc.perform(get("/api/conversations/" + conversationId + "/messages/search")
                 .param("targetType", "issue")
                 .header("Authorization", "Bearer " + adminToken))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.items[0].links[0].targetType").value("issue"))
-            .andExpect(jsonPath("$.items[0].links[0].targetId").value(issueId.toString()));
+            .andExpect(status().isBadRequest());
 
         String linkedMessageResponse = mockMvc.perform(post("/api/conversations/" + conversationId + "/messages")
                 .header("Authorization", "Bearer " + adminToken)

@@ -6,7 +6,6 @@ import com.colla.platform.modules.knowledge.infrastructure.KnowledgeContentRepos
 import com.colla.platform.modules.im.infrastructure.ImRepository;
 import com.colla.platform.modules.notification.infrastructure.NotificationRepository;
 import com.colla.platform.modules.platform.application.PlatformObjectService;
-import com.colla.platform.modules.project.infrastructure.ProjectRepository;
 import com.colla.platform.modules.project.contract.PersonalWorkQuery;
 import com.colla.platform.modules.project.contract.DraftSummaryQuery;
 import com.colla.platform.modules.platform.contract.DashboardPersonalization;
@@ -18,7 +17,6 @@ import org.springframework.stereotype.Service;
 public class WorkspaceDashboardService {
     private static final int DASHBOARD_LIMIT = 6;
 
-    private final ProjectRepository projectRepository;
     private final ImRepository imRepository;
     private final NotificationRepository notificationRepository;
     private final KnowledgeContentRepository contentRepository;
@@ -30,7 +28,6 @@ public class WorkspaceDashboardService {
     private final DashboardPersonalization personalizationService;
 
     public WorkspaceDashboardService(
-        ProjectRepository projectRepository,
         ImRepository imRepository,
         NotificationRepository notificationRepository,
         KnowledgeContentRepository contentRepository,
@@ -41,7 +38,6 @@ public class WorkspaceDashboardService {
         DraftSummaryQuery draftSummaryQuery,
         DashboardPersonalization personalizationService
     ) {
-        this.projectRepository = projectRepository;
         this.imRepository = imRepository;
         this.notificationRepository = notificationRepository;
         this.contentRepository = contentRepository;
@@ -64,12 +60,21 @@ public class WorkspaceDashboardService {
         var recentBases = baseRepository.listBases(currentUser.workspaceId(), currentUser.id()).stream()
             .limit(DASHBOARD_LIMIT)
             .toList();
+        var personalWork = personalWorkService.dashboard(currentUser);
+        var myWorkItems = personalWork.buckets().stream()
+            .flatMap(bucket -> bucket.items().stream())
+            .collect(java.util.stream.Collectors.toMap(
+                item -> item.workItemId(),
+                item -> item,
+                (first, ignored) -> first,
+                java.util.LinkedHashMap::new
+            ))
+            .values().stream()
+            .limit(DASHBOARD_LIMIT)
+            .toList();
         return new WorkspaceDashboard(
-            personalWorkService.dashboard(currentUser),
-            projectRepository.listMyIssues(currentUser.workspaceId(), currentUser.id()).stream()
-                .filter(issue -> !"closed".equals(issue.status()))
-                .limit(DASHBOARD_LIMIT)
-                .toList(),
+            personalWork,
+            myWorkItems,
             approvalService.listTodos(currentUser).stream().limit(DASHBOARD_LIMIT).toList(),
             imRepository.totalUnreadCount(currentUser.workspaceId(), currentUser.id()),
             conversations,

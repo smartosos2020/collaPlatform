@@ -26,7 +26,9 @@ import org.springframework.stereotype.Service;
 
 @Service
 public class PlatformObjectService {
-    private static final Set<String> SELECTABLE_OBJECT_TYPES = Set.of("base", "project", "file", PlatformObjectTypes.KNOWLEDGE_CONTENT);
+    private static final Set<String> SELECTABLE_OBJECT_TYPES = Set.of(
+        "base", "project_space", "work_item", "file", PlatformObjectTypes.KNOWLEDGE_CONTENT
+    );
     private final PlatformObjectResolverRegistry resolverRegistry;
     private final PlatformObjectRepository objectRepository;
     private final PermissionDecisionService permissionDecisionService;
@@ -368,7 +370,7 @@ public class PlatformObjectService {
 
     private String source(PlatformObjectSummary summary) {
         return switch (summary.objectType()) {
-            case "issue" -> "project_members";
+            case "project_space", "work_item" -> "project_space_members";
             case PlatformObjectTypes.KNOWLEDGE_CONTENT -> "resource_permissions";
             case "base", "base_table", "base_record" -> "base_members";
             case "approval" -> "approval_participants";

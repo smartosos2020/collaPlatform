@@ -1,6 +1,6 @@
 import { apiDelete, apiGet, apiPatch, apiPost } from '../../../shared/api/httpClient'
 import type { PlatformObjectSummary } from '../../platform/api/platformObjectsApi'
-import type { IssueDetail } from '../../projects/api/projectsApi'
+import type { CreatedWorkItemReference } from '../../projectSpaces/api/workItemsApi'
 
 export type ConversationMember = {
   userId: string
@@ -82,14 +82,11 @@ export type UserMessagePageView = {
 
 export type MessagePage = UserMessagePageView
 
-export type ConvertMessageToIssueRequest = {
-  projectId: string
-  issueType: 'requirement' | 'task' | 'bug'
+export type ConvertMessageToWorkItemRequest = {
+  projectSpaceId: string
+  workItemTypeId: string
   title?: string
   description?: string
-  priority?: string
-  assigneeId?: string
-  dueAt?: string
 }
 
 export type UnreadState = {
@@ -184,12 +181,15 @@ export function sendMessage(conversationId: string, content: string, clientMessa
   })
 }
 
-export function convertMessageToIssue(
+export function convertMessageToWorkItem(
   conversationId: string,
   messageId: string,
-  request: ConvertMessageToIssueRequest,
+  request: ConvertMessageToWorkItemRequest,
 ) {
-  return apiPost<IssueDetail>(`/conversations/${conversationId}/messages/${messageId}/convert-to-issue`, request)
+  return apiPost<CreatedWorkItemReference>(
+    `/conversations/${conversationId}/messages/${messageId}/convert-to-work-item`,
+    request,
+  )
 }
 
 export function convertMessageToKnowledgeContent(

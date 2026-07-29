@@ -8,7 +8,8 @@ const deepLinkWebPrefixes: Record<string, (objectId: string) => string> = {
   approval: (objectId) => `/approvals/${objectId}`,
   base: (objectId) => `/bases/${objectId}`,
   knowledge_content: () => '/knowledge-bases',
-  issue: (objectId) => `/issues/${objectId}`,
+  work_item: () => '/project-spaces',
+  'work-item': () => '/project-spaces',
   project_space: (objectId) => `/project-spaces/${objectId}`,
   'project-space': (objectId) => `/project-spaces/${objectId}`,
 }

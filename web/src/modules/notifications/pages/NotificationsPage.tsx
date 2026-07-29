@@ -223,12 +223,11 @@ export function NotificationsPage() {
           onChange={setSource}
           options={[
             { label: '全部来源', value: 'all' },
-            { label: '项目', value: 'issue' },
+            { label: '项目工作项', value: 'work_item' },
             { label: '知识内容', value: 'knowledge_content' },
             { label: 'IM', value: 'mention' },
             { label: '表格', value: 'base' },
             { label: '审批', value: 'approval' },
-            { label: '工作项', value: 'project' },
           ]}
         />
         <Select
@@ -236,7 +235,6 @@ export function NotificationsPage() {
           onChange={setTargetType}
           options={[
             { label: '全部对象', value: 'all' },
-            { label: '需求/Bug', value: 'issue' },
             { label: '知识内容', value: 'knowledge_content' },
             { label: '多维表格', value: 'base' },
             { label: '表格记录', value: 'base_record' },

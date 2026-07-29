@@ -30,7 +30,7 @@ import { useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import { useAuthStore } from '../../auth/authStore'
-import { listDirectoryMembers } from '../../projects/api/projectsApi'
+import { listDirectoryMembers } from '../../../shared/api/directoryApi'
 import {
   approveApproval,
   getApprovalInstance,

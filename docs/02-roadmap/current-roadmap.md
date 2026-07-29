@@ -21,7 +21,7 @@ S21 是退出与验证 Stage，不建立新的业务元模型。旧表和不可�
 
 ## 2. 固定输入与当前事实
 
-- S20 完成路线已归档；当前 schema 为 V137，四类场景目录、公共 owner 安装、差异/冲突、升级、重试和解绑已经通过完整真实隔离 route-final。
+- S20 完成路线已归档；当前 schema 为 V139。S21-M1 的不可变审计基线与 S21-M2 的旧产品合同退出均已完成，四类场景继续由规范 WorkItem 承载。
 - S07 已交付 migration batch/unit/map/failure、canonical-only write、兼容 resolver、受控 cutover 和可恢复迁移；当前代码仍存在 `/projects`、`/issues`、legacy DTO/API、平台对象、搜索、工作台和跨模块 legacy 引用，M1 必须先形成完整 inventory。
 - 生产 canonical write cutover 仍需目标环境画像、备份恢复、观测窗口、容量证据和批准；本地 PostgreSQL/Testcontainers rehearsal 不自动授权生产切流。
 - 活动兼容最晚在 S21 删除；历史 map、批次、provenance、verification、audit 和 outbox 不得因删除产品入口而丢失可追溯性。
@@ -40,10 +40,10 @@ S21 是退出与验证 Stage，不建立新的业务元模型。旧表和不可�
 
 | Milestone | 交付目标 | 依赖 | 报告 | 状态 |
 | --- | --- | --- | --- | --- |
-| PROJECT-PLATFORM-S21-M1 | 存量迁移完成度与数据一致性审计 | S20 归档；Program revision 49 | `docs/90-reports/project-platform-s21-m1-execution-report.md` | Active |
-| PROJECT-PLATFORM-S21-M2 | 删除旧 issues 产品 API、DTO、页面和写路径 | M1 Go 与删除清单 | `docs/90-reports/project-platform-s21-m2-execution-report.md` | Pending |
-| PROJECT-PLATFORM-S21-M3 | 性能、安全、备份、恢复和 route-final | M2 完成；保留/删除边界冻结 | `docs/90-reports/project-platform-s21-m3-execution-report.md` | Pending |
-| PROJECT-PLATFORM-S21-M4 | 研发、市场、HR、交付真人任务试用 | M3 工程 Go；试用参与者与环境就绪 | `docs/90-reports/project-platform-s21-m4-execution-report.md` | Pending |
+| PROJECT-PLATFORM-S21-M1 | 存量迁移完成度与数据一致性审计 | S20 归档；Program revision 49 | `docs/90-reports/project-platform-s21-m1-execution-report.md` | Completed |
+| PROJECT-PLATFORM-S21-M2 | 删除旧 issues 产品 API、DTO、页面和写路径 | M1 Go 与删除清单 | `docs/90-reports/project-platform-s21-m2-execution-report.md` | Completed |
+| PROJECT-PLATFORM-S21-M3 | 性能、安全、备份、恢复和 route-final | M2 完成；保留/删除边界冻结 | `docs/90-reports/project-platform-s21-m3-execution-report.md` | Completed |
+| PROJECT-PLATFORM-S21-M4 | 研发、市场、HR、交付真人任务试用 | M3 工程 Go；试用参与者与环境就绪 | `docs/90-reports/project-platform-s21-m4-execution-report.md` | Active |
 | PROJECT-PLATFORM-S21-M5 | 缺陷修复、复验和产品 Go/No-Go | M4 原始反馈与缺陷分级 | `docs/90-reports/project-platform-s21-m5-execution-report.md` | Pending |
 
 ## 5. Task
@@ -52,52 +52,52 @@ S21 是退出与验证 Stage，不建立新的业务元模型。旧表和不可�
 
 | 任务 | 内容 | 验收标准 | 状态 |
 | --- | --- | --- | --- |
-| PROJECT-PLATFORM-S21-M1-T01 | 审计 S01-S20 迁移合同、当前代码、schema、运行角色和未关闭风险 | owner、API、表、map、batch、cutover、resolver、审计和禁止边界可定位；不依赖旧会话结论 | Pending |
-| PROJECT-PLATFORM-S21-M1-T02 | 冻结 LegacyUsage、MigrationCoverage、ConsistencyFinding、RemovalDecision 与 EvidenceSnapshot 合同 | identity、来源、严重度、状态、证据、决定、保留、错误和上限明确 | Pending |
-| PROJECT-PLATFORM-S21-M1-T03 | 建立代码/API/路由/事件/平台对象/数据库 legacy 使用 inventory | 全仓引用按 owner、读/写、用户可见性和删除阶段分类；无未知活动调用方 | Pending |
-| PROJECT-PLATFORM-S21-M1-T04 | 建立 project/issue 到 space/work-item map、batch、unit 和 provenance 完整性审计 | 未映射、重复、碰撞、悬空、跨 workspace/space 和状态矛盾逐项可解释 | Pending |
-| PROJECT-PLATFORM-S21-M1-T05 | 实现源/目标 count、checksum、字段、参与者、评论、附件、关系和活动对账 | 每个迁移单元可重复校验；未知、缺失和截断不折算为一致 | Pending |
-| PROJECT-PLATFORM-S21-M1-T06 | 实现 legacy/canonical 权限、可见性、deep link、搜索和平台对象对照 | 六身份结果一致或有显式拒绝决定；map、错误和时序不泄漏存在性 | Pending |
-| PROJECT-PLATFORM-S21-M1-T07 | 审计所有 legacy 写入口、fallback、kill switch 和运行时流量 | canonical-only write 可证明；未知写、双写和不可解释 fallback 为阻断 | Pending |
-| PROJECT-PLATFORM-S21-M1-T08 | 交付迁移完成度、legacy 使用、finding 和 removal decision 治理视图 | 1440/1366/820、键盘、长名称、loading、空态/错误、来源与 freshness 可用 | Pending |
-| PROJECT-PLATFORM-S21-M1-T09 | 接入可重复快照、导出、审计、离线和权限重校准 | 证据不可变且逐次受权；离线不确认决定，隐藏对象不进入数量或导出 | Pending |
-| PROJECT-PLATFORM-S21-M1-T10 | 完成空库、升级库、混合迁移、碰撞、失败、收权和重放测试 | 无漏报、重复 finding、错误一致、权限偏差或 enterprise 内容旁路 | Pending |
-| PROJECT-PLATFORM-S21-M1-T11 | 执行 inventory、对账、查询、内存、导出和审计预算 | 固定夹具与上界可复现；不声明生产数据已完成迁移或允许删除 | Pending |
-| PROJECT-PLATFORM-S21-M1-T12 | 同步迁移审计合同，给出 M2 删除 Go/Reopen 并完成 checkpoint | 未迁移、重复、悬空和权限偏差为零或有逐项决定；删除清单冻结 | Pending |
+| PROJECT-PLATFORM-S21-M1-T01 | 审计 S01-S20 迁移合同、当前代码、schema、运行角色和未关闭风险 | owner、API、表、map、batch、cutover、resolver、审计和禁止边界可定位；不依赖旧会话结论 | Done |
+| PROJECT-PLATFORM-S21-M1-T02 | 冻结 LegacyUsage、MigrationCoverage、ConsistencyFinding、RemovalDecision 与 EvidenceSnapshot 合同 | identity、来源、严重度、状态、证据、决定、保留、错误和上限明确 | Done |
+| PROJECT-PLATFORM-S21-M1-T03 | 建立代码/API/路由/事件/平台对象/数据库 legacy 使用 inventory | 全仓引用按 owner、读/写、用户可见性和删除阶段分类；无未知活动调用方 | Done |
+| PROJECT-PLATFORM-S21-M1-T04 | 建立 project/issue 到 space/work-item map、batch、unit 和 provenance 完整性审计 | 未映射、重复、碰撞、悬空、跨 workspace/space 和状态矛盾逐项可解释 | Done |
+| PROJECT-PLATFORM-S21-M1-T05 | 实现源/目标 count、checksum、字段、参与者、评论、附件、关系和活动对账 | 每个迁移单元可重复校验；未知、缺失和截断不折算为一致 | Done |
+| PROJECT-PLATFORM-S21-M1-T06 | 实现 legacy/canonical 权限、可见性、deep link、搜索和平台对象对照 | 六身份结果一致或有显式拒绝决定；map、错误和时序不泄漏存在性 | Done |
+| PROJECT-PLATFORM-S21-M1-T07 | 审计所有 legacy 写入口、fallback、kill switch 和运行时流量 | canonical-only write 可证明；未知写、双写和不可解释 fallback 为阻断 | Done |
+| PROJECT-PLATFORM-S21-M1-T08 | 交付迁移完成度、legacy 使用、finding 和 removal decision 治理视图 | 1440/1366/820、键盘、长名称、loading、空态/错误、来源与 freshness 可用 | Done |
+| PROJECT-PLATFORM-S21-M1-T09 | 接入可重复快照、导出、审计、离线和权限重校准 | 证据不可变且逐次受权；离线不确认决定，隐藏对象不进入数量或导出 | Done |
+| PROJECT-PLATFORM-S21-M1-T10 | 完成空库、升级库、混合迁移、碰撞、失败、收权和重放测试 | 无漏报、重复 finding、错误一致、权限偏差或 enterprise 内容旁路 | Done |
+| PROJECT-PLATFORM-S21-M1-T11 | 执行 inventory、对账、查询、内存、导出和审计预算 | 固定夹具与上界可复现；不声明生产数据已完成迁移或允许删除 | Done |
+| PROJECT-PLATFORM-S21-M1-T12 | 同步迁移审计合同，给出 M2 删除 Go/Reopen 并完成 checkpoint | 未迁移、重复、悬空和权限偏差为零或有逐项决定；删除清单冻结 | Done |
 
 ### PROJECT-PLATFORM-S21-M2 删除旧 issues 产品 API、DTO、页面和写路径
 
 | 任务 | 内容 | 验收标准 | 状态 |
 | --- | --- | --- | --- |
-| PROJECT-PLATFORM-S21-M2-T01 | 复核 M1 inventory、removal decision、备份前置和阻断 finding | 12 项及删除清单逐项可追溯；未决定依赖 Reopen，不扩大删除范围 | Pending |
-| PROJECT-PLATFORM-S21-M2-T02 | 冻结删除顺序、兼容终止 reason、历史保留、回滚点和不可逆门禁 | API、DTO、路由、事件、对象、搜索、表和证据的先后关系明确 | Pending |
-| PROJECT-PLATFORM-S21-M2-T03 | 删除 legacy issue 写 Controller/service/repository 与跨模块写入口 | `/issues` 不再创建、修改、流转、评论或附件；无双写或隐藏 adapter | Pending |
-| PROJECT-PLATFORM-S21-M2-T04 | 删除 legacy issue 用户读 API、DTO 和项目聚合读取 | 用户事项只走规范 WorkItem；旧读不再访问 `issues` 私表或返回旧 DTO | Pending |
-| PROJECT-PLATFORM-S21-M2-T05 | 删除旧 issue 页面、路由、API client、缓存和 realtime reconciliation | Web 无活动 `/issues` 产品页面/query key；旧深链只按冻结决定终止或规范跳转 | Pending |
-| PROJECT-PLATFORM-S21-M2-T06 | 迁移搜索、通知、工作台、消息转事项和平台对象消费者 | 所有活动消费者使用 `work_item` 公共合同；无 legacy 私表、事件或 objectType 写入 | Pending |
-| PROJECT-PLATFORM-S21-M2-T07 | 删除旧 project/issue 固定 DTO、状态枚举和模块间类型泄漏 | 新业务模型不 import legacy domain DTO；允许的历史证据类型有显式清单 | Pending |
-| PROJECT-PLATFORM-S21-M2-T08 | 收紧 schema/table owner 与架构门禁，禁止活动 legacy 依赖回归 | ArchUnit、owner manifest、SQL/route/event 扫描同时阻断新旧入口恢复 | Pending |
-| PROJECT-PLATFORM-S21-M2-T09 | 执行历史表保留/只读/删除 migration 与恢复锚点 | 只按 M1 决定处理；migration/map/provenance/verification/audit 证据不可丢失 | Pending |
-| PROJECT-PLATFORM-S21-M2-T10 | 完成六身份、深链、搜索、通知、消息转换、附件和收权回归 | 无 404/410 外形泄漏、幽灵缓存、重复对象、断链或 enterprise 旁路 | Pending |
-| PROJECT-PLATFORM-S21-M2-T11 | 全仓反查 legacy API/DTO/页面/写路径与运行时 SQL | 活动残留为零；允许历史符号逐项登记 owner、原因、只读性和删除时点 | Pending |
-| PROJECT-PLATFORM-S21-M2-T12 | 同步当前/目标架构和迁移矩阵，完成 M2 checkpoint | 旧 issues 产品合同退出；只保留批准的不可变历史迁移与审计证据 | Pending |
+| PROJECT-PLATFORM-S21-M2-T01 | 复核 M1 inventory、removal decision、备份前置和阻断 finding | 12 项及删除清单逐项可追溯；未决定依赖 Reopen，不扩大删除范围 | Done |
+| PROJECT-PLATFORM-S21-M2-T02 | 冻结删除顺序、兼容终止 reason、历史保留、回滚点和不可逆门禁 | API、DTO、路由、事件、对象、搜索、表和证据的先后关系明确 | Done |
+| PROJECT-PLATFORM-S21-M2-T03 | 删除 legacy issue 写 Controller/service/repository 与跨模块写入口 | `/issues` 不再创建、修改、流转、评论或附件；无双写或隐藏 adapter | Done |
+| PROJECT-PLATFORM-S21-M2-T04 | 删除 legacy issue 用户读 API、DTO 和项目聚合读取 | 用户事项只走规范 WorkItem；旧读不再访问 `issues` 私表或返回旧 DTO | Done |
+| PROJECT-PLATFORM-S21-M2-T05 | 删除旧 issue 页面、路由、API client、缓存和 realtime reconciliation | Web 无活动 `/issues` 产品页面/query key；旧深链只按冻结决定终止或规范跳转 | Done |
+| PROJECT-PLATFORM-S21-M2-T06 | 迁移搜索、通知、工作台、消息转事项和平台对象消费者 | 所有活动消费者使用 `work_item` 公共合同；无 legacy 私表、事件或 objectType 写入 | Done |
+| PROJECT-PLATFORM-S21-M2-T07 | 删除旧 project/issue 固定 DTO、状态枚举和模块间类型泄漏 | 新业务模型不 import legacy domain DTO；允许的历史证据类型有显式清单 | Done |
+| PROJECT-PLATFORM-S21-M2-T08 | 收紧 schema/table owner 与架构门禁，禁止活动 legacy 依赖回归 | ArchUnit、owner manifest、SQL/route/event 扫描同时阻断新旧入口恢复 | Done |
+| PROJECT-PLATFORM-S21-M2-T09 | 执行历史表保留/只读/删除 migration 与恢复锚点 | 只按 M1 决定处理；migration/map/provenance/verification/audit 证据不可丢失 | Done |
+| PROJECT-PLATFORM-S21-M2-T10 | 完成六身份、深链、搜索、通知、消息转换、附件和收权回归 | 无 404/410 外形泄漏、幽灵缓存、重复对象、断链或 enterprise 旁路 | Done |
+| PROJECT-PLATFORM-S21-M2-T11 | 全仓反查 legacy API/DTO/页面/写路径与运行时 SQL | 活动残留为零；允许历史符号逐项登记 owner、原因、只读性和删除时点 | Done |
+| PROJECT-PLATFORM-S21-M2-T12 | 同步当前/目标架构和迁移矩阵，完成 M2 checkpoint | 旧 issues 产品合同退出；只保留批准的不可变历史迁移与审计证据 | Done |
 
 ### PROJECT-PLATFORM-S21-M3 性能、安全、备份、恢复和 route-final
 
 | 任务 | 内容 | 验收标准 | 状态 |
 | --- | --- | --- | --- |
-| PROJECT-PLATFORM-S21-M3-T01 | 复核 M1-M2 证据、当前运行拓扑、数据模型和未关闭阻断 | 24 项逐项可追溯；性能/恢复不掩盖删除或权限缺陷 | Pending |
-| PROJECT-PLATFORM-S21-M3-T02 | 冻结容量场景、安全矩阵、备份集、恢复点、RTO/RPO 测量和失败判定 | 环境、数据、身份、操作、采样、预算、误差和非生产声明明确 | Pending |
-| PROJECT-PLATFORM-S21-M3-T03 | 建立规范 WorkItem 与四类场景的确定性规模数据和负载协议 | seed 可重放、无真实隐私；读写/查询/流程/关系/自动化/指标组合可解释 | Pending |
-| PROJECT-PLATFORM-S21-M3-T04 | 执行 API、数据库、Worker、realtime、Web 和组合资源预算 | 固定环境无未解释退化、泄漏或无界增长；结果不冒充生产 SLO | Pending |
-| PROJECT-PLATFORM-S21-M3-T05 | 执行认证、授权、最小披露、注入、SSRF、上传下载和敏感数据安全复核 | P0/P1 安全发现为零；六身份与收权逐入口失败关闭 | Pending |
-| PROJECT-PLATFORM-S21-M3-T06 | 实现并演练数据库、对象存储、Redis 可重建状态和配置备份 | 备份集、版本、加密、校验、保留、审计和恢复依赖完整 | Pending |
-| PROJECT-PLATFORM-S21-M3-T07 | 在隔离环境执行全量恢复、迁移重放、索引重建和一致性校验 | V001-V137+ 可恢复；规范事实、附件、map、audit/outbox 和配置 hash 一致 | Pending |
-| PROJECT-PLATFORM-S21-M3-T08 | 演练中断、部分失败、只读、回退和灾后重新开放 | fencing、幂等、顺序、丢失窗口和人工决定可解释；不恢复 legacy 写 | Pending |
-| PROJECT-PLATFORM-S21-M3-T09 | 交付运行/恢复状态、证据索引和受控运维入口 | 当前角色、理由、审批、审计和最小披露完整；浏览器不直接持有运维凭据 | Pending |
-| PROJECT-PLATFORM-S21-M3-T10 | 执行完整 PostgreSQL/Flyway、后端、前端、协作、架构、安全和真实隔离 route-final | full gate 无阻断；关键用户/系统闭环和恢复证据 fresh | Pending |
-| PROJECT-PLATFORM-S21-M3-T11 | 对账工程门禁、容量、安全和恢复结果并登记残余风险 | 结论区分本地/预生产/生产；未知项不伪装通过或转为无关 gap | Pending |
-| PROJECT-PLATFORM-S21-M3-T12 | 给出 M4 工程 Go/Reopen 并完成 checkpoint | 只有 P0/P1 清零且试用环境可恢复时 Go；工程结论不替代真人结论 | Pending |
+| PROJECT-PLATFORM-S21-M3-T01 | 复核 M1-M2 证据、当前运行拓扑、数据模型和未关闭阻断 | 24 项逐项可追溯；性能/恢复不掩盖删除或权限缺陷 | Done |
+| PROJECT-PLATFORM-S21-M3-T02 | 冻结容量场景、安全矩阵、备份集、恢复点、RTO/RPO 测量和失败判定 | 环境、数据、身份、操作、采样、预算、误差和非生产声明明确 | Done |
+| PROJECT-PLATFORM-S21-M3-T03 | 建立规范 WorkItem 与四类场景的确定性规模数据和负载协议 | seed 可重放、无真实隐私；读写/查询/流程/关系/自动化/指标组合可解释 | Done |
+| PROJECT-PLATFORM-S21-M3-T04 | 执行 API、数据库、Worker、realtime、Web 和组合资源预算 | 固定环境无未解释退化、泄漏或无界增长；结果不冒充生产 SLO | Done |
+| PROJECT-PLATFORM-S21-M3-T05 | 执行认证、授权、最小披露、注入、SSRF、上传下载和敏感数据安全复核 | P0/P1 安全发现为零；六身份与收权逐入口失败关闭 | Done |
+| PROJECT-PLATFORM-S21-M3-T06 | 实现并演练数据库、对象存储、Redis 可重建状态和配置备份 | 备份集、版本、加密、校验、保留、审计和恢复依赖完整 | Done |
+| PROJECT-PLATFORM-S21-M3-T07 | 在隔离环境执行全量恢复、迁移重放、索引重建和一致性校验 | V001-V137+ 可恢复；规范事实、附件、map、audit/outbox 和配置 hash 一致 | Done |
+| PROJECT-PLATFORM-S21-M3-T08 | 演练中断、部分失败、只读、回退和灾后重新开放 | fencing、幂等、顺序、丢失窗口和人工决定可解释；不恢复 legacy 写 | Done |
+| PROJECT-PLATFORM-S21-M3-T09 | 交付运行/恢复状态、证据索引和受控运维入口 | 当前角色、理由、审批、审计和最小披露完整；浏览器不直接持有运维凭据 | Done |
+| PROJECT-PLATFORM-S21-M3-T10 | 执行完整 PostgreSQL/Flyway、后端、前端、协作、架构、安全和真实隔离 route-final | full gate 无阻断；关键用户/系统闭环和恢复证据 fresh | Done |
+| PROJECT-PLATFORM-S21-M3-T11 | 对账工程门禁、容量、安全和恢复结果并登记残余风险 | 结论区分本地/预生产/生产；未知项不伪装通过或转为无关 gap | Done |
+| PROJECT-PLATFORM-S21-M3-T12 | 给出 M4 工程 Go/Reopen 并完成 checkpoint | 只有 P0/P1 清零且试用环境可恢复时 Go；工程结论不替代真人结论 | Done |
 
 ### PROJECT-PLATFORM-S21-M4 研发、市场、HR、交付真人任务试用
 
@@ -142,6 +142,6 @@ S21 是退出与验证 Stage，不建立新的业务元模型。旧表和不可�
 - 所有 P0/P1 清零，P2/P3 有明确决定；工程与人工证据分别可复核。
 - 产品 Go/No-Go 由完成的 60 个 Task 和新鲜证据支持，不以计划、合成样本或口头结论替代。
 
-## 7. 起始点
+## 7. 当前入口
 
-S20 已完成并归档，Program revision 49 激活 S21。当前唯一合法入口为 `PROJECT-PLATFORM-S21-M1-T01`；M2-M5 必须在前一 Milestone 独立工作循环完成后依次推进。
+S20 已完成并归档，Program revision 49 激活 S21。M1-M3 已分别完成独立工作循环；当前停在 `PROJECT-PLATFORM-S21-M4` 真人试用准备点。只有真实参与者、consent、隔离环境与主持时间窗就绪后，才可从 `PROJECT-PLATFORM-S21-M4-T01` 启动新的工作循环；不得用 AI、自动化浏览器或维护者代签 M4 证据，也不得提前执行 M5、归档 S21 或激活 S22。

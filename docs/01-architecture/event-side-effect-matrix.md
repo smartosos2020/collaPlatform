@@ -375,3 +375,25 @@ workspace audience 只表示“该 workspace 的已连接客户端需要丢弃�
 - install/retry/upgrade 在 current manager gate 和无未决冲突后，按拓扑逐项调用公开 owner 服务；当前实现只有 work-item-type 组件执行公共配置写，其余组件记录已验证的公开 reference。任何失败不得伪造成 completed。
 - 未决 upgrade conflict 使步骤全部 skipped；显式 resolution 后才执行。detach 仅解除场景引用，不删除类型、流程、关系、视图、计划、自动化或指标事实。
 - Web realtime/online/focus 仅触发 REST 校准；离线禁用全部写命令。运行、冲突和 receipt 不授权，收权后旧页面不得继续执行。
+
+## 37. S21-M1 退出审计副作用边界
+
+- create snapshot 只读取注册聚合并追加 V138 snapshot/finding；不迁移、修改或删除 legacy/canonical 事实，也不发布用户业务事件。
+- removal decision 在 current `project.manage` gate 下按 request ID/hash 精确重放，追加决定与治理 audit；不同 hash 冲突在副作用前失败。
+- get/export 每次重新校准当前权限，离线 Web 禁止提交决定。快照、finding、决定和导出结果不授权，也不能触发 cutover、恢复 legacy 写或物理删表。
+
+## 38. S21-M2 事件退出边界
+
+| Producer/event | Consumer | Side effect | Exit guarantee |
+| --- | --- | --- | --- |
+| `work_item.changed` | search projection | upsert/delete canonical WorkItem document | 不订阅 `issue.assigned`、`issue.verified` 或 `issue.changed` |
+| `project_space.changed` | realtime projection | 按空间成员投递最小 invalidation signal | 不发布 project/issue 产品 signal |
+| `notification.created` | notification projection | canonicalize 并持久化 `work_item`/`project_space` target | 不创建新的 `issue` target |
+| IM/Knowledge command | `WorkItemCreationCommand` | 创建 canonical WorkItem 与 canonical web path | 不触发 legacy 双写或 Issue DTO |
+
+## 39. S21-M3 工程证据副作用边界
+
+- readiness seed、查询/写预算和备份恢复只在一次性隔离 PostgreSQL 中执行；固定合成 actor、空间和 WorkItem 不进入运行环境，不发布业务事件，也不触发外部通知、文件或自动化。
+- `pg_dump` 产生容器内临时归档，SHA-256 校验后恢复到同容器的新隔离数据库；恢复过程不写源库。中断演练显式 rollback，重新开放前对账 Flyway version、WorkItem count 与 canonical digest。
+- Redis 仅为可重建缓存/传输状态，对象存储仅登记版本化归档恢复要求；没有对应真实服务时不得伪造备份成功事件或 M3 PASS。
+- 浏览器只读取/生成受控 legacy audit 快照并验证 canonical 产品面，不直接执行基础设施恢复。工程证据不产生 M4 consent、参与者反馈或人工验收副作用。

@@ -43,8 +43,6 @@ import com.colla.platform.modules.platform.domain.PlatformModels.PlatformObjectS
 import com.colla.platform.modules.permission.domain.PermissionModels.PermissionDecision;
 import com.colla.platform.modules.platform.infrastructure.PlatformObjectRepository;
 import com.colla.platform.modules.permission.application.PermissionDecisionService;
-import com.colla.platform.modules.project.domain.ProjectModels.IssueSummary;
-import com.colla.platform.modules.project.infrastructure.ProjectRepository;
 import com.colla.platform.shared.auth.CurrentUser;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -116,7 +114,6 @@ public class KnowledgeContentService {
     private final KnowledgeBaseSpaceRepository knowledgeBaseSpaceRepository;
     private final PlatformObjectRepository objectRepository;
     private final TransactionalOutbox eventRepository;
-    private final ProjectRepository projectRepository;
     private final FileRepository fileRepository;
     private final BaseService baseService;
     private final AuditService auditService;
@@ -131,7 +128,6 @@ public class KnowledgeContentService {
         KnowledgeBaseSpaceRepository knowledgeBaseSpaceRepository,
         PlatformObjectRepository objectRepository,
         TransactionalOutbox eventRepository,
-        ProjectRepository projectRepository,
         FileRepository fileRepository,
         BaseService baseService,
         AuditService auditService,
@@ -145,7 +141,6 @@ public class KnowledgeContentService {
         this.knowledgeBaseSpaceRepository = knowledgeBaseSpaceRepository;
         this.objectRepository = objectRepository;
         this.eventRepository = eventRepository;
-        this.projectRepository = projectRepository;
         this.fileRepository = fileRepository;
         this.baseService = baseService;
         this.auditService = auditService;
@@ -171,7 +166,7 @@ public class KnowledgeContentService {
         List<KnowledgeContentAcceptanceScenario> scenarios = List.of(
             new KnowledgeContentAcceptanceScenario("meeting-notes", "会议纪要", "多人编辑纪要、评论行动项、从纪要生成任务", "ready", "协同编辑、评论线程、内容选区转事项已可用"),
             new KnowledgeContentAcceptanceScenario("requirements", "需求说明", "模板创建、版本命名、评审评论、关联项目事项", "ready", "模板、命名版本、评论和事项关系已可用"),
-            new KnowledgeContentAcceptanceScenario("project-plan", "项目计划", "内容页嵌入 Base 视图和项目事项，任务回看知识片段", "ready", "Base view、issue embed、关联知识片段已可用"),
+            new KnowledgeContentAcceptanceScenario("project-plan", "项目计划", "内容页嵌入 Base 视图和项目工作项，任务回看知识片段", "ready", "Base view、WorkItem embed、关联知识片段已可用"),
             new KnowledgeContentAcceptanceScenario("retro", "项目复盘", "多人补充复盘内容、提及成员、冻结命名版本", "ready", "协同、@mention 通知和命名版本已可用"),
             new KnowledgeContentAcceptanceScenario("knowledge-base", "知识库", "空间/文件夹组织知识条目、默认权限和分享链接", "ready", "space/folder/tree、知识库默认权限和分享链接已可用"),
             new KnowledgeContentAcceptanceScenario("base-kanban", "Base 看板说明", "内容页内嵌 Base 视图并展示权限态、筛选和排序", "ready", "M48 Base view 摘要已可用"),
@@ -185,7 +180,7 @@ public class KnowledgeContentService {
             new KnowledgeContentAcceptanceGate("permission-sharing", "权限分享试运行", "ready", "owner/manage/edit/comment/view、分享链接和权限申请已可用"),
             new KnowledgeContentAcceptanceGate("comment-notification", "评论提及通知闭环", "ready", "选区评论、回复、resolve/reopen 和 @mention 通知已可用"),
             new KnowledgeContentAcceptanceGate("message-to-knowledge-content", "从消息沉淀知识内容", "ready", "IM 消息 canonical 转换 API 已可用"),
-            new KnowledgeContentAcceptanceGate("doc-to-task", "从内容生成任务", "ready", "docs/{id}/issues/from-selection 兼容 API 已可用"),
+            new KnowledgeContentAcceptanceGate("doc-to-task", "从内容生成任务", "ready", "items/{id}/work-items/from-selection 规范 API 已可用"),
             new KnowledgeContentAcceptanceGate("p0-p1-defects", "P0/P1 缺陷收口", "ready", "当前自动化门禁未发现 P0/P1 阻塞缺陷"),
             new KnowledgeContentAcceptanceGate("v1-freeze", "v1 验收标准冻结", "frozen", "以本报告 10 场景和 8 验收门为冻结标准"),
             new KnowledgeContentAcceptanceGate("quality-gates", "质量门禁", "ready", "M49 finish 已通过全量测试、构建、敏感扫描和安全门禁")
@@ -1860,12 +1855,7 @@ public class KnowledgeContentService {
 
     private void validateRelationTarget(CurrentUser currentUser, String targetType, UUID targetId) {
         if ("issue".equals(targetType)) {
-            IssueSummary issue = projectRepository.findIssue(currentUser.workspaceId(), targetId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Issue not found"));
-            if (!projectRepository.isProjectMember(currentUser.workspaceId(), issue.projectId(), currentUser.id())) {
-                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Issue access denied");
-            }
-            return;
+            throw new ResponseStatusException(HttpStatus.GONE, "Legacy issue relations are retired; use work_item");
         }
         if ("file".equals(targetType)) {
             fileRepository.find(currentUser.workspaceId(), targetId)
@@ -1893,11 +1883,6 @@ public class KnowledgeContentService {
     private void syncReverseRelation(CurrentUser currentUser, UUID itemId, String targetType, UUID targetId) {
         if ("knowledge_content".equals(targetType) && !itemId.equals(targetId)) {
             contentRepository.addRelation(currentUser.workspaceId(), targetId, "knowledge_content", itemId, currentUser.id());
-            return;
-        }
-        if ("issue".equals(targetType)) {
-            projectRepository.addRelation(currentUser.workspaceId(), targetId, "knowledge_content", itemId, currentUser.id());
-            projectRepository.addActivity(currentUser.workspaceId(), targetId, currentUser.id(), "relation.added", null, "document:" + itemId);
             return;
         }
         if ("base_record".equals(targetType)) {
@@ -2002,7 +1987,7 @@ public class KnowledgeContentService {
             return "base_table";
         }
         if ("issue_embed".equals(blockType)) {
-            return "issue";
+            return "work_item";
         }
         if ("message_embed".equals(blockType)) {
             return "message";
@@ -2857,7 +2842,7 @@ public class KnowledgeContentService {
 
     private String normalizeTargetType(String targetType) {
         String type = targetType == null ? "" : targetType.toLowerCase();
-        if (!List.of("issue", "base", "base_table", "base_record", "file", "message", "approval", "knowledge_content").contains(type)) {
+        if (!List.of("work_item", "project_space", "base", "base_table", "base_record", "file", "message", "approval", "knowledge_content").contains(type)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid relation target type");
         }
         return type;
@@ -3283,6 +3268,3 @@ public class KnowledgeContentService {
     private record AnchorRange(int start, int end) {
     }
 }
-
-
-

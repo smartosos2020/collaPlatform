@@ -151,7 +151,7 @@ type EditorUploadState = {
 const OBJECT_INSERT_TYPES = [
   { value: 'knowledge_content', label: '知识内容' },
   { value: 'project', label: '项目' },
-  { value: 'issue', label: '项目事项' },
+  { value: 'work_item', label: '项目工作项' },
   { value: 'message', label: '消息' },
   { value: 'base', label: 'Base' },
   { value: 'base_table', label: 'Base 视图/数据表' },
@@ -234,7 +234,7 @@ const ObjectCardNode = TiptapNode.create({
   draggable: true,
   addAttributes() {
     return {
-      objectType: { default: 'issue' },
+      objectType: { default: 'work_item' },
       objectId: { default: '' },
       title: { default: '' },
       subtitle: { default: '' },
@@ -393,7 +393,7 @@ export function KnowledgeContentEditorCore({
   const [objectInsert, setObjectInsert] = useState<ObjectInsertState>({
     open: false,
     mode: 'object',
-    objectType: 'issue',
+    objectType: 'work_item',
     objectId: '',
     viewId: '',
     link: '',
@@ -983,7 +983,7 @@ export function KnowledgeContentEditorCore({
             setObjectInsert({
               open: false,
               mode: 'object',
-              objectType: 'issue',
+              objectType: 'work_item',
               objectId: '',
               viewId: '',
               link: '',
@@ -1497,12 +1497,12 @@ function SlashMenu({
       run: () => onInsertObject({ mode: 'object', objectType: 'base_table', objectId: '', viewId: '' }),
     },
     {
-      key: 'issue',
-      label: '项目事项',
+      key: 'work-item',
+      label: '项目工作项',
       description: '嵌入事项或 Bug',
-      keywords: ['issue', 'project', '事项', '项目'],
+      keywords: ['work item', 'project', '工作项', '项目'],
       icon: <AppstoreAddOutlined />,
-      run: () => onInsertObject({ mode: 'object', objectType: 'issue', objectId: '', viewId: '' }),
+      run: () => onInsertObject({ mode: 'object', objectType: 'work_item', objectId: '', viewId: '' }),
     },
     {
       key: 'message',
@@ -1933,7 +1933,7 @@ function removeSlashBeforeCursor(editor: Editor) {
 }
 
 function editorCanResolveLink(value: string) {
-  return /(^|\/)(issues|knowledge-bases|bases|base-records|im|files|approvals)\b/.test(value)
+  return /(^|\/)(project-spaces|knowledge-bases|bases|base-records|im|files|approvals)\b/.test(value)
 }
 
 function sanitizePastedHtml(value: string) {

@@ -102,7 +102,7 @@ public class SearchService {
         List<UUID> safeSpaces = normalizeUuids(spaceIds, 20, "spaceIds");
         List<String> safeTypes = normalizeValues(
             objectTypes,
-            Set.of("issue", "knowledge_content", "base", "base_table", "base_record", "message", "work_item"),
+            Set.of("knowledge_content", "base", "base_table", "base_record", "message", "work_item"),
             10,
             "objectTypes"
         );
@@ -278,7 +278,7 @@ public class SearchService {
     }
 
     private boolean isUserContentResult(String objectType) {
-        return List.of("issue", "knowledge_content", "base", "base_table", "base_record", "message", "approval", "work_item").contains(objectType);
+        return List.of("knowledge_content", "base", "base_table", "base_record", "message", "approval", "work_item").contains(objectType);
     }
 
     private List<UUID> normalizeUuids(List<UUID> values, int max, String field) {
@@ -460,7 +460,7 @@ public class SearchService {
             return "当前用户通过 " + level + " 权限可查看该对象。";
         }
         return switch (summary.objectType()) {
-            case "issue" -> "当前用户是项目成员，可查看该事项。";
+            case "work_item" -> "当前用户是项目空间成员，可查看该工作项。";
             case "message" -> "当前用户是会话成员，可查看该消息。";
             case "approval" -> "当前用户是审批申请人、处理人或管理员，可查看该审批。";
             default -> "当前用户具备查看该对象的权限。";

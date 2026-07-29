@@ -1,7 +1,7 @@
 import { apiGet } from '../../../shared/api/httpClient'
 
 export type SearchResult = {
-  objectType: 'issue' | 'knowledge_content' | 'base' | 'base_table' | 'base_record' | 'message' | 'work_item'
+  objectType: 'knowledge_content' | 'base' | 'base_table' | 'base_record' | 'message' | 'work_item'
   objectId: string
   title?: string | null
   excerpt?: string | null

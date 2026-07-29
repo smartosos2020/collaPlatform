@@ -13,7 +13,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.colla.platform.modules.event.application.DomainEventWorker;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.util.Locale;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -69,10 +68,7 @@ class DeviceControllerIntegrationTests {
             .andExpect(jsonPath("$.deliverable").value(true))
             .andExpect(jsonPath("$.enabledTokenCount").value(1));
 
-        JsonNode project = createProject(admin.accessToken(), mobileUserId);
-        UUID projectId = UUID.fromString(project.get("id").asText());
-        UUID conversationId = UUID.fromString(project.get("conversationId").asText());
-        UUID issueId = createIssue(admin.accessToken(), projectId, mobileUserId);
+        UUID conversationId = createConversation(admin.accessToken(), mobileUserId);
 
         mockMvc.perform(post("/api/conversations/" + conversationId + "/messages")
                 .header("Authorization", "Bearer " + admin.accessToken())
@@ -82,28 +78,12 @@ class DeviceControllerIntegrationTests {
                         {
                           "clientMessageId": "%s",
                           "messageType": "text",
-                          "content": "mobile catch up /issues/%s"
+                          "content": "mobile catch up @%s"
                         }
-                        """.formatted(UUID.randomUUID(), issueId)
+                        """.formatted(UUID.randomUUID(), mobileUsername)
                 ))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.links[0].summary.title", not(blankOrNullString())));
-
-        mockMvc.perform(post("/api/issues/" + issueId + "/comments")
-                .header("Authorization", "Bearer " + admin.accessToken())
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"content\":\"mobile ping @" + mobileUsername + "\"}"))
             .andExpect(status().isOk());
         domainEventWorker.processPendingEvents();
-
-        mockMvc.perform(post("/api/platform/links/resolve")
-                .header("Authorization", "Bearer " + mobileTokens.accessToken())
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"link\":\"colla://issue/" + issueId + "\"}"))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.summary.accessState").value("available"))
-            .andExpect(jsonPath("$.webPath").value("/issues/" + issueId))
-            .andExpect(jsonPath("$.deepLink").value("colla://issue/" + issueId));
 
         String conversationsResponse = mockMvc.perform(get("/api/conversations")
                 .header("Authorization", "Bearer " + mobileTokens.accessToken()))
@@ -125,11 +105,6 @@ class DeviceControllerIntegrationTests {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.length()", greaterThanOrEqualTo(1)));
 
-        mockMvc.perform(get("/api/issues/" + issueId)
-                .header("Authorization", "Bearer " + mobileTokens.accessToken()))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.issue.id").value(issueId.toString()));
-
         mockMvc.perform(delete("/api/devices/" + mobileTokens.deviceId())
                 .header("Authorization", "Bearer " + mobileTokens.accessToken()))
             .andExpect(status().isOk());
@@ -149,48 +124,24 @@ class DeviceControllerIntegrationTests {
             .andExpect(jsonPath("$.username").value(mobileUsername));
     }
 
-    private JsonNode createProject(String token, UUID memberId) throws Exception {
-        String projectKey = ("M8" + UUID.randomUUID().toString().replace("-", ""))
-            .substring(0, 10)
-            .toUpperCase(Locale.ROOT);
-        String response = mockMvc.perform(post("/api/projects")
+    private UUID createConversation(String token, UUID memberId) throws Exception {
+        String response = mockMvc.perform(post("/api/conversations")
                 .header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
                     """
                         {
-                          "projectKey": "%s",
-                          "name": "M8 Project",
+                          "conversationType": "group",
+                          "title": "M8 Mobile",
                           "memberIds": ["%s"]
                         }
-                        """.formatted(projectKey, memberId)
+                        """.formatted(memberId)
                 ))
             .andExpect(status().isOk())
             .andReturn()
             .getResponse()
             .getContentAsString();
-        return objectMapper.readTree(response);
-    }
-
-    private UUID createIssue(String token, UUID projectId, UUID assigneeId) throws Exception {
-        String response = mockMvc.perform(post("/api/projects/" + projectId + "/issues")
-                .header("Authorization", "Bearer " + token)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(
-                    """
-                        {
-                          "issueType": "bug",
-                          "title": "M8 Mobile Readonly Issue",
-                          "priority": "high",
-                          "assigneeId": "%s"
-                        }
-                        """.formatted(assigneeId)
-                ))
-            .andExpect(status().isOk())
-            .andReturn()
-            .getResponse()
-            .getContentAsString();
-        return UUID.fromString(objectMapper.readTree(response).get("issue").get("id").asText());
+        return UUID.fromString(objectMapper.readTree(response).get("id").asText());
     }
 
     private UUID createMember(String token, String username, String displayName) throws Exception {

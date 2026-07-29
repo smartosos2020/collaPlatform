@@ -113,7 +113,7 @@ public class JdbcSearchRepository implements SearchRepository {
                 .append(")\n");
             args.addAll(filters.objectStatuses());
         }
-        for (int i = 0; i < 11; i++) {
+        for (int i = 0; i < 10; i++) {
             args.add(userId);
         }
         args.add(limit);
@@ -205,15 +205,6 @@ public class JdbcSearchRepository implements SearchRepository {
                   %s
                   and (
                       (
-                          s.object_type = 'issue'
-                          and exists (
-                              select 1
-                              from issues i
-                              join project_members pm on pm.project_id = i.project_id and pm.user_id = ? and pm.archived_at is null
-                              where i.workspace_id = s.workspace_id and i.id = s.object_id and i.deleted_at is null
-                          )
-                      )
-                      or (
                           s.object_type = 'knowledge_content'
                           and exists (
                               select 1
@@ -353,7 +344,6 @@ public class JdbcSearchRepository implements SearchRepository {
         jdbcTemplate.query("select pg_advisory_xact_lock(hashtext(?))", rs -> { }, "search-index:" + workspaceId);
         jdbcTemplate.update("delete from search_index_entries where workspace_id = ?", workspaceId);
         jdbcTemplate.update("delete from search_projection_versions where workspace_id = ?", workspaceId);
-        indexIssues(workspaceId, null);
         indexDocuments(workspaceId, null);
         indexBases(workspaceId, null);
         indexBaseTables(workspaceId, null);
@@ -537,7 +527,6 @@ public class JdbcSearchRepository implements SearchRepository {
 
     private void indexObject(UUID workspaceId, String objectType, UUID objectId) {
         switch (objectType) {
-            case "issue" -> indexIssues(workspaceId, objectId);
             case "knowledge_content" -> indexDocuments(workspaceId, objectId);
             case "base" -> indexBases(workspaceId, objectId);
             case "base_table" -> indexBaseTables(workspaceId, objectId);
@@ -549,7 +538,6 @@ public class JdbcSearchRepository implements SearchRepository {
 
     private List<UUID> listObjectIds(UUID workspaceId, String objectType, UUID afterId, int limit) {
         String tableAndPredicate = switch (objectType) {
-            case "issue" -> "issues where deleted_at is null";
             case "knowledge_content" -> "knowledge_base_items where deleted_at is null and archived_at is null";
             case "base" -> "bases where archived_at is null";
             case "base_table" -> "base_tables where archived_at is null";
@@ -578,38 +566,6 @@ public class JdbcSearchRepository implements SearchRepository {
         if (!SearchRepository.SUPPORTED_OBJECT_TYPES.contains(objectType)) {
             throw new IllegalArgumentException("Unsupported search object type: " + objectType);
         }
-    }
-
-    private void indexIssues(UUID workspaceId, UUID objectId) {
-        jdbcTemplate.update(
-            """
-                insert into search_index_entries
-                    (workspace_id, object_type, object_id, title, excerpt, web_path, deep_link, search_text, updated_at, indexed_at)
-                select i.workspace_id,
-                       'issue',
-                       i.id,
-                       i.issue_key || ' ' || i.title,
-                       left(coalesce(i.description, i.title), 240),
-                       '/issues/' || i.id::text,
-                       'colla://issue/' || i.id::text,
-                       coalesce(i.issue_key, '') || ' ' || coalesce(i.title, '') || ' ' || coalesce(i.description, ''),
-                       i.updated_at,
-                       now()
-                from issues i
-                where i.workspace_id = ? and (?::uuid is null or i.id = ?) and i.deleted_at is null
-                on conflict (workspace_id, object_type, object_id)
-                do update set title = excluded.title,
-                              excerpt = excluded.excerpt,
-                              web_path = excluded.web_path,
-                              deep_link = excluded.deep_link,
-                              search_text = excluded.search_text,
-                              updated_at = excluded.updated_at,
-                              indexed_at = now()
-                """,
-            workspaceId,
-            objectId,
-            objectId
-        );
     }
 
     private void indexDocuments(UUID workspaceId, UUID objectId) {

@@ -5,9 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.colla.platform.modules.project.domain.WorkItemModels.WorkItemRuntimeException;
 import com.colla.platform.modules.project.domain.WorkItemModels.WorkItemView;
-import com.colla.platform.modules.project.domain.WorkItemCompatibilityModels.ReadStage;
 import com.colla.platform.modules.project.domain.WorkItemNodeRuntimeModels.NodeArtifactInput;
-import com.colla.platform.modules.project.application.WorkItemCompatibilityService.LegacyWriteClosedException;
 import com.colla.platform.shared.auth.CurrentUser;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -2034,7 +2032,7 @@ class WorkItemServiceIntegrationTests {
     }
 
     @Test
-    void compatibilityRoutingUsesExplicitMapShadowEvidenceAndKillSwitch() throws Exception {
+    void compatibilityRoutingOnlyReturnsAnAuthorizedCanonicalLocation() throws Exception {
         Fixture fixture = fixture("compat");
         WorkItemView canonical = service.create(
             fixture.owner(),
@@ -2070,39 +2068,12 @@ class WorkItemServiceIntegrationTests {
             """, UUID.randomUUID(), WORKSPACE_ID, batchId, unitId, issueId,
             projectId, fixture.spaceId(), canonical.item().id());
 
-        var legacy = compatibilityService.resolveLegacyIssue(fixture.owner(), issueId);
-        assertThat(legacy.source()).isEqualTo("legacy");
-        assertThat(legacy.canonicalLocation()).endsWith(canonical.item().id().toString());
-
-        var shadow = compatibilityService.changeCutover(
-            admin(fixture), fixture.spaceId(), ReadStage.SHADOW, true, false, 0
-        );
-        assertThat(shadow.version()).isEqualTo(1);
-        assertThat(compatibilityService.resolveLegacyIssue(fixture.owner(), issueId).source())
-            .isEqualTo("legacy");
-        assertThat(countWhere(
-            "project_work_item_shadow_samples",
-            "workspace_id=? and source_id=?",
-            WORKSPACE_ID,
-            issueId
-        )).isEqualTo(1);
-
-        var canonicalRead = compatibilityService.changeCutover(
-            admin(fixture), fixture.spaceId(), ReadStage.CANONICAL_READ, true, false, 1
-        );
-        assertThat(canonicalRead.version()).isEqualTo(2);
-        assertThat(compatibilityService.resolveLegacyIssue(fixture.owner(), issueId).source())
-            .isEqualTo("canonical");
-
-        compatibilityService.changeCutover(
-            admin(fixture), fixture.spaceId(), ReadStage.CANONICAL_READ, true, true, 2
-        );
-        assertThat(compatibilityService.resolveLegacyIssue(fixture.owner(), issueId).source())
-            .isEqualTo("legacy");
+        assertThat(compatibilityService.canonicalLocation(fixture.owner(), issueId))
+            .isEqualTo("/project-spaces/" + fixture.spaceId() + "/work-items/" + canonical.item().id());
     }
 
     @Test
-    void compatibilityProfileAndWriteClosureFailClosedWithoutLeakingAcrossMembership() throws Exception {
+    void compatibilityProfileAndLocationResolutionFailClosedWithoutLeakingAcrossMembership() throws Exception {
         Fixture fixture = fixture("compat-boundary");
         UUID projectId = UUID.randomUUID();
         UUID issueId = UUID.randomUUID();
@@ -2113,24 +2084,16 @@ class WorkItemServiceIntegrationTests {
         assertThat(profile.issues()).isPositive();
         assertThat(profile.sourceFingerprint()).isNotBlank();
 
-        compatibilityService.changeCutover(
-            admin(fixture),
-            fixture.spaceId(),
-            ReadStage.CANONICAL_WRITE,
-            false,
-            false,
-            0
-        );
-        assertThatThrownBy(() -> compatibilityService.requireLegacyIssueWrite(fixture.owner(), issueId))
-            .isInstanceOf(LegacyWriteClosedException.class)
-            .extracting(exception -> ((LegacyWriteClosedException) exception).canonicalLocation())
-            .isEqualTo("/issues/" + issueId);
+        assertThatThrownBy(() -> compatibilityService.canonicalLocation(fixture.owner(), issueId))
+            .isInstanceOf(WorkItemRuntimeException.class)
+            .extracting(exception -> ((WorkItemRuntimeException) exception).code())
+            .isEqualTo("LEGACY_REFERENCE_RETIRED");
 
         CurrentUser outsider = new CurrentUser(
             UUID.randomUUID(), WORKSPACE_ID, UUID.randomUUID(), "outsider", "Outsider",
             Set.of("member"), Set.of()
         );
-        assertHidden(() -> compatibilityService.resolveLegacyIssue(outsider, issueId));
+        assertHidden(() -> compatibilityService.canonicalLocation(outsider, issueId));
     }
 
     private void insertLegacyIssueFixture(Fixture fixture, UUID projectId, UUID issueId) {

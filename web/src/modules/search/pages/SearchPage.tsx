@@ -114,7 +114,7 @@ export function SearchPage() {
           value={searchFilters.objectTypes}
           options={[
             { value: 'work_item', label: '工作项' },
-            { value: 'issue', label: '事项' },
+            { value: 'work_item', label: '工作项' },
             { value: 'knowledge_content', label: '知识内容' },
             { value: 'base', label: 'Base' },
             { value: 'base_table', label: '数据表' },

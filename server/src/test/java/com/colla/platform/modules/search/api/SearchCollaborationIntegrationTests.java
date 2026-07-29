@@ -14,7 +14,6 @@ import com.colla.platform.modules.event.application.DomainEventWorker;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -46,16 +45,7 @@ class SearchCollaborationIntegrationTests {
         createMember(adminToken, outsiderUsername, "M9 Outsider");
         String outsiderToken = login(outsiderUsername, "member123456", "m9-outsider-" + UUID.randomUUID());
 
-        JsonNode project = createProject(adminToken, memberId);
-        UUID projectId = UUID.fromString(project.get("id").asText());
-        UUID conversationId = UUID.fromString(project.get("conversationId").asText());
-        UUID issueId = createIssue(adminToken, projectId, memberId);
-
-        mockMvc.perform(get("/api/projects/" + projectId + "/stats")
-                .header("Authorization", "Bearer " + memberToken))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.byStatus[?(@.key == 'open')].count").value(hasItem(1)))
-            .andExpect(jsonPath("$.byAssignee[?(@.key == '" + memberId + "')].count").value(hasItem(1)));
+        UUID conversationId = createConversation(adminToken, memberId);
 
         KnowledgeFixture content = createAndUpdateKnowledgeContent(adminToken, memberId);
         mockMvc.perform(get(itemPath(content) + "/versions/diff?fromVersionNo=1&toVersionNo=2")
@@ -114,7 +104,6 @@ class SearchCollaborationIntegrationTests {
                 .header("Authorization", "Bearer " + memberToken))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.items.length()", greaterThanOrEqualTo(4)))
-            .andExpect(jsonPath("$.items[*].objectType").value(hasItem("issue")))
             .andExpect(jsonPath("$.items[*].objectType").value(hasItem("knowledge_content")))
             .andExpect(jsonPath("$.items[*].objectType").value(hasItem("base")))
             .andExpect(jsonPath("$.items[*].objectType").value(hasItem("base_table")))
@@ -253,50 +242,24 @@ class SearchCollaborationIntegrationTests {
         }
     }
 
-    private JsonNode createProject(String token, UUID memberId) throws Exception {
-        String projectKey = ("M9" + UUID.randomUUID().toString().replace("-", ""))
-            .substring(0, 10)
-            .toUpperCase(Locale.ROOT);
-        String response = mockMvc.perform(post("/api/projects")
+    private UUID createConversation(String token, UUID memberId) throws Exception {
+        String response = mockMvc.perform(post("/api/conversations")
                 .header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
                     """
                         {
-                          "projectKey": "%s",
-                          "name": "M9 Project",
+                          "conversationType": "group",
+                          "title": "M9 Search Collaboration",
                           "memberIds": ["%s"]
                         }
-                        """.formatted(projectKey, memberId)
+                        """.formatted(memberId)
                 ))
             .andExpect(status().isOk())
             .andReturn()
             .getResponse()
             .getContentAsString();
-        return objectMapper.readTree(response);
-    }
-
-    private UUID createIssue(String token, UUID projectId, UUID assigneeId) throws Exception {
-        String response = mockMvc.perform(post("/api/projects/" + projectId + "/issues")
-                .header("Authorization", "Bearer " + token)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(
-                    """
-                        {
-                          "issueType": "bug",
-                          "title": "aurora issue search",
-                          "description": "aurora project stats target",
-                          "priority": "high",
-                          "assigneeId": "%s",
-                          "dueAt": "2026-06-01"
-                        }
-                        """.formatted(assigneeId)
-                ))
-            .andExpect(status().isOk())
-            .andReturn()
-            .getResponse()
-            .getContentAsString();
-        return UUID.fromString(objectMapper.readTree(response).get("issue").get("id").asText());
+        return UUID.fromString(objectMapper.readTree(response).get("id").asText());
     }
 
     private KnowledgeFixture createAndUpdateKnowledgeContent(String token, UUID memberId) throws Exception {

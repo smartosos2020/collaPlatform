@@ -1623,3 +1623,25 @@ S09 完成路线已经独立归档，S10 在 Program revision 27 激活为唯一
 - M1 必须先对代码、API、路由、事件、平台对象、数据库、map/batch/unit/provenance、权限和运行流量形成可审计 inventory；未知活动调用方、未映射、重复、悬空或权限偏差不得被默认视为可删除。
 - M2 只按 M1 冻结的 removal decision 退出活动 legacy 产品合同；migration map、batch、provenance、verification、audit/outbox 等不可变证据不得随产品入口一并删除，禁止恢复 legacy 写或建立永久双读双写。
 - M3 的本地/隔离容量、恢复和 route-final 证据不自动授权生产切流；M4 必须由真实研发、市场、HR、交付参与者执行规定任务，AI、维护者或自动化浏览器不能代签人工结论。revision 49 激活不声明任何 S21 实现、生产批准或真人试用事实。
+
+### 29.42 S21-M1 退出审计目标边界
+
+- LegacyUsage/ConsistencyFinding/EvidenceSnapshot/RemovalDecision 是退出治理证据，不是新的业务元模型、授权权威或迁移完成声明；全部绑定 workspace、来源、观测时间和确定性指纹。
+- 代码 surface inventory 与数据库对账必须同时覆盖 owner、读写性、用户可见性、map/batch/unit/provenance、shadow、cutover、failure 和 verification；未知或不完整状态为阻断，不得归零。
+- removal decision 只控制已注册 surface 的 M2 去留，使用 caller-stable request ID/hash 精确重放并追加审计。legacy 历史表与不可变迁移证据默认保留，除非后续有独立备份恢复和物理删除决定。
+- M1 的 isolated Go 仅允许启动 M2 代码清理；生产数据、生产流量和真实团队试用仍分别受 M3/M4 门禁约束。
+
+### 29.43 S21-M2 旧产品合同退出目标边界
+
+- 旧 project/issue 产品 API、DTO、页面、缓存、事件和跨模块写适配器不再属于运行时架构；新增业务只能依赖 Project Space/WorkItem 公共合同。
+- 历史源表和迁移证据不是产品读模型。其唯一允许调用方为明确登记的 migration、compatibility-location、audit 与 recovery owner，且不得创建新的 legacy 事实。
+- `work_item` 是搜索、平台对象、通知目标、消息转换、知识关系和工作台摘要的唯一事项身份；`project_space` 是项目容器身份。
+- V139 是退出恢复锚点：只删除产品注册与派生索引，不物理删除旧源事实或不可变迁移审计证据。生产物理删除仍须后续独立批准。
+
+### 29.44 S21-M3 工程就绪与恢复目标边界
+
+- 容量协议只接受确定性、合成、无个人数据的 `project_space`/`work_item` 四场景夹具。环境、数量、操作、采样、预算和误差必须版本化；本地隔离结果不得转换为生产 SLO、生产容量或切流批准。
+- PostgreSQL 备份必须固定 schema 版本、归档格式、校验和、恢复目标与一致性 digest；恢复在隔离数据库执行全量 Flyway/事实对账，并验证中断事务不会留下部分规范事实。对象存储需要版本、数量和内容校验，Redis 只允许作为可重建缓存/传输状态。
+- 安全门禁必须同时覆盖身份、权限、最小披露、注入/SSRF/文件边界和 legacy route/SQL/event/objectType 禁止项；未知项、P0/P1 或恢复不一致均为 M4 Reopen。
+- 运行/恢复证据入口只暴露当前角色可见的状态、来源、时间和安全诊断，不向浏览器下发数据库、对象存储、Redis 或加密凭据，也不把证据索引当作授权。
+- M3 Go 只允许准备真人试用。M4 的 consent、参与者、任务原始记录、定性反馈和清理撤权必须由真实参与者与试用主持人执行，不能由工程自动化替代。

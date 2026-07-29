@@ -13,7 +13,7 @@ import {
 } from '../src/modules/messenger/realtime/messageReconciliation'
 import {
   projectRealtimeReconciliation,
-} from '../src/modules/projects/realtime/projectReconciliation'
+} from '../src/modules/projectSpaces/realtime/projectReconciliation'
 import type { MessageSummary } from '../src/modules/messenger/api/messengerApi'
 import type { NotificationFilters, UserNotificationView } from '../src/modules/notifications/api/notificationsApi'
 
@@ -95,25 +95,25 @@ test('@smoke @client-contract M3 commits notification list and unread count only
 test('@smoke @client-contract M3 removes and exits only when permission invalidation matches the active object', () => {
   const signal = {
     type: 'permission.invalidated',
-    objectType: 'project',
-    objectId: 'project-a',
+    objectType: 'project_space',
+    objectId: 'space-a',
     calibrationPath: '/api/should-never-be-fetched',
   }
 
   const matching = projectRealtimeReconciliation(signal, {
-    activeResource: { objectType: 'project', objectId: 'project-a' },
+    activeResource: { objectType: 'project_space', objectId: 'space-a' },
   })
   expect(matching.matched).toBeTruthy()
   expect(matching.trigger).toBe('permission-invalidated')
-  expect(matching.remove).toContainEqual({ queryKey: ['projects', 'project-a'], exact: false })
+  expect(matching.remove).toContainEqual({ queryKey: ['project-spaces', 'space-a'], exact: false })
   expect(matching.navigation).toEqual({
     action: 'exit',
-    to: '/projects',
+    to: '/project-spaces',
     reason: 'access-invalidated',
   })
 
   const unrelated = projectRealtimeReconciliation(signal, {
-    activeResource: { objectType: 'project', objectId: 'project-b' },
+    activeResource: { objectType: 'project_space', objectId: 'space-b' },
   })
   expect(unrelated.navigation).toEqual({ action: 'stay' })
 })
@@ -128,18 +128,6 @@ test('@smoke @client-contract M3 routes known signals statically and ignores cal
 
   try {
     const decisions = [
-      projectRealtimeReconciliation({
-        type: 'project.changed',
-        objectType: 'project',
-        objectId: 'project-1',
-        calibrationPath: '/api/admin/users',
-      }),
-      projectRealtimeReconciliation({
-        type: 'issue.invalidated',
-        objectType: 'issue',
-        objectId: 'issue-1',
-        calibrationPath: 'https://example.invalid/collect',
-      }),
       projectRealtimeReconciliation({
         type: 'project_space.changed',
         objectType: 'project_space',
@@ -157,13 +145,10 @@ test('@smoke @client-contract M3 routes known signals statically and ignores cal
     expect(decisions.every((decision) => decision.matched)).toBeTruthy()
     expect(decisions.map((decision) => decision.trigger)).toEqual([
       'object-changed',
-      'access-invalidated',
-      'object-changed',
       'identity-invalidated',
     ])
-    expect(decisions[0].invalidate).toContainEqual({ queryKey: ['projects', 'project-1'], exact: true })
-    expect(decisions[2].invalidate).toContainEqual({ queryKey: ['project-spaces', 'space-1'], exact: false })
-    expect(decisions[3].invalidate).toContainEqual({ queryKey: ['auth', 'me'], exact: false })
+    expect(decisions[0].invalidate).toContainEqual({ queryKey: ['project-spaces', 'space-1'], exact: false })
+    expect(decisions[1].invalidate).toContainEqual({ queryKey: ['auth', 'me'], exact: false })
     expect(fetchCalls).toBe(0)
   } finally {
     globalThis.fetch = originalFetch

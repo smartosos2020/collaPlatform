@@ -8,7 +8,6 @@ import java.util.UUID;
 
 public interface SearchRepository {
     List<String> SUPPORTED_OBJECT_TYPES = List.of(
-        "issue",
         "knowledge_content",
         "base",
         "base_table",

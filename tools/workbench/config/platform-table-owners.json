@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-      "migrationRange": "V001-V137",
+      "migrationRange": "V001-V139",
   "defaultKind": "business",
   "owners": {
     "approval": [
@@ -146,6 +146,9 @@
       "project_dashboard_versions",
       "project_dashboards",
       "project_legacy_space_maps",
+      "project_legacy_audit_findings",
+      "project_legacy_audit_snapshots",
+      "project_legacy_removal_decisions",
       "project_legacy_work_item_maps",
       "project_metric_commands",
       "project_metric_definitions",
@@ -337,6 +340,7 @@
       "knowledge_content_migration_batches",
       "knowledge_content_migration_items",
       "project_legacy_space_maps",
+      "project_legacy_audit_snapshots",
       "project_legacy_work_item_maps",
       "project_node_workflow_backfill_batches",
       "project_node_workflow_backfill_units",
@@ -361,6 +365,9 @@
       "project_node_workflow_join_arrivals",
       "project_node_workflow_task_artifacts",
       "project_node_workflow_votes",
+      "project_legacy_audit_findings",
+      "project_legacy_audit_snapshots",
+      "project_legacy_removal_decisions",
       "project_permission_decision_evidence",
       "project_deliverable_acceptances",
       "project_deliverable_signoffs",

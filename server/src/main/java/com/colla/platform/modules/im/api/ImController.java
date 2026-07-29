@@ -13,14 +13,16 @@ import com.colla.platform.modules.im.domain.ImModels.ConversationSummary;
 import com.colla.platform.modules.im.domain.ImModels.MessagePage;
 import com.colla.platform.modules.im.domain.ImModels.MessageSummary;
 import com.colla.platform.modules.im.domain.ImModels.UnreadState;
-import com.colla.platform.modules.project.application.ProjectService;
-import com.colla.platform.modules.project.domain.ProjectModels.IssueDetail;
+import com.colla.platform.modules.project.contract.WorkItemCreationCommand;
+import com.colla.platform.modules.project.contract.WorkItemCreationCommand.CreatedWorkItem;
 import com.colla.platform.shared.auth.CurrentUser;
+import com.colla.platform.shared.request.RequestBoundaryContext;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
-import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -37,12 +39,12 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/conversations")
 public class ImController {
     private final ImService imService;
-    private final ProjectService projectService;
+    private final WorkItemCreationCommand workItems;
     private final KnowledgeContentService contentService;
 
-    public ImController(ImService imService, ProjectService projectService, KnowledgeContentService contentService) {
+    public ImController(ImService imService, WorkItemCreationCommand workItems, KnowledgeContentService contentService) {
         this.imService = imService;
-        this.projectService = projectService;
+        this.workItems = workItems;
         this.contentService = contentService;
     }
 
@@ -166,24 +168,25 @@ public class ImController {
         ));
     }
 
-    @PostMapping("/{conversationId}/messages/{messageId}/convert-to-issue")
-    public IssueDetail convertMessageToIssue(
+    @PostMapping("/{conversationId}/messages/{messageId}/convert-to-work-item")
+    public CreatedWorkItem convertMessageToWorkItem(
         @PathVariable UUID conversationId,
         @PathVariable UUID messageId,
-        @Valid @RequestBody ConvertMessageToIssueRequest request,
+        @Valid @RequestBody ConvertMessageToWorkItemRequest request,
         Authentication authentication
     ) {
-        return projectService.createIssueFromMessage(
-            currentUser(authentication),
-            request.projectId(),
-            conversationId,
-            messageId,
-            request.issueType(),
-            request.title(),
-            request.description(),
-            request.priority(),
-            request.assigneeId(),
-            request.dueAt()
+        CurrentUser user = currentUser(authentication);
+        MessageSummary source = imService.getMessage(user, conversationId, messageId);
+        String title = request.title() == null || request.title().isBlank()
+            ? defaultKnowledgeContentTitleFromMessage(source)
+            : request.title().trim();
+        return workItems.create(
+            user,
+            request.projectSpaceId(),
+            request.workItemTypeId(),
+            title,
+            Map.of(),
+            RequestBoundaryContext.current().requestId()
         );
     }
 
@@ -285,14 +288,11 @@ public class ImController {
     ) {
     }
 
-    public record ConvertMessageToIssueRequest(
-        UUID projectId,
-        String issueType,
+    public record ConvertMessageToWorkItemRequest(
+        @NotNull UUID projectSpaceId,
+        @NotNull UUID workItemTypeId,
         @Size(max = 255) String title,
-        String description,
-        String priority,
-        UUID assigneeId,
-        LocalDate dueAt
+        String description
     ) {
     }
 

@@ -161,28 +161,6 @@ class WorkItemMigrationServiceIntegrationTests {
     }
 
     @Test
-    void postCutoverRollbackEnablesKillSwitchAndRequiresCompensation() throws Exception {
-        Fixture fixture = fixture("post-cutover", false);
-        var batch = service.plan(fixture.admin(), false, 0);
-        service.execute(fixture.admin(), batch.id(), "cutover-worker");
-        compatibilityService.changeCutover(
-            fixture.admin(), fixture.spaceId(),
-            com.colla.platform.modules.project.domain.WorkItemCompatibilityModels.ReadStage.CANONICAL_WRITE,
-            false, false, 0
-        );
-
-        assertThatThrownBy(() -> service.rollback(fixture.admin(), batch.id(), true))
-            .isInstanceOf(WorkItemRuntimeException.class)
-            .extracting(error -> ((WorkItemRuntimeException) error).code())
-            .isEqualTo("POST_CUTOVER_COMPENSATION_REQUIRED");
-        assertThat(jdbc.queryForObject("""
-            select kill_switch_enabled from project_work_item_cutovers
-             where workspace_id=? and space_id=?
-            """, Boolean.class, fixture.workspaceId(), fixture.spaceId())).isTrue();
-        assertThat(count("project_work_items", fixture.workspaceId())).isEqualTo(2);
-    }
-
-    @Test
     void appendOnlyHistoryAndBatchIdentityCannotBeRewritten() throws Exception {
         Fixture fixture = fixture("immutable", false);
         var batch = service.plan(fixture.admin(), false, 0);

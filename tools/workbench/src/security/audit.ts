@@ -16,7 +16,7 @@ export function runSecurityAudit(root: string, writeReport = true): { failures: 
   for (const path of [
     'server/src/main/java/com/colla/platform/modules/identity/application/AuthService.java',
     'server/src/main/java/com/colla/platform/modules/identity/application/MemberService.java',
-    'server/src/main/java/com/colla/platform/modules/project/application/ProjectService.java',
+    'server/src/main/java/com/colla/platform/modules/project/application/ProjectSpaceService.java',
     'server/src/main/java/com/colla/platform/modules/knowledge/application/KnowledgeContentService.java',
     'server/src/main/java/com/colla/platform/modules/base/application/BaseService.java',
     'server/src/main/java/com/colla/platform/modules/approval/application/ApprovalService.java',

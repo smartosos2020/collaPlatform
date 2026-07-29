@@ -40,7 +40,9 @@ import {
   markObjectAccessed,
   removeObjectFavorite,
 } from '../../../platform/api/platformObjectsApi'
-import { listDirectoryMembers, listProjects } from '../../../projects/api/projectsApi'
+import { listDirectoryMembers } from '../../../../shared/api/directoryApi'
+import { listProjectSpaces } from '../../../projectSpaces/api/projectSpacesApi'
+import { listActiveWorkItemTypes } from '../../../projectSpaces/api/workItemTypesApi'
 import { listUserGroups } from '../../../admin/api/userGroupsApi'
 import { getFileDownloadUrl } from '../../../files/api/filesApi'
 import { ResourcePermissionsModal } from '../../../permissions/components/ResourcePermissionsModal'
@@ -61,7 +63,7 @@ import {
   addKnowledgeContentCommentReply,
   addKnowledgeContentRelation,
   createKnowledgeContentCheckpoint,
-  createIssueFromKnowledgeSelection,
+  createWorkItemFromKnowledgeSelection,
   createNamedKnowledgeContentVersion,
   diffKnowledgeContentVersions,
   getKnowledgeContent,
@@ -140,18 +142,15 @@ type TemplateForm = {
   title?: string
 }
 
-type SelectionIssueForm = {
-  projectId: string
-  issueType: 'requirement' | 'task' | 'bug'
+type SelectionWorkItemForm = {
+  projectSpaceId: string
+  workItemTypeId: string
   title?: string
   description?: string
-  priority?: 'low' | 'medium' | 'high' | 'urgent'
-  assigneeId?: string
-  dueAt?: string
 }
 
 type RelationForm = {
-  targetType: 'issue' | 'base' | 'base_table' | 'base_record' | 'file' | 'message' | 'approval' | 'knowledge_content'
+  targetType: 'work_item' | 'base' | 'base_table' | 'base_record' | 'file' | 'message' | 'approval' | 'knowledge_content'
   targetId: string
 }
 
@@ -229,7 +228,7 @@ export function KnowledgeContentPage() {
   const [namedVersionOpen, setNamedVersionOpen] = useState(false)
   const [importMarkdownOpen, setImportMarkdownOpen] = useState(false)
   const [templateOpen, setTemplateOpen] = useState(false)
-  const [selectionIssueOpen, setSelectionIssueOpen] = useState(false)
+  const [selectionWorkItemOpen, setSelectionWorkItemOpen] = useState(false)
   const [commentDraft, setCommentDraft] = useState('')
   const [commentBlockId, setCommentBlockId] = useState<string | undefined>()
   const [commentAnchor, setCommentAnchor] = useState<KnowledgeContentEditorSelectionAnchor | undefined>()
@@ -279,7 +278,8 @@ export function KnowledgeContentPage() {
   const [namedVersionForm] = Form.useForm<NamedVersionForm>()
   const [importMarkdownForm] = Form.useForm<ImportMarkdownForm>()
   const [templateForm] = Form.useForm<TemplateForm>()
-  const [selectionIssueForm] = Form.useForm<SelectionIssueForm>()
+  const [selectionWorkItemForm] = Form.useForm<SelectionWorkItemForm>()
+  const selectedWorkItemSpaceId = Form.useWatch('projectSpaceId', selectionWorkItemForm)
   const [relationForm] = Form.useForm<RelationForm>()
 
   const itemsQuery = useQuery({
@@ -308,7 +308,12 @@ export function KnowledgeContentPage() {
     queryKey: ['admin', 'user-groups', 'active'],
     queryFn: () => listUserGroups({ activeOnly: true }),
   })
-  const projectsQuery = useQuery({ queryKey: ['projects'], queryFn: listProjects })
+  const projectSpacesQuery = useQuery({ queryKey: ['project-spaces'], queryFn: listProjectSpaces })
+  const workItemTypesQuery = useQuery({
+    queryKey: ['project-spaces', selectedWorkItemSpaceId, 'work-item-types'],
+    queryFn: () => listActiveWorkItemTypes(selectedWorkItemSpaceId || ''),
+    enabled: Boolean(selectedWorkItemSpaceId),
+  })
   const templatesQuery = useQuery({ queryKey: ['knowledge-base-items', spaceId, 'templates'], queryFn: () => listKnowledgeBaseTemplates(spaceId || ''), enabled: Boolean(spaceId) })
   const recentObjectsQuery = useQuery({ queryKey: ['platform', 'recent', 'docs'], queryFn: () => listRecentObjects(30) })
   const favoriteObjectsQuery = useQuery({ queryKey: ['platform', 'favorites', 'docs'], queryFn: () => listFavoriteObjects(50) })
@@ -824,26 +829,23 @@ export function KnowledgeContentPage() {
     onError: () => message.error('移除关联失败'),
   })
 
-  const selectionIssueMutation = useMutation({
-    mutationFn: (values: SelectionIssueForm) =>
-      createIssueFromKnowledgeSelection(spaceId || '', activeItemId || '', {
-        projectId: values.projectId,
-        issueType: values.issueType,
+  const selectionWorkItemMutation = useMutation({
+    mutationFn: (values: SelectionWorkItemForm) =>
+      createWorkItemFromKnowledgeSelection(spaceId || '', activeItemId || '', {
+        projectSpaceId: values.projectSpaceId,
+        workItemTypeId: values.workItemTypeId,
         title: values.title,
         description: values.description,
-        priority: values.priority ?? 'medium',
-        assigneeId: values.assigneeId,
-        dueAt: values.dueAt,
         anchorStart: commentAnchor?.anchorStart,
         anchorEnd: commentAnchor?.anchorEnd,
         anchorText: commentAnchor?.anchorText,
       }),
-    onSuccess: async (detail) => {
-      setSelectionIssueOpen(false)
-      selectionIssueForm.resetFields()
+    onSuccess: async (created) => {
+      setSelectionWorkItemOpen(false)
+      selectionWorkItemForm.resetFields()
       message.success('已从选区创建事项')
       await refreshKnowledgeContent()
-      navigate(`/issues/${detail.issue.id}`)
+      navigate(created.webPath)
     },
     onError: () => message.error('从选区创建事项失败'),
   })
@@ -1186,19 +1188,17 @@ export function KnowledgeContentPage() {
     }
   }
 
-  const openSelectionIssue = () => {
+  const openSelectionWorkItem = () => {
     if (!commentAnchor) {
       message.warning('请先选择内容正文')
       return
     }
-    selectionIssueForm.setFieldsValue({
-      projectId: projectsQuery.data?.[0]?.id,
-      issueType: 'task',
-      priority: 'medium',
+    selectionWorkItemForm.setFieldsValue({
+      projectSpaceId: projectSpacesQuery.data?.[0]?.id,
       title: commentAnchor.anchorText.replace(/\s+/g, ' ').trim().slice(0, 120),
       description: '',
     })
-    setSelectionIssueOpen(true)
+    setSelectionWorkItemOpen(true)
   }
 
   return (
@@ -1455,7 +1455,7 @@ export function KnowledgeContentPage() {
               importMarkdownForm.setFieldsValue({ title: titleDraft, content: contentDraft })
               setImportMarkdownOpen(true)
             }}
-            onOpenSelectionIssue={openSelectionIssue}
+            onOpenSelectionWorkItem={openSelectionWorkItem}
             knowledgeMetadataForm={knowledgeMetadataForm}
             knowledgeMaintainerOptions={(membersQuery.data ?? []).map((member) => ({
               label: `${member.displayName} @${member.username}`,
@@ -1625,57 +1625,35 @@ export function KnowledgeContentPage() {
 
       <Modal
         title="从选区创建事项"
-        open={selectionIssueOpen}
-        onCancel={() => setSelectionIssueOpen(false)}
-        onOk={() => selectionIssueForm.submit()}
-        confirmLoading={selectionIssueMutation.isPending}
+        open={selectionWorkItemOpen}
+        onCancel={() => setSelectionWorkItemOpen(false)}
+        onOk={() => selectionWorkItemForm.submit()}
+        confirmLoading={selectionWorkItemMutation.isPending}
       >
-        <Form form={selectionIssueForm} layout="vertical" onFinish={(values) => selectionIssueMutation.mutate(values)}>
-          <Form.Item name="projectId" label="项目" rules={[{ required: true, message: '请选择项目' }]}>
+        <Form form={selectionWorkItemForm} layout="vertical" onFinish={(values) => selectionWorkItemMutation.mutate(values)}>
+          <Form.Item name="projectSpaceId" label="项目空间" rules={[{ required: true, message: '请选择项目空间' }]}>
             <Select
               showSearch
               optionFilterProp="label"
-              options={(projectsQuery.data ?? []).map((project) => ({
-                value: project.id,
-                label: `${project.name} (${project.projectKey})`,
+              onChange={() => selectionWorkItemForm.setFieldValue('workItemTypeId', undefined)}
+              options={(projectSpacesQuery.data ?? []).map((projectSpace) => ({
+                value: projectSpace.id,
+                label: `${projectSpace.name} (${projectSpace.spaceKey})`,
               }))}
             />
           </Form.Item>
-          <Form.Item name="issueType" label="类型" initialValue="task">
+          <Form.Item name="workItemTypeId" label="事项类型" rules={[{ required: true, message: '请选择事项类型' }]}>
             <Select
-              options={[
-                { value: 'requirement', label: '需求' },
-                { value: 'task', label: '任务' },
-                { value: 'bug', label: 'Bug' },
-              ]}
+              disabled={!selectedWorkItemSpaceId}
+              loading={workItemTypesQuery.isLoading}
+              options={(workItemTypesQuery.data ?? []).map((type) => ({
+                value: type.id,
+                label: `${type.name} (${type.typeKey})`,
+              }))}
             />
           </Form.Item>
           <Form.Item name="title" label="标题">
             <Input />
-          </Form.Item>
-          <Form.Item name="priority" label="优先级" initialValue="medium">
-            <Select
-              options={[
-                { value: 'low', label: '低' },
-                { value: 'medium', label: '中' },
-                { value: 'high', label: '高' },
-                { value: 'urgent', label: '紧急' },
-              ]}
-            />
-          </Form.Item>
-          <Form.Item name="assigneeId" label="负责人">
-            <Select
-              allowClear
-              showSearch
-              optionFilterProp="label"
-              options={(membersQuery.data ?? []).map((member) => ({
-                value: member.id,
-                label: `${member.displayName} @${member.username}`,
-              }))}
-            />
-          </Form.Item>
-          <Form.Item name="dueAt" label="截止时间">
-            <Input type="date" />
           </Form.Item>
           <Form.Item name="description" label="补充描述">
             <Input.TextArea rows={3} />
@@ -1821,10 +1799,10 @@ export function KnowledgeContentPage() {
         confirmLoading={relationMutation.isPending}
       >
         <Form form={relationForm} layout="vertical" onFinish={(values) => relationMutation.mutate(values)}>
-          <Form.Item name="targetType" label="对象类型" initialValue="issue" rules={[{ required: true }]}>
+          <Form.Item name="targetType" label="对象类型" initialValue="work_item" rules={[{ required: true }]}>
             <Select
               options={[
-                { label: '事项', value: 'issue' },
+                { label: '工作项', value: 'work_item' },
                 { label: '表格空间', value: 'base' },
                 { label: '数据表', value: 'base_table' },
                 { label: '表格记录', value: 'base_record' },
@@ -2039,7 +2017,7 @@ function KnowledgeContentWorkspace({
   removingRelationId,
   onOpenNamedVersion,
   onOpenImportMarkdown,
-  onOpenSelectionIssue,
+  onOpenSelectionWorkItem,
   knowledgeMetadataForm,
   knowledgeMaintainerOptions,
   onSaveKnowledgeMetadata,
@@ -2093,7 +2071,7 @@ function KnowledgeContentWorkspace({
   removingRelationId?: string
   onOpenNamedVersion: () => void
   onOpenImportMarkdown: () => void
-  onOpenSelectionIssue: () => void
+  onOpenSelectionWorkItem: () => void
   knowledgeMetadataForm: FormInstance<KnowledgeMetadataForm>
   knowledgeMaintainerOptions: Array<{ label: string; value: string }>
   onSaveKnowledgeMetadata: (values: KnowledgeMetadataForm) => void
@@ -2570,7 +2548,7 @@ function KnowledgeContentWorkspace({
               <div className="doc-comment-anchor-preview">
                 <Tag color="blue">选区</Tag>
                 <Typography.Text type="secondary">{commentAnchor.anchorText}</Typography.Text>
-                <Button size="small" disabled={!canEdit} onClick={onOpenSelectionIssue}>
+                <Button size="small" disabled={!canEdit} onClick={onOpenSelectionWorkItem}>
                   转事项
                 </Button>
               </div>
@@ -2855,7 +2833,7 @@ function blockTypeText(blockType: string) {
     table: '表格',
     embed: '对象卡片',
     base_view: 'Base 视图',
-    issue_embed: '事项/BUG',
+    issue_embed: '工作项',
     message_embed: '消息',
     file_embed: '文件',
     link: '内部链接',

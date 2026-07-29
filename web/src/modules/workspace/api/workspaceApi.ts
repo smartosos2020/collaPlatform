@@ -4,11 +4,10 @@ import type { BaseSummary } from '../../bases/api/basesApi'
 import type { ConversationSummary } from '../../messenger/api/messengerApi'
 import type { NotificationItem } from '../../notifications/api/notificationsApi'
 import type { PlatformObjectSummary } from '../../platform/api/platformObjectsApi'
-import type { IssueSummary } from '../../projects/api/projectsApi'
 
 export type UserWorkspaceDashboardView = {
   personalWork: PersonalWorkPage
-  myIssues: IssueSummary[]
+  myWorkItems: PersonalWorkItem[]
   approvalTodos: ApprovalTaskSummary[]
   unreadMessageCount: number
   unreadConversations: ConversationSummary[]
@@ -21,7 +20,7 @@ export type UserWorkspaceDashboardView = {
   draftSummaries: DraftSummary[]
   dashboardLayout: DashboardLayout
   navigationSummary?: {
-    issueCount: number
+    workItemCount: number
     knowledgeContentCount: number
     baseCount: number
     unreadConversationCount: number

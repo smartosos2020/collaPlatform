@@ -1,6 +1,6 @@
 import { apiDelete, apiGet, apiGetText, apiPatch, apiPost } from '../../../../shared/api/httpClient'
 import type { PlatformObjectSummary } from '../../../platform/api/platformObjectsApi'
-import type { IssueDetail } from '../../../projects/api/projectsApi'
+import type { CreatedWorkItemReference } from '../../../projectSpaces/api/workItemsApi'
 import type { JSONContent } from '@tiptap/react'
 
 export type KnowledgeBaseItem = {
@@ -165,7 +165,19 @@ export const revokeKnowledgeContentShareLink = (spaceId: string, itemId: string)
 export const requestKnowledgeContentPermission = (spaceId: string, itemId: string, request: { permissionLevel: string; reason?: string }) => apiPost<KnowledgeContentPermissionRequest>(`${contentPath(spaceId, itemId)}/permission-requests`, request)
 export const addKnowledgeContentRelation = (spaceId: string, itemId: string, request: { targetType: string; targetId: string }) => apiPost<KnowledgeContentDetail>(`${contentPath(spaceId, itemId)}/relations`, request)
 export function removeKnowledgeContentRelation(spaceId: string, itemId: string, targetType: string, targetId: string) { const params = new URLSearchParams({ targetType, targetId }); return apiDelete<KnowledgeContentDetail>(`${contentPath(spaceId, itemId)}/relations?${params}`) }
-export const createIssueFromKnowledgeSelection = (spaceId: string, itemId: string, request: { projectId: string; issueType?: string; title?: string; description?: string; priority?: string; assigneeId?: string; dueAt?: string; anchorStart?: number; anchorEnd?: number; anchorText?: string }) => apiPost<IssueDetail>(`${contentPath(spaceId, itemId)}/issues/from-selection`, request)
+export const createWorkItemFromKnowledgeSelection = (
+  spaceId: string,
+  itemId: string,
+  request: {
+    projectSpaceId: string
+    workItemTypeId: string
+    title?: string
+    description?: string
+    anchorStart?: number
+    anchorEnd?: number
+    anchorText?: string
+  },
+) => apiPost<CreatedWorkItemReference>(`${contentPath(spaceId, itemId)}/work-items/from-selection`, request)
 export type AddKnowledgeContentCommentRequest = { blockId?: string | null; anchorType?: KnowledgeContentComment['anchorType']; anchorStart?: number | null; anchorEnd?: number | null; anchorText?: string | null; anchorPrefix?: string | null; anchorSuffix?: string | null; content: string }
 export const addKnowledgeContentComment = (spaceId: string, itemId: string, request: AddKnowledgeContentCommentRequest) => apiPost<KnowledgeContentDetail>(`${contentPath(spaceId, itemId)}/comments`, request)
 export const addKnowledgeContentCommentReply = (spaceId: string, itemId: string, commentId: string, request: { content: string }) => apiPost<KnowledgeContentDetail>(`${contentPath(spaceId, itemId)}/comments/${commentId}/replies`, request)

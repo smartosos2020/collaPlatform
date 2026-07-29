@@ -157,17 +157,6 @@ function identityDecision(
 }
 
 function changedQueryActions(objectType: string, objectId: string): QueryAction[] {
-  if (objectType === 'project') {
-    return [
-      action(['projects'], true),
-      action(['projects', objectId], true),
-      action(['projects', objectId, 'stats'], false),
-      action(['projects', objectId, 'issues'], false),
-    ]
-  }
-  if (objectType === 'issue') {
-    return [action(['issues', objectId], false), action(['projects'], false)]
-  }
   if (objectType === 'project_space') {
     return [action(['project-spaces'], true), action(['project-spaces', objectId], false)]
   }
@@ -175,10 +164,6 @@ function changedQueryActions(objectType: string, objectId: string): QueryAction[
 }
 
 function protectedQueryActions(objectType: string, objectId: string): QueryAction[] {
-  if (objectType === 'project') {
-    return [action(['projects', objectId], false), action(['issues'], false)]
-  }
-  if (objectType === 'issue') return [action(['issues', objectId], false)]
   if (objectType === 'project_space') return [action(['project-spaces', objectId], false)]
   if (objectType === 'base') return [action(['bases', objectId], false)]
   if (objectType === 'knowledge_base') {
@@ -189,7 +174,6 @@ function protectedQueryActions(objectType: string, objectId: string): QueryActio
 }
 
 function listQueryActions(objectType: string): QueryAction[] {
-  if (objectType === 'project' || objectType === 'issue') return [action(['projects'], true)]
   if (objectType === 'project_space') return [action(['project-spaces'], true)]
   if (objectType === 'base') return [action(['bases'], true)]
   if (objectType === 'knowledge_base' || objectType === 'knowledge_content') {
@@ -220,7 +204,6 @@ function accessNavigation(
 }
 
 function safeExitTarget(objectType: string) {
-  if (objectType === 'project' || objectType === 'issue') return '/projects'
   if (objectType === 'project_space') return '/project-spaces'
   if (objectType === 'base') return '/bases'
   if (objectType === 'knowledge_base' || objectType === 'knowledge_content') return '/knowledge-bases'

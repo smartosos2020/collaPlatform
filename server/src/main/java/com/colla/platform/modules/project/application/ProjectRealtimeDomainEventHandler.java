@@ -3,7 +3,6 @@ package com.colla.platform.modules.project.application;
 import com.colla.platform.modules.event.contract.DomainEventHandler;
 import com.colla.platform.modules.event.contract.DomainEventHandlingException;
 import com.colla.platform.modules.event.contract.TransactionalOutbox;
-import com.colla.platform.modules.project.infrastructure.ProjectRepository;
 import com.colla.platform.modules.project.infrastructure.ProjectSpaceMembershipRepository;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -16,31 +15,22 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Component
 public class ProjectRealtimeDomainEventHandler implements DomainEventHandler {
-    static final String PROJECT_CHANGED = "project.changed";
-    static final String ISSUE_CHANGED = "issue.changed";
     static final String PROJECT_SPACE_CHANGED = "project_space.changed";
 
     private static final Descriptor DESCRIPTOR = new Descriptor(
         "project.realtime-invalidation",
         1,
-        Set.of(
-            new Subscription(PROJECT_CHANGED, 1),
-            new Subscription(ISSUE_CHANGED, 1),
-            new Subscription(PROJECT_SPACE_CHANGED, 1)
-        ),
+        Set.of(new Subscription(PROJECT_SPACE_CHANGED, 1)),
         true
     );
 
-    private final ProjectRepository projectRepository;
     private final ProjectSpaceMembershipRepository membershipRepository;
     private final TransactionalOutbox outbox;
 
     public ProjectRealtimeDomainEventHandler(
-        ProjectRepository projectRepository,
         ProjectSpaceMembershipRepository membershipRepository,
         @Lazy TransactionalOutbox outbox
     ) {
-        this.projectRepository = projectRepository;
         this.membershipRepository = membershipRepository;
         this.outbox = outbox;
     }
@@ -80,19 +70,6 @@ public class ProjectRealtimeDomainEventHandler implements DomainEventHandler {
 
     private SignalTarget target(EventMessage event) {
         return switch (event.eventType()) {
-            case PROJECT_CHANGED -> new SignalTarget(
-                "project", event.aggregateId(), "project.changed",
-                "/api/projects/" + event.aggregateId(),
-                projectRepository.listProjectMemberIds(event.workspaceId(), event.aggregateId())
-            );
-            case ISSUE_CHANGED -> {
-                UUID projectId = requiredUuid(event.payload(), "projectId");
-                yield new SignalTarget(
-                    "issue", event.aggregateId(), "issue.changed",
-                    "/api/issues/" + event.aggregateId(),
-                    projectRepository.listProjectMemberIds(event.workspaceId(), projectId)
-                );
-            }
             case PROJECT_SPACE_CHANGED -> new SignalTarget(
                 "project_space", event.aggregateId(), "project_space.changed",
                 "/api/project-spaces/" + event.aggregateId(),
@@ -104,11 +81,6 @@ public class ProjectRealtimeDomainEventHandler implements DomainEventHandler {
                 "Unsupported project realtime event: " + event.eventType()
             );
         };
-    }
-
-    private static UUID requiredUuid(Map<String, Object> payload, String key) {
-        return optionalUuid(payload, key)
-            .orElseThrow(() -> new DomainEventHandlingException.Permanent("Missing project realtime " + key));
     }
 
     private static java.util.Optional<UUID> optionalUuid(Map<String, Object> payload, String key) {

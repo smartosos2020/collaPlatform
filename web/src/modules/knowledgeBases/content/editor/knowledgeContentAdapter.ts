@@ -186,7 +186,7 @@ function objectBlockToTiptap(block: KnowledgeContentEditorBlock, type: string): 
 }
 
 function objectCardNodeToBlockDraft(node: JSONContent): KnowledgeContentBlockDraft {
-  const objectType = String(node.attrs?.objectType ?? 'issue')
+  const objectType = String(node.attrs?.objectType ?? 'work_item')
   const objectId = String(node.attrs?.objectId ?? '')
   const viewId = String(node.attrs?.viewId ?? '')
   const blockType = blockTypeForObjectType(objectType)
@@ -240,7 +240,7 @@ function fileCardNodeToBlockDraft(node: JSONContent): KnowledgeContentBlockDraft
 
 function blockTypeForObjectType(objectType: string): KnowledgeContentBlockDraft['blockType'] {
   if (objectType === 'base_table') return 'base_view'
-  if (objectType === 'issue') return 'issue_embed'
+  if (objectType === 'work_item') return 'issue_embed'
   if (objectType === 'message') return 'message_embed'
   if (objectType === 'file') return 'file_embed'
   if (objectType === 'external_link') return 'link_card'
@@ -249,7 +249,7 @@ function blockTypeForObjectType(objectType: string): KnowledgeContentBlockDraft[
 
 function objectTypeForBlockType(blockType: string) {
   if (blockType === 'base_view') return 'base_table'
-  if (blockType === 'issue_embed') return 'issue'
+  if (blockType === 'issue_embed') return 'work_item'
   if (blockType === 'message_embed') return 'message'
   if (blockType === 'file_embed') return 'file'
   if (blockType === 'link_card') return 'external_link'

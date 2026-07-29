@@ -5,10 +5,9 @@ import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.Knowle
 import com.colla.platform.modules.knowledge.domain.KnowledgeBaseItemModels.KnowledgeBaseItem;
 import com.colla.platform.modules.knowledge.domain.KnowledgeContentModels.KnowledgeContentContext;
 import com.colla.platform.modules.event.contract.TransactionalOutbox;
-import com.colla.platform.modules.project.application.ProjectService;
-import com.colla.platform.modules.project.domain.ProjectModels.IssueDetail;
+import com.colla.platform.modules.project.contract.WorkItemCreationCommand;
+import com.colla.platform.modules.project.contract.WorkItemCreationCommand.CreatedWorkItem;
 import com.colla.platform.shared.auth.CurrentUser;
-import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -19,36 +18,34 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class KnowledgeContentCrossModuleService {
     private final KnowledgeContentService contentService;
-    private final ProjectService projectService;
+    private final WorkItemCreationCommand workItems;
     private final TransactionalOutbox eventRepository;
     private final AuditService auditService;
 
     public KnowledgeContentCrossModuleService(
         KnowledgeContentService contentService,
-        ProjectService projectService,
+        WorkItemCreationCommand workItems,
         TransactionalOutbox eventRepository,
         AuditService auditService
     ) {
         this.contentService = contentService;
-        this.projectService = projectService;
+        this.workItems = workItems;
         this.eventRepository = eventRepository;
         this.auditService = auditService;
     }
 
     @Transactional
-    public IssueDetail createIssueFromSelection(
+    public CreatedWorkItem createWorkItemFromSelection(
         CurrentUser currentUser,
         UUID itemId,
-        UUID projectId,
-        String issueType,
+        UUID projectSpaceId,
+        UUID workItemTypeId,
         String title,
         String description,
-        String priority,
-        UUID assigneeId,
-        LocalDate dueAt,
         Integer anchorStart,
         Integer anchorEnd,
-        String anchorText
+        String anchorText,
+        String requestId
     ) {
         KnowledgeContent documentDetail = contentService.getContent(currentUser, itemId);
         KnowledgeBaseItem document = documentDetail.item();
@@ -57,36 +54,40 @@ public class KnowledgeContentCrossModuleService {
             ? defaultIssueTitleFromSelection(document, selectedText)
             : title.trim();
         KnowledgeContentContext knowledgeContext = contentService.knowledgeContext(currentUser, itemId);
-        IssueDetail created = projectService.createIssue(
+        CreatedWorkItem created = workItems.create(
             currentUser,
-            projectId,
-            issueType == null || issueType.isBlank() ? "task" : issueType,
+            projectSpaceId,
+            workItemTypeId,
             normalizedTitle,
-            documentIssueDescription(document, knowledgeContext, selectedText, description, anchorStart, anchorEnd),
-            priority,
-            assigneeId,
-            dueAt
+            Map.of(),
+            requestId
         );
-        UUID issueId = created.issue().id();
-        contentService.addRelation(currentUser, itemId, "issue", issueId);
-        projectService.addRelation(currentUser, issueId, "knowledge_content", itemId);
+        UUID workItemId = created.id();
+        contentService.addRelation(currentUser, itemId, "work_item", workItemId);
         eventRepository.append(
             currentUser.workspaceId(),
-            "knowledge.content.issue.created_from_selection",
+            "knowledge.content.work_item.created_from_selection",
             "knowledge_content",
             itemId,
             currentUser.id(),
-            Map.of("itemId", itemId.toString(), "issueId", issueId.toString()),
-            "knowledge.content.issue.created_from_selection:" + itemId + ":" + issueId
+            Map.of(
+                "itemId", itemId.toString(),
+                "workItemId", workItemId.toString(),
+                "projectSpaceId", projectSpaceId.toString(),
+                "sourceFingerprint", Integer.toHexString(
+                    documentIssueDescription(document, knowledgeContext, selectedText, description, anchorStart, anchorEnd).hashCode()
+                )
+            ),
+            "knowledge.content.work_item.created_from_selection:" + itemId + ":" + workItemId
         );
         auditService.log(
             currentUser,
-            "knowledge.content.issue.created_from_selection",
+            "knowledge.content.work_item.created_from_selection",
             "knowledge_content",
             itemId,
-            Map.of("issueId", issueId.toString())
+            Map.of("workItemId", workItemId.toString(), "projectSpaceId", projectSpaceId.toString())
         );
-        return projectService.getIssue(currentUser, issueId);
+        return created;
     }
 
     private String defaultIssueTitleFromSelection(KnowledgeBaseItem document, String selectedText) {

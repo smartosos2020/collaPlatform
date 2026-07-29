@@ -21,17 +21,10 @@ import {
   type NotificationReconciliationTrigger,
 } from '../../modules/notifications/realtime/notificationReconciliation'
 import {
-  getIssue,
-  getProject,
-  type UserIssueDetailView,
-  type UserProjectDetailView,
-} from '../../modules/projects/api/projectsApi'
-import {
   applyReconciliationDecision,
   projectRealtimeReconciliation,
   type ActiveRealtimeResource,
-} from '../../modules/projects/realtime/projectReconciliation'
-import { ApiRequestError } from '../../shared/api/httpClient'
+} from '../../modules/projectSpaces/realtime/projectReconciliation'
 import {
   RealtimeProvider,
   useRealtimeCalibration,
@@ -55,10 +48,6 @@ const APPLICATION_SIGNAL_TYPES: readonly KnownRealtimeType[] = [
   'conversation.updated',
   'conversation.read',
   'unread.changed',
-  'project.changed',
-  'project.invalidated',
-  'issue.changed',
-  'issue.invalidated',
   'project_space.changed',
   'project_space.invalidated',
   'permission.invalidated',
@@ -66,8 +55,6 @@ const APPLICATION_SIGNAL_TYPES: readonly KnownRealtimeType[] = [
 ]
 
 const PROTECTED_QUERY_PREFIXES = [
-  ['projects'],
-  ['issues'],
   ['project-spaces'],
   ['bases'],
   ['knowledge-bases'],
@@ -177,9 +164,6 @@ function ApplicationRealtimeRouter() {
 
   const reconcileProjectSignal = useCallback(
     async (signal: RealtimeEnvelope) => {
-      const activeIssueProjectId = activeResource?.objectType === 'issue'
-        ? queryClient.getQueryData<UserIssueDetailView>(['issues', activeResource.objectId])?.issue.projectId
-        : undefined
       if (signal.type === 'identity.invalidated' &&
         signal.objectType === 'user' &&
         signal.objectId === currentUser?.id) {
@@ -190,22 +174,12 @@ function ApplicationRealtimeRouter() {
 
       const decision = projectRealtimeReconciliation(signal, {
         currentUserId: currentUser?.id,
-        activeResource: signal.type === 'permission.invalidated' ? null : activeResource,
+        activeResource,
       })
       const navigation = await applyReconciliationDecision(queryClient, decision)
       if (navigation.action === 'exit') {
         navigate(navigation.to, { replace: true })
         return
-      }
-
-      if (signal.type === 'permission.invalidated') {
-        await verifyActiveProjectAccess(
-          signal,
-          activeResource,
-          activeIssueProjectId,
-          queryClient,
-          navigate,
-        )
       }
     },
     [activeResource, currentUser?.id, navigate, queryClient],
@@ -221,7 +195,6 @@ function ApplicationRealtimeRouter() {
       const run = Promise.allSettled([
         reconcileNotifications(notificationTrigger),
         reconcileIm(messageTrigger),
-        queryClient.invalidateQueries({ queryKey: ['projects'] }),
         queryClient.invalidateQueries({ queryKey: ['project-spaces'] }),
         queryClient.invalidateQueries({ queryKey: ['resource-permissions'] }),
       ]).then((results) => results.every((result) => result.status === 'fulfilled'))
@@ -306,12 +279,6 @@ function isImSignal(type: KnownRealtimeType) {
 
 function activeResourceFromPath(pathname: string): ActiveRealtimeResource | null {
   const segments = pathname.split('/').filter(Boolean)
-  if (segments[0] === 'projects' && segments[1]) {
-    return { objectType: 'project', objectId: segments[1] }
-  }
-  if (segments[0] === 'issues' && segments[1]) {
-    return { objectType: 'issue', objectId: segments[1] }
-  }
   if (segments[0] === 'project-spaces' && segments[1]) {
     return { objectType: 'project_space', objectId: segments[1] }
   }
@@ -325,37 +292,6 @@ function activeResourceFromPath(pathname: string): ActiveRealtimeResource | null
     return { objectType: 'knowledge_base', objectId: segments[1] }
   }
   return null
-}
-
-async function verifyActiveProjectAccess(
-  signal: RealtimeEnvelope,
-  activeResource: ActiveRealtimeResource | null,
-  activeIssueProjectId: string | undefined,
-  queryClient: ReturnType<typeof useQueryClient>,
-  navigate: ReturnType<typeof useNavigate>,
-) {
-  if (!activeResource) return
-  try {
-    if (signal.objectType === 'project') {
-      const matchesActiveProject = activeResource.objectType === 'project' &&
-        activeResource.objectId === signal.objectId
-      const matchesActiveIssueProject = activeIssueProjectId === signal.objectId
-      if (!matchesActiveProject && !matchesActiveIssueProject) return
-      const project = await getProject(signal.objectId)
-      queryClient.setQueryData<UserProjectDetailView>(['projects', signal.objectId], project)
-      return
-    }
-    if (signal.objectType === 'issue' &&
-      activeResource.objectType === 'issue' &&
-      activeResource.objectId === signal.objectId) {
-      const issue = await getIssue(signal.objectId)
-      queryClient.setQueryData<UserIssueDetailView>(['issues', signal.objectId], issue)
-    }
-  } catch (error) {
-    if (error instanceof ApiRequestError && [401, 403, 404].includes(error.status)) {
-      navigate('/projects', { replace: true })
-    }
-  }
 }
 
 async function ignoreReconciliationFailure(reconciliation: Promise<unknown>) {

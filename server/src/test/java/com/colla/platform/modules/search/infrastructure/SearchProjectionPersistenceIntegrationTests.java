@@ -31,14 +31,14 @@ class SearchProjectionPersistenceIntegrationTests {
 
         assertThat(searchRepository.projectObject(
             DEFAULT_WORKSPACE_ID,
-            "issue",
+            "work_item",
             objectId,
             5,
             ProjectionOperation.DELETE
         )).isTrue();
         assertThat(searchRepository.projectObject(
             DEFAULT_WORKSPACE_ID,
-            "issue",
+            "work_item",
             objectId,
             4,
             ProjectionOperation.UPSERT
@@ -51,7 +51,7 @@ class SearchProjectionPersistenceIntegrationTests {
                 where workspace_id = ? and object_type = ? and object_id = ?
                 """,
             DEFAULT_WORKSPACE_ID,
-            "issue",
+            "work_item",
             objectId
         );
         Integer indexed = jdbcTemplate.queryForObject(
@@ -62,7 +62,7 @@ class SearchProjectionPersistenceIntegrationTests {
                 """,
             Integer.class,
             DEFAULT_WORKSPACE_ID,
-            "issue",
+            "work_item",
             objectId
         );
 

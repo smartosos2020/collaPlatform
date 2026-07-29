@@ -20,7 +20,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 
 @SpringBootTest
@@ -32,41 +31,25 @@ class PlatformObjectControllerIntegrationTests {
     @Autowired
     private ObjectMapper objectMapper;
 
-    @Autowired
-    private JdbcTemplate jdbcTemplate;
-
     @Test
     void resolvesObjectSummaryAndInternalLinks() throws Exception {
         String token = login("admin", "admin123456", "platform-object-device-" + UUID.randomUUID());
-        UUID workspaceId = currentWorkspaceId();
-        UUID issueId = UUID.randomUUID();
-        jdbcTemplate.update(
-            """
-                insert into object_links
-                    (id, workspace_id, object_type, object_id, web_path, deep_link, title_snapshot, created_at, updated_at)
-                values (?, ?, 'issue', ?, ?, ?, 'Login fails after submit', now(), now())
-                """,
-            UUID.randomUUID(),
-            workspaceId,
-            issueId,
-            "/issues/" + issueId,
-            "colla://issue/" + issueId
-        );
+        UUID spaceId = createProjectSpace(token, "Platform object space");
 
-        mockMvc.perform(get("/api/platform/objects/issue/" + issueId + "/summary")
+        mockMvc.perform(get("/api/platform/objects/project_space/" + spaceId + "/summary")
                 .header("Authorization", "Bearer " + token))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.accessState").value("available"))
-            .andExpect(jsonPath("$.title").value("Login fails after submit"))
-            .andExpect(jsonPath("$.webPath").value("/issues/" + issueId));
+            .andExpect(jsonPath("$.title").value("Platform object space"))
+            .andExpect(jsonPath("$.webPath").value("/project-spaces/" + spaceId));
 
         mockMvc.perform(post("/api/platform/links/resolve")
                 .header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"link\":\"/issues/" + issueId + "\"}"))
+                .content("{\"link\":\"/project-spaces/" + spaceId + "\"}"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.resolved").value(true))
-            .andExpect(jsonPath("$.summary.title").value("Login fails after submit"));
+            .andExpect(jsonPath("$.summary.title").value("Platform object space"));
 
         mockMvc.perform(get("/api/platform/objects/unknown/" + UUID.randomUUID() + "/summary")
                 .header("Authorization", "Bearer " + token))
@@ -133,20 +116,7 @@ class PlatformObjectControllerIntegrationTests {
     @Test
     void fileDownloadRequiresOwnerOrTargetObjectAccess() throws Exception {
         String adminToken = login("admin", "admin123456", "file-admin-device-" + UUID.randomUUID());
-        UUID workspaceId = currentWorkspaceId();
-        UUID issueId = UUID.randomUUID();
-        jdbcTemplate.update(
-            """
-                insert into object_links
-                    (id, workspace_id, object_type, object_id, web_path, deep_link, title_snapshot, created_at, updated_at)
-                values (?, ?, 'issue', ?, ?, ?, 'Attachment target', now(), now())
-                """,
-            UUID.randomUUID(),
-            workspaceId,
-            issueId,
-            "/issues/" + issueId,
-            "colla://issue/" + issueId
-        );
+        UUID spaceId = createProjectSpace(adminToken, "Attachment target");
 
         String uploadResponse = mockMvc.perform(post("/api/files/upload-url")
                 .header("Authorization", "Bearer " + adminToken)
@@ -157,10 +127,10 @@ class PlatformObjectControllerIntegrationTests {
                           "fileName": "evidence.txt",
                           "contentType": "text/plain",
                           "sizeBytes": 32,
-                          "targetType": "issue",
+                          "targetType": "project_space",
                           "targetId": "%s"
                         }
-                        """.formatted(issueId)
+                        """.formatted(spaceId)
                 ))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.uploadUrl", not(blankOrNullString())))
@@ -178,10 +148,10 @@ class PlatformObjectControllerIntegrationTests {
                     """
                         {
                           "fileId": "%s",
-                          "targetType": "issue",
+                          "targetType": "project_space",
                           "targetId": "%s"
                         }
-                        """.formatted(fileId, issueId)
+                        """.formatted(fileId, spaceId)
                 ))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.status").value("completed"));
@@ -200,7 +170,7 @@ class PlatformObjectControllerIntegrationTests {
                           "fileName": "forbidden.txt",
                           "contentType": "text/plain",
                           "sizeBytes": 32,
-                          "targetType": "issue",
+                          "targetType": "project_space",
                           "targetId": "%s"
                         }
                         """.formatted(UUID.randomUUID())
@@ -219,8 +189,24 @@ class PlatformObjectControllerIntegrationTests {
         assertTrue(response.statusCode() >= 200 && response.statusCode() < 300);
     }
 
-    private UUID currentWorkspaceId() {
-        return jdbcTemplate.queryForObject("select id from workspaces where slug = 'default'", UUID.class);
+    private UUID createProjectSpace(String token, String name) throws Exception {
+        String response = mockMvc.perform(post("/api/project-spaces")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                        {
+                          "spaceKey": "platform-%s",
+                          "name": "%s",
+                          "visibility": "private"
+                        }
+                        """.formatted(UUID.randomUUID(), name)
+                ))
+            .andExpect(status().isOk())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+        return UUID.fromString(objectMapper.readTree(response).get("id").asText());
     }
 
     private UUID createMember(String token, String username, String displayName) throws Exception {

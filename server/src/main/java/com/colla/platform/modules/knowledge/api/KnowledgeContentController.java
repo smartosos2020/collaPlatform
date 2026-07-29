@@ -21,10 +21,11 @@ import com.colla.platform.modules.knowledge.application.KnowledgeContentCanonica
 import com.colla.platform.modules.knowledge.application.KnowledgeContentCrossModuleService;
 import com.colla.platform.modules.knowledge.application.KnowledgeContentService;
 import com.colla.platform.modules.knowledge.application.KnowledgeBaseSpaceService;
-import com.colla.platform.modules.project.domain.ProjectModels.IssueDetail;
+import com.colla.platform.modules.project.contract.WorkItemCreationCommand.CreatedWorkItem;
 import com.colla.platform.modules.permission.application.ResourcePermissionManagementService;
 import com.colla.platform.modules.permission.domain.PermissionModels.ResourcePermissionRequest;
 import com.colla.platform.shared.auth.CurrentUser;
+import com.colla.platform.shared.request.RequestBoundaryContext;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -424,27 +425,25 @@ public class KnowledgeContentController {
         return KnowledgeApiDtos.detail(contentService.removeRelation(user, itemId, targetType, targetId));
     }
 
-    @PostMapping("/issues/from-selection")
-    public IssueDetail createIssueFromSelection(
+    @PostMapping("/work-items/from-selection")
+    public CreatedWorkItem createWorkItemFromSelection(
         @PathVariable UUID spaceId,
         @PathVariable UUID itemId,
-        @Valid @RequestBody CreateIssueFromKnowledgeSelectionRequest request,
+        @Valid @RequestBody CreateWorkItemFromKnowledgeSelectionRequest request,
         Authentication authentication
     ) {
         CurrentUser user = itemUser(authentication, spaceId, itemId);
-        return crossModuleService.createIssueFromSelection(
+        return crossModuleService.createWorkItemFromSelection(
             user,
             itemId,
-            request.projectId(),
-            request.issueType(),
+            request.projectSpaceId(),
+            request.workItemTypeId(),
             request.title(),
             request.description(),
-            request.priority(),
-            request.assigneeId(),
-            request.dueAt(),
             request.anchorStart(),
             request.anchorEnd(),
-            request.anchorText()
+            request.anchorText(),
+            RequestBoundaryContext.current().requestId()
         );
     }
 
@@ -650,14 +649,11 @@ public class KnowledgeContentController {
     public record AddKnowledgeContentRelationRequest(@NotBlank String targetType, @NotNull UUID targetId) {
     }
 
-    public record CreateIssueFromKnowledgeSelectionRequest(
-        @NotNull UUID projectId,
-        String issueType,
+    public record CreateWorkItemFromKnowledgeSelectionRequest(
+        @NotNull UUID projectSpaceId,
+        @NotNull UUID workItemTypeId,
         @Size(max = 255) String title,
         String description,
-        String priority,
-        UUID assigneeId,
-        LocalDate dueAt,
         Integer anchorStart,
         Integer anchorEnd,
         @Size(max = 2000) String anchorText

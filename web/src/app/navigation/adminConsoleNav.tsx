@@ -3,6 +3,7 @@ import {
   AppstoreOutlined,
   AuditOutlined,
   DashboardOutlined,
+  DatabaseOutlined,
   FileSearchOutlined,
   PartitionOutlined,
   ProjectOutlined,
@@ -116,6 +117,13 @@ export const adminPages: AdminPageNavEntry[] = [
     section: '应用配置',
     description: '项目空间状态、风险边界和审计入口，不承载成员协作内容',
   },
+  {
+    key: '/admin/legacy-exit-audit',
+    icon: <DatabaseOutlined />,
+    label: '旧模型退出',
+    section: '内容与数据治理',
+    description: '迁移覆盖、一致性 finding、活动 legacy surface 和删除决定',
+  },
 ]
 
 export const groupedAdminNavItems: MenuProps['items'] = [
@@ -142,7 +150,7 @@ export const groupedAdminNavItems: MenuProps['items'] = [
   {
     type: 'group',
     label: '内容与数据治理',
-    children: [adminPages[9]],
+    children: [adminPages[9], adminPages[13]],
   },
   {
     type: 'group',

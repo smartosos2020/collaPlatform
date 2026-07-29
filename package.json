@@ -38,6 +38,7 @@
     "smoke:s18-isolated": "pnpm workbench browser smoke-project-platform-s18-isolated",
     "smoke:s19-isolated": "pnpm workbench browser smoke-project-platform-s19-isolated",
     "smoke:s20-isolated": "pnpm workbench browser smoke-project-platform-s20-isolated",
+    "smoke:s21-isolated": "pnpm workbench browser smoke-project-platform-s21-isolated",
     "test:s17-m2-system": "mvn -q -f server/pom.xml -Dtest=AutomationExecutionFoundationIntegrationTests test",
     "smoke:dual-api": "node deploy/smoke/dual-api-smoke.mjs",
     "smoke:dual-gateway": "node deploy/smoke/dual-gateway-smoke.mjs",
@@ -70,6 +71,8 @@
     "capacity:contract": "node tools/capacity/src/cli.mjs contract validate",
     "capacity:preflight": "node tools/capacity/src/cli.mjs preflight capture",
     "capacity:seed": "node tools/capacity/src/cli.mjs seed",
-    "capacity:stack": "node deploy/capacity/stack.mjs"
+    "capacity:stack": "node deploy/capacity/stack.mjs",
+    "s21:readiness-contract": "node deploy/verification/s21-readiness-contract.mjs",
+    "s21:engineering-evidence": "pnpm s21:readiness-contract && pnpm ops:contract-check && mvn -q -f server/pom.xml -Dtest=S21EngineeringReadinessIntegrationTests test"
   }
 }

@@ -270,6 +270,27 @@ export async function isolatedProjectPlatformS20Smoke(
   )
 }
 
+export async function isolatedProjectPlatformS21Smoke(
+  root: string,
+  spec: string,
+  databasePort = 5432,
+  apiPort = 18210,
+  webPort = 15310,
+): Promise<void> {
+  if (!/^project-platform-s21-[a-z0-9-]+\.spec\.ts$/.test(spec)) {
+    throw new Error(`Unsupported PROJECT-PLATFORM-S21 browser spec: ${spec}`)
+  }
+  return isolatedRouteSmoke(
+    root,
+    spec,
+    'colla_s21_e2e',
+    databasePort,
+    apiPort,
+    webPort,
+    'all',
+  )
+}
+
 async function isolatedRouteSmoke(
   root: string,
   spec: string,
@@ -306,7 +327,9 @@ async function isolatedRouteSmoke(
     runSync('mvn', ['-q', '-f', 'server/pom.xml', '-DskipTests', 'package'], { cwd: root }); runSync('docker', ['exec', databaseContainer, 'createdb', '-U', 'colla', database])
     server = background('java', ['-jar', 'server/target/colla-platform-server-0.1.0-SNAPSHOT.jar'], root, { COLLA_DATASOURCE_URL: `jdbc:postgresql://127.0.0.1:${effectiveDatabasePort}/${database}`, COLLA_DATASOURCE_USERNAME: 'colla', COLLA_DATASOURCE_PASSWORD: ['colla', 'dev', 'password'].join('_'), COLLA_EVENT_WORKER_ENABLED: 'true', COLLA_EVENT_WORKER_CONCURRENCY: '2', COLLA_EVENT_WORKER_QUEUE_CAPACITY: '0', COLLA_EVENT_WORKER_CLAIM_BATCH: '2', COLLA_EVENT_WORKER_EXPECTED_INSTANCES: '1', SERVER_PORT: String(apiPort), CORS_ALLOWED_ORIGINS: `http://127.0.0.1:${webPort}` }, join(logs, 'm5-isolated-server.out.log'), join(logs, 'm5-isolated-server.err.log'))
     web = background('pnpm', ['dev', '--host', '127.0.0.1', '--port', String(webPort)], join(root, 'web'), { VITE_API_BASE_URL: `http://127.0.0.1:${apiPort}/api`, VITE_WS_BASE_URL: `ws://127.0.0.1:${apiPort}/ws/events` }, join(logs, 'm5-isolated-web.out.log'), join(logs, 'm5-isolated-web.err.log'))
-    await waitReady(`http://127.0.0.1:${apiPort}/actuator/health`, 180000)
+    // A clean Windows/Docker database can need more than three minutes to
+    // apply the complete migration history before Spring exposes health.
+    await waitReady(`http://127.0.0.1:${apiPort}/actuator/health`, 300000)
     await waitReady(`http://127.0.0.1:${webPort}`, 120000)
     await run('pnpm', ['exec', 'playwright', 'test', '--config', 'e2e/playwright.config.ts', spec], { cwd: join(root, 'web'), env: { COLLA_E2E_SUITE: suite, COLLA_E2E_ISOLATED: 'true', COLLA_E2E_API_BASE_URL: `http://127.0.0.1:${apiPort}/api`, COLLA_E2E_WEB_BASE_URL: `http://127.0.0.1:${webPort}` } })
   } finally {

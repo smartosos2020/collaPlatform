@@ -45,7 +45,7 @@ import {
   addConversationMembers,
   closeConversation,
   convertMessageToKnowledgeContent,
-  convertMessageToIssue,
+  convertMessageToWorkItem,
   createConversation,
   editMessage,
   getConversation,
@@ -66,7 +66,8 @@ import {
   type ConversationSummary,
   type MessageSummary,
 } from '../api/messengerApi'
-import { listProjects } from '../../projects/api/projectsApi'
+import { listProjectSpaces } from '../../projectSpaces/api/projectSpacesApi'
+import { listActiveWorkItemTypes } from '../../projectSpaces/api/workItemTypesApi'
 import { useRealtimeStatus, type RealtimeConnectionStatus } from '../../../shared/realtime'
 
 type CreateConversationForm = {
@@ -76,8 +77,8 @@ type CreateConversationForm = {
 }
 
 type ConvertMessageForm = {
-  projectId: string
-  issueType: 'requirement' | 'task' | 'bug'
+  projectSpaceId: string
+  workItemTypeId: string
   title: string
   description?: string
 }
@@ -116,6 +117,7 @@ export function MessengerPage() {
   const [localMessages, setLocalMessages] = useState<ChatMessage[]>([])
   const [form] = Form.useForm<CreateConversationForm>()
   const [convertForm] = Form.useForm<ConvertMessageForm>()
+  const selectedConvertSpaceId = Form.useWatch('projectSpaceId', convertForm)
   const [convertDocumentForm] = Form.useForm<ConvertMessageToKnowledgeContentForm>()
   const messageListRef = useRef<HTMLElement | null>(null)
   const messageRefs = useRef<Record<string, HTMLElement | null>>({})
@@ -138,9 +140,14 @@ export function MessengerPage() {
     queryKey: ['members', 'directory'],
     queryFn: listDirectoryMembers,
   })
-  const projectsQuery = useQuery({
-    queryKey: ['projects'],
-    queryFn: listProjects,
+  const projectSpacesQuery = useQuery({
+    queryKey: ['project-spaces'],
+    queryFn: listProjectSpaces,
+  })
+  const workItemTypesQuery = useQuery({
+    queryKey: ['project-spaces', selectedConvertSpaceId, 'work-item-types'],
+    queryFn: () => listActiveWorkItemTypes(selectedConvertSpaceId || ''),
+    enabled: Boolean(selectedConvertSpaceId),
   })
 
   const conversationQuery = useQuery({
@@ -241,18 +248,18 @@ export function MessengerPage() {
 
   const convertMutation = useMutation({
     mutationFn: (values: ConvertMessageForm) =>
-      convertMessageToIssue(convertMessage?.conversationId || selectedConversationId || '', convertMessage?.id || '', {
-        projectId: values.projectId,
-        issueType: values.issueType,
+      convertMessageToWorkItem(convertMessage?.conversationId || selectedConversationId || '', convertMessage?.id || '', {
+        projectSpaceId: values.projectSpaceId,
+        workItemTypeId: values.workItemTypeId,
         title: values.title,
         description: values.description,
-        priority: 'medium',
       }),
-    onSuccess: async () => {
+    onSuccess: async (created) => {
       message.success('已从消息创建事项')
       setConvertMessage(null)
       convertForm.resetFields()
       await refreshIm()
+      navigate(created.webPath)
     },
     onError: () => message.error('从消息创建事项失败，请检查项目权限'),
   })
@@ -653,7 +660,7 @@ export function MessengerPage() {
                 value={messageSearchTargetType}
                 onChange={(value) => setMessageSearchTargetType(value)}
                 options={[
-                  { value: 'issue', label: '事项' },
+                  { value: 'work_item', label: '工作项' },
                   { value: 'knowledge_content', label: '知识内容' },
                   { value: 'base', label: '表格' },
                   { value: 'approval', label: '审批' },
@@ -712,10 +719,10 @@ export function MessengerPage() {
                       item={item}
                       mine={item.senderId === currentUser?.id}
                       highlighted={highlightedMessageId === item.id}
-                      onCreateIssue={() => {
+                      onCreateWorkItem={() => {
                         setConvertMessage(item)
                         convertForm.setFieldsValue({
-                          issueType: 'bug',
+                          projectSpaceId: projectSpacesQuery.data?.[0]?.id,
                           title: item.content.slice(0, 120),
                           description: item.content,
                         })
@@ -903,24 +910,26 @@ export function MessengerPage() {
         onCancel={() => setConvertMessage(null)}
         onOk={() => convertForm.validateFields().then((values) => convertMutation.mutate(values))}
       >
-        <Form form={convertForm} layout="vertical" initialValues={{ issueType: 'bug' }}>
-          <Form.Item label="项目" name="projectId" rules={[{ required: true, message: '请选择项目' }]}>
+        <Form form={convertForm} layout="vertical">
+          <Form.Item label="项目空间" name="projectSpaceId" rules={[{ required: true, message: '请选择项目空间' }]}>
             <Select
               showSearch
               optionFilterProp="label"
-              options={(projectsQuery.data ?? []).map((project) => ({
-                value: project.id,
-                label: `${project.name} (${project.projectKey})`,
+              onChange={() => convertForm.setFieldValue('workItemTypeId', undefined)}
+              options={(projectSpacesQuery.data ?? []).map((space) => ({
+                value: space.id,
+                label: `${space.name} (${space.spaceKey})`,
               }))}
             />
           </Form.Item>
-          <Form.Item label="类型" name="issueType" rules={[{ required: true }]}>
+          <Form.Item label="事项类型" name="workItemTypeId" rules={[{ required: true, message: '请选择事项类型' }]}>
             <Select
-              options={[
-                { value: 'requirement', label: '需求' },
-                { value: 'bug', label: 'Bug' },
-                { value: 'task', label: '任务' },
-              ]}
+              disabled={!selectedConvertSpaceId}
+              loading={workItemTypesQuery.isLoading}
+              options={(workItemTypesQuery.data ?? []).map((type) => ({
+                value: type.id,
+                label: `${type.name} (${type.typeKey})`,
+              }))}
             />
           </Form.Item>
           <Form.Item label="标题" name="title" rules={[{ required: true, message: '请输入标题' }]}>
@@ -1081,7 +1090,7 @@ function MessageBubble({
   item,
   mine,
   highlighted,
-  onCreateIssue,
+  onCreateWorkItem,
   onCreateDocument,
   onCopyLink,
   onEdit,
@@ -1095,7 +1104,7 @@ function MessageBubble({
   item: ChatMessage
   mine: boolean
   highlighted: boolean
-  onCreateIssue: () => void
+  onCreateWorkItem: () => void
   onCreateDocument: () => void
   onCopyLink: () => void
   onEdit: () => void
@@ -1115,11 +1124,11 @@ function MessageBubble({
       onClick: onPin,
     },
     {
-      key: 'issue',
+      key: 'work-item',
       icon: <BugOutlined />,
-      label: '转事项',
+      label: '转工作项',
       disabled: Boolean(item.revokedAt) || isLocal,
-      onClick: onCreateIssue,
+      onClick: onCreateWorkItem,
     },
     {
       key: 'knowledge_content',

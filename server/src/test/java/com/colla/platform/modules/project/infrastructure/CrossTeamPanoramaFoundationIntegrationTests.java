@@ -32,7 +32,7 @@ class CrossTeamPanoramaFoundationIntegrationTests {
                    'project_cross_team_panorama_governance_receipts'
                  )
                 """, Integer.class));
-            assertEquals("137", jdbc.queryForObject(
+            assertEquals("139", jdbc.queryForObject(
                 "select max(version) from flyway_schema_history", String.class
             ));
         }

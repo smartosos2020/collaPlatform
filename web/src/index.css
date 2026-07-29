@@ -9215,3 +9215,15 @@ body {
     max-height: none;
   }
 }
+.admin-legacy-audit-actions {
+  margin-bottom: 16px;
+}
+
+.admin-legacy-audit-status,
+.admin-legacy-audit-card {
+  margin-top: 16px;
+}
+
+.admin-legacy-exit-audit-page .ant-table-cell {
+  overflow-wrap: anywhere;
+}

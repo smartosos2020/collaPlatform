@@ -212,7 +212,7 @@ public class KnowledgeContentSchemaService {
         String objectType = String.valueOf(attrs.getOrDefault("objectType", "knowledge_content"));
         return switch (objectType) {
             case "base", "base_table" -> "base_view";
-            case "issue" -> "issue_embed";
+            case "work_item" -> "issue_embed";
             case "message" -> "message_embed";
             case "file" -> "file_embed";
             case "external_link" -> "link_card";

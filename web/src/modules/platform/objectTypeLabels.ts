@@ -1,8 +1,6 @@
 export const objectTypeText: Record<string, string> = {
-  issue: '事项',
   work_item: '工作项',
   knowledge_content: '知识内容',
-  project: '项目',
   project_space: '项目空间',
   base: '表格空间',
   base_table: '数据表',

@@ -12,7 +12,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.colla.platform.modules.event.application.DomainEventWorker;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.util.Locale;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -40,11 +39,8 @@ class WorkspaceControllerIntegrationTests {
         UUID viewerId = createMember(adminToken, viewerUsername, "M7 Viewer");
         String viewerToken = login(viewerUsername, "member123456", "m7-viewer-device-" + UUID.randomUUID());
 
-        JsonNode project = createProject(adminToken, viewerId);
-        UUID projectId = UUID.fromString(project.get("id").asText());
-        UUID conversationId = UUID.fromString(project.get("conversationId").asText());
-        UUID issueId = createIssue(adminToken, projectId, viewerId);
-        domainEventWorker.processPendingEvents();
+        UUID projectSpaceId = createProjectSpace(adminToken, viewerId);
+        UUID conversationId = createConversation(adminToken, viewerId);
 
         mockMvc.perform(post("/api/conversations/" + conversationId + "/messages")
                 .header("Authorization", "Bearer " + adminToken)
@@ -54,17 +50,10 @@ class WorkspaceControllerIntegrationTests {
                         {
                           "clientMessageId": "%s",
                           "messageType": "text",
-                          "content": "M7 link /issues/%s"
+                          "content": "M7 canonical collaboration @%s"
                         }
-                        """.formatted(UUID.randomUUID(), issueId)
+                        """.formatted(UUID.randomUUID(), viewerUsername)
                 ))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.links[0].summary.title", not(blankOrNullString())));
-
-        mockMvc.perform(post("/api/issues/" + issueId + "/comments")
-                .header("Authorization", "Bearer " + adminToken)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"content\":\"please check @" + viewerUsername + "\"}"))
             .andExpect(status().isOk());
         domainEventWorker.processPendingEvents();
 
@@ -72,20 +61,20 @@ class WorkspaceControllerIntegrationTests {
         mockMvc.perform(post(itemPath(content) + "/relations")
                 .header("Authorization", "Bearer " + adminToken)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"targetType\":\"issue\",\"targetId\":\"" + issueId + "\"}"))
+                .content("{\"targetType\":\"project_space\",\"targetId\":\"" + projectSpaceId + "\"}"))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.relations[0].webPath").value("/issues/" + issueId));
+            .andExpect(jsonPath("$.relations[0].webPath").value("/project-spaces/" + projectSpaceId));
 
         UUID baseId = createBase(adminToken, viewerId);
 
-        mockMvc.perform(get("/api/platform/objects/issue/" + issueId + "/navigation")
+        mockMvc.perform(get("/api/platform/objects/project_space/" + projectSpaceId + "/navigation")
                 .header("Authorization", "Bearer " + viewerToken))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.summary.accessState").value("available"))
-            .andExpect(jsonPath("$.webPath").value("/issues/" + issueId))
-            .andExpect(jsonPath("$.mobileFallbackPath").value("/issues/" + issueId));
+            .andExpect(jsonPath("$.webPath").value("/project-spaces/" + projectSpaceId))
+            .andExpect(jsonPath("$.mobileFallbackPath").value("/project-spaces/" + projectSpaceId));
 
-        mockMvc.perform(post("/api/platform/objects/issue/" + issueId + "/favorite")
+        mockMvc.perform(post("/api/platform/objects/project_space/" + projectSpaceId + "/favorite")
                 .header("Authorization", "Bearer " + viewerToken))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.title", not(blankOrNullString())));
@@ -93,19 +82,17 @@ class WorkspaceControllerIntegrationTests {
         mockMvc.perform(get("/api/platform/recent")
                 .header("Authorization", "Bearer " + viewerToken))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$[0].objectType").value("issue"));
+            .andExpect(jsonPath("$[0].objectType").value("project_space"));
 
         mockMvc.perform(get("/api/platform/favorites")
                 .header("Authorization", "Bearer " + viewerToken))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$[0].objectId").value(issueId.toString()));
+            .andExpect(jsonPath("$[0].objectId").value(projectSpaceId.toString()));
 
-        String notificationResponse = mockMvc.perform(get("/api/notifications?source=issue&status=unread&targetType=issue")
+        String notificationResponse = mockMvc.perform(get("/api/notifications?status=unread")
                 .header("Authorization", "Bearer " + viewerToken))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.length()", greaterThanOrEqualTo(1)))
-            .andExpect(jsonPath("$[0].targetType").value("issue"))
-            .andExpect(jsonPath("$[0].sourceType").value("issue"))
             .andExpect(jsonPath("$[0].reminder.unread").value(true))
             .andExpect(jsonPath("$[0].availableActions", hasItem("mark_read")))
             .andReturn()
@@ -116,15 +103,13 @@ class WorkspaceControllerIntegrationTests {
         mockMvc.perform(get("/api/workspace/dashboard")
                 .header("Authorization", "Bearer " + viewerToken))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.myIssues[0].id").value(issueId.toString()))
             .andExpect(jsonPath("$.unreadMessageCount", greaterThanOrEqualTo(1)))
             .andExpect(jsonPath("$.unreadNotificationCount", greaterThanOrEqualTo(1)))
             .andExpect(jsonPath("$.latestNotifications.length()", greaterThanOrEqualTo(1)))
             .andExpect(jsonPath("$.recentKnowledgeContents[*].objectId").value(hasItem(content.itemId().toString())))
             .andExpect(jsonPath("$.recentBases[*].id").value(hasItem(baseId.toString())))
-            .andExpect(jsonPath("$.recentObjects[*].objectType").value(hasItem("issue")))
-            .andExpect(jsonPath("$.favoriteObjects[*].objectId").value(hasItem(issueId.toString())))
-            .andExpect(jsonPath("$.navigationSummary.issueCount", greaterThanOrEqualTo(1)))
+            .andExpect(jsonPath("$.recentObjects[*].objectType").value(hasItem("project_space")))
+            .andExpect(jsonPath("$.favoriteObjects[*].objectId").value(hasItem(projectSpaceId.toString())))
             .andExpect(jsonPath("$.availableActions", hasItem("open_notifications")));
 
         mockMvc.perform(post("/api/notifications/read-batch")
@@ -135,49 +120,51 @@ class WorkspaceControllerIntegrationTests {
             .andExpect(jsonPath("$.changed").value(1));
     }
 
-    private JsonNode createProject(String token, UUID memberId) throws Exception {
-        String key = projectKey();
-        String response = mockMvc.perform(post("/api/projects")
+    private UUID createProjectSpace(String token, UUID memberId) throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        String response = mockMvc.perform(post("/api/project-spaces")
                 .header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
                     """
                         {
-                          "projectKey": "%s",
-                          "name": "M7 Project",
-                          "memberIds": ["%s"]
+                          "spaceKey": "m7-%s",
+                          "name": "M7 Project Space",
+                          "visibility": "private"
                         }
-                        """.formatted(key, memberId)
+                        """.formatted(suffix)
                 ))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.conversationId", not(blankOrNullString())))
-            .andExpect(jsonPath("$.collaboration.displayText").value("可协作"))
-            .andExpect(jsonPath("$.availableActions", hasItem("create_issue")))
             .andReturn()
             .getResponse()
             .getContentAsString();
-        return objectMapper.readTree(response);
+        UUID spaceId = UUID.fromString(objectMapper.readTree(response).get("id").asText());
+        mockMvc.perform(post("/api/project-spaces/" + spaceId + "/members")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"userId\":\"" + memberId + "\",\"roleKey\":\"member\"}"))
+            .andExpect(status().isOk());
+        return spaceId;
     }
 
-    private UUID createIssue(String token, UUID projectId, UUID assigneeId) throws Exception {
-        String response = mockMvc.perform(post("/api/projects/" + projectId + "/issues")
+    private UUID createConversation(String token, UUID memberId) throws Exception {
+        String response = mockMvc.perform(post("/api/conversations")
                 .header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
                     """
                         {
-                          "issueType": "bug",
-                          "title": "M7 Cross Module Bug",
-                          "priority": "high",
-                          "assigneeId": "%s"
+                          "conversationType": "group",
+                          "title": "M7 Canonical Collaboration",
+                          "memberIds": ["%s"]
                         }
-                        """.formatted(assigneeId)
+                        """.formatted(memberId)
                 ))
             .andExpect(status().isOk())
             .andReturn()
             .getResponse()
             .getContentAsString();
-        return UUID.fromString(objectMapper.readTree(response).get("issue").get("id").asText());
+        return UUID.fromString(objectMapper.readTree(response).get("id").asText());
     }
 
     private KnowledgeFixture createItem(String token, UUID viewerId) throws Exception {
@@ -276,9 +263,4 @@ class WorkspaceControllerIntegrationTests {
         return objectMapper.readTree(response).get("accessToken").asText();
     }
 
-    private String projectKey() {
-        return ("M7" + UUID.randomUUID().toString().replace("-", ""))
-            .substring(0, 10)
-            .toUpperCase(Locale.ROOT);
-    }
 }

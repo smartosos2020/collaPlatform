@@ -43,7 +43,7 @@ class MetricDashboardFoundationIntegrationTests {
                      'trg_project_dashboard_command_immutable'
                    )
                 """, Integer.class));
-            assertEquals("137", jdbc.queryForObject(
+            assertEquals("139", jdbc.queryForObject(
                 "select max(version) from flyway_schema_history", String.class
             ));
         }

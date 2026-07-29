@@ -419,3 +419,21 @@ M37 后 Base 记录可以作为关系源：
 - ScenarioInstallation 是 space/scenario 的当前关联与本地 manifest hash，不拥有类型、流程、关系或业务数据。InstallRun/InstallStep 固定 operation、source/target version、状态和安全诊断，是不可变执行历史。
 - UpgradeDiff/Conflict 保存 base/upstream/local hash 及显式 resolution；未决冲突不形成成功安装。CommandReceipt 保存 exact response，重放不重复 run、step 或 owner 事实。
 - detach 结束 ScenarioInstallation 关联但保留历史与 owner 配置。安装对象不注册全局 objectType、搜索、收藏或企业内容入口，也不成为授权权威。
+
+## S21-M1 退出审计对象边界
+
+- LegacySurface 是注册代码面 identity；EvidenceSnapshot 固定观测 totals、fingerprint、状态和时间，ConsistencyFinding 固定严重度、分类与低基数证据。
+- RemovalDecision 只保存 surface、决定、理由、actor、request hash 与 evidence reference；它不成为授权、cutover 或物理删除命令。
+- 三类证据不注册 platform objectType、搜索、收藏或 deep link，不复制 project/issue/WorkItem 内容；历史 migration/map/provenance/audit/outbox 仍由原 owner 持有。
+
+## S21-M2 Canonical 对象身份
+
+- 活跃项目对象身份仅为 `project_space` 与 `work_item`；`issue`/`project` 不再注册为 selectable、searchable 或可收藏的平台对象。
+- V139 清理历史 `issue` object rule、object link、search entry 与 projection version，防止旧身份从最近访问、收藏、搜索或对象卡重新进入产品面。
+- 历史 issue 深链不被 canonicalize 为活动平台对象；它只能进入受权 location resolver，并在映射不存在时以统一不可用语义结束。
+
+## S21-M3 工程证据对象边界
+
+- 容量 Scenario、BudgetObservation、BackupArtifact、RestoreObservation 和 ReadinessResult 仅为测试/报告证据，不注册 platform objectType、搜索、收藏、deep link 或业务权限。
+- 四场景数据仍只创建 `project_space` 与 `work_item` 规范事实；scenario key 保存在明确标记为 synthetic 的测试字段中，不形成第二套研发、市场、HR 或交付业务对象。
+- backup checksum、数据库 digest、Flyway version 和 timing 只证明对应隔离运行，不授权对象访问、生产切流或真人验收。M4 原始反馈和参与者身份不进入此工程证据模型。

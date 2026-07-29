@@ -14,7 +14,6 @@ import org.springframework.stereotype.Service;
 @Service
 public class SearchIndexService {
     private static final Set<String> INDEXED_AGGREGATE_TYPES = Set.of(
-        "issue",
         "knowledge_content",
         "base",
         "base_table",

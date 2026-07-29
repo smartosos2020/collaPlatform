@@ -65,7 +65,8 @@ public class BaseService {
         "object_link"
     );
     private static final List<String> ALLOWED_RELATION_TARGET_TYPES = List.of(
-        "issue",
+        "work_item",
+        "project_space",
         "knowledge_content",
         "base",
         "base_table",

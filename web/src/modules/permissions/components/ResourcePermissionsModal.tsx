@@ -88,7 +88,6 @@ export function ResourcePermissionsModal({ open, resourceType, resourceId, resou
       queryClient.invalidateQueries({ queryKey: ['resource-permissions', resourceType, resourceId] }),
       queryClient.invalidateQueries({ queryKey: ['knowledge-content'] }),
       queryClient.invalidateQueries({ queryKey: ['bases'] }),
-      queryClient.invalidateQueries({ queryKey: ['projects'] }),
       queryClient.invalidateQueries({ queryKey: ['knowledge-bases'] }),
       queryClient.invalidateQueries({ queryKey: ['resource-permission-requests', resourceType, resourceId] }),
     ])

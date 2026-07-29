@@ -282,7 +282,8 @@ public class JdbcPlatformObjectRepository implements PlatformObjectRepository {
 
     private String displayName(String objectType) {
         return switch (objectType) {
-            case "issue" -> "事项";
+            case "work_item" -> "工作项";
+            case "project_space" -> "项目空间";
             case "knowledge_content" -> "知识内容";
             case "base" -> "表格空间";
             case "base_table" -> "数据表";

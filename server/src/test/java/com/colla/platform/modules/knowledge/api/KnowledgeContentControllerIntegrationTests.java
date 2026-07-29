@@ -577,7 +577,7 @@ class KnowledgeContentControllerIntegrationTests {
     }
 
     @Test
-    void embeddedObjectBlocksResolveBaseProjectAndKnowledgeContentSafely() throws Exception {
+    void embeddedObjectBlocksResolveBaseProjectSpaceAndKnowledgeContentSafely() throws Exception {
         String token = login("admin", "admin123456");
         String suffix = UUID.randomUUID().toString().substring(0, 8);
         JsonNode space = createSpace(token, "M3 Objects " + suffix, "m3-objects-" + suffix);
@@ -588,7 +588,7 @@ class KnowledgeContentControllerIntegrationTests {
         UUID targetItemId = uuid(target, "item", "id");
         UUID hostItemId = uuid(host, "item", "id");
         UUID baseId = createBaseObject(token, "M3 Object Base " + suffix);
-        UUID projectId = createProjectObject(token, "M3 Object Project " + suffix, "M3" + suffix.toUpperCase());
+        UUID projectSpaceId = createProjectSpaceObject(token, "M3 Object Project Space " + suffix, "m3-" + suffix);
 
         String response = mockMvc.perform(patch(itemPath(spaceId, hostItemId) + "/blocks")
                 .header("Authorization", bearer(token))
@@ -597,7 +597,7 @@ class KnowledgeContentControllerIntegrationTests {
                     "baseVersionNo", host.path("item").path("currentVersionNo").asInt(),
                     "blocks", List.of(
                         blockDraft("embed_object", Map.of("objectType", "base", "objectId", baseId.toString()), 0),
-                        blockDraft("embed_object", Map.of("objectType", "project", "objectId", projectId.toString()), 1),
+                        blockDraft("embed_object", Map.of("objectType", "project_space", "objectId", projectSpaceId.toString()), 1),
                         blockDraft("embed_object", Map.of("objectType", "knowledge_content", "objectId", targetItemId.toString()), 2),
                         blockDraft("embed_object", Map.of("objectType", "base", "objectId", UUID.randomUUID().toString()), 3)
                     )
@@ -608,17 +608,17 @@ class KnowledgeContentControllerIntegrationTests {
 
         org.junit.jupiter.api.Assertions.assertEquals("available", findEmbeddedObject(blocks, "base").path("embedSummary").path("accessState").asText());
         org.junit.jupiter.api.Assertions.assertEquals("M3 Object Base " + suffix, findEmbeddedObject(blocks, "base").path("embedSummary").path("title").asText());
-        org.junit.jupiter.api.Assertions.assertEquals("available", findEmbeddedObject(blocks, "project").path("embedSummary").path("accessState").asText());
-        org.junit.jupiter.api.Assertions.assertEquals("M3 Object Project " + suffix, findEmbeddedObject(blocks, "project").path("embedSummary").path("title").asText());
+        org.junit.jupiter.api.Assertions.assertEquals("available", findEmbeddedObject(blocks, "project_space").path("embedSummary").path("accessState").asText());
+        org.junit.jupiter.api.Assertions.assertEquals("M3 Object Project Space " + suffix, findEmbeddedObject(blocks, "project_space").path("embedSummary").path("title").asText());
         org.junit.jupiter.api.Assertions.assertEquals("available", findEmbeddedObject(blocks, "knowledge_content").path("embedSummary").path("accessState").asText());
         org.junit.jupiter.api.Assertions.assertEquals("not_found", blocks.get(3).path("embedSummary").path("accessState").asText());
 
-        mockMvc.perform(get("/api/platform/objects/project/" + projectId + "/navigation")
+        mockMvc.perform(get("/api/platform/objects/project_space/" + projectSpaceId + "/navigation")
                 .header("Authorization", bearer(token)))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.summary.objectType").value("project"))
-            .andExpect(jsonPath("$.summary.title").value("M3 Object Project " + suffix))
-            .andExpect(jsonPath("$.webPath").value("/projects/" + projectId));
+            .andExpect(jsonPath("$.summary.objectType").value("project_space"))
+            .andExpect(jsonPath("$.summary.title").value("M3 Object Project Space " + suffix))
+            .andExpect(jsonPath("$.webPath").value("/project-spaces/" + projectSpaceId));
     }
 
     @Test
@@ -809,15 +809,15 @@ class KnowledgeContentControllerIntegrationTests {
         return UUID.fromString(objectMapper.readTree(response).path("base").path("id").asText());
     }
 
-    private UUID createProjectObject(String token, String name, String projectKey) throws Exception {
-        String response = mockMvc.perform(post("/api/projects")
+    private UUID createProjectSpaceObject(String token, String name, String spaceKey) throws Exception {
+        String response = mockMvc.perform(post("/api/project-spaces")
                 .header("Authorization", bearer(token))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(Map.of(
-                    "projectKey", projectKey,
+                    "spaceKey", spaceKey,
                     "name", name,
                     "description", "M3 object-card test",
-                    "memberIds", List.of()
+                    "visibility", "private"
                 ))))
             .andExpect(status().isOk())
             .andReturn().getResponse().getContentAsString();

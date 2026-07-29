@@ -54,6 +54,17 @@ export type WorkItem = {
   availableActions: Array<'view' | 'edit' | 'archive' | 'restore'>
 }
 
+export type CreatedWorkItemReference = {
+  id: string
+  spaceId: string
+  typeId: string
+  typeKey: string
+  displayKey: string
+  title: string
+  version: number
+  webPath: string
+}
+
 export type WorkItemPage = {
   items: WorkItem[]
   nextCursor?: string | null

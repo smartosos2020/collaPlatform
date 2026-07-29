@@ -30,7 +30,11 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class ImService {
     private static final Pattern MENTION_PATTERN = Pattern.compile("(?<!\\w)@([a-zA-Z0-9_.-]{2,64})");
-    private static final Pattern LINK_PATTERN = Pattern.compile("(colla://\\S+|https?://\\S+|/im\\?\\S*messageId=[0-9a-fA-F-]{36}\\S*|/(?:issues|docs|bases|approvals)/[0-9a-fA-F-]{36}(?:/\\S*)?)");
+    private static final Pattern LINK_PATTERN = Pattern.compile(
+        "(colla://\\S+|https?://\\S+|/im\\?\\S*messageId=[0-9a-fA-F-]{36}\\S*"
+            + "|/project-spaces/[0-9a-fA-F-]{36}/work-items/[0-9a-fA-F-]{36}(?:/\\S*)?"
+            + "|/(?:docs|bases|approvals)/[0-9a-fA-F-]{36}(?:/\\S*)?)"
+    );
 
     private final ImRepository imRepository;
     private final InternalLinkService internalLinkService;
@@ -683,7 +687,7 @@ public class ImService {
             return null;
         }
         String type = targetType.trim().toLowerCase(Locale.ROOT);
-        if (!List.of("issue", "knowledge_content", "base", "base_table", "base_record", "message", "approval", "file").contains(type)) {
+        if (!List.of("work_item", "project_space", "knowledge_content", "base", "base_table", "base_record", "message", "approval", "file").contains(type)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid message search target type");
         }
         return type;

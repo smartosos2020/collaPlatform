@@ -10,8 +10,8 @@ import { exportAuditLogs, listAuditLogs, type AuditLogEntry, type AuditLogFilter
 
 const targetTypeOptions = [
   { label: '全部对象', value: '' },
-  { label: '事项', value: 'issue' },
-  { label: '项目', value: 'project' },
+  { label: '工作项', value: 'work_item' },
+  { label: '项目空间', value: 'project_space' },
   { label: '知识内容', value: 'knowledge_content' },
   { label: '知识库', value: 'knowledge_base' },
   { label: '表格', value: 'base' },
@@ -105,7 +105,7 @@ export function AdminAuditLogsPage() {
         onFinish={(values) => setFilters({ ...values, limit: values.limit ?? 100 })}
       >
         <Form.Item name="action">
-          <Input allowClear placeholder="动作，例如 issue.updated" />
+          <Input allowClear placeholder="动作，例如 work_item.changed" />
         </Form.Item>
         <Form.Item name="targetType">
           <Select className="audit-log-target-select" options={targetTypeOptions} />

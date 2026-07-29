@@ -12,10 +12,6 @@ public class SearchProjectionDomainEventHandler implements DomainEventHandler {
         "message.revoked"
     );
     private static final Set<String> EVENT_TYPES = Set.of(
-        "issue.created",
-        "issue.updated",
-        "issue.assigned",
-        "issue.verified",
         "knowledge.content.created",
         "knowledge.content.updated",
         "knowledge.content.blocks.updated",

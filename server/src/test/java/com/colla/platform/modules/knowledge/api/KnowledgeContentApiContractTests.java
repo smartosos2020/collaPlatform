@@ -49,7 +49,7 @@ class KnowledgeContentApiContractTests {
             "POST /share-link/enable",
             "POST /share-link/disable",
             "POST /relations",
-            "POST /issues/from-selection",
+            "POST /work-items/from-selection",
             "POST /comments",
             "POST /comments/{commentId}/replies",
             "POST /comments/{commentId}/resolve",

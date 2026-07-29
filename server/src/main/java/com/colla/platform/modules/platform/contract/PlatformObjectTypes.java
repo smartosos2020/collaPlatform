@@ -6,8 +6,6 @@ import java.util.Locale;
 public final class PlatformObjectTypes {
     public static final String KNOWLEDGE_CONTENT = "knowledge_content";
     public static final String WORK_ITEM = "work_item";
-    public static final String LEGACY_ISSUE = "issue";
-    public static final String LEGACY_PROJECT = "project";
 
     private PlatformObjectTypes() {
     }
@@ -17,10 +15,6 @@ public final class PlatformObjectTypes {
             return null;
         }
         String normalized = objectType.trim().toLowerCase(Locale.ROOT).replace('-', '_');
-        return switch (normalized) {
-            case "project_issue", "legacy_issue" -> LEGACY_ISSUE;
-            case "canonical_work_item" -> WORK_ITEM;
-            default -> normalized;
-        };
+        return "canonical_work_item".equals(normalized) ? WORK_ITEM : normalized;
     }
 }

@@ -198,7 +198,7 @@ public class ProjectSpaceService {
      */
     public LegacySpaceResolution resolveLegacySpace(CurrentUser currentUser, UUID legacyProjectId) {
         UUID workspaceId = currentUser.workspaceId();
-        if (projectRepository.findProjectById(workspaceId, legacyProjectId).isEmpty()) {
+        if (!projectRepository.legacyProjectExists(workspaceId, legacyProjectId)) {
             return new LegacySpaceResolution("unmigrated", null);
         }
         Optional<LegacySpaceMapRecord> map = legacySpaceMapRepository.findByProject(workspaceId, legacyProjectId);

@@ -3,7 +3,6 @@ import { Alert, Button, Card, Skeleton } from 'antd'
 import { useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
-import { ProjectsPage } from '../modules/projects/pages/ProjectsPage'
 import { resolveLegacyIssue } from '../modules/projectSpaces/api/workItemsApi'
 
 export function LegacyIssueRoute() {
@@ -37,6 +36,18 @@ export function LegacyIssueRoute() {
       </Card>
     )
   }
-  if (query.data?.location === `/issues/${issueId}`) return <ProjectsPage />
+  if (query.data?.location === `/issues/${issueId}`) {
+    return (
+      <Card>
+        <Alert
+          type="warning"
+          showIcon
+          message="旧事项入口已停止"
+          description="该事项没有可用的规范 WorkItem 映射。旧页面和写入口已永久退出。"
+          action={<Button onClick={() => navigate('/project-spaces')}>进入项目空间</Button>}
+        />
+      </Card>
+    )
+  }
   return <Card><Skeleton active /></Card>
 }

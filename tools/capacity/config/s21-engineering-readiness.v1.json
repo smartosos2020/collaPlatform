@@ -1,0 +1,92 @@
+{
+  "schemaVersion": "colla.s21-engineering-readiness/v1",
+  "revision": 1,
+  "purpose": "local-isolated-engineering-evidence",
+  "productionSloClaim": false,
+  "dataPolicy": {
+    "syntheticOnly": true,
+    "containsPersonalData": false,
+    "fixedTimestamp": "2026-07-29T00:00:00Z",
+    "deterministicSeed": "project-platform-s21-m3"
+  },
+  "canonicalDomains": [
+    "project_space",
+    "work_item"
+  ],
+  "prohibitedActiveDomains": [
+    "project",
+    "issue"
+  ],
+  "scenarios": [
+    {
+      "key": "development",
+      "workItemCount": 250,
+      "operations": [
+        "requirement",
+        "task",
+        "defect",
+        "release",
+        "iteration"
+      ]
+    },
+    {
+      "key": "marketing",
+      "workItemCount": 250,
+      "operations": [
+        "campaign",
+        "content",
+        "asset",
+        "channel",
+        "retrospective"
+      ]
+    },
+    {
+      "key": "hr",
+      "workItemCount": 250,
+      "operations": [
+        "hiring_plan",
+        "position",
+        "candidate_reference",
+        "interview",
+        "onboarding"
+      ]
+    },
+    {
+      "key": "delivery",
+      "workItemCount": 250,
+      "operations": [
+        "project",
+        "task",
+        "risk",
+        "deliverable",
+        "acceptance"
+      ]
+    }
+  ],
+  "localBudgets": {
+    "indexedReadP95Ms": 250,
+    "aggregateReadP95Ms": 500,
+    "writeP95Ms": 500,
+    "databaseBytesPerWorkItemMax": 65536,
+    "backupSeconds": 120,
+    "restoreSeconds": 180,
+    "quiescedRpoSeconds": 0
+  },
+  "recoverySet": {
+    "postgres": [
+      "canonical facts",
+      "configuration hashes",
+      "migration maps",
+      "legacy exit audit",
+      "audit logs",
+      "outbox"
+    ],
+    "objectStorage": "versioned archive with SHA-256 and object count",
+    "redis": "rebuildable cache and transport state; never authoritative"
+  },
+  "legacyCapacityV1": {
+    "status": "history-only",
+    "allowedForS21Evidence": false,
+    "reason": "The v1 seed models retired project/issue product contracts."
+  }
+}

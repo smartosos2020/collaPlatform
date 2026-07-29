@@ -60,21 +60,21 @@ public class AdminApplicationGovernanceService {
     }
 
     private AdminApplicationModuleGovernance projectGovernance(CurrentUser currentUser) {
-        long projectCount = count("select count(*) from projects where workspace_id = ? and archived_at is null", currentUser.workspaceId());
-        long memberCount = count("select count(*) from project_members where workspace_id = ? and archived_at is null", currentUser.workspaceId());
-        long openIssueCount = count("""
+        long projectCount = count("select count(*) from project_spaces where workspace_id = ? and status = 'active'", currentUser.workspaceId());
+        long memberCount = count("select count(*) from project_space_members where workspace_id = ? and status = 'active'", currentUser.workspaceId());
+        long openWorkItemCount = count("""
             select count(*)
-            from issues
-            where workspace_id = ? and deleted_at is null and status <> 'closed'
+            from project_work_items
+            where workspace_id = ? and status = 'active'
             """, currentUser.workspaceId());
         return new AdminApplicationModuleGovernance(
             "project",
             "项目治理",
-            "项目与事项",
-            "项目事项协作保留在用户工作台；后台只治理项目成员、权限策略、归档、模板和审计。",
-            "/projects",
+            "项目空间与工作项",
+            "项目空间与工作项协作保留在用户工作台；后台只治理成员、权限策略、归档、模板和审计。",
+            "/project-spaces",
             "/admin/app-governance?module=project",
-            new AdminApplicationMetrics(projectCount, memberCount, openIssueCount, "项目", "成员关系", "未关闭事项"),
+            new AdminApplicationMetrics(projectCount, memberCount, openWorkItemCount, "项目空间", "成员关系", "活动工作项"),
             List.of("project.member_governance", "project.permission_policy", "project.archive_policy", "project.template_config"),
             List.of(
                 risk("medium", "项目归档策略待后台化", "用户侧可继续处理事项，后台需要后续统一项目归档、保留和恢复策略。"),
@@ -84,7 +84,7 @@ public class AdminApplicationGovernanceService {
                 link("权限排查", "/admin/permission-governance?resourceType=project"),
                 link("审计日志", "/admin/audit-logs?targetType=project")
             ),
-            List.of("用户对象卡只打开项目/事项协作页。", "后台治理深链只进入权限、审计和模板配置语义。")
+            List.of("用户对象卡只打开项目空间/工作项协作页。", "后台治理深链只进入权限、审计和模板配置语义。")
         );
     }
 

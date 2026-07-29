@@ -20,7 +20,7 @@ export function DashboardPage() {
   })
   const dashboard = dashboardQuery.data
   const personalBuckets = dashboard?.personalWork?.buckets ?? []
-  const myIssues = dashboard?.myIssues ?? []
+  const myWorkItems = dashboard?.myWorkItems ?? []
   const approvalTodos = dashboard?.approvalTodos ?? []
   const unreadConversations = dashboard?.unreadConversations ?? []
   const latestNotifications = dashboard?.latestNotifications ?? []
@@ -73,7 +73,7 @@ export function DashboardPage() {
 
       <section className="dashboard-metrics">
         <Card size="small">
-          <Statistic title="我的事项" value={myIssues.length} loading={dashboardQuery.isLoading} />
+          <Statistic title="我的事项" value={myWorkItems.length} loading={dashboardQuery.isLoading} />
         </Card>
         <Card size="small">
           <Statistic title="审批待办" value={approvalTodos.length} loading={dashboardQuery.isLoading} />
@@ -154,18 +154,17 @@ export function DashboardPage() {
           </Card>
         ))}
 
-        <Card title="我的事项" loading={dashboardQuery.isLoading} className="dashboard-section">
+        <Card title="最近事项" loading={dashboardQuery.isLoading} className="dashboard-section">
           <Space orientation="vertical" size={8} className="dashboard-list">
-            {myIssues.length === 0 ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无事项" /> : null}
-            {myIssues.map((issue) => (
-              <div className="dashboard-list-item" key={issue.id}>
+            {myWorkItems.length === 0 ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无事项" /> : null}
+            {myWorkItems.map((item) => (
+              <div className="dashboard-list-item" key={item.workItemId}>
                 <span>
-                  <Link to={`/issues/${issue.id}`}>{issue.issueKey} · {issue.title}</Link>
+                  <Link to={item.deepLink}>{item.displayKey} · {item.title}</Link>
                   <Space wrap size={6}>
-                    <Tag>{issue.issueType}</Tag>
-                    <Tag color={priorityColor(issue.priority)}>{issue.priority}</Tag>
-                    <Tag color={statusColor(issue.status)}>{issue.status}</Tag>
-                    {issue.dueAt ? <Typography.Text type="secondary">到期 {new Date(issue.dueAt).toLocaleDateString()}</Typography.Text> : null}
+                    <Tag>{item.spaceName}</Tag>
+                    <Tag>{item.typeName}</Tag>
+                    <Tag>{item.lifecycle}</Tag>
                   </Space>
                 </span>
               </div>
@@ -340,27 +339,4 @@ function BaseSummaryCard({ base }: { base: UserWorkspaceDashboardView['recentBas
       <Tag>表格空间</Tag>
     </Link>
   )
-}
-
-function priorityColor(priority: string) {
-  if (priority === 'urgent') {
-    return 'red'
-  }
-  if (priority === 'high') {
-    return 'orange'
-  }
-  if (priority === 'medium') {
-    return 'blue'
-  }
-  return 'default'
-}
-
-function statusColor(status: string) {
-  if (status === 'resolved' || status === 'closed') {
-    return 'green'
-  }
-  if (status === 'in_progress') {
-    return 'blue'
-  }
-  return 'default'
 }

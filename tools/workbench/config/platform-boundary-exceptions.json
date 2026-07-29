@@ -171,15 +171,15 @@
       "sourceModule": "admin",
       "targetModule": "project",
       "sourceFile": "server/src/main/java/com/colla/platform/modules/admin/application/AdminApplicationGovernanceService.java",
-      "target": "issues",
+      "target": "project_space_members",
       "modes": [
         "read"
       ],
-      "reason": "admin currently reads project facts until an approved query contract or owned projection replaces this exact access.",
+      "reason": "admin reads low-cardinality canonical project-space membership counts for the application-governance overview until an owned projection replaces this exact access.",
       "owner": "enterprise-governance",
-      "introducedStage": "PLATFORM-SCALE-S01",
-      "exitStage": "PLATFORM-SCALE-S05",
-      "expiryDecision": "replace-with-contract",
+      "introducedStage": "PROJECT-PLATFORM-S21-M2",
+      "exitStage": "PROJECT-PLATFORM-S21-M5",
+      "expiryDecision": "replace-with-projection",
       "status": "approved"
     },
     {
@@ -188,15 +188,15 @@
       "sourceModule": "admin",
       "targetModule": "project",
       "sourceFile": "server/src/main/java/com/colla/platform/modules/admin/application/AdminApplicationGovernanceService.java",
-      "target": "project_members",
+      "target": "project_spaces",
       "modes": [
         "read"
       ],
-      "reason": "admin currently reads project facts until an approved query contract or owned projection replaces this exact access.",
+      "reason": "admin reads low-cardinality canonical project-space counts for the application-governance overview until an owned projection replaces this exact access.",
       "owner": "enterprise-governance",
-      "introducedStage": "PLATFORM-SCALE-S01",
-      "exitStage": "PLATFORM-SCALE-S05",
-      "expiryDecision": "replace-with-contract",
+      "introducedStage": "PROJECT-PLATFORM-S21-M2",
+      "exitStage": "PROJECT-PLATFORM-S21-M5",
+      "expiryDecision": "replace-with-projection",
       "status": "approved"
     },
     {
@@ -205,15 +205,15 @@
       "sourceModule": "admin",
       "targetModule": "project",
       "sourceFile": "server/src/main/java/com/colla/platform/modules/admin/application/AdminApplicationGovernanceService.java",
-      "target": "projects",
+      "target": "project_work_items",
       "modes": [
         "read"
       ],
-      "reason": "admin currently reads project facts until an approved query contract or owned projection replaces this exact access.",
+      "reason": "admin reads low-cardinality canonical active WorkItem counts for the application-governance overview until an owned projection replaces this exact access.",
       "owner": "enterprise-governance",
-      "introducedStage": "PLATFORM-SCALE-S01",
-      "exitStage": "PLATFORM-SCALE-S05",
-      "expiryDecision": "replace-with-contract",
+      "introducedStage": "PROJECT-PLATFORM-S21-M2",
+      "exitStage": "PROJECT-PLATFORM-S21-M5",
+      "expiryDecision": "replace-with-projection",
       "status": "approved"
     },
     {
@@ -1152,40 +1152,6 @@
       "status": "approved"
     },
     {
-      "id": "BOUNDARY-READ-068",
-      "kind": "sql",
-      "sourceModule": "project",
-      "targetModule": "file",
-      "sourceFile": "server/src/main/java/com/colla/platform/modules/project/infrastructure/JdbcProjectRepository.java",
-      "target": "files",
-      "modes": [
-        "read"
-      ],
-      "reason": "project currently reads file facts until an approved query contract or owned projection replaces this exact access.",
-      "owner": "project",
-      "introducedStage": "PLATFORM-SCALE-S01",
-      "exitStage": "PLATFORM-SCALE-S05",
-      "expiryDecision": "replace-with-contract",
-      "status": "approved"
-    },
-    {
-      "id": "BOUNDARY-READ-069",
-      "kind": "sql",
-      "sourceModule": "project",
-      "targetModule": "identity",
-      "sourceFile": "server/src/main/java/com/colla/platform/modules/project/infrastructure/JdbcProjectRepository.java",
-      "target": "users",
-      "modes": [
-        "read"
-      ],
-      "reason": "project currently reads identity facts until an approved query contract or owned projection replaces this exact access.",
-      "owner": "project",
-      "introducedStage": "PLATFORM-SCALE-S01",
-      "exitStage": "PLATFORM-SCALE-S05",
-      "expiryDecision": "replace-with-contract",
-      "status": "approved"
-    },
-    {
       "id": "BOUNDARY-READ-070",
       "kind": "sql",
       "sourceModule": "project",
@@ -1553,40 +1519,6 @@
         "read"
       ],
       "reason": "search currently reads permission facts until an approved query contract or owned projection replaces this exact access.",
-      "owner": "search",
-      "introducedStage": "PLATFORM-SCALE-S01",
-      "exitStage": "PLATFORM-SCALE-S05",
-      "expiryDecision": "replace-with-projection",
-      "status": "approved"
-    },
-    {
-      "id": "BOUNDARY-READ-092",
-      "kind": "sql",
-      "sourceModule": "search",
-      "targetModule": "project",
-      "sourceFile": "server/src/main/java/com/colla/platform/modules/search/infrastructure/JdbcSearchRepository.java",
-      "target": "issues",
-      "modes": [
-        "read"
-      ],
-      "reason": "search currently reads project facts until an approved query contract or owned projection replaces this exact access.",
-      "owner": "search",
-      "introducedStage": "PLATFORM-SCALE-S01",
-      "exitStage": "PLATFORM-SCALE-S05",
-      "expiryDecision": "replace-with-projection",
-      "status": "approved"
-    },
-    {
-      "id": "BOUNDARY-READ-093",
-      "kind": "sql",
-      "sourceModule": "search",
-      "targetModule": "project",
-      "sourceFile": "server/src/main/java/com/colla/platform/modules/search/infrastructure/JdbcSearchRepository.java",
-      "target": "project_members",
-      "modes": [
-        "read"
-      ],
-      "reason": "search currently reads project facts until an approved query contract or owned projection replaces this exact access.",
       "owner": "search",
       "introducedStage": "PLATFORM-SCALE-S01",
       "exitStage": "PLATFORM-SCALE-S05",

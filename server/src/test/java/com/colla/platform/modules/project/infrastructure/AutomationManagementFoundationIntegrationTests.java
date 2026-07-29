@@ -14,7 +14,7 @@ class AutomationManagementFoundationIntegrationTests {
    PGSimpleDataSource ds=new PGSimpleDataSource();ds.setURL(postgres.getJdbcUrl());
    ds.setUser(postgres.getUsername());ds.setPassword(postgres.getPassword());
    Flyway.configure().dataSource((DataSource)ds).locations("classpath:db/migration").load().migrate();
-   assertThat(Flyway.configure().dataSource(ds).load().info().current().getVersion().getVersion()).isEqualTo("137");
+   assertThat(Flyway.configure().dataSource(ds).load().info().current().getVersion().getVersion()).isEqualTo("139");
    try(var c=ds.getConnection();var s=c.createStatement();var r=s.executeQuery("""
     select count(*) from information_schema.tables where table_name in
     ('project_automation_management_preferences','project_automation_quota_states',
