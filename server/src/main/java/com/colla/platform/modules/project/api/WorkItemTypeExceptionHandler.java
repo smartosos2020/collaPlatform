@@ -62,7 +62,8 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
     UserMetricSemanticController.class,
     UserMetricDashboardController.class,
     UserMetricRiskController.class,
-    UserMetricGovernanceController.class
+    UserMetricGovernanceController.class,
+    UserScenarioTemplateController.class
 })
 public class WorkItemTypeExceptionHandler {
     @ExceptionHandler(WorkItemTypeException.class)

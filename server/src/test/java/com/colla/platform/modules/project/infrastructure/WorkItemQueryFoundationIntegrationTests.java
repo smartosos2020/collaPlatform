@@ -3,6 +3,7 @@ package com.colla.platform.modules.project.infrastructure;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.time.Duration;
 import java.util.List;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
@@ -12,7 +13,8 @@ import org.testcontainers.containers.PostgreSQLContainer;
 class WorkItemQueryFoundationIntegrationTests {
     @Test
     void createsVersionedQueryReceiptAndProjectionStatisticsFoundation() {
-        PostgreSQLContainer<?> container = new PostgreSQLContainer<>("postgres:16");
+        PostgreSQLContainer<?> container = new PostgreSQLContainer<>("postgres:16")
+            .withStartupTimeout(Duration.ofMinutes(2));
         container.start();
         try {
             Flyway flyway = Flyway.configure()

@@ -435,3 +435,30 @@ M2 不实现 Worker lease、dead-letter、replay、handler registry 或独立进
 - `MetricGovernanceService` 独占 V134 report/run/export/command 表，只调用 `MetricSemanticService`、`MetricDashboardService` 与 `MetricRiskService` 公共 foundation；不得读取其 repository 或私表。
 - overview/report/export 每次重新校准 current space visibility；save/run/export 要求 manager。ReportRun 与 ExportReceipt 不授权，enterprise governance 无内容旁路。
 - ConfigHealth 与导出只包含 component/status/count/sourceVersion/explanation 低基数治理元数据；truncated 统一变为 unknown，隐藏内容和成员事实不进入字段、数量、文件名或错误外形。
+
+## 41. S20-M1 场景模板目录模块边界
+
+- `ScenarioTemplateService` 独占 V135 场景目录/版本/组件清单与安装编排骨架；`ScenarioTemplateCatalog` 只声明注册 owner contract、公开配置模板 key、依赖和禁止能力，不调用或读取 owner repository/private table。
+- `WorkItemRelationAccessDecisionService` 在每次目录和校验请求重校准当前空间 visibility。目录、清单哈希、拓扑顺序、Web cache 与 realtime 均不授权，enterprise governance 无空间内容旁路。
+- M1 的 repository 只幂等导入 built-in 不可变清单并读取公开目录；安装记录、运行、步骤和命令表暂不写入。M5 才能通过 owner 公共服务执行安装并产生精确回执。
+
+## 42. S20-M2 市场场景模块边界
+
+- `ScenarioTemplateCatalog` 新增 marketing manifest，但不注入文件、流程、关系、日历、自动化或指标 repository。每个组件只引用对应 owner 的公共合同名称与稳定配置 key。
+- `ScenarioTemplateService` 继续统一验证并幂等导入；marketing 与 development 具有独立 stable identity/hash/version，任一清单失败不会降级为部分目录或触发 owner 副作用。
+
+## 43. S20-M3 HR 场景模块边界
+
+- `ScenarioTemplateCatalog` 的 HR manifest 只保存敏感配置分类与公开 owner contract；不注入 identity、文件、通知、查询或指标 repository，不接触候选人实例。
+- 目录/validation 共享 `WorkItemRelationAccessDecisionService` 当前空间 gate；错误只返回稳定组件 key/code，不返回候选人、评价、成员或隐藏数量。
+
+## 44. S20-M4 客户交付场景模块边界
+
+- delivery manifest 只声明 `ProjectPlanService`、WorkItem flow/relation、automation/risk/governance 等公共 owner contract；目录服务不注入这些 owner repository。
+- 文件/验收引用、签署和客户内容不进入 ComponentManifest；M4 不写 InstallRun/Step 或 owner 事实，失败只返回稳定清单诊断。
+
+## 45. S20-M5 场景安装编排模块边界
+
+- `ScenarioTemplateService` 独占安装计划、运行、步骤、diff/conflict、installation 与 command receipt；Controller 只暴露 manager-gated dry-run/install/retry/upgrade/detach/current-installation 合同。
+- WorkItem 类型写入只能通过 `WorkItemTypeConfigurationService` 公共服务；配置模板 key 规范化为 owner 接受的稳定 type key。流程、关系、视图、计划、自动化、通知、风险和指标组件只验证公开 owner contract/reference，不注入其 repository。
+- repository 只写 project-owned V135/V137 表；不可变 run/step/diff/conflict/command receipt 不被重试改写。解绑不级联删除 owner 配置，冲突未决不调用 owner 写端口。

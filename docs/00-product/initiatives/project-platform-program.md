@@ -2,10 +2,10 @@
 title: 项目协作平台长期专项规划
 status: active
 program: PROJECT-PLATFORM
-revision: 47
-updated_at: 2026-07-28
+revision: 49
+updated_at: 2026-07-29
 planning_mode: rolling
-current_stage: PROJECT-PLATFORM-S20
+current_stage: PROJECT-PLATFORM-S21
 initiative_index_doc: docs/00-product/initiatives/README.md
 target_architecture_doc: docs/01-architecture/project-platform-target-architecture.md
 ---
@@ -18,7 +18,7 @@ target_architecture_doc: docs/01-architecture/project-platform-target-architectu
 
 规划采用滚动维护：当前 Stage 细化到 Task，下一 Stage 细化到 Milestone，后续 Stage 只冻结目标、依赖和退出证据。新调研、技术验证、代码事实或真实用户反馈可以修改未来规划，但不得静默改写已完成 Stage 的历史结论，也不得在没有变更记录的情况下改变正在执行 Stage 的目标。
 
-`PROJECT-PLATFORM-S08` 至 `PROJECT-PLATFORM-S19` 均已完成并归档。S20 已在 revision 47 激活为 5 个 Milestone、60 个 Task，当前唯一入口为 `PROJECT-PLATFORM-S20-M1-T01`；本次激活只建立四类场景模板及其安装/升级路线，不声明任何 S20 实现事实。`PLATFORM-SCALE-S01-S04` 已建立模块边界门禁、公共合同、双 API、可靠双 Worker、双 Event Gateway、统一客户端校准和唯一知识协同协议；`PLATFORM-SCALE-S05-M1` 只建立容量验证环境、确定性种子和四类加载器，M2-M5 继续 Deferred，不构成生产容量或基础设施 HA 承诺。
+`PROJECT-PLATFORM-S08` 至 `PROJECT-PLATFORM-S20` 均已完成并归档。S21 已在 revision 49 激活为 5 个 Milestone、60 个 Task，当前唯一入口为 `PROJECT-PLATFORM-S21-M1-T01`；本次激活只建立迁移审计、legacy 退出、全量工程验证、真人试用和最终 Go/No-Go 路线，不声明任何 S21 实现或真人结论。`PLATFORM-SCALE-S01-S04` 已建立模块边界门禁、公共合同、双 API、可靠双 Worker、双 Event Gateway、统一客户端校准和唯一知识协同协议；`PLATFORM-SCALE-S05-M1` 只建立容量验证环境、确定性种子和四类加载器，M2-M5 继续 Deferred，不构成生产容量或基础设施 HA 承诺。
 
 ## 2. 专项目标
 
@@ -84,8 +84,8 @@ target_architecture_doc: docs/01-architecture/project-platform-target-architectu
 | PROJECT-PLATFORM-S17 | 自动化规则、通知和开放连接器 | S08-S16 | Completed | M1-M5、60 个 Task、V122-V126 与真实隔离 route-final 完成；路线已归档 |
 | PROJECT-PLATFORM-S18 | 跨空间授权、关系和数据同步 | S10-S17 | Completed | M1-M4、48 个 Task、V127-V130 与真实隔离 route-final 完成；路线已归档 |
 | PROJECT-PLATFORM-S19 | 度量、效能、治理和管理驾驶舱 | S13-S18 | Completed | M1-M4、48 个 Task、V131-V134 与真实隔离 route-final 完成；路线已归档 |
-| PROJECT-PLATFORM-S20 | 研发、市场、HR 和交付场景模板 | S02-S19 | Active | M1-M5、60 个 Task；当前入口为 S20-M1-T01 |
-| PROJECT-PLATFORM-S21 | 旧模型退出、全量验证和真实团队试用 | S01-S20 | Planned | 固定模型删除、全量迁移、route-final 和真人 Go/No-Go |
+| PROJECT-PLATFORM-S20 | 研发、市场、HR 和交付场景模板 | S02-S19 | Completed | M1-M5、60 个 Task、V135-V137 与完整 route-final 已完成；路线已归档 |
+| PROJECT-PLATFORM-S21 | 旧模型退出、全量验证和真实团队试用 | S01-S20 | Active | M1-M5、60 个 Task；当前入口为 S21-M1-T01 |
 
 ## 6. Stage 与 Milestone 规划
 
@@ -367,6 +367,8 @@ S02 固定输入见目标架构 17：落 `project_spaces`、成员、角色分�
 | 45 | 2026-07-28 | 归档 S18 完成路线并激活 S19；把指标语义/窗口、图表/看板/跨空间数据源、风险预警、空间治理/配置健康/审计报表细化为 4 个 Milestone、48 个 Task | S19 必须逐来源复用 S11 当前 decision/data scope 与 S13-S18 owner 公共合同；未知/缺失/过期/截断不得归零，禁止私表 join、个人排名、绩效评分和 enterprise 内容旁路 | S19 Active；当前入口切换为 PROJECT-PLATFORM-S19-M1-T01；S18 路线归档；S20 保持 Planned |
 | 46 | 2026-07-29 | 完成 S19 四个 Milestone、48 个 Task；交付 V131-V134 指标语义、跨空间图表/看板、风险策略/信号和治理审计报表，并完成真实隔离 route-final | 所有指标、风险与报表逐来源复用当前公共合同；unknown/truncated 不伪装 healthy，导出逐次重校准权限，禁止个人绩效和 enterprise 内容旁路 | S19 Completed；`current_stage` 置 none；Go S20 但保持 Planned，需先独立归档 S19 并生成新当前路线 |
 | 47 | 2026-07-29 | 归档 S19 完成路线并激活 S20；把研发、市场、HR、交付四类场景目录和统一安装/差异/升级细化为 5 个 Milestone、60 个 Task | S20 必须复用 S03-S19 owner 公共配置/运行合同；模板目录不授权，安装不得写私表或静默覆盖本地调整，S21 旧模型退出与真人试用不得提前实现 | S20 Active；当前入口切换为 PROJECT-PLATFORM-S20-M1-T01；S19 路线归档；S21 保持 Planned |
+| 48 | 2026-07-29 | 完成 S20 五个 Milestone、60 个 Task；交付 V135-V137 四类不可变场景目录、公共 owner 安装编排、三方差异/冲突、升级/重试/解绑和完整真实隔离 route-final | 场景目录、运行和统计不授权；安装逐次校准当前 manager 与空间状态，只调用 owner 公共合同，不写私表、不静默覆盖本地调整、不删除 owner 事实；S21 旧模型退出和真人试用仍未实现 | S20 Completed；`current_stage` 置 none；Go S21 但保持 Planned，需先独立归档 S20 并生成新当前路线 |
+| 49 | 2026-07-29 | 归档 S20 完成路线并激活 S21；把存量迁移审计、旧 issues 产品合同删除、性能/安全/备份恢复 route-final、四场景真人试用和缺陷复验细化为 5 个 Milestone、60 个 Task | S21 必须先 inventory 和对账再删除，保留不可变迁移/审计证据；本地合成证据不授权生产切流，AI/自动化不得冒充真人参与者或产品结论 | S21 Active；当前入口切换为 PROJECT-PLATFORM-S21-M1-T01；S20 路线归档；工程与真人 Go/No-Go 仍待执行 |
 
 ## 10. 主要产品参考
 

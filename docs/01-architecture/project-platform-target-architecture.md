@@ -2,11 +2,11 @@
 title: 项目协作平台目标架构
 status: target
 program: PROJECT-PLATFORM
-program_revision: 47
+program_revision: 49
 domain_contract_version: 1
 domain_contract_status: frozen-s01-m3
 migration_contract_version: 1
-stage_review_status: s19-archived-s20-active
+stage_review_status: s21-active
 updated_at: 2026-07-29
 ---
 
@@ -1578,3 +1578,48 @@ S09 完成路线已经独立归档，S10 在 Program revision 27 激活为唯一
 - S20 只拥有场景目录/版本/组件清单、安装运行/步骤、差异/升级决策和精确回执；类型、字段、布局、流程、关系、权限、视图、计划、资源、自动化、指标与 WorkItem 继续由 S03-S19 owner 持有。
 - 场景安装必须调用 owner 公共合同并逐次重校准当前 manager/空间状态；目录、预览、缓存、运行历史和统计不授权，enterprise-admin 无内容旁路。
 - base/upstream/local 三方差异必须保留本地调整，未决冲突、未知 schema、缺失 capability、收权和停用失败关闭。revision 47 激活不声明任何 S20 schema、API、安装或 UI 已实现，S21 旧模型退出、全量迁移和真人试用保持 Planned。
+
+### 29.36 S20-M1 研发场景模板实现边界
+
+- V135 建立 ScenarioTemplate、不可变 TemplateVersion、ComponentManifest 及安装记录/运行/步骤/回执骨架；M1 只使用目录、版本和组件清单，不执行任何安装或 owner 写入。
+- 研发清单引用 S03-S19 已注册公共合同与公开配置模板 key，覆盖项目、需求、任务、缺陷、版本、迭代、关系、视图、看板、计划、自动化和指标；不保存 SQL、脚本、私表、权限快照、成员或内容样本。
+- 清单 schema 固定为 v1，组件 key 稳定且唯一，依赖图有界并确定性排序；未知组件、未来 schema、缺失 owner、重复 key、缺失依赖和环在持久化或预览前失败关闭。
+- 目录只在当前空间 visibility 校准后返回，目录/版本/校验/缓存不授权；enterprise-admin 无空间内容旁路。离线只保留已显示预览，不显示安装成功或隐藏目录。
+- M1 不交付市场、HR、交付清单，也不执行 InstallPlan、三方 diff、升级、解绑或 S21 旧模型退出；这些边界分别由 M2-M5 和 S21 持有。
+
+### 29.37 S20-M2 市场活动场景模板实现边界
+
+- V136 扩展数据库注册 kind 与服务注册表的一致性；marketing manifest 使用稳定 type/workflow/relation/calendar/board/notification/metric/dashboard 组件引用，覆盖活动、内容、素材、渠道、投放和复盘，不复制研发组件 identity。
+- 内容评审、素材审批、渠道发布和活动关闭只声明 S08/S09 流程 owner；市场日历/看板只声明 S14 owner，通知与指标只声明 S17/S19 owner。模板目录不执行审批、发布、通知或统计。
+- 文件与渠道只保存公开配置 identity；禁止复制文件内容、保存渠道凭据、任意 webhook/脚本和权限快照。隐藏内容不进入清单、数量、诊断或目录外形。
+- M2 不实现 HR/交付清单和统一安装、diff、升级或解绑；下一入口为 M3。
+
+### 29.38 S20-M3 HR 招聘场景模板实现边界
+
+- HR manifest 以 restricted field、node responsibility、minimal relation、permission-scoped view 和 suppressed aggregate 为固定边界；Candidate/Interview 配置引用不得进入目录值或诊断。
+- 职位审批、候选人阶段、面试会签、Offer 与入职流程只引用当前流程 owner，节点负责人不隐含候选人字段权限。通知执行者与接收者须在 M5 安装后由 owner 逐次校准。
+- 招聘看板、日历、待办和指标不得暴露隐藏候选人、评价、成员或数量；个人排名、面试官绩效和隐式评分禁止。
+- M3 不实现客户交付清单和统一安装/升级；下一入口为 M4，S21 仍不得提前执行。
+
+### 29.39 S20-M4 客户交付场景模板实现边界
+
+- delivery manifest 只引用 WorkItem、流程、关系、计划、文件、风险、自动化和治理公共合同；项目/任务/风险/交付物/评审/验收配置不建立第二套事实。
+- 交付阶段、整改、验收与关闭固定 source/version/owner provenance；文件和验收只保存公开引用，签署动作不得由模板模拟。
+- 计划时间线、台账、风险升级和治理面板只组合当前受权公共响应；隐藏客户内容、证据、成员和数量不进入目录或错误。
+- M4 完成四类目录，不执行安装或升级；M5 才能建立 InstallPlan/Run/Step、三方 diff、冲突、重试、解绑与 route-final。
+
+### 29.40 S20-M5 场景安装、升级与 Stage 收口边界
+
+- V137 完成 InstallRun/InstallStep、UpgradeDiff/Conflict、Installation 与 exact CommandReceipt 的复合边界和不可变历史；命令由 caller-stable request ID、request hash、actor、operation 和 source version 唯一解释。
+- dry-run 只返回确定性拓扑计划。install/retry/upgrade 每次重新校准 current manager 与空间状态；类型创建只调用 `WorkItemTypeConfigurationService`，其余组件只记录公开 owner reference，不直接操作任何 owner repository/private table。
+- 本地清单 hash 与 upstream 不同即生成 base/upstream/local 冲突；未解决时不写 owner 事实、不标记成功。选择 local 保留本地 hash，选择 upstream 才采用上游 hash。detach 只删除场景安装关联，不删除 owner 事实。
+- 目录、运行、步骤、冲突与统计均不授权；member/guest 无写入口，non-member/enterprise governance 不获得场景内容或 HR 候选人派生信息。
+- 五份报告、60 个 Task、V135-V137 与真实隔离 route-final 构成 S20 Go。S21 的 legacy 退出、全量迁移和真人试用仍须在 S20 独立归档后另行激活。
+
+### 29.41 S20 归档与 S21 激活边界
+
+- S20 完成路线已通过独立 archive-only 工作循环归档至 `docs/99-archive/superseded-roadmaps/project-platform-s20-roadmap-completed-2026-07-29.md`；S21 在 Program revision 49 激活，当前唯一入口是 `PROJECT-PLATFORM-S21-M1-T01`。
+- S21 当前路线固定为 5 个 Milestone、60 个 Task：M1 存量迁移完成度与数据一致性审计，M2 删除旧 issues 产品 API/DTO/页面/写路径，M3 性能/安全/备份恢复与 route-final，M4 四类真实团队任务试用，M5 缺陷复验与产品 Go/No-Go。
+- M1 必须先对代码、API、路由、事件、平台对象、数据库、map/batch/unit/provenance、权限和运行流量形成可审计 inventory；未知活动调用方、未映射、重复、悬空或权限偏差不得被默认视为可删除。
+- M2 只按 M1 冻结的 removal decision 退出活动 legacy 产品合同；migration map、batch、provenance、verification、audit/outbox 等不可变证据不得随产品入口一并删除，禁止恢复 legacy 写或建立永久双读双写。
+- M3 的本地/隔离容量、恢复和 route-final 证据不自动授权生产切流；M4 必须由真实研发、市场、HR、交付参与者执行规定任务，AI、维护者或自动化浏览器不能代签人工结论。revision 49 激活不声明任何 S21 实现、生产批准或真人试用事实。

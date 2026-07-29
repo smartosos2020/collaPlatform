@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "migrationRange": "V001-V134",
+      "migrationRange": "V001-V137",
   "defaultKind": "business",
   "owners": {
     "approval": [
@@ -163,6 +163,15 @@
       "project_risk_signal_actions",
       "project_risk_signals",
       "project_risk_stats",
+      "project_scenario_template_commands",
+      "project_scenario_template_components",
+      "project_scenario_template_install_runs",
+      "project_scenario_template_install_steps",
+      "project_scenario_template_installations",
+      "project_scenario_template_upgrade_conflicts",
+      "project_scenario_template_upgrade_diffs",
+      "project_scenario_template_versions",
+      "project_scenario_templates",
       "project_members",
       "project_node_workflow_backfill_batches",
       "project_node_workflow_backfill_units",

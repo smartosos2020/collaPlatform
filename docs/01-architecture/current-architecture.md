@@ -1,7 +1,7 @@
 ---
 title: 当前技术架构
 status: active
-last_code_check: 2026-07-28
+last_code_check: 2026-07-29
 ---
 
 # 当前技术架构
@@ -14,7 +14,7 @@ Colla Platform 当前是模块化单体：
 
 - 后端：单个 Spring Boot 应用，按业务模块分包。
 - 前端：单个 React SPA，用户工作台和管理后台使用独立 Shell、导航和路由边界。
-- 数据库：单个 PostgreSQL schema，通过 Flyway V001-V126 演进。
+- 数据库：单个 PostgreSQL schema，通过 Flyway V001-V137 演进。
 - 基础设施：Redis、MinIO、WebSocket、平台对象、权限、事件、审计和搜索由模块共享。
 - 交付：本地 Docker 依赖；生产基线是 maintenance、双 API、Worker、Event Gateway、双协作节点的 Docker Compose + Nginx。
 
@@ -602,3 +602,43 @@ S16-M1-M4 已交付 V118-V121 日历/例外/显式估分、实际工时/不可�
 - S19 完成路线已归档至 `docs/99-archive/superseded-roadmaps/project-platform-s19-roadmap-completed-2026-07-29.md`；Program revision 47 已激活 S20 的 5 个 Milestone、60 个 Task，当前唯一入口为 `PROJECT-PLATFORM-S20-M1-T01`。
 - S20 复用现有单类型配置模板、草稿/发布、三方合并和 S03-S19 公共合同，新增权威仅限场景目录/版本/组件清单、安装运行/步骤、差异/升级决策和精确回执。
 - 本次激活只冻结规划与验收边界；尚未实现任何 S20 schema、API、安装编排或 UI。S21 的旧模型删除、全量迁移、全仓最终验证和真人团队试用不得提前执行。
+
+## S20-M1 研发场景模板当前实现
+
+- V135 已建立 project-owned 场景目录、不可变版本、组件清单、安装记录/运行/步骤和精确命令回执基础表；复合 workspace/space 边界、稳定 key、版本唯一性、不可变历史、索引及空间清理均已进入 schema。
+- `ScenarioTemplateCatalog` 当前只发布 `development` 清单：项目、需求、任务、缺陷、版本、迭代六个类型组件，以及研发层级/缺陷追溯、待办视图、交付看板、路线计划、缺陷分诊自动化和交付健康指标，共 13 个稳定组件。
+- `ScenarioTemplateService` 对 schema、组件种类、owner contract、依赖扇出、重复 key、缺失依赖和环失败关闭，生成确定性清单哈希与拓扑安装顺序；目录导入幂等，版本内容不可更新。
+- `/api/project-spaces/{spaceId}/scenario-templates` 只向当前可见空间成员返回目录和预览，owner/admin/member/guest 同一最小披露，non-member 与 enterprise governance 不获得内容旁路。目录、缓存、预览、校验和拓扑顺序均不授权。
+- Web 已交付研发目录、来源版本、组件/依赖解释、校验结果、1440/1366/820 响应式与 offline/online/focus REST 校准；M1 不提供安装按钮，市场、HR、交付清单和统一安装/升级继续由 M2-M5 交付。
+
+## S20-M2 市场活动场景模板当前实现
+
+- V136 在不改写 V135 的前提下扩展注册组件 kind 约束；built-in catalog 新增 `marketing` 不可变清单，包含活动、内容、素材、渠道、投放、复盘六类配置，以及评审/发布流程、两组关系、市场日历、看板、受控通知、复盘指标和面板共 15 个组件。
+- 素材只声明文件公共引用，通知只声明注册 action；文件内容、外部渠道凭据、任意 webhook/脚本、私表和权限快照均为显式禁止能力。
+- 市场清单复用 M1 的 schema/hash/topology/visibility 合同，目录重放只新增稳定 marketing version，不改写 development version。Web 可切换模板并解释流程、关系和来源，仍无安装副作用。
+
+## S20-M3 HR 招聘场景模板当前实现
+
+- built-in catalog 新增 `human-resources` 不可变清单：招聘计划、职位、候选人、面试、Offer、入职六类配置，以及审批/阶段/会签流程、最小关系、招聘看板、面试日历、待办、受控提醒和受限指标共 16 个组件。
+- 候选人敏感字段默认受限，流程节点不扩大字段可见范围；目录/诊断显式禁止候选人 PII、评价、隐藏数量、个人排名和面试官绩效。
+- HR 清单复用当前 visibility/hash/topology 合同；owner/admin/member/guest 仅看到相同配置清单，non-member/enterprise 无内容旁路。离线仍只读且没有安装副作用。
+
+## S20-M4 客户交付场景模板当前实现
+
+- built-in catalog 新增 `delivery` 不可变清单：交付项目、任务、风险、交付物、评审、验收六类配置，以及阶段/整改/验收流程、追溯/风险关系、计划时间线、交付台账、受控通知、风险策略和治理面板共 16 个组件。
+- 文件与验收仅保存公共引用；目录显式禁止文件/证据复制、签署模拟、客户内容诊断和隐式交付成功。计划、风险、文件、评审/验收与治理事实继续由 S15/S19 等 owner 持有。
+- 四类场景目录已齐备并通过独立真实隔离验收；安装、diff、升级、重试、解绑和精确回执仍未执行，只能由 M5 收口。
+
+## S20-M5 场景安装、差异化与升级当前实现
+
+- V137 新增不可变 upgrade diff/conflict 历史，并把安装运行、步骤、精确命令回执和当前 installation 串成完整编排事实；同一 actor/operation/request ID 以 request hash 精确重放，hash 不同则失败关闭。
+- owner/admin 可对四类场景执行 dry-run、install、retry、upgrade 和 detach。类型组件通过 `WorkItemTypeConfigurationService` 公共写合同创建稳定、合法且空间内唯一的类型 key；其他组件只验证并记录公开 owner reference，不读取或写入 owner 私表。
+- dry-run 不写 owner 事实；安装逐步固定 source template version、target identity/version 与状态。未决本地清单冲突使全部步骤保持 skipped/attention；选择 local 或 upstream 后才可完成。detach 只解除场景引用，不删除已经由 owner 持有的配置事实。
+- Web 已交付当前安装、预检、步骤、冲突、本地保留升级、重试与解绑工作台；只有 owner/admin 可见写入口，离线禁用命令。四场景、六身份、精确重放、21+ 类型增长、冲突、解绑和 1440/1366/820 已通过真实隔离 route-final。
+- S20 五个 Milestone、60 个 Task、V135-V137 与完整真实隔离 route-final 已完成；完成路线已归档至 `docs/99-archive/superseded-roadmaps/project-platform-s20-roadmap-completed-2026-07-29.md`。
+
+## S20 归档与 S21 当前执行边界
+
+- Program revision 49 已激活 S21 的 5 个 Milestone、60 个 Task，当前唯一入口为 `PROJECT-PLATFORM-S21-M1-T01`。
+- 本次激活只冻结存量迁移审计、旧 issues 产品合同退出、性能/安全/备份恢复、四场景真人试用和最终 Go/No-Go 的执行与证据边界；尚未实现任何 S21 删除、迁移审计、生产批准或真人结论。
+- 当前代码仍保留 `/projects`、`/issues`、legacy DTO/API、平台对象、搜索、工作台和跨模块 legacy 引用；M1 必须先形成完整 inventory 和 removal decision，M2 才能按清单删除，禁止无证据物理清理或恢复 legacy 写。

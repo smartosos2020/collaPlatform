@@ -392,3 +392,30 @@ M37 后 Base 记录可以作为关系源：
 
 - GovernanceOverview 与 ConfigHealth 是请求期当前受权投影；AuditReport 是版本化配置，ReportRun 固定 report version/source fingerprint/result，ExportReceipt 固定 format/row count/truncation/content hash。
 - 报表和导出不注册 platform objectType、搜索或收藏，不复制内容、成员、ACL、指标样本或风险来源；所有结果不授权且可按保留策略清理。
+
+## S20-M1 场景模板对象边界
+
+- ScenarioTemplate 是稳定场景 identity；TemplateVersion 冻结 catalog version、manifest hash 和发布时间，历史版本不可更新。ComponentManifest 保存稳定 key、注册 kind、owner contract、公开 template key、依赖和必需标记。
+- ValidationResult、拓扑顺序和目录预览是请求期可重复投影，不注册 platform objectType、全局 resolver、搜索、收藏或 deep link，也不授权。
+- V135 的 Installation、InstallRun、InstallStep 与 CommandReceipt 仅是后续 M5 的编排骨架；M1 不创建安装事实，不复制 owner 配置、成员、ACL、内容或隐藏数量。
+
+## S20-M2 市场场景对象边界
+
+- marketing 是独立 ScenarioTemplate；其 15 个 ComponentManifest 只保存配置 identity、owner contract、依赖和说明。Campaign/Content/Asset/Channel/Placement/Review 仍是安装后由 WorkItem owner 持有的类型，不在目录中成为业务对象。
+- 市场日历、看板、流程、关系、通知、指标和面板都是待安装配置引用；预览不创建事件、文件、渠道凭据、成员或内容。
+
+## S20-M3 HR 场景对象边界
+
+- human-resources 是独立 ScenarioTemplate；HiringPlan/Position/Candidate/Interview/Offer/Onboarding 仅是 ComponentManifest 的类型配置 identity，不是候选人业务事实。
+- 清单不保存姓名、联系方式、简历、评价、面试官、Offer 内容、成员或统计；这些事实仍由安装后的 WorkItem/字段权限/文件/流程 owner 持有。
+
+## S20-M4 客户交付场景对象边界
+
+- delivery 是独立 ScenarioTemplate；DeliveryProject/Task/Risk/Deliverable/Review/Acceptance 仅为配置 identity，不复制项目计划、文件、验收证据或客户内容。
+- 追溯图、计划、风险和治理面板在 M4 只是组件依赖说明；没有安装事实、交付成功、签署或第二份审计历史。
+
+## S20-M5 安装与升级对象边界
+
+- ScenarioInstallation 是 space/scenario 的当前关联与本地 manifest hash，不拥有类型、流程、关系或业务数据。InstallRun/InstallStep 固定 operation、source/target version、状态和安全诊断，是不可变执行历史。
+- UpgradeDiff/Conflict 保存 base/upstream/local hash 及显式 resolution；未决冲突不形成成功安装。CommandReceipt 保存 exact response，重放不重复 run、step 或 owner 事实。
+- detach 结束 ScenarioInstallation 关联但保留历史与 owner 配置。安装对象不注册全局 objectType、搜索、收藏或企业内容入口，也不成为授权权威。

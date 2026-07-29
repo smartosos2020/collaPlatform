@@ -7178,6 +7178,63 @@ body {
   white-space: normal;
 }
 
+.scenario-templates-panel .scenario-template-selector {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  min-height: 42px;
+  text-align: left;
+}
+
+.scenario-template-heading {
+  align-items: flex-start;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+}
+
+.scenario-template-heading .ant-typography {
+  margin-bottom: 6px;
+}
+
+.scenario-component-list {
+  margin: 16px 0;
+}
+
+.scenario-install-workbench {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid var(--border-subtle, #e5e7eb);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface, #fff) 94%, #1677ff 6%);
+}
+
+.scenario-run-result {
+  display: grid;
+  gap: 8px;
+}
+
+.scenario-component-order {
+  align-items: center;
+  background: #eef2ff;
+  border-radius: 999px;
+  color: #4338ca;
+  display: inline-flex;
+  font-weight: 700;
+  height: 28px;
+  justify-content: center;
+  width: 28px;
+}
+
+@media (max-width: 820px) {
+  .scenario-template-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
 .metric-semantics-panel .metric-version-diff,
 .metric-semantics-panel .ant-alert {
   margin-top: 16px;

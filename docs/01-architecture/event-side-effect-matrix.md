@@ -347,3 +347,31 @@ workspace audience 只表示“该 workspace 的已连接客户端需要丢弃�
 - save report、run 和 export 使用 current manager gate、expected version 或 caller-stable request hash，并写 exact receipt/audit/minimal `project.governance.changed`；重放不重复运行、导出或事件。
 - overview/foundation 是只读公共服务组合。export 每次重算当前受权 overview 后生成 bounded rows/content hash，不读取缓存授权或历史内容。
 - realtime/online/focus 只触发 REST 重新校准，离线禁用保存、运行和导出；UI 计数、健康、文件内容和 signal 均不授权。
+
+## 32. S20-M1 场景模板目录副作用边界
+
+- 首次当前成员目录请求只幂等导入内置不可变 TemplateVersion/ComponentManifest；相同 manifest hash 重放不重复版本或组件，目录查询不写 owner 私表、不发布业务事件。
+- validate 只校验清单 schema、种类、owner、依赖和拓扑并返回确定性哈希；失败在安装副作用前关闭。M1 不创建 InstallRun、InstallStep、CommandReceipt、audit 或 outbox。
+- realtime/online/focus 只触发当前受权 REST 重读，离线不安装、不发布且不伪造成功；恢复后以服务端目录版本替换旧预览。
+
+## 33. S20-M2 市场场景副作用边界
+
+- 首次目录读取可幂等导入 marketing version/components；不创建活动、内容、文件、渠道、流程、关系、通知、指标或 dashboard 事实，也不发布业务事件。
+- 市场校验与 Web 预览只读；离线、realtime、focus 和多标签仅触发目录校准。M2 不执行渠道发布、通知或外部连接。
+
+## 34. S20-M3 HR 场景副作用边界
+
+- HR 目录导入只追加稳定 TemplateVersion/ComponentManifest；不创建候选人、面试、通知、评价、Offer 或入职事实，不发布 HR 业务事件。
+- validation/Web/offline/realtime 只读并重新校准当前空间 visibility；收权后不得从缓存闪现 HR 清单或任何候选人派生数量。
+
+## 35. S20-M4 客户交付场景副作用边界
+
+- delivery 目录导入只追加不可变模板版本/组件；不创建计划、风险、文件、评审、验收、通知、签署或治理运行。
+- preview/validation/offline/realtime 只读，失败不伪造交付成功。四类目录完成仍不触发 owner 写入，所有安装副作用由 M5 独占。
+
+## 36. S20-M5 场景安装与升级副作用边界
+
+- dry-run 只写 project-owned run/step/receipt 计划历史，不调用 owner 写端口；精确重放返回原响应，不重复步骤、配置或事件。
+- install/retry/upgrade 在 current manager gate 和无未决冲突后，按拓扑逐项调用公开 owner 服务；当前实现只有 work-item-type 组件执行公共配置写，其余组件记录已验证的公开 reference。任何失败不得伪造成 completed。
+- 未决 upgrade conflict 使步骤全部 skipped；显式 resolution 后才执行。detach 仅解除场景引用，不删除类型、流程、关系、视图、计划、自动化或指标事实。
+- Web realtime/online/focus 仅触发 REST 校准；离线禁用全部写命令。运行、冲突和 receipt 不授权，收权后旧页面不得继续执行。
