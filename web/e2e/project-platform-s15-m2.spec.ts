@@ -213,6 +213,10 @@ test.describe('PROJECT-PLATFORM-S15 M2', () => {
 
       await installSession(page, owner)
       await page.goto(`/project-spaces/${spaceId}/work-items`)
+      await page
+        .getByTestId('project-work-items-secondary-tabs')
+        .getByRole('tab', { name: '风险与决策', exact: true })
+        .click()
       await expect(page.getByTestId('project-register-panel')).toBeVisible()
       await page.getByLabel('台账筛选').click()
       await page.getByText('风险', { exact: true }).last().click()
@@ -237,6 +241,10 @@ test.describe('PROJECT-PLATFORM-S15 M2', () => {
 
       await installSession(page, guest)
       await page.goto(`/project-spaces/${spaceId}/work-items`)
+      await page
+        .getByTestId('project-work-items-secondary-tabs')
+        .getByRole('tab', { name: '风险与决策', exact: true })
+        .click()
       await expect(page.getByTestId('project-register-panel')).toContainText('当前角色只读')
       await expect(page.getByRole('button', { name: '创建条目' })).toBeDisabled()
     } finally {

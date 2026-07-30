@@ -26,6 +26,7 @@ import {
 import { useEffect, useMemo, useState } from 'react'
 
 import { useRealtimeSubscription } from '../../../shared/realtime'
+import { useSessionScope } from '../../../shared/session/SessionScopeContext'
 import {
   changeDashboard,
   dashboardKeys,
@@ -41,6 +42,16 @@ import {
 } from '../api/metricDashboardsApi'
 import { getMetricFoundation, metricKeys, type MetricDefinition } from '../api/metricSemanticsApi'
 import type { UserProjectSpace } from '../api/projectSpacesApi'
+import {
+  hasRecoverableLegacyDraft,
+  isProjectSpaceDraftRecord,
+  markLegacyDraftHandled,
+  projectSpaceCacheKey,
+  readProjectSpaceDraft,
+  recoverLegacyProjectSpaceDraft,
+  removeProjectSpaceDraft,
+  writeProjectSpaceDraft,
+} from '../projectSpaceLocalCache'
 import { formatTime } from '../projectSpaceView'
 
 type Editor = {
@@ -73,15 +84,45 @@ function defaultEditor(spaceId: string): Editor {
   }
 }
 
+function isMetricDashboardEditor(value: unknown): value is Editor {
+  if (!isProjectSpaceDraftRecord(value)) return false
+  return typeof value.dashboardKey === 'string'
+    && typeof value.name === 'string'
+    && typeof value.description === 'string'
+    && typeof value.chartKey === 'string'
+    && typeof value.chartName === 'string'
+    && typeof value.visualization === 'string'
+    && typeof value.sourceKind === 'string'
+    && typeof value.sourceSpaceIds === 'string'
+    && Array.isArray(value.dimensionKeys)
+    && value.dimensionKeys.every((item) => typeof item === 'string')
+    && typeof value.drilldown === 'boolean'
+}
+
 export function MetricDashboardsPanel({ space }: { space: UserProjectSpace }) {
   const client = useQueryClient()
-  const canManage = space.currentUserRole === 'owner' || space.currentUserRole === 'admin'
-  const draftKey = `colla.metric-dashboard-draft.${space.id}`
-  const layoutKey = `colla.metric-dashboard-layout.${space.id}`
+  const sessionScope = useSessionScope()
+  const canManage = space.availableActions.includes('view_settings')
+  const legacyDraftKey = `colla.metric-dashboard-draft.${space.id}`
+  const legacyLayoutKey = `colla.metric-dashboard-layout.${space.id}`
+  const draftScope = useMemo(
+    () => sessionScope
+      ? {
+          workspaceId: sessionScope.workspaceId,
+          userId: sessionScope.userId,
+          spaceId: space.id,
+        }
+      : null,
+    [sessionScope, space.id],
+  )
+  const draftKey = draftScope
+    ? projectSpaceCacheKey(draftScope, 'metric-dashboard-draft')
+    : null
   const [form] = Form.useForm<Editor>()
   const [selected, setSelected] = useState<MetricDashboard>()
   const [result, setResult] = useState<DashboardQueryResult>()
   const [online, setOnline] = useState(() => navigator.onLine)
+  const [handledLegacyDraftKey, setHandledLegacyDraftKey] = useState<string | null>(null)
   const foundation = useQuery({
     queryKey: dashboardKeys.foundation(space.id),
     queryFn: () => getDashboardFoundation(space.id),
@@ -106,7 +147,10 @@ export function MetricDashboardsPanel({ space }: { space: UserProjectSpace }) {
       })
     },
     onSuccess: async (dashboard) => {
-      localStorage.removeItem(draftKey)
+      if (draftScope) {
+        removeProjectSpaceDraft(localStorage, draftScope, 'metric-dashboard-draft')
+        markLegacyDraftHandled(localStorage, draftScope, 'metric-dashboard-draft')
+      }
       setSelected(dashboard)
       setResult(undefined)
       await client.invalidateQueries({ queryKey: dashboardKeys.foundation(space.id) })
@@ -159,10 +203,16 @@ export function MetricDashboardsPanel({ space }: { space: UserProjectSpace }) {
       }
     }
     const storage = (event: StorageEvent) => {
-      if (event.key === draftKey && event.newValue) {
-        form.setFieldsValue(JSON.parse(event.newValue) as Editor)
+      if (event.key === draftKey && draftScope) {
+        const draft = readProjectSpaceDraft(
+          localStorage,
+          draftScope,
+          'metric-dashboard-draft',
+          isMetricDashboardEditor,
+        )
+        if (draft) form.setFieldsValue(draft)
       }
-      if (event.key === layoutKey) setResult(undefined)
+      if (event.key === legacyLayoutKey) setResult(undefined)
       calibrate()
     }
     window.addEventListener('online', calibrate)
@@ -175,15 +225,40 @@ export function MetricDashboardsPanel({ space }: { space: UserProjectSpace }) {
       window.removeEventListener('focus', calibrate)
       window.removeEventListener('storage', storage)
     }
-  }, [client, draftKey, form, layoutKey, space.id])
+  }, [client, draftKey, draftScope, form, legacyLayoutKey, space.id])
 
   const initial = useMemo(() => {
-    try {
-      return JSON.parse(localStorage.getItem(draftKey) ?? '') as Editor
-    } catch {
-      return defaultEditor(space.id)
-    }
-  }, [draftKey, space.id])
+    if (!draftScope) return defaultEditor(space.id)
+    return readProjectSpaceDraft(
+      localStorage,
+      draftScope,
+      'metric-dashboard-draft',
+      isMetricDashboardEditor,
+    ) ?? defaultEditor(space.id)
+  }, [draftScope, space.id])
+  const legacyDraftAvailable = Boolean(
+    draftScope
+    && handledLegacyDraftKey !== draftKey
+    && hasRecoverableLegacyDraft(
+      localStorage,
+      draftScope,
+      'metric-dashboard-draft',
+      legacyDraftKey,
+      isMetricDashboardEditor,
+    ),
+  )
+  const recoverLegacyDraft = () => {
+    if (!draftScope) return
+    const recovered = recoverLegacyProjectSpaceDraft(
+      localStorage,
+      draftScope,
+      'metric-dashboard-draft',
+      legacyDraftKey,
+      isMetricDashboardEditor,
+    )
+    if (recovered) form.setFieldsValue(recovered)
+    setHandledLegacyDraftKey(draftKey)
+  }
 
   const selectDashboard = (dashboard: MetricDashboard) => {
     setSelected(dashboard)
@@ -222,6 +297,15 @@ export function MetricDashboardsPanel({ space }: { space: UserProjectSpace }) {
           type="warning"
           showIcon
           message="当前离线：仅保留本地设计和布局，不伪造保存、分享或查询成功"
+        />
+      ) : null}
+      {canManage && legacyDraftAvailable ? (
+        <Alert
+          type="info"
+          showIcon
+          message="检测到旧版本机草稿"
+          description="旧草稿未自动跨账号载入；确认属于当前账号后可恢复。"
+          action={<Button onClick={recoverLegacyDraft}>恢复旧草稿</Button>}
         />
       ) : null}
       {foundation.isError ? (
@@ -266,7 +350,16 @@ export function MetricDashboardsPanel({ space }: { space: UserProjectSpace }) {
               form={form}
               layout="vertical"
               initialValues={initial}
-              onValuesChange={(_, values) => localStorage.setItem(draftKey, JSON.stringify(values))}
+              onValuesChange={(_, values) => {
+                if (draftScope) {
+                  writeProjectSpaceDraft(
+                    localStorage,
+                    draftScope,
+                    'metric-dashboard-draft',
+                    values,
+                  )
+                }
+              }}
               onFinish={values => online && save.mutate(values)}
             >
               <Row gutter={12}>

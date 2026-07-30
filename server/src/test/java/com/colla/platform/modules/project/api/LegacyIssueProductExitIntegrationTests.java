@@ -24,7 +24,7 @@ class LegacyIssueProductExitIntegrationTests {
     void v139RetiresLegacyProductRegistrationsWithoutDeletingHistoricalEvidence() {
         assertThat(jdbc.queryForObject(
             "select max(version) from flyway_schema_history", String.class
-        )).isEqualTo("139");
+        )).isEqualTo("141");
         assertThat(jdbc.queryForObject(
             "select count(*) from permissions where code like 'issue.%'", Integer.class
         )).isZero();

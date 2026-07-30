@@ -29,6 +29,8 @@ test.describe('PROJECT-PLATFORM-S05-M3 field access policy', () => {
       await installSession(page, owner)
       await page.setViewportSize({ width: 1440, height: 900 })
       await page.goto(`/project-spaces/${spaceId}/types/${typeId}/layouts`)
+      await page.getByTestId('project-space-layouts-secondary-tabs')
+        .getByRole('tab', { name: '字段权限', exact: true }).click()
       await expect(page.getByTestId('work-item-layout-policy-editor')).toBeVisible()
       await page.getByLabel('策略字段').click()
       await page.getByText('安全备注 · security_note', { exact: true }).click()
@@ -43,6 +45,8 @@ test.describe('PROJECT-PLATFORM-S05-M3 field access policy', () => {
       expect((await saveResponse).ok()).toBeTruthy()
       await expect(page.getByText('字段访问策略已保存')).toBeVisible()
 
+      await page.getByTestId('project-space-layouts-secondary-tabs')
+        .getByRole('tab', { name: '访问预览', exact: true }).click()
       const previewResponse = page.waitForResponse((response) =>
         response.url().endsWith('/layouts/create/preview')
           && response.request().method() === 'POST')

@@ -140,6 +140,10 @@ test.describe('PROJECT-PLATFORM-S16 M2', () => {
 
       await installSession(page, owner)
       await page.goto(`/project-spaces/${spaceId}/work-items`)
+      await page
+        .getByTestId('project-work-items-secondary-tabs')
+        .getByRole('tab', { name: '实际工时', exact: true })
+        .click()
       await expect(page.getByTestId('resource-worklog-panel')).toBeVisible()
       await expect(page.getByTestId('resource-worklog-panel')).toContainText('600 分钟')
       await expect(page.getByTestId('resource-worklog-panel')).toContainText('修订历史')

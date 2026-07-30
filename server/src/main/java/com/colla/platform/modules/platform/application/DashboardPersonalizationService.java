@@ -21,15 +21,32 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class DashboardPersonalizationService implements DashboardPersonalization {
-    private static final Map<String, String> CATALOG = Map.ofEntries(
-        Map.entry("personal.todo", "我的待办"),
-        Map.entry("personal.responsible", "我负责的"),
-        Map.entry("personal.participating", "我参与的"),
-        Map.entry("personal.watching", "我关注的"),
-        Map.entry("objects.recent", "最近访问"),
-        Map.entry("objects.favorites", "收藏对象"),
-        Map.entry("drafts.own", "我的草稿")
+    private static final List<CardDefinition> CATALOG = List.of(
+        new CardDefinition("drafts.own", "我的草稿"),
+        new CardDefinition("objects.favorites", "收藏对象"),
+        new CardDefinition("objects.recent", "最近访问"),
+        new CardDefinition("personal.participating", "我参与的"),
+        new CardDefinition("personal.responsible", "我负责的"),
+        new CardDefinition("personal.todo", "我的待办"),
+        new CardDefinition("personal.watching", "我关注的"),
+        new CardDefinition("work.recent", "最近事项"),
+        new CardDefinition("conversations.unread", "未读会话"),
+        new CardDefinition("approvals.todo", "审批待办"),
+        new CardDefinition("notifications.latest", "最新通知"),
+        new CardDefinition("content.recent", "最近知识内容和表格")
     );
+    private static final Map<String, CardDefinition> CATALOG_BY_KEY = CATALOG.stream()
+        .collect(java.util.stream.Collectors.toUnmodifiableMap(CardDefinition::key, definition -> definition));
+    private static final Set<String> LEGACY_CATALOG_KEYS = Set.of(
+        "drafts.own",
+        "objects.favorites",
+        "objects.recent",
+        "personal.participating",
+        "personal.responsible",
+        "personal.todo",
+        "personal.watching"
+    );
+    private static final int LEGACY_CARD_COUNT = LEGACY_CATALOG_KEYS.size();
     private final DashboardPersonalizationRepository repository;
 
     public DashboardPersonalizationService(DashboardPersonalizationRepository repository) {
@@ -40,20 +57,29 @@ public class DashboardPersonalizationService implements DashboardPersonalization
     public List<DashboardCard> layout(UUID workspaceId, UUID userId) {
         Map<String, CardPreference> stored = new LinkedHashMap<>();
         repository.layout(workspaceId, userId).forEach(card -> stored.put(card.cardKey(), card));
+        List<CardDefinition> ordered = new ArrayList<>();
+        stored.values().stream()
+            .filter(preference -> CATALOG_BY_KEY.containsKey(preference.cardKey()))
+            .sorted(Comparator.comparingInt(CardPreference::position).thenComparing(CardPreference::cardKey))
+            .map(preference -> CATALOG_BY_KEY.get(preference.cardKey()))
+            .forEach(ordered::add);
+        CATALOG.stream()
+            .filter(definition -> !stored.containsKey(definition.key()))
+            .forEach(ordered::add);
+
         List<DashboardCard> result = new ArrayList<>();
-        int defaultPosition = 0;
-        for (var entry : CATALOG.entrySet().stream().sorted(Map.Entry.comparingByKey()).toList()) {
-            CardPreference preference = stored.get(entry.getKey());
+        for (int position = 0; position < ordered.size(); position++) {
+            CardDefinition definition = ordered.get(position);
+            CardPreference preference = stored.get(definition.key());
             result.add(new DashboardCard(
-                entry.getKey(),
-                entry.getValue(),
-                preference == null ? defaultPosition : preference.position(),
+                definition.key(),
+                definition.title(),
+                position,
                 preference != null && preference.hidden(),
                 true
             ));
-            defaultPosition++;
         }
-        return result.stream().sorted(Comparator.comparingInt(DashboardCard::position).thenComparing(DashboardCard::cardKey)).toList();
+        return List.copyOf(result);
     }
 
     @Override
@@ -69,18 +95,25 @@ public class DashboardPersonalizationService implements DashboardPersonalization
         if (stableRequestId.isBlank() || stableRequestId.length() > 120) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "requestId is required");
         }
-        List<CardPreference> normalized = normalize(cards);
-        String requestHash = sha256(expectedVersion + ":" + normalized);
+        NormalizedRequest normalized = normalize(cards);
+        String requestHash = sha256(expectedVersion + ":" + normalized.cardsForHash());
         var replay = repository.completedCommand(workspaceId, userId, "replace_layout", stableRequestId, requestHash);
         if (replay.isPresent()) {
             return new DashboardLayout(replay.get(), layout(workspaceId, userId), repository.updatedAt(workspaceId, userId));
+        }
+        if (normalized.legacyPayload() && repository.layout(workspaceId, userId).stream()
+            .anyMatch(card -> !LEGACY_CATALOG_KEYS.contains(card.cardKey()))) {
+            throw new ResponseStatusException(
+                HttpStatus.CONFLICT,
+                "dashboard card catalog changed; refresh and retry"
+            );
         }
         UUID commandId = UUID.randomUUID();
         if (!repository.tryStartCommand(commandId, workspaceId, userId, "replace_layout", stableRequestId, requestHash)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "requestId was reused with another payload");
         }
         long nextVersion = expectedVersion + 1;
-        if (!repository.replace(workspaceId, userId, expectedVersion, nextVersion, normalized)) {
+        if (!repository.replace(workspaceId, userId, expectedVersion, nextVersion, normalized.cardsToPersist())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "dashboard layout version changed; refresh and retry");
         }
         repository.completeCommand(commandId, nextVersion);
@@ -96,18 +129,39 @@ public class DashboardPersonalizationService implements DashboardPersonalization
         );
     }
 
-    private List<CardPreference> normalize(List<CardPreference> cards) {
-        if (cards == null || cards.size() != CATALOG.size()) {
+    private NormalizedRequest normalize(List<CardPreference> cards) {
+        if (cards == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "all dashboard cards are required");
         }
-        Set<String> keys = cards.stream().map(CardPreference::cardKey).collect(java.util.stream.Collectors.toSet());
-        if (!keys.equals(CATALOG.keySet()) || keys.size() != cards.size()) {
+        if (cards.size() == CATALOG.size()) {
+            List<CardPreference> normalized = normalizeExact(cards, CATALOG_BY_KEY.keySet());
+            return new NormalizedRequest(normalized, normalized, false);
+        }
+        if (cards.size() == LEGACY_CARD_COUNT) {
+            List<CardPreference> legacy = normalizeExact(cards, LEGACY_CATALOG_KEYS);
+            List<CardPreference> expanded = new ArrayList<>(legacy);
+            CATALOG.stream()
+                .filter(definition -> !LEGACY_CATALOG_KEYS.contains(definition.key()))
+                .forEach(definition -> expanded.add(
+                    new CardPreference(definition.key(), expanded.size(), false)
+                ));
+            return new NormalizedRequest(List.copyOf(expanded), legacy, true);
+        }
+        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "all dashboard cards are required");
+    }
+
+    private List<CardPreference> normalizeExact(List<CardPreference> cards, Set<String> catalogKeys) {
+        if (cards.stream().anyMatch(card -> card == null)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "unknown or duplicate dashboard card");
         }
-        if (cards.stream().anyMatch(card -> card.position() < 0 || card.position() >= CATALOG.size())) {
+        Set<String> keys = cards.stream().map(CardPreference::cardKey).collect(java.util.stream.Collectors.toSet());
+        if (!keys.equals(catalogKeys) || keys.size() != cards.size()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "unknown or duplicate dashboard card");
+        }
+        if (cards.stream().anyMatch(card -> card.position() < 0 || card.position() >= catalogKeys.size())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "invalid dashboard card position");
         }
-        if (cards.stream().map(CardPreference::position).distinct().count() != CATALOG.size()) {
+        if (cards.stream().map(CardPreference::position).distinct().count() != catalogKeys.size()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "dashboard card positions must be unique");
         }
         return cards.stream().sorted(Comparator.comparingInt(CardPreference::position)).toList();
@@ -120,5 +174,15 @@ public class DashboardPersonalizationService implements DashboardPersonalization
         } catch (java.security.NoSuchAlgorithmException exception) {
             throw new IllegalStateException(exception);
         }
+    }
+
+    private record CardDefinition(String key, String title) {
+    }
+
+    private record NormalizedRequest(
+        List<CardPreference> cardsToPersist,
+        List<CardPreference> cardsForHash,
+        boolean legacyPayload
+    ) {
     }
 }

@@ -7,6 +7,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Alert,
+  App as AntdApp,
   Button,
   Card,
   Col,
@@ -19,7 +20,7 @@ import {
   Tag,
   Typography,
 } from 'antd'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { useRealtimeSubscription } from '../../../shared/realtime'
 import {
@@ -32,6 +33,10 @@ import {
   type ScenarioTemplate,
 } from '../api/scenarioTemplatesApi'
 import type { UserProjectSpace } from '../api/projectSpacesApi'
+import type {
+  ProjectSpaceExperienceErrorCode,
+  ProjectSpaceExperienceEventOutcome,
+} from '../projectSpaceExperience'
 
 const kindLabels: Record<string, string> = {
   work_item_type: '工作项类型',
@@ -48,12 +53,26 @@ const kindLabels: Record<string, string> = {
   dashboard: '仪表盘',
 }
 
-export function ScenarioTemplatesPanel({ space }: { space: UserProjectSpace }) {
+export function ScenarioTemplatesPanel({
+  space,
+  onTaskResult,
+}: {
+  space: UserProjectSpace
+  onTaskResult?: (
+    outcome: ProjectSpaceExperienceEventOutcome,
+    errorCode: ProjectSpaceExperienceErrorCode,
+  ) => void
+}) {
+  const { modal } = AntdApp.useApp()
   const client = useQueryClient()
   const [online, setOnline] = useState(() => navigator.onLine)
   const [selectedKey, setSelectedKey] = useState('development')
   const [localManifestHash, setLocalManifestHash] = useState('')
   const [lastRun, setLastRun] = useState<ScenarioInstallResult | null>(null)
+  const pendingIntent = useRef<{
+    fingerprint: string
+    requestId: string
+  } | null>(null)
   const query = useQuery({
     queryKey: scenarioTemplateKeys.foundation(space.id),
     queryFn: () => getScenarioTemplateFoundation(space.id),
@@ -70,7 +89,7 @@ export function ScenarioTemplatesPanel({ space }: { space: UserProjectSpace }) {
     enabled: Boolean(selected && online),
     retry: false,
   })
-  const canManage = ['owner', 'admin'].includes(space.currentUserRole ?? '')
+  const canManage = space.availableActions.includes('view_settings')
   const installation = useQuery({
     queryKey: [...scenarioTemplateKeys.foundation(space.id), selected?.scenarioKey, 'installation'],
     queryFn: () => getScenarioInstallation(space.id, selected!.scenarioKey),
@@ -82,16 +101,50 @@ export function ScenarioTemplatesPanel({ space }: { space: UserProjectSpace }) {
       operation: 'dry-run' | 'install' | 'retry' | 'upgrade' | 'detach'
       localHash?: string
       resolutions?: Record<string, string>
-    }) => runScenarioCommand(space.id, selected!.scenarioKey, input.operation, {
-      requestId: crypto.randomUUID(),
-      localManifestHash: input.localHash,
-      conflictResolutions: input.resolutions,
-    }),
+    }) => {
+      const fingerprint = JSON.stringify({
+        spaceId: space.id,
+        scenarioKey: selected!.scenarioKey,
+        operation: input.operation,
+        localHash: input.localHash ?? null,
+        resolutions: input.resolutions ?? null,
+      })
+      const requestId = pendingIntent.current?.fingerprint === fingerprint
+        ? pendingIntent.current.requestId
+        : crypto.randomUUID()
+      pendingIntent.current = { fingerprint, requestId }
+      return runScenarioCommand(space.id, selected!.scenarioKey, input.operation, {
+        requestId,
+        localManifestHash: input.localHash,
+        conflictResolutions: input.resolutions,
+      })
+    },
     onSuccess: (result) => {
+      pendingIntent.current = null
       setLastRun(result)
       void installation.refetch()
+      onTaskResult?.('succeeded', 'none')
     },
+    onError: () => onTaskResult?.('failed', 'server_error'),
   })
+  const confirmCommand = (
+    input: {
+      operation: 'install' | 'upgrade' | 'detach'
+      localHash?: string
+      resolutions?: Record<string, string>
+    },
+    title: string,
+    danger = false,
+  ) => {
+    modal.confirm({
+      title,
+      content: '服务端会重新校准当前 capability，并返回可审计、可幂等重放的执行回执。',
+      okText: '确认执行',
+      cancelText: '取消',
+      okButtonProps: danger ? { danger: true } : undefined,
+      onOk: () => command.mutateAsync(input),
+    })
+  }
 
   useRealtimeSubscription(['project_space.changed'], (signal) => {
     if (signal.objectType === 'project_space' && signal.objectId === space.id) {
@@ -180,33 +233,46 @@ export function ScenarioTemplatesPanel({ space }: { space: UserProjectSpace }) {
                       type="primary"
                       disabled={!online}
                       loading={command.isPending}
-                      onClick={() => command.mutate({ operation: 'install' })}
+                      onClick={() => confirmCommand(
+                        { operation: 'install' },
+                        `确认安装“${selected.name}”？`,
+                      )}
                     >
                       安装模板
                     </Button>
                     <Button
                       disabled={!online || !installation.data}
-                      onClick={() => command.mutate({
-                        operation: 'upgrade',
-                        localHash: localManifestHash || selected.currentVersion.manifestHash,
-                      })}
+                      onClick={() => confirmCommand(
+                        {
+                          operation: 'upgrade',
+                          localHash: localManifestHash || selected.currentVersion.manifestHash,
+                        },
+                        `确认检查并升级“${selected.name}”？`,
+                      )}
                     >
                       检查升级
                     </Button>
                     <Button
                       disabled={!online || !lastRun?.conflicts.length}
-                      onClick={() => command.mutate({
-                        operation: 'upgrade',
-                        localHash: localManifestHash || selected.currentVersion.manifestHash,
-                        resolutions: { local_manifest: 'local' },
-                      })}
+                      onClick={() => confirmCommand(
+                        {
+                          operation: 'upgrade',
+                          localHash: localManifestHash || selected.currentVersion.manifestHash,
+                          resolutions: { local_manifest: 'local' },
+                        },
+                        `确认按本地冲突选择升级“${selected.name}”？`,
+                      )}
                     >
                       保留本地并升级
                     </Button>
                     <Button
                       danger
                       disabled={!online || !installation.data}
-                      onClick={() => command.mutate({ operation: 'detach' })}
+                      onClick={() => confirmCommand(
+                        { operation: 'detach' },
+                        `确认解绑“${selected.name}”引用？`,
+                        true,
+                      )}
                     >
                       解绑引用
                     </Button>
@@ -217,7 +283,7 @@ export function ScenarioTemplatesPanel({ space }: { space: UserProjectSpace }) {
                   {lastRun ? <ScenarioRunResult result={lastRun} /> : null}
                 </div>
               ) : (
-                <Alert type="info" showIcon message="仅空间 owner/admin 可执行安装；目录预览不授权" />
+                <Alert type="info" showIcon message="当前 capability 不允许安装；目录预览本身不授权" />
               )}
             </>
           ) : null}

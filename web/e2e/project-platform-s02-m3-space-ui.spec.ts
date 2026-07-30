@@ -109,6 +109,8 @@ test.describe('PROJECT-PLATFORM-S02-M3 project-space UI isolation', () => {
       expect(removedAccess.status()).toBe(404)
 
       await page.goto(`/project-spaces/${spaceId}/settings`)
+      await page.getByTestId('project-space-settings-secondary-tabs')
+        .getByRole('tab', { name: '空间生命周期', exact: true }).click()
       await page.getByRole('button', { name: '停用' }).click()
       await page.getByRole('button', { name: '确认停用' }).click()
       await expect(page.getByText('空间已停用，写入和成员变更已关闭。')).toBeVisible()

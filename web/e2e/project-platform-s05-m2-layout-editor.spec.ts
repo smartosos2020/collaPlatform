@@ -50,8 +50,12 @@ test.describe('PROJECT-PLATFORM-S05-M2 layout editor', () => {
       await page.getByRole('button', { name: '使用当前字段初始化' }).click()
       expect((await initializeCreate).ok()).toBeTruthy()
       await expect(page.getByTestId('work-item-layout-editor')).toBeVisible()
+      await page.getByTestId('project-space-layouts-secondary-tabs')
+        .getByRole('tab', { name: '访问预览', exact: true }).click()
       await expect(page.getByTestId('work-item-layout-renderer')).toContainText('标题')
       await expect(page.getByTestId('work-item-layout-renderer')).toContainText('优先级')
+      await page.getByTestId('project-space-layouts-secondary-tabs')
+        .getByRole('tab', { name: '布局设计', exact: true }).click()
 
       const addSection = page.waitForResponse((response) =>
         response.url().endsWith('/layouts/create/nodes:command')

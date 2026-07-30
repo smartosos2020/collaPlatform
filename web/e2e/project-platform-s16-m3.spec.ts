@@ -140,6 +140,10 @@ test.describe('PROJECT-PLATFORM-S16 M3', () => {
 
       await installSession(page, owner)
       await page.goto(`/project-spaces/${spaceId}/work-items`)
+      await page
+        .getByTestId('project-work-items-secondary-tabs')
+        .getByRole('tab', { name: '资源产能', exact: true })
+        .click()
       await expect(page.getByTestId('resource-capacity-panel')).toBeVisible()
       await expect(page.getByTestId('resource-capacity-panel')).toContainText('overloaded')
       await expect(page.getByTestId('resource-capacity-panel')).toContainText('产能 480')

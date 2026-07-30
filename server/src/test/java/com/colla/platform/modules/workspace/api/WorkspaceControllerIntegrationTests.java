@@ -2,6 +2,7 @@ package com.colla.platform.modules.workspace.api;
 
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
 import static org.hamcrest.Matchers.hasItem;
+import static org.hamcrest.Matchers.hasItems;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.blankOrNullString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -110,6 +111,14 @@ class WorkspaceControllerIntegrationTests {
             .andExpect(jsonPath("$.recentBases[*].id").value(hasItem(baseId.toString())))
             .andExpect(jsonPath("$.recentObjects[*].objectType").value(hasItem("project_space")))
             .andExpect(jsonPath("$.favoriteObjects[*].objectId").value(hasItem(projectSpaceId.toString())))
+            .andExpect(jsonPath("$.dashboardLayout.cards.length()").value(12))
+            .andExpect(jsonPath("$.dashboardLayout.cards[*].cardKey").value(hasItems(
+                "work.recent",
+                "conversations.unread",
+                "approvals.todo",
+                "notifications.latest",
+                "content.recent"
+            )))
             .andExpect(jsonPath("$.availableActions", hasItem("open_notifications")));
 
         mockMvc.perform(post("/api/notifications/read-batch")

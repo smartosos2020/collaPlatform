@@ -30,6 +30,7 @@ import { useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import { useAuthStore } from '../../auth/authStore'
+import { PageHeader } from '../../../shared/components/PageHeader'
 import { listDirectoryMembers } from '../../../shared/api/directoryApi'
 import {
   approveApproval,
@@ -159,23 +160,25 @@ export function ApprovalsPage() {
   ]
 
   return (
-    <Space orientation="vertical" size={16} className="page-stack approvals-page">
-      <Space className="page-toolbar" wrap>
-        <Typography.Title level={2}>审批</Typography.Title>
-        <Space wrap>
-          <Button icon={<ReloadOutlined />} onClick={() => void refreshApprovals(selectedInstanceId ?? undefined)} />
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={() => {
-              setSelectedFormId(formsQuery.data?.[0]?.id ?? null)
-              setStartOpen(true)
-            }}
-          >
-            发起审批
-          </Button>
-        </Space>
-      </Space>
+    <Space orientation="vertical" size={16} className="page-stack approvals-page workspace-page">
+      <PageHeader
+        title="审批"
+        actions={
+          <Space wrap>
+            <Button aria-label="刷新审批" icon={<ReloadOutlined />} onClick={() => void refreshApprovals(selectedInstanceId ?? undefined)} />
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={() => {
+                setSelectedFormId(formsQuery.data?.[0]?.id ?? null)
+                setStartOpen(true)
+              }}
+            >
+              发起审批
+            </Button>
+          </Space>
+        }
+      />
 
       <section className="approval-metrics">
         <Card size="small">

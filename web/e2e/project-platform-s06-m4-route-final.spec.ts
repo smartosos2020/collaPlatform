@@ -34,6 +34,8 @@ test.describe('PROJECT-PLATFORM-S06 route final', () => {
       await installSession(page, owner)
       await page.setViewportSize({ width: 1440, height: 900 })
       await page.goto(`/project-spaces/${spaceId}/types/${typeId}`)
+      await page.getByTestId('project-space-types-secondary-tabs')
+        .getByRole('tab', { name: '配置发布', exact: true }).click()
 
       const panel = page.getByRole('region', { name: '配置草稿状态' })
       await expect(panel).toBeVisible()
@@ -84,12 +86,16 @@ test.describe('PROJECT-PLATFORM-S06 route final', () => {
         expect(JSON.stringify(await response.json())).not.toContain('configHash')
       }
 
+      await page.getByTestId('project-space-types-secondary-tabs')
+        .getByRole('tab', { name: '类型目录', exact: true }).click()
       const editButton = page.locator('.work-item-type-detail-card').getByRole('button', { name: '编辑' })
       await editButton.focus()
       await editButton.press('Enter')
       await expect(page.getByRole('dialog')).toBeVisible()
       await page.keyboard.press('Escape')
       await expect(page.getByRole('dialog')).toBeHidden()
+      await page.getByTestId('project-space-types-secondary-tabs')
+        .getByRole('tab', { name: '配置发布', exact: true }).click()
 
       await page.context().setOffline(true)
       await expect(page.getByText('当前处于离线状态，已打开页面可继续查看，新的保存操作会失败。')).toBeVisible()
@@ -117,12 +123,16 @@ test.describe('PROJECT-PLATFORM-S06 route final', () => {
 })
 
 async function editTypeDescription(page: Page, description: string) {
+  await page.getByTestId('project-space-types-secondary-tabs')
+    .getByRole('tab', { name: '类型目录', exact: true }).click()
   const editButton = page.locator('.work-item-type-detail-card').getByRole('button', { name: '编辑' })
   await editButton.scrollIntoViewIfNeeded()
   await editButton.click()
   await page.getByLabel('类型说明').fill(description)
   await page.getByRole('dialog').getByRole('button', { name: /保\s*存/, exact: true }).click()
   await expect(page.getByRole('dialog')).toBeHidden()
+  await page.getByTestId('project-space-types-secondary-tabs')
+    .getByRole('tab', { name: '配置发布', exact: true }).click()
 }
 
 async function validateAndPublish(

@@ -98,6 +98,8 @@ test.describe('PROJECT-PLATFORM-S10 route final', () => {
 
       await installSession(page, member)
       await page.goto(`/project-spaces/${spaceId}/work-items/${child.id}`)
+      await page.getByTestId('project-work-item-detail-secondary-tabs')
+        .getByRole('tab', { name: '事项关系', exact: true }).click()
       const panel = page.locator('.work-item-relations-panel')
       await expect(panel).toBeVisible()
       await expect(panel).toContainText('S10 父项')
@@ -128,11 +130,15 @@ test.describe('PROJECT-PLATFORM-S10 route final', () => {
 
       await installSession(page, guest)
       await page.goto(`/project-spaces/${spaceId}/work-items/${child.id}`)
+      await page.getByTestId('project-work-item-detail-secondary-tabs')
+        .getByRole('tab', { name: '事项关系', exact: true }).click()
       await expect(page.locator('.work-item-relations-panel')).toBeVisible()
       await expect(page.locator('.work-item-relations-panel').getByRole('button', { name: '建立关系' })).toHaveCount(0)
 
       await installSession(page, owner)
       await page.goto(`/project-spaces/${spaceId}/work-items/${child.id}`)
+      await page.getByTestId('project-work-item-detail-secondary-tabs')
+        .getByRole('tab', { name: '事项关系', exact: true }).click()
       await page.locator('.work-item-relations-panel').getByRole('tab', { name: 'Legacy 承接' }).click()
       await page.locator('.work-item-relation-migration-tab').getByRole('button', { name: 'Dry-run plan' }).click()
       await expect(page.locator('.work-item-relation-migration-tab')).toContainText(/planned|总计 0/)
@@ -140,6 +146,8 @@ test.describe('PROJECT-PLATFORM-S10 route final', () => {
       for (const width of [1366, 820]) {
         await page.setViewportSize({ width, height: 900 })
         await page.goto(`/project-spaces/${spaceId}/work-items/${child.id}`)
+        await page.getByTestId('project-work-item-detail-secondary-tabs')
+          .getByRole('tab', { name: '事项关系', exact: true }).click()
         await expect(page.locator('.work-item-relations-panel')).toBeVisible()
         expect(await page.evaluate(() =>
           document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1)

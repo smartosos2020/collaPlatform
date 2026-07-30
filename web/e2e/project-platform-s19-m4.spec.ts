@@ -120,6 +120,10 @@ test.describe('PROJECT-PLATFORM-S19 M4', () => {
 
       await installSession(page, owner)
       await page.goto(`/project-spaces/${spaceId}`)
+      await page
+        .getByTestId('project-space-overview-secondary-tabs')
+        .getByRole('tab', { name: '指标治理', exact: true })
+        .click()
       const panel = page.getByTestId('metric-governance-panel')
       await expect(panel).toBeVisible()
       await expect(panel).toContainText('管理驾驶舱、配置健康与审计报表')

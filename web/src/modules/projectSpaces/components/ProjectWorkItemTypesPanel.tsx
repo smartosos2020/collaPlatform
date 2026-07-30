@@ -63,7 +63,10 @@ export function ProjectWorkItemTypesPanel({
 }: {
   space: UserProjectSpace
   selectedTypeId?: string
-  onSelectType: (typeId: string) => void
+  onSelectType: (
+    typeId: string,
+    options?: Readonly<{ replace?: boolean }>,
+  ) => void
   onConfigureFields: (typeId: string) => void
   onConfigureLayouts: (typeId: string) => void
 }) {
@@ -92,7 +95,7 @@ export function ProjectWorkItemTypesPanel({
 
   useEffect(() => {
     if (!configurationQuery.isLoading && items.length > 0 && !selectedTypeId) {
-      onSelectType(items[0].id)
+      onSelectType(items[0].id, { replace: true })
     }
   }, [configurationQuery.isLoading, items, onSelectType, selectedTypeId])
 

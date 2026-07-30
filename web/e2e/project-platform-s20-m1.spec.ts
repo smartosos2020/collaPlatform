@@ -107,6 +107,10 @@ test.describe('PROJECT-PLATFORM-S20 M1', () => {
 
       await installSession(page, owner)
       await page.goto(`/project-spaces/${spaceId}`)
+      await page
+        .getByTestId('project-space-overview-secondary-tabs')
+        .getByRole('tab', { name: '场景模板', exact: true })
+        .click()
       const panel = page.getByTestId('scenario-templates-panel')
       await expect(panel).toBeVisible()
       await expect(panel).toContainText('场景模板目录')

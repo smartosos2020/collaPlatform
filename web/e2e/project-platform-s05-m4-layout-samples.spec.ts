@@ -140,6 +140,8 @@ async function verifyManagerPage(
   await page.setViewportSize({ width: 1366, height: 768 })
   await page.goto(`/project-spaces/${spaceId}/types/${typeId}/layouts`)
   await expect(page.getByTestId('work-item-layouts-panel')).toBeVisible()
+  await page.getByTestId('project-space-layouts-secondary-tabs')
+    .getByRole('tab', { name: '访问预览', exact: true }).click()
   await expect(page.getByTestId('work-item-layout-renderer')).toBeVisible()
   await expect(page.getByText('当前身份')).toBeVisible()
 
@@ -175,6 +177,8 @@ async function verifyManagerPage(
   expect(focusPath.size).toBeGreaterThan(4)
   expect(bodyTransitions).toBeLessThanOrEqual(1)
   expect([...focusPath].some((focused) => focused.includes('运行预览'))).toBeTruthy()
+  await page.getByTestId('project-space-layouts-secondary-tabs')
+    .getByRole('tab', { name: '布局设计', exact: true }).click()
   expect(await page.getByRole('button', { name: '添加区块' }).evaluate((element) =>
     !(element as HTMLButtonElement).disabled && (element as HTMLElement).tabIndex >= 0)).toBeTruthy()
   await expect(page.locator('[aria-live="polite"]')).not.toHaveCount(0)
@@ -194,7 +198,11 @@ async function verifyManagerPage(
   await page.getByRole('button', { name: '添加区块' }).click()
   expect((await recoveredCommand).ok()).toBeTruthy()
   await page.getByRole('button', { name: /刷\s*新/ }).click()
+  await page.getByTestId('project-space-layouts-secondary-tabs')
+    .getByRole('tab', { name: '访问预览', exact: true }).click()
   await expect(page.getByTestId('work-item-layout-renderer')).toBeVisible()
+  await page.getByTestId('project-space-layouts-secondary-tabs')
+    .getByRole('tab', { name: '布局设计', exact: true }).click()
 
   await page.setViewportSize({ width: 820, height: 900 })
   await expect(page.getByTestId('work-item-layouts-panel')).toBeVisible()
@@ -214,6 +222,8 @@ async function verifyManagerAccess(
   await page.setViewportSize({ width: 1366, height: 768 })
   await page.goto(`/project-spaces/${spaceId}/types/${typeId}/layouts`)
   await expect(page.getByTestId('work-item-layouts-panel')).toBeVisible()
+  await page.getByTestId('project-space-layouts-secondary-tabs')
+    .getByRole('tab', { name: '字段权限', exact: true }).click()
   await expect(page.getByTestId('work-item-layout-policy-editor')).toBeVisible()
 }
 

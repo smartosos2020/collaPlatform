@@ -173,33 +173,116 @@ import { AutomationRulesPanel } from './AutomationRulesPanel'
 import { AutomationExecutionPanel } from './AutomationExecutionPanel'
 import { AutomationConnectorsPanel } from './AutomationConnectorsPanel'
 import { AutomationManagementPanel } from './AutomationManagementPanel'
+import { getProjectSpaceSecondaryTabs } from '../projectSpaceSecondaryTabs'
+import { patchProjectSpaceSearch } from '../projectSpaceRouteContract'
 
 export function ProjectWorkItemsPanel({
   space,
   workItemId,
+  surface = 'work-items',
 }: {
   space: UserProjectSpace
   workItemId?: string
+  surface?: 'work-items' | 'management'
 }) {
   return workItemId
     ? <WorkItemDetail space={space} workItemId={workItemId} />
-    : (
-      <>
-        <ProjectDetailPanel space={space} />
-        <ResourcePlanningPanel space={space} />
-        <ResourceWorklogPanel space={space} />
-        <ResourceCapacityPanel space={space} />
-        <ResourceSchedulePanel space={space} />
-        <AutomationRulesPanel space={space} />
-        <AutomationExecutionPanel space={space} />
-        <AutomationConnectorsPanel space={space} />
-        <AutomationManagementPanel space={space} />
-        <ProjectPlanPanel space={space} />
-        <ProjectRegisterPanel space={space} />
-        <ProjectDeliveryPanel space={space} />
-        <WorkItemCollection space={space} />
-      </>
-    )
+    : <ProjectWorkItemSecondaryTabs space={space} surface={surface} />
+}
+
+function ProjectWorkItemSecondaryTabs({
+  space,
+  surface,
+}: {
+  space: UserProjectSpace
+  surface: 'work-items' | 'management'
+}) {
+  const [searchParams, setSearchParams] = useSearchParams()
+  const configuredTabs = getProjectSpaceSecondaryTabs('work-items')
+  const tabDefinitions = surface === 'management'
+    ? configuredTabs.filter((tab) => (
+        tab.key === 'project-detail'
+        || ['planning', 'resources', 'delivery'].includes(tab.group)
+      ))
+    : configuredTabs
+  const requestedPanel = searchParams.get('panel')
+  const activePanel = tabDefinitions.some(({ key }) => key === requestedPanel)
+    ? requestedPanel!
+    : tabDefinitions[0].key
+  const items = tabDefinitions.map((tab) => {
+    if (tab.key !== activePanel) {
+      return {
+        key: tab.key,
+        label: tab.label,
+        children: null,
+      }
+    }
+    let children
+    switch (tab.key) {
+      case 'work-item-collection':
+        children = <WorkItemCollection space={space} />
+        break
+      case 'project-detail':
+        children = <ProjectDetailPanel space={space} />
+        break
+      case 'project-plan':
+        children = <ProjectPlanPanel space={space} />
+        break
+      case 'resource-planning':
+        children = <ResourcePlanningPanel space={space} />
+        break
+      case 'resource-worklog':
+        children = <ResourceWorklogPanel space={space} />
+        break
+      case 'resource-capacity':
+        children = <ResourceCapacityPanel space={space} />
+        break
+      case 'resource-schedule':
+        children = <ResourceSchedulePanel space={space} />
+        break
+      case 'project-register':
+        children = <ProjectRegisterPanel space={space} />
+        break
+      case 'project-delivery':
+        children = <ProjectDeliveryPanel space={space} />
+        break
+      case 'automation-rules':
+        children = <AutomationRulesPanel space={space} />
+        break
+      case 'automation-execution':
+        children = <AutomationExecutionPanel space={space} />
+        break
+      case 'automation-connectors':
+        children = <AutomationConnectorsPanel space={space} />
+        break
+      case 'automation-management':
+        children = <AutomationManagementPanel space={space} />
+        break
+    }
+    return {
+      key: tab.key,
+      label: tab.label,
+      children,
+    }
+  })
+
+  return (
+    <Tabs
+      activeKey={activePanel}
+      className="project-space-secondary-tabs"
+      data-testid={surface === 'management'
+        ? 'project-space-management-tabs'
+        : 'project-work-items-secondary-tabs'}
+      destroyOnHidden
+      items={items}
+      onChange={(panel) => {
+        setSearchParams(
+          (current) => patchProjectSpaceSearch(current, { panel }),
+          { replace: true },
+        )
+      }}
+    />
+  )
 }
 
 function ProjectPlanPanel({ space }: { space: UserProjectSpace }) {
@@ -1104,7 +1187,10 @@ function WorkItemCollection({ space }: { space: UserProjectSpace }) {
     if (view.presentation.mode !== 'tree') setModeOverride(view.presentation.mode)
     setDensityOverride(view.presentation.density)
     setColumnKeysOverride(view.presentation.columns.map((column) => column.key))
-    setSearchParams({ savedViewId: view.id }, { replace: true })
+    setSearchParams(
+      (current) => patchProjectSpaceSearch(current, { savedViewId: view.id }),
+      { replace: true },
+    )
   }
   const refreshSavedViews = async () => {
     await queryClient.invalidateQueries({ queryKey: savedViewKeys.list(space.id) })
@@ -1217,7 +1303,13 @@ function WorkItemCollection({ space }: { space: UserProjectSpace }) {
     const nextType = typeId ?? selectedTypeId ?? typesQuery.data?.[0]?.id
     setSelectedTypeOverride(nextType)
     setCreateOpen(true)
-    setSearchParams(nextType ? { typeId: nextType, create: '1' } : { create: '1' }, { replace: true })
+    setSearchParams(
+      (current) => patchProjectSpaceSearch(current, {
+        typeId: nextType ?? null,
+        create: '1',
+      }),
+      { replace: true },
+    )
   }
 
   return (
@@ -1248,7 +1340,10 @@ function WorkItemCollection({ space }: { space: UserProjectSpace }) {
                 executeSavedViewMutation.mutate(viewId)
               } else {
                 setSavedDefinitionOverride(undefined)
-                setSearchParams({}, { replace: true })
+                setSearchParams(
+                  (current) => patchProjectSpaceSearch(current, { savedViewId: null }),
+                  { replace: true },
+                )
               }
             }}
           />
@@ -2216,7 +2311,13 @@ function WorkItemCollection({ space }: { space: UserProjectSpace }) {
         open={createOpen}
         onCancel={() => {
           setCreateOpen(false)
-          setSearchParams(selectedTypeId ? { typeId: selectedTypeId } : {}, { replace: true })
+          setSearchParams(
+            (current) => patchProjectSpaceSearch(current, {
+              typeId: selectedTypeId ?? null,
+              create: null,
+            }),
+            { replace: true },
+          )
         }}
       />
     </section>
@@ -2319,6 +2420,7 @@ function CreateWorkItemModal({
 function WorkItemDetail({ space, workItemId }: { space: UserProjectSpace; workItemId: string }) {
   const { message, modal } = AntdApp.useApp()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const queryClient = useQueryClient()
   const online = useOnlineStatus()
   const [draft, setDraft] = useState<{
@@ -2395,79 +2497,135 @@ function WorkItemDetail({ space, workItemId }: { space: UserProjectSpace; workIt
     values: next,
   })
   const writable = item.availableActions.includes('edit')
+  const tabDefinitions = getProjectSpaceSecondaryTabs('work-item-detail')
+  const requestedPanel = searchParams.get('panel')
+  const activePanel = tabDefinitions.some(({ key }) => key === requestedPanel)
+    ? requestedPanel!
+    : tabDefinitions[0].key
+  const items = tabDefinitions.map((tab) => {
+    if (tab.key !== activePanel) {
+      return {
+        key: tab.key,
+        label: tab.label,
+        children: null,
+      }
+    }
+    let children
+    switch (tab.key) {
+      case 'details':
+        children = (
+          <Card
+            className="content-card project-work-item-detail-card"
+            title={(
+              <Space wrap>
+                <Button type="text" aria-label="返回工作项列表" icon={<ArrowLeftOutlined />} onClick={() => navigate(`/project-spaces/${space.id}/work-items`)} />
+                <Tag color="purple">{item.typeName}</Tag>
+                <Typography.Text type="secondary">{item.displayKey}</Typography.Text>
+                <Tag color={item.status === 'active' ? 'green' : 'default'}>{item.status}</Tag>
+              </Space>
+            )}
+            extra={(
+              <Space wrap>
+                {writable ? <Button type="primary" icon={<SaveOutlined />} disabled={!online} loading={saveMutation.isPending} onClick={() => saveMutation.mutate()}>保存</Button> : null}
+                {item.availableActions.includes('archive') ? (
+                  <Button
+                    danger
+                    icon={<InboxOutlined />}
+                    onClick={() => modal.confirm({
+                      title: '归档工作项？',
+                      content: '归档后工作项只读，可稍后恢复。',
+                      okText: '归档',
+                      okButtonProps: { danger: true },
+                      onOk: () => transitionMutation.mutateAsync('archive'),
+                    })}
+                  >
+                    归档
+                  </Button>
+                ) : null}
+                {item.availableActions.includes('restore') ? <Button icon={<ReloadOutlined />} onClick={() => transitionMutation.mutate('restore')}>恢复</Button> : null}
+              </Space>
+            )}
+          >
+            <Form layout="vertical">
+              <Form.Item label="标题" htmlFor="work-item-detail-title" required>
+                <Input
+                  id="work-item-detail-title"
+                  maxLength={500}
+                  disabled={!writable}
+                  value={title}
+                  onChange={(event) => setTitle(event.target.value)}
+                />
+              </Form.Item>
+            </Form>
+            <RuntimeLayout
+              runtime={item.runtime}
+              values={values}
+              presentation={writable ? 'edit' : 'read'}
+              onValuesChange={setValues}
+            />
+          </Card>
+        )
+        break
+      case 'workflow':
+        children = (
+          <WorkItemWorkflowPanel
+            space={space}
+            item={item}
+            fieldPatch={values}
+            online={online}
+            refreshItem={refresh}
+          />
+        )
+        break
+      case 'node-workflow':
+        children = (
+          <WorkItemNodeWorkflowPanel
+            spaceId={space.id}
+            item={item}
+            online={online}
+            refreshItem={refresh}
+          />
+        )
+        break
+      case 'relations':
+        children = (
+          <WorkItemRelationsPanel
+            space={space}
+            item={item}
+            online={online}
+            refreshItem={refresh}
+          />
+        )
+        break
+      case 'collaboration':
+        children = <WorkItemCollaboration space={space} item={item} refreshItem={refresh} />
+        break
+      case 'permissions':
+        children = <WorkItemPermissionsPanel space={space} item={item} />
+        break
+    }
+    return {
+      key: tab.key,
+      label: tab.label,
+      children,
+    }
+  })
+
   return (
     <section className="project-work-item-detail" data-testid="project-work-item-detail">
-      <Card
-        className="content-card project-work-item-detail-card"
-        title={(
-          <Space wrap>
-            <Button type="text" aria-label="返回工作项列表" icon={<ArrowLeftOutlined />} onClick={() => navigate(`/project-spaces/${space.id}/work-items`)} />
-            <Tag color="purple">{item.typeName}</Tag>
-            <Typography.Text type="secondary">{item.displayKey}</Typography.Text>
-            <Tag color={item.status === 'active' ? 'green' : 'default'}>{item.status}</Tag>
-          </Space>
-        )}
-        extra={(
-          <Space wrap>
-            {writable ? <Button type="primary" icon={<SaveOutlined />} disabled={!online} loading={saveMutation.isPending} onClick={() => saveMutation.mutate()}>保存</Button> : null}
-            {item.availableActions.includes('archive') ? (
-              <Button
-                danger
-                icon={<InboxOutlined />}
-                onClick={() => modal.confirm({
-                  title: '归档工作项？',
-                  content: '归档后工作项只读，可稍后恢复。',
-                  okText: '归档',
-                  okButtonProps: { danger: true },
-                  onOk: () => transitionMutation.mutateAsync('archive'),
-                })}
-              >
-                归档
-              </Button>
-            ) : null}
-            {item.availableActions.includes('restore') ? <Button icon={<ReloadOutlined />} onClick={() => transitionMutation.mutate('restore')}>恢复</Button> : null}
-          </Space>
-        )}
-      >
-        <Form layout="vertical">
-          <Form.Item label="标题" htmlFor="work-item-detail-title" required>
-            <Input
-              id="work-item-detail-title"
-              maxLength={500}
-              disabled={!writable}
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-            />
-          </Form.Item>
-        </Form>
-        <RuntimeLayout
-          runtime={item.runtime}
-          values={values}
-          presentation={writable ? 'edit' : 'read'}
-          onValuesChange={setValues}
-        />
-      </Card>
-      <WorkItemPermissionsPanel space={space} item={item} />
-      <WorkItemRelationsPanel
-        space={space}
-        item={item}
-        online={online}
-        refreshItem={refresh}
+      <Tabs
+        activeKey={activePanel}
+        className="project-space-secondary-tabs"
+        data-testid="project-work-item-detail-secondary-tabs"
+        destroyOnHidden
+        items={items}
+        onChange={(panel) => {
+          setSearchParams(
+            (current) => patchProjectSpaceSearch(current, { panel }),
+            { replace: true },
+          )
+        }}
       />
-      <WorkItemNodeWorkflowPanel
-        spaceId={space.id}
-        item={item}
-        online={online}
-        refreshItem={refresh}
-      />
-      <WorkItemWorkflowPanel
-        space={space}
-        item={item}
-        fieldPatch={values}
-        online={online}
-        refreshItem={refresh}
-      />
-      <WorkItemCollaboration space={space} item={item} refreshItem={refresh} />
     </section>
   )
 }

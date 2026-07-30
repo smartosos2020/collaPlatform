@@ -62,15 +62,19 @@ test.describe('PROJECT-PLATFORM-S02-M5 stage acceptance', () => {
       await expect(page.getByTestId('project-space-members-card').getByRole('row').filter({ hasText: memberA.displayName })).toBeVisible()
 
       const leaveResponsePromise = page.waitForResponse((response) => response.url().endsWith(`/api/project-spaces/${privateSpaceId}/members/leave`) && response.request().method() === 'POST')
+      await page.getByTestId('project-space-members-secondary-tabs')
+        .getByRole('tab', { name: '成员邀请', exact: true }).click()
       await page.getByRole('button', { name: '退出空间' }).click()
       await page.getByRole('button', { name: '确认退出' }).click()
       const leaveResponse = await leaveResponsePromise
       expect(leaveResponse.status()).toBe(409)
       await page.getByRole('button', { name: 'Cancel' }).click()
       await expect(page.getByRole('dialog', { name: '退出项目空间？' })).toHaveCount(0)
+      await page.getByTestId('project-space-members-secondary-tabs')
+        .getByRole('tab', { name: '空间成员', exact: true }).click()
       const membersCard = page.getByTestId('project-space-members-card')
       await expect(membersCard.getByRole('row').filter({ hasText: ownerProfile.displayName })).toBeVisible()
-      await expect(page).toHaveURL(new RegExp(`/project-spaces/${privateSpaceId}/members$`))
+      expect(new URL(page.url()).pathname).toBe(`/project-spaces/${privateSpaceId}/members`)
 
       const memberARow = membersCard.getByRole('row').filter({ hasText: memberA.displayName })
       const roleResponsePromise = page.waitForResponse((response) => response.url().includes(`/api/project-spaces/${privateSpaceId}/members/`) && response.url().endsWith('/role') && response.request().method() === 'PATCH')
@@ -116,6 +120,8 @@ test.describe('PROJECT-PLATFORM-S02-M5 stage acceptance', () => {
 
       // Section 5: lifecycle transitions enforce read-only states for the space administrator.
       await page.goto(`/project-spaces/${workspaceSpaceId}/settings`)
+      await page.getByTestId('project-space-settings-secondary-tabs')
+        .getByRole('tab', { name: '空间生命周期', exact: true }).click()
       await page.getByRole('button', { name: '停用' }).click()
       await page.getByRole('button', { name: '确认停用' }).click()
       await expect(page.getByText('空间已停用，写入和成员变更已关闭。')).toBeVisible()

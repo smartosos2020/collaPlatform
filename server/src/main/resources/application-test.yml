@@ -19,3 +19,12 @@ colla:
     send-threads: 2
     executor-queue-capacity: 32
     session-queue-capacity: 8
+  project-space-experience:
+    enabled: true
+    kill-switch: false
+    rollout-basis-points: 10000
+    evaluation-salt: s21-m7-test-rollout
+    telemetry:
+      enabled: true
+      sample-basis-points: 10000
+      max-batch-size: 20

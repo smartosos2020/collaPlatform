@@ -40,7 +40,7 @@ class S21EngineeringReadinessIntegrationTests {
             Flyway flyway = Flyway.configure()
                 .dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
                 .load();
-            assertThat(flyway.migrate().migrationsExecuted).isGreaterThanOrEqualTo(139);
+            assertThat(flyway.migrate().migrationsExecuted).isGreaterThanOrEqualTo(141);
             assertThat(flyway.migrate().migrationsExecuted).isZero();
 
             JdbcTemplate jdbc = new JdbcTemplate(dataSource(postgres, postgres.getDatabaseName()));
@@ -126,7 +126,7 @@ class S21EngineeringReadinessIntegrationTests {
             assertThat(restored.queryForObject(
                 "select max(version) from flyway_schema_history",
                 String.class
-            )).isEqualTo("139");
+            )).isEqualTo("141");
             assertThat(canonicalDigest(restored)).isEqualTo(sourceDigest);
             assertThat(restored.queryForObject(
                 "select count(*) from project_work_items where workspace_id=?",

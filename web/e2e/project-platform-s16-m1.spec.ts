@@ -136,6 +136,10 @@ test.describe('PROJECT-PLATFORM-S16 M1', () => {
 
       await installSession(page, owner)
       await page.goto(`/project-spaces/${spaceId}/work-items`)
+      await page
+        .getByTestId('project-work-items-secondary-tabs')
+        .getByRole('tab', { name: '人员排期', exact: true })
+        .click()
       await expect(page.getByTestId('resource-planning-panel')).toBeVisible()
       await expect(page.getByLabel('IANA 时区')).toHaveValue('Asia/Shanghai')
       await expect(page.getByTestId('resource-planning-panel')).toContainText('国庆例外')
@@ -159,6 +163,10 @@ test.describe('PROJECT-PLATFORM-S16 M1', () => {
 
       await installSession(page, guest)
       await page.goto(`/project-spaces/${spaceId}/work-items`)
+      await page
+        .getByTestId('project-work-items-secondary-tabs')
+        .getByRole('tab', { name: '人员排期', exact: true })
+        .click()
       await expect(page.getByRole('button', { name: '保存工作日历' })).toBeDisabled()
     } finally {
       await page.context().setOffline(false).catch(() => undefined)

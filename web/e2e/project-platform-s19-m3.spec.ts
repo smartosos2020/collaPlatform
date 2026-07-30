@@ -245,6 +245,10 @@ test.describe('PROJECT-PLATFORM-S19 M3', () => {
 
       await installSession(page, owner)
       await page.goto(`/project-spaces/${spaceId}`)
+      await page
+        .getByTestId('project-space-overview-secondary-tabs')
+        .getByRole('tab', { name: '指标风险', exact: true })
+        .click()
       const panel = page.getByTestId('metric-risks-panel')
       await expect(panel).toBeVisible()
       await expect(panel).toContainText('延期、阻塞、质量与资源风险')

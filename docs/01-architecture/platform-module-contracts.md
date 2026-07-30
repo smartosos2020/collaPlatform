@@ -3,7 +3,7 @@ title: 平台模块边界与公共合同 ADR
 status: active
 decision: accepted
 revision: 1
-updated_at: 2026-07-26
+updated_at: 2026-07-30
 ---
 
 # 平台模块边界与公共合同 ADR
@@ -242,7 +242,7 @@ M2 不实现 Worker lease、dead-letter、replay、handler registry 或独立进
 - S12-M1 的 `project.contract.PersonalWorkQuery` 是 workspace dashboard 可依赖的唯一个人 WorkItem 聚合端口。返回 `PersonalWorkItem`、四类 bucket、多值 reason、capability、签名 cursor 与规范 deep link；workspace 不得引用 project 私有 application/domain/infrastructure，也不得读 project 表拼列表。
 - `project_personal_work_projections` 与失效水位是 project 私有可重建数据，只保存 workspace/user/object/bucket/source/version/time。`work_item.changed` 和 `node_task.lifecycle` 只使投影失效；下一次读经 participant/node-task owner 事实、绑定 snapshot 与 S11 decision 重校准，事件和投影都不携带标题、字段值、策略或 subject 私有信息。
 - S12-M2 的 `project.contract.DraftSummaryQuery` 是 workspace 读取 project 配置草稿的唯一公共端口；返回本人可见的最小摘要与 owner 解释的恢复路径，禁止 workspace/platform 读取配置草稿表或复制 snapshot。
-- `platform.contract.DashboardPersonalization` 冻结稳定 card key、position/hidden、layout version 与全目录替换合同。platform 拥有 recent/favorite、card layout 与命令回执；所有对象标题和路径只由实时 resolver 返回，非 available 引用清理后不回显旧快照。
+- `platform.contract.DashboardPersonalization` 冻结稳定 card key、position/hidden、layout version 与全目录替换合同。当前目录为 12 张，最近事项、未读会话、审批待办、最新通知、最近知识内容和表格与原 7 张卡共享同一显隐/排序事实；历史 7-card 布局只在读取时保序补齐且不写库，旧回执按原 hash 优先重放，未升级布局的首次旧客户端写可扩展为 12 张，目录已持久化后新的 7-card 写必须冲突刷新。full replace 使用 workspace/user 事务 advisory lock 后重读 expected version。platform 拥有 recent/favorite、card layout 与命令回执；所有对象标题和路径只由实时 resolver 返回，非 available 引用清理后不回显旧快照。
 - S12-M3 的 `platform.contract.PlatformSearchProjectionProvider` 是 owner 向 search 提供最小可重建文档和 `view` decision 的横向公共端口。project 实现只输出 display key、标题、类型、空间、状态、来源版本与规范链接；decision 每批不超过 200 个 identity，只返回允许 identity。search 不得引用 project application/domain/infrastructure、读取 project 私表或自行解释空间、participant、字段和策略。
 - S12-M4 的 `project.contract.PersonalCollaborationQuery` 是动态、提醒、催办与一致性恢复的公共入口。动态和提醒先通过 `PersonalWorkQuery` 取得当前可见 WorkItem；催办再校准空间、对象、接收者与冷却，并以不可变 receipt、audit 和 `notification.created` 交付。notification 仅通过 `PlatformSearchProjectionProvider.allowed` 重校准 WorkItem target，不读取 project 私表；权限收紧后以 `invalidated_at` 排除旧通知，未读数与列表使用同一可见集合。
 - S13-M1 的 `project.contract.WorkItemQueryContextProvider` 是统一查询 DSL 读取 participant、状态流、节点流、关系和规范 hierarchy 投影的 project 内公共边界；调用方只能提交注册 AST 和规范 identity，不得提交 SQL、脚本、表名或任意 JSON path。动态字段必须经绑定 snapshot capability；所有可观察结果先经 S11 decision/data scope。V106 三表归 project 唯一 owner，其他模块不得读取查询定义、回执或统计私表拼装第二查询权威。
@@ -475,6 +475,7 @@ M2 不实现 Worker lease、dead-letter、replay、handler registry 或独立进
 - `PersonalWorkQuery` 是 Workspace 的个人工作摘要合同；返回 canonical WorkItem 标识、空间标识与 canonical web path。
 - Legacy compatibility 只保留 `GET /api/compat/work-items/legacy/issues/{issueId}/location`。该合同只返回受权后的 canonical location，不返回旧 Issue 内容、状态或成员。
 - `ProjectRepository` 仅保留 migration/history 所需的 `legacyProjectExists` 与 `isProjectMember`，不是产品仓储；旧写、聚合读和列表方法不得恢复。
+- V088/V089 migration map、batch、unit、cutover、shadow、provenance 与 verification 只能由登记的 migration、audit、compatibility-location 和 recovery owner 使用。S21-M2 退出后，任何 rollout、kill switch、恢复流程或 consumer 都不得把旧 Project/Issue 注册、列表、详情、搜索、事件或写合同重新升级为活跃产品，也不得直接读这些私表建立第二事实源。
 
 ## 48. S21-M3 工程证据模块边界
 
@@ -482,3 +483,28 @@ M2 不实现 Worker lease、dead-letter、replay、handler registry 或独立进
 - `S21EngineeringReadinessIntegrationTests` 只通过 PostgreSQL 公共 schema 和标准备份工具生成隔离证据，不注入应用 repository，不改变生产运行角色，也不把备份文件暴露给 Web。
 - Web 受控证据索引继续调用 `LegacyExitAuditService`，每次重新校准 `project.manage`；它不执行备份/恢复、不持有基础设施凭据，也不能把 M3 工程结果写成 M4 真人结论。
 - 完整 route-final 的安全、架构、协作和浏览器结果与容量/恢复测试共同构成工程 checkpoint；任一阻断失败必须 Reopen，不能以单项 PASS 覆盖。
+
+## 49. S21-M4 信息架构合同已实现模块边界
+
+- `projectSpaceInformationArchitecture.ts` 与集中导航注册表只冻结“概览、工作项、项目管理、成员、设置”、高级配置分组、术语和 route context，不拥有计划、风险、交付、资源、指标或配置事实。
+- 五个入口分别消费服务端 `view_overview`、`view_work_items`、`view_project_management`、`view_members`、`view_settings` capability。角色名只用于默认落点和解释文案，不能作为授权 allowlist；enterprise-admin 非空间成员仍停在治理 Shell。
+- 旧 `/types/**` 配置深链继续挂载原 owner 组件并解释为设置上下文。信息架构层不得复制 owner API、私表或权限规则，也不得通过隐藏入口、预取、计数或错误外形泄漏不可见 surface。
+
+## 50. S21-M5 项目空间体验偏好已实现模块边界
+
+- V140 `project_space_experience_preferences` 由 project owner 独占，以 workspace/space/user 唯一隔离模式、schema、CAS version 与更新时间。GET/PUT/DELETE 每次重新校准当前空间 visibility；读取失败、未知状态和 reset 都安全回到 simple，不修改业务事实。
+- 集中 Shell、`/management` 聚合与 advanced 设置只组合当前受权 owner 响应。模式、route context、客户端 query、realtime 和缓存都不是 capability、成员关系或发布状态权威，隐藏面板不得预取私有 owner API。
+
+## 51. S21-M6 Onboarding 已实现模块边界
+
+- V141 `project_space_onboarding_states` 与 `project_space_onboarding_telemetry_events` 由 project owner 持有并按 workspace/space/user 隔离。状态命令使用 action allowlist、caller-stable request ID、expected version 与精确重放；non-member 和 enterprise-admin 非成员保持相同最小披露 404。
+- 场景或基础空间选择固定为 `experience_only`，不能直接 install、publish、邀请成员或创建 WorkItem。Scenario、configuration、membership、WorkItem 和 notification 仍由 S03-S20 公共 owner 合同完成，onboarding step、dismiss、resume、reset 或 telemetry 不得伪造业务成功。
+
+## 52. S21-M7 兼容、灰度、可观测与工程准入已实现模块边界
+
+- Legacy route adapter 只接受服务端重新鉴权后返回的 canonical 站内相对路径。query 按目标路由 allowlist 保留，hash 只传递页面上下文；协议/host、`//`、反斜线、路径穿越、开放重定向参数、重复控制参数和 legacy/canonical 循环失败关闭。compatibility 不能恢复旧 Project/Issue 产品。
+- `colla.project-space-ui.v2` 缓存键族按 workspace/user 隔离最近空间，并按 workspace/user/space/kind 隔离显式草稿恢复 envelope。它不是业务、授权或服务端偏好权威；坏值、未来 schema、过期、quota、登出或身份切换只允许 miss/清理内存 query，禁止删除业务草稿、收藏、published version、审计或 receipt。
+- `ProjectSpaceExperienceRolloutService` 先经 `ProjectSpaceService.getVisible` 校准，再由服务端合并 workspace/space/user include/exclude 与稳定分桶。仅 fresh `enabled` 决策可启用增强呈现；baseline、kill、unknown、TTL 过期和读取失败都返回 canonical baseline。生产安全默认 rollout disabled、kill switch enabled、0 basis points、telemetry disabled、sampling 0，开关不授权也不改变 owner mutation gate。
+- `ProjectSpaceExperienceTelemetryService` 只接受 schema v1 严格枚举 allowlist 与最多 20 条批量，不接收 user/workspace/space/object identity、URL query/hash 或业务内容。客户端只执行 opt-out/offline/allowlist/batch gate，服务端按 event ID、policy version 和 salt 做一次确定性采样；metrics 降级不能影响 rollout 或产品可用性。
+- `React.lazy`/`Suspense` 只把可选 members、onboarding、WorkItem configuration、CrossSpace、Scenario 与 Metric surface 延迟到首次受权挂载，不创建新的服务端模块合同。隐藏 surface 不预取，query 合并/失效与 rollout TTL 必须有界，身份变化立即失效。
+- 真实隔离 M7 证据使用真实 API、随机身份和私有空间，不使用网络 mock，覆盖六身份、canonical/legacy 路由、cache、rollout/kill、telemetry、离线、三视口、S20 四场景事实不丢和 finally 清理。Engineering Go 只允许停到 M8 真人试用准备点；M8 尚未执行，自动化不能产生 consent、人工反馈、产品 Go 或生产批准。

@@ -19,7 +19,7 @@ class AutomationConnectorFoundationIntegrationTests {
             dataSource.setPassword(postgres.getPassword());
             Flyway.configure().dataSource((DataSource) dataSource).locations("classpath:db/migration").load().migrate();
             assertThat(Flyway.configure().dataSource(dataSource).load().info().current().getVersion().getVersion())
-                .isEqualTo("139");
+                .isEqualTo("141");
             try (var connection=dataSource.getConnection(); var statement=connection.createStatement();
                  var result=statement.executeQuery("""
                     select count(*) from information_schema.tables where table_name in

@@ -227,6 +227,10 @@ test.describe('PROJECT-PLATFORM-S19 M1', () => {
 
       await installSession(page, owner)
       await page.goto(`/project-spaces/${sourceSpaceId}`)
+      await page
+        .getByTestId('project-space-overview-secondary-tabs')
+        .getByRole('tab', { name: '指标语义', exact: true })
+        .click()
       const panel = page.getByTestId('metric-semantics-panel')
       await expect(panel).toBeVisible()
       await expect(panel).toContainText('指标语义、维度与时间窗口')
@@ -254,6 +258,10 @@ test.describe('PROJECT-PLATFORM-S19 M1', () => {
 
       const secondPage = await page.context().newPage()
       await secondPage.goto(`/project-spaces/${sourceSpaceId}`)
+      await secondPage
+        .getByTestId('project-space-overview-secondary-tabs')
+        .getByRole('tab', { name: '指标语义', exact: true })
+        .click()
       const secondPanel = secondPage.getByTestId('metric-semantics-panel')
       await expect(secondPanel).toBeVisible()
       await secondPanel.getByLabel('指标名称').fill(`多标签草稿 ${suffix}`)

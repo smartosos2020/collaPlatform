@@ -35,3 +35,14 @@ colla:
     password: ${INIT_ADMIN_PASSWORD}
     display-name: ${INIT_ADMIN_DISPLAY_NAME}
     email: ${INIT_ADMIN_EMAIL}
+  project-space-experience:
+    enabled: ${COLLA_PROJECT_SPACE_EXPERIENCE_ENABLED:false}
+    kill-switch: ${COLLA_PROJECT_SPACE_EXPERIENCE_KILL_SWITCH:true}
+    policy-version: ${COLLA_PROJECT_SPACE_EXPERIENCE_POLICY_VERSION:s21-m7-v1}
+    rollout-basis-points: ${COLLA_PROJECT_SPACE_EXPERIENCE_ROLLOUT_BASIS_POINTS:0}
+    evaluation-salt: ${COLLA_PROJECT_SPACE_EXPERIENCE_EVALUATION_SALT:s21-m7-production-disabled}
+    cache-max-age-seconds: ${COLLA_PROJECT_SPACE_EXPERIENCE_CACHE_MAX_AGE_SECONDS:0}
+    telemetry:
+      enabled: ${COLLA_PROJECT_SPACE_EXPERIENCE_TELEMETRY_ENABLED:false}
+      sample-basis-points: ${COLLA_PROJECT_SPACE_EXPERIENCE_TELEMETRY_SAMPLE_BASIS_POINTS:0}
+      max-batch-size: ${COLLA_PROJECT_SPACE_EXPERIENCE_TELEMETRY_MAX_BATCH_SIZE:20}

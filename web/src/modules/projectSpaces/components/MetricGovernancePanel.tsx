@@ -21,7 +21,11 @@ import {
   Tag,
   Typography,
 } from 'antd'
-import { useEffect, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useState,
+} from 'react'
 
 import { useRealtimeSubscription } from '../../../shared/realtime'
 import {
@@ -54,15 +58,18 @@ export function MetricGovernancePanel({ space }: { space: UserProjectSpace }) {
   const [form] = Form.useForm<Editor>()
   const [selected, setSelected] = useState<AuditReport>()
   const [online, setOnline] = useState(() => navigator.onLine)
-  const canManage = space.currentUserRole === 'owner' || space.currentUserRole === 'admin'
+  const canManage = space.availableActions.includes('view_settings')
   const query = useQuery({
     queryKey: governanceKeys.foundation(space.id),
     queryFn: () => getGovernanceFoundation(space.id),
     retry: false,
   })
-  const refresh = () => client.invalidateQueries({
-    queryKey: governanceKeys.foundation(space.id),
-  })
+  const refresh = useCallback(
+    () => client.invalidateQueries({
+      queryKey: governanceKeys.foundation(space.id),
+    }),
+    [client, space.id],
+  )
   const save = useMutation({
     mutationFn: (values: Editor) => saveGovernanceReport(space.id, {
       ...values,
@@ -98,7 +105,7 @@ export function MetricGovernancePanel({ space }: { space: UserProjectSpace }) {
       window.removeEventListener('offline', calibrate)
       window.removeEventListener('focus', calibrate)
     }
-  }, [space.id])
+  }, [refresh])
 
   const overview = query.data?.overview
   return (

@@ -1,7 +1,7 @@
 ---
 title: 当前技术架构
 status: active
-last_code_check: 2026-07-29
+last_code_check: 2026-07-30
 ---
 
 # 当前技术架构
@@ -14,7 +14,7 @@ Colla Platform 当前是模块化单体：
 
 - 后端：单个 Spring Boot 应用，按业务模块分包。
 - 前端：单个 React SPA，用户工作台和管理后台使用独立 Shell、导航和路由边界。
-- 数据库：单个 PostgreSQL schema，通过 Flyway V001-V137 演进。
+- 数据库：单个 PostgreSQL schema，通过 Flyway V001-V141 演进。
 - 基础设施：Redis、MinIO、WebSocket、平台对象、权限、事件、审计和搜索由模块共享。
 - 交付：本地 Docker 依赖；生产基线是 maintenance、双 API、Worker、Event Gateway、双协作节点的 Docker Compose + Nginx。
 
@@ -167,7 +167,7 @@ S01-M2 已接受 `platform-module-contracts.md`，并以 `platform-modules.json`
 | V083-V085 | 建立配置模板版本、安装/升级历史并完成空间配置清理闭包 |
 | V086 | 建立规范工作项、类型计数器和持久命令回执 |
 | V087 | 建立类型化字段投影、参与者与不可变活动账本 |
-| V088 | 建立事项迁移 batch/unit/manifest/failure、显式 legacy map、cutover 与 shadow compare 控制面 |
+| V088 | 建立事项迁移 batch/unit/manifest/failure、显式 legacy map、cutover 与 shadow compare；S21-M2 后仅保留为历史/恢复兼容证据 |
 | V089 | 完成迁移 plan/lease/fencing、规范评论/附件、来源 provenance、独立 verification 与不可变迁移历史 |
 | V090 | 允许系统预置类型通过既有完整配置发布事务推进 current version，同时保持系统身份不可改 |
 | V091 | 建立状态流 current state、持久命令回执与不可变 workflow history 的 workspace/space/WorkItem 复合边界；不创建节点实例或 token 表 |
@@ -176,6 +176,10 @@ S01-M2 已接受 `platform-module-contracts.md`，并以 `platform-modules.json`
 | V094 | 激活节点运行时的不可变 vote supersession/withdrawal 链、join arrival 事实、任务候选与开放任务查询索引，并扩展命令操作约束；不复用 S08 状态流私表 |
 | V095 | 冻结节点 task 的候选用户、表单、交付物与 UTC elapsed 时间合同，建立不可变 task artifact、收件箱/到期索引及 transfer/submit/timeout 历史和命令约束 |
 | V096 | 建立节点恢复补偿 run/step、显式 backfill batch/unit、instance recovery 水位与受控 binding upgrade；冻结 manifest/source binding，保护实例身份并禁止绕过升级命令直接改绑定 |
+| V138 | 建立 append-only legacy 退出审计快照、finding 与 removal decision |
+| V139 | 撤销旧 Project/Issue 活跃产品注册和派生索引，同时保留迁移、审计与恢复证据 |
+| V140 | 建立 workspace/space/user 隔离的项目空间体验模式偏好 |
+| V141 | 建立 workspace/space/user 隔离的项目空间 onboarding 状态与低敏引导事件 |
 
 数据库规则：
 
@@ -188,7 +192,8 @@ S01-M2 已接受 `platform-module-contracts.md`，并以 `platform-modules.json`
 
 | 边界 | 主要前缀 | 规则 |
 | --- | --- | --- |
-| 用户协作 | `/api/workspace`、`/api/conversations`、`/api/project-spaces`、`/api/projects`、`/api/issues`、`/api/knowledge-bases`、`/api/bases`、`/api/approvals`、`/api/notifications`、`/api/search` | 返回当前用户可见和可操作内容，不夹带后台治理字段；空间类型配置只对空间 owner/admin 开放，成员摘要只返回 active 展示语义 |
+| 用户协作 | `/api/workspace`、`/api/conversations`、`/api/project-spaces`、`/api/knowledge-bases`、`/api/bases`、`/api/approvals`、`/api/notifications`、`/api/search` | 返回当前用户可见和可操作内容，不夹带后台治理字段；项目产品只使用 canonical `project_space`/`work_item` 合同，空间类型配置只对空间 owner/admin 开放，成员摘要只返回 active 展示语义 |
+| Legacy 定位兼容 | `/api/compat/work-items/legacy/issues/{issueId}/location`、`/api/project-spaces/legacy-resolve/{legacyProjectId}` | 只在重新鉴权后返回站内 canonical 相对位置或统一不可用状态，不返回旧 Project/Issue DTO、列表、搜索、写入口或产品事实 |
 | 管理治理 | `/api/admin/*` | 返回组织、权限、风险、审计、统计和治理动作，必须显式校验后台权限 |
 | 共享平台 | `/api/platform`、`/api/resource-permissions`、`/api/files` | 只提供对象摘要、权限原语和文件能力，不决定页面信息架构 |
 | 身份 | `/api/auth`、`/api/devices` | 当前用户身份、会话和设备所有权 |
@@ -212,7 +217,7 @@ S01-M2 已接受 `platform-module-contracts.md`，并以 `platform-modules.json`
 
 平台对象通过 resolver 统一返回 `available`、`forbidden`、`deleted`、`not_found` 或 `invalid`。用户卡片和后台卡片使用不同展示上下文；无后台权限时不得返回治理动作。
 
-当前对象类型包括 project、issue、knowledge_content、base、base_table、base_record、message、approval 和 file。内部链接、IM 卡片、通知、最近、收藏、关系和搜索结果复用同一对象摘要。project 已有 resolver 和对象链接回填，可作为选择对象和跳转入口；用户全文搜索当前只召回事项，不召回项目。
+当前项目对象类型只包括 `project_space` 与 `work_item`；其他活动类型包括 knowledge_content、base、base_table、base_record、message、approval 和 file。内部链接、IM 卡片、通知、最近、收藏、关系和搜索结果复用同一对象摘要。旧 `project`/`issue` 产品注册已由 V139 退出，不能作为选择、搜索、写入或业务读取对象恢复；历史标识只允许经受权 location compatibility 解析到 canonical 相对路径。
 
 用户搜索：
 
@@ -333,9 +338,9 @@ PROJECT-PLATFORM-S01 于 2026-07-18 完成项目模块当前事实审计、目�
 - 动态查询只接受绑定 snapshot 发布的字段能力和受控 `eq` SQL 模板，按 config hash 隔离不同版本语义。类型化列承担 text/number/boolean/date/timestamp，集合/引用使用 canonical hash；不允许调用方提供列名、SQL 或未发布操作符。投影漂移可从权威 JSONB 重建，重建不会修改实例版本或活动历史。
 - 工作项创建者自动成为 owner。参与者角色限定 owner/assignee/collaborator/watcher；变更复用实例乐观版本、持久回执和用户 active 校验，最后一个 owner/assignee 不可移除。活动按实例单调序号追加且数据库禁止更新/删除；公共 payload 只含版本、状态或参与者定位，不保存动态字段前后值，因此 hidden 值不会进入活动、审计或事件。
 - S07-M2 的用户 API 增加参与者、活动和受控字段查询；`work_item.changed` 已提升为 `project.contract.WorkItemChangedEvent` 公共合同，搜索/通知/协作只能消费最小定位事件并经 resolver/API 校准，不能读取 project 私表。本里程碑不提前实现这些模块的产品投影或 realtime handler。
-- S07-M3 已由 V088 建立事项级 migration batch/unit、append-only manifest/failure、显式 `project_legacy_work_item_maps`、workspace/space cutover 和 shadow sample。UUID 可复用时仍写 map；占用时由确定性 resolver 生成新 ID 并记录 `uuid_conflict_remapped`，禁止靠 UUID 相同猜映射。
-- `WorkItemCompatibilityService` 在授权后按 legacy/shadow/canonical-read/canonical-write/complete 路由读取。未迁移对象仅由只读 legacy adapter 投影规范 DTO，不创建规范事实或伪造 snapshot；canonical 阶段缺 map 稳定失败，kill switch 只把读取切回 legacy，不恢复已关闭的旧写。
-- 旧 `issue` 平台对象 resolver 在 map 有效时返回规范 work item location/deep link；跨模块消费者继续只经平台公共 resolver/API 使用映射，不获得迁移私表读取权。shadow compare 只写 hash、结果与延迟，不写标题、字段值或授权细节。
+- S07-M3 曾由 V088 建立事项级 migration batch/unit、append-only manifest/failure、显式 `project_legacy_work_item_maps`、workspace/space cutover 和 shadow sample。S21-M2 退出旧产品后，这些结构只供登记的 migration、audit、location compatibility 与 recovery owner 使用，不再是活动产品读写控制面。
+- S07 阶段的 legacy/shadow/canonical-read 路由和旧读 kill switch 只属于迁移历史。V139 之后产品请求不能切回 legacy Project/Issue 列表、详情、搜索或写入，也不能借 V088 map/cutover 恢复双读双写；canonical 缺失或无权时必须失败关闭。
+- 旧标识 resolver 目前只返回重新鉴权后的 canonical `project_space`/`work_item` 站内相对位置或统一不可用状态。跨模块消费者不得读取 V088/V089 私表，shadow hash、failure、verification 和 provenance 仍只是恢复审计证据。
 - legacy 项目/事项写入口由同一兼容服务检查 cutover。旧写关闭后返回 `410 legacy_write_closed` 和 `Location`；不双写，回退也不允许 legacy 覆盖 canonical 新事实。M3 只冻结和实施读取/切流控制，真实分批数据搬运、verify/resume/rollback 属于 M4，用户完整竖切属于 M5。
 - S07-M4 已由 V089 与 `WorkItemMigrationService` 落地真实分批搬运。plan 在单一 `REPEATABLE_READ` 快照中冻结 project 单元 manifest、目标 published snapshot binding、source/plan fingerprint 与预检清单；dry-run 只写迁移控制事实，不写 WorkItem、map 或平台对象。
 - S08-M1 把轻量状态流作为完整 configuration snapshot schema v2 的可选部分。状态、动作、转换和 guard 使用永久 semantic key；canonicalizer 按 key 稳定排序，validator 对唯一 initial、可达性、终态/取消态、死路、悬空引用、声明式 guard、授权角色、必填字段、字段 patch 和受控副作用失败关闭。schema v1 继续表示“可解释但无状态流能力”，未知未来 schema 拒绝。
@@ -385,7 +390,7 @@ S11-M5 已完成规范 WorkItem 分层数据权限闭环：configuration snapsho
 
 S12-M1 已交付规范 WorkItem 个人聚合：`project.contract.PersonalWorkQuery` 是 workspace dashboard 的公共查询端口，project 内部按 participant 与 node task 生成 todo/responsible/participating/watching 多原因候选，再按绑定 snapshot、真实 participant context 和 S11 contextual decision 过滤后返回最小摘要、capability、签名 cursor 与受权 deep link。V102 的个人投影、失效水位和命令回执属于 project owner，均不保存标题、字段、权限策略或 subject 私有信息；`work_item.changed`/`node_task.lifecycle` 只触发已知投影失效，读取时重查权威事实。当前工作台已显示四类入口；recent/favorite、草稿/卡片、全局搜索和动态/提醒/催办/通知仍未由 S12 M2-M4 收口。
 
-S12-M2 已收敛个人对象与卡片：platform 的 recent/favorite 仍只保存规范引用，REST 返回前逐项经 resolver 重校准并清理失效引用；收藏与卡片命令使用 caller-stable request ID、持久回执和布局 expected version。V103 的布局/命令表由 platform 唯一拥有，不保存对象正文或权限快照。project 通过 `DraftSummaryQuery` 仅公开当前用户在活动成员空间内更新的活动草稿摘要，workspace 不读 project 草稿私表。Dashboard/Web 已支持本人草稿恢复、卡片显隐/排序、重复重放与多标签冲突刷新；全局搜索和动态/提醒/催办/通知仍由 M3-M4 交付。
+S12-M2 已收敛个人对象与卡片：platform 的 recent/favorite 仍只保存规范引用，REST 返回前逐项经 resolver 重校准并清理失效引用；收藏与卡片命令使用 caller-stable request ID、持久回执和布局 expected version。V103 的布局/命令表由 platform 唯一拥有，不保存对象正文或权限快照。project 通过 `DraftSummaryQuery` 仅公开当前用户在活动成员空间内更新的活动草稿摘要，workspace 不读 project 草稿私表。当前 Dashboard 目录包含 12 张可显隐、可排序卡片：原有四类个人工作、最近/收藏对象和本人草稿之外，最近事项、未读会话、审批待办、最新通知、最近知识内容和表格也使用同一全目录布局合同。读取历史 7-card 布局时保留原顺序与 hidden、追加 5 张默认可见卡并返回稠密位置，不在 GET 时写库；历史回执仍按旧 payload hash 优先重放，尚未持久化新目录的首次旧客户端更新可扩成 12 张，已持久化 12 张后再提交新的 7-card 命令必须 409 刷新。full replace 在同一 workspace/user 事务 advisory lock 内重读 expected version，确保并发保存 one-winner。Dashboard/Web 已支持本人草稿恢复、卡片显隐/排序、重复重放与多标签冲突刷新；全局搜索和动态/提醒/催办/通知仍由 M3-M4 交付。
 
 S12-M3 已把规范 WorkItem 接入现有全局搜索：V104 只扩展可重建 `search_index_entries` 的空间、类型、状态和来源版本元数据，正文仅含 display key、标题与类型名，不复制 JSONB 字段、策略或 subject。project owner 实现 `platform.contract.PlatformSearchProjectionProvider`，search 不读取 project 私表，并以最多 200 项一批调用绑定 snapshot 的 S11 contextual decision，随后才生成可见页、facet、签名 cursor 与高亮；无权、已归档或 resolver 失效对象不进入响应。查询使用白名单筛选、500 候选硬限和稳定次序，管理员重建只操作投影，enterprise admin 不因治理身份读取私有命中。Web 已支持项目空间/对象类型/状态/参与角色筛选、分页和规范 WorkItem 深链；动态、提醒、催办与个人通知仍由 M4 交付。
 
@@ -639,9 +644,9 @@ S16-M1-M4 已交付 V118-V121 日历/例外/显式估分、实际工时/不可�
 
 ## S20 归档与 S21 当前执行边界
 
-- Program revision 49 已激活 S21 的 5 个 Milestone、60 个 Task，当前唯一入口为 `PROJECT-PLATFORM-S21-M1-T01`。
-- 本次激活只冻结存量迁移审计、旧 issues 产品合同退出、性能/安全/备份恢复、四场景真人试用和最终 Go/No-Go 的执行与证据边界；尚未实现任何 S21 删除、迁移审计、生产批准或真人结论。
-- 当前代码仍保留 `/projects`、`/issues`、legacy DTO/API、平台对象、搜索、工作台和跨模块 legacy 引用；M1 必须先形成完整 inventory 和 removal decision，M2 才能按清单删除，禁止无证据物理清理或恢复 legacy 写。
+- S21-M1 至 M7 已完成。Program revision 50 保留 9 个 Milestone、108 个 Task；当前停在 `PROJECT-PLATFORM-S21-M8` 真人试用准备点，尚未执行任何 M8 真人任务。
+- M4-M7 已交付信息架构合同、角色化简洁模式、渐进引导以及兼容/安全/可观测复验。当前 Flyway 最新 schema 为 V141；M8/M9 仍无真人结论、产品 Go、生产切流批准或归档结论。
+- V088/V089 migration map、batch、unit、cutover、shadow、provenance 与 verification 仅保留为历史/恢复兼容证据。S21-M2 已退出 `/projects`、旧 Issue 产品 DTO/API/页面/搜索/写路径和活动 `project`/`issue` 注册，后续 rollout、kill switch 或恢复动作均不得把它们重新变成活跃产品。
 
 ## S21-M1 旧模型退出审计当前实现
 
@@ -656,11 +661,48 @@ S16-M1-M4 已交付 V118-V121 日历/例外/显式估分、实际工时/不可�
 - 活跃产品面只暴露 `project_space` 与 `work_item`：旧 ProjectController、固定 DTO、service/repository 写路径、ProjectsPage/API client、旧 realtime/search/workspace 消费者均已退出。
 - 旧 `/issues/{id}` Web 深链只执行受权且不可枚举的 location resolve：存在活动映射时跳转规范 WorkItem，否则显示统一不可用/已停止语义，不返回旧 Issue DTO。
 - IM 与知识内容的转换统一依赖 `WorkItemCreationCommand`；工作台、搜索、通知筛选、对象选择和知识嵌入均使用 canonical `work_item`/`project_space`。
+- V088/V089 与旧源表只允许登记的 migration、audit、location compatibility 和 recovery owner 读取；任何 feature flag、kill switch、recovery 或新功能都不得恢复旧 Project/Issue 产品读写、注册、搜索或永久双读双写。
 
 ## S21-M3 工程就绪当前实现
 
 - `s21-engineering-readiness.v1.json` 冻结本地隔离证据合同：只使用确定性合成的 `project_space`/`work_item` 数据，研发、市场、HR、交付各 250 个 WorkItem；明确禁止把旧 capacity-v1 的 project/issue fixture 或本地预算表述为生产 SLO。
-- `S21EngineeringReadinessIntegrationTests` 在 PostgreSQL 16 从 V001 迁移至 V139，执行索引读、聚合读、写入和数据库占用预算，验证 legacy 权限/对象注册为零及跨空间外键失败关闭。
+- `S21EngineeringReadinessIntegrationTests` 在 M3 checkpoint 使用 PostgreSQL 16 从 V001 迁移至当时最新 V139，执行索引读、聚合读、写入和数据库占用预算，验证 legacy 权限/对象注册为零及跨空间外键失败关闭；M5/M6 追加 V140/V141 后，当前全量迁移基线已推进到 V141。
 - 同一测试执行 quiesced `pg_dump -Fc`、SHA-256 校验、隔离数据库 `pg_restore --single-transaction`、Flyway 版本/规范事实 digest 对账，并演练中断事务回滚。Redis 被定义为可重建状态；对象存储恢复要求版本化归档、对象数量和 SHA-256，当前本地证据不声明外部生产环境已恢复。
 - route-final 使用完整 PostgreSQL/Flyway、后端、前端、协作、架构、安全门禁和真实隔离浏览器；受控运维 UI 只呈现低基数退出证据，浏览器不持有数据库或备份凭据。
-- M3 工程 Go 只表示可进入 M4 真人试用准备点。M4 的研发、市场、HR、交付原始试用证据必须由真人在 consent 后产生，AI、维护者测试和 Playwright 均不能代签。
+- revision 49 的 M3 工程 Go 只曾允许准备真人试用；revision 50 要求先完成 M4-M7 易用性收敛并取得新的 Engineering Go，才可进入 M8。研发、市场、HR、交付原始试用证据仍必须由真人在 consent 后产生，AI、维护者测试和 Playwright 均不能代签。
+
+## S21-M4 信息架构合同当前实现
+
+- `projectSpaceInformationArchitecture.ts` 冻结“概览、工作项、项目管理、成员、设置”五入口，以及工作模型、流程与权限、自动化与协同、度量治理、场景模板五类高级配置；M4 仍是静态合同，不把 M5 运行 Shell 提前写成已交付。
+- 五个入口分别要求 `view_overview`、`view_work_items`、`view_project_management`、`view_members`、`view_settings` 服务端 capability。角色只决定默认落点和解释文案；未来自定义角色不受角色名 allowlist 限制，enterprise-admin 非空间成员显式留在治理 Shell。
+- 现有二级 Tab、owner 公共组件和 `/types/**` 等配置深链继续保留；route-context 合同把旧配置路径解释为“设置/高级配置/工作模型”，并要求保留 `typeId`、`create`、`savedViewId`、`panel` 和来源 query。
+- 信息架构审计已登记所有当前 surface、内容层、术语、模式回退、上下文返回、1440/1366/820、键盘和四场景威胁模型；真实隔离浏览器仅验证当前兼容基线与最小披露，不宣称五入口运行实现完成。
+
+## S21-M5 简洁模式与角色化项目空间当前实现
+
+- V140 新增 `project_space_experience_preferences`，以 workspace/space/user 唯一隔离 `simple|advanced`、schema version、CAS version 与更新时间。GET/PUT/DELETE 每次先用 `ProjectSpaceService.getVisible` 重新校准；默认和读取失败均为 simple，reset 只删除体验偏好，不触碰业务事实。
+- `UserProjectSpaceView.availableActions` 新增五个逐入口 capability。non-member 可发现空间仅有 `view_overview`，guest 增加 `view_work_items`，member 增加受权项目管理，当前 manager 增加成员与设置；旧 `open/settings` 暂留作兼容动作，但 Web 五入口不消费角色名或旧动作授权。
+- Web 只消费集中导航注册表和唯一 route-context resolver，运行时提供“概览、工作项、项目管理、成员、设置”五入口；项目管理组合既有计划、资源、风险、交付和指标公共面板，设置在 advanced 模式按五类高级配置渐进展开。
+- `/management` 成为规范聚合路由；`/types/**` 旧配置路由继续直达原 owner 组件，并把一级上下文标记为设置。模式切换保留当前 query，服务端 CAS 冲突会重新读取；non-member 概览只渲染空间元数据，不挂载成员内容查询。
+
+## S21-M6 渐进式配置与首次使用引导当前实现
+
+- V141 新增 `project_space_onboarding_states` 与 `project_space_onboarding_telemetry_events`。前者以 workspace/space/user 唯一隔离 schema version、flow version、起步方式、提示确认、dismissal、opt-out、caller request ID 和 CAS version；后者仅保存 allowlist step/result/duration bucket/error code，不保存 user、标题、正文、字段值、文件名或个人绩效。
+- `GET /api/project-spaces/{spaceId}/onboarding` 每次先校准当前成员身份、空间状态和管理 capability；`POST .../commands` 使用 caller-stable UUID、expected version 和 action allowlist，重复 request 返回既有结果；non-member 与 enterprise-admin 非成员得到相同的最小披露 404。
+- 四类场景与“基础空间”选择的固定响应为 `selectionEffect=experience_only`、`installationRequested=false`、`publicationRequested=false`。选择只改变当前用户的引导状态；场景 validation/dry-run/install、配置草稿/校验/发布、成员、工作项与通知继续由 S03-S20 公共 owner API 持有。
+- Web 在现有项目空间 Shell 上挂载可关闭和可恢复的引导 Drawer。管理者依次进入起步选择、模板影响、工作模型、流程权限、发布、成员、首项与交接；成员依次进入找工作、创建或更新、评论附件、流转和通知；访客仅获得当前受权只读说明。
+- “基础空间”明确表示不额外安装场景模板，并保留空间创建时已有的六个基础类型。S20 install 当前真正创建或复用的只有 `work_item_type`，其他步骤只核验公共 owner 引用；界面不把选择、安装、草稿或 owner reference verification 描述为已发布配置。
+- 离线、停用和归档状态禁用引导写入口并保留安全解释；dismiss/resume/reset 只影响体验状态。上下文帮助复用集中术语和 route-context，遥测 opt-out 与低敏事件失败均不改变业务命令结果。
+
+## S21-M7 兼容、安全、可观测与工程准入当前实现
+
+- Legacy Web 适配器只把 `/projects`、`/projects/{legacyId}`、`/issues/{issueId}` 和既有 `/types/**` 深链解析到重新鉴权后的 canonical `project_space`/`work_item` 站内相对路由。query 仅按目标路由 allowlist 保留 `typeId`、`create`、`savedViewId`、`panel`、`source`、`metricPanel`、`metricConfig`，hash 只保留页面上下文；协议/host、`//`、路径穿越、`redirect`、`returnUrl`、`next` 和重复控制参数失败关闭。
+- 客户端体验缓存采用 `colla.project-space-ui.v2` 键族：最近空间按 workspace/user 隔离并只迁移当前可访问 space，草稿恢复 envelope 进一步按 workspace/user/space/kind 隔离、版本化和限时。坏值、未知版本、过期、quota 或身份切换只产生 cache miss/简洁回退，不删除服务端偏好、onboarding、收藏、业务草稿、已发布配置、审计或不可变回执。
+- `GET /api/project-spaces/{spaceId}/experience-rollout` 由服务端合并 workspace/space/user include/exclude 与稳定分桶；只有 fresh 且显式 `enabled` 才启用增强呈现。baseline、kill、unknown、TTL 过期和读取失败全部回到 canonical project-space baseline。生产安全默认配置为 rollout 关闭、kill switch 开启、0 basis points、telemetry 关闭和 0 sampling，开关从不缓存或扩大 capability，也绝不恢复已退出的 Project/Issue 产品。
+- `POST /api/project-space-experience/telemetry` 只接受 schema v1 的严格枚举 allowlist 和最多 20 条批量，事件不携带 user/workspace/space/object ID、URL query/hash、标题、正文、字段值、文件名、成员、角色或个人评分。浏览器只执行 opt-out/offline/allowlist/batch gate，服务端按 event ID、policy version 与 salt 做一次确定性采样；观测失败不阻塞产品。
+- members、onboarding、WorkItem 配置、CrossSpace、Scenario 和 Metric 等可选 surface 已改为 `React.lazy`/`Suspense` 首次挂载加载；隐藏面板不预取，rollout cache 只在 fresh TTL 内复用，身份边界变化立即失效，route chunk 继续受 500 KiB 预算约束。
+- M7 使用真实 API、随机身份和私有空间的隔离浏览器证据，不用网络 mock，覆盖六身份、canonical/legacy 路由、缓存迁移、rollout/kill、低敏遥测、离线、1440/1366/820、S20 四场景业务事实不丢及 finally 清理。P0/P1 清零和可恢复环境只形成进入 M8 准备的 Engineering Go；该结论不是生产批准、产品 Go 或真人试用证据。
+
+## S21-M8 真人试用准备边界
+
+- 当前只允许重新确认 trialRun、participant、consent、任务、观察、原始反馈、finding、清理与恢复合同并准备隔离环境。M8 尚未执行，AI、维护者、模拟账号和自动化浏览器都不能代签研发、市场、HR、交付参与者或真实管理者的操作与结论。

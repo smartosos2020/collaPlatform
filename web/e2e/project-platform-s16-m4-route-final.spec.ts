@@ -139,6 +139,10 @@ test.describe('PROJECT-PLATFORM-S16 M4 route final', () => {
 
       await installSession(page, owner)
       await page.goto(`/project-spaces/${spaceId}/work-items`)
+      await page
+        .getByTestId('project-work-items-secondary-tabs')
+        .getByRole('tab', { name: '资源日程', exact: true })
+        .click()
       await expect(page.getByTestId('resource-schedule-panel')).toBeVisible()
       await expect(page.getByTestId('resource-assignment-bar')).toHaveCount(2)
       await expect(page.getByTestId('resource-conflict-marker')).toHaveCount(1)

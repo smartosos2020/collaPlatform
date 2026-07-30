@@ -41,7 +41,7 @@ class MetricSemanticFoundationIntegrationTests {
                      'trg_project_metric_dimension_immutable'
                    )
                 """, Integer.class));
-            assertEquals("139", jdbc.queryForObject(
+            assertEquals("141", jdbc.queryForObject(
                 "select max(version) from flyway_schema_history", String.class
             ));
         }

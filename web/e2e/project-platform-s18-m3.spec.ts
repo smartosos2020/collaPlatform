@@ -248,6 +248,10 @@ test.describe('PROJECT-PLATFORM-S18 M3', () => {
 
       await installSession(page, sourceOwner)
       await page.goto(`/project-spaces/${sourceSpaceId}`)
+      await page
+        .getByTestId('project-space-overview-secondary-tabs')
+        .getByRole('tab', { name: '跨空间同步', exact: true })
+        .click()
       const panel = page.getByTestId('cross-space-sync-panel')
       await expect(panel).toBeVisible()
       await expect(panel).toContainText(`Title mirror ${suffix}`)

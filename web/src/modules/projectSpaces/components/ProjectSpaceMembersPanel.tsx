@@ -49,6 +49,7 @@ import {
   type UserProjectSpace,
 } from '../api/projectSpacesApi'
 import { errorMessage, formatTime, roleLabel } from '../projectSpaceView'
+import { ProjectSpaceSecondaryTabs } from './ProjectSpaceSecondaryTabs'
 
 type AddMemberForm = {
   userId: string
@@ -228,43 +229,54 @@ export function ProjectSpaceMembersPanel({ space }: { space: UserProjectSpace })
 
   return (
     <div className="project-space-members-stack">
-      <Card
-        className="content-card"
-        data-testid="project-space-members-card"
-        title={<Space><TeamOutlined />空间成员 <Typography.Text type="secondary">({membersQuery.data?.length ?? 0})</Typography.Text></Space>}
-        extra={<Space wrap><Button icon={<PlusOutlined />} disabled={!writable} onClick={() => openMemberModal('add')}>直接加入</Button><Button type="primary" icon={<UserAddOutlined />} disabled={!writable} onClick={() => openMemberModal('invite')}>邀请成员</Button></Space>}
-      >
-        <div className="project-space-table-scroll">
-          <Table
-            rowKey="id"
-            columns={memberColumns}
-            dataSource={membersQuery.data ?? []}
-            loading={membersQuery.isLoading}
-            pagination={false}
-            locale={{ emptyText: <TableEmptyState description="暂无空间成员" /> }}
-            scroll={{ x: 860 }}
-          />
-        </div>
-      </Card>
-
-      <Card
-        className="content-card"
-        data-testid="project-space-invitations-card"
-        title={<Space><MailOutlined />成员邀请</Space>}
-        extra={<Button danger type="text" disabled={!writable} onClick={confirmLeave}>退出空间</Button>}
-      >
-        <div className="project-space-table-scroll">
-          <Table
-            rowKey="id"
-            columns={invitationColumns}
-            dataSource={invitationsQuery.data ?? []}
-            loading={invitationsQuery.isLoading}
-            pagination={{ pageSize: 5, hideOnSinglePage: true }}
-            locale={{ emptyText: <TableEmptyState description="暂无成员邀请" /> }}
-            scroll={{ x: 760 }}
-          />
-        </div>
-      </Card>
+      <ProjectSpaceSecondaryTabs
+        view="members"
+        canManage
+        testId="project-space-members-secondary-tabs"
+        ariaLabel="空间成员内容导航"
+        panels={{
+          'member-list': (
+            <Card
+              className="content-card"
+              data-testid="project-space-members-card"
+              title={<Space><TeamOutlined />空间成员 <Typography.Text type="secondary">({membersQuery.data?.length ?? 0})</Typography.Text></Space>}
+              extra={<Space wrap><Button icon={<PlusOutlined />} disabled={!writable} onClick={() => openMemberModal('add')}>直接加入</Button><Button type="primary" icon={<UserAddOutlined />} disabled={!writable} onClick={() => openMemberModal('invite')}>邀请成员</Button></Space>}
+            >
+              <div className="project-space-table-scroll">
+                <Table
+                  rowKey="id"
+                  columns={memberColumns}
+                  dataSource={membersQuery.data ?? []}
+                  loading={membersQuery.isLoading}
+                  pagination={false}
+                  locale={{ emptyText: <TableEmptyState description="暂无空间成员" /> }}
+                  scroll={{ x: 860 }}
+                />
+              </div>
+            </Card>
+          ),
+          invitations: (
+            <Card
+              className="content-card"
+              data-testid="project-space-invitations-card"
+              title={<Space><MailOutlined />成员邀请</Space>}
+              extra={<Button danger type="text" disabled={!writable} onClick={confirmLeave}>退出空间</Button>}
+            >
+              <div className="project-space-table-scroll">
+                <Table
+                  rowKey="id"
+                  columns={invitationColumns}
+                  dataSource={invitationsQuery.data ?? []}
+                  loading={invitationsQuery.isLoading}
+                  pagination={{ pageSize: 5, hideOnSinglePage: true }}
+                  locale={{ emptyText: <TableEmptyState description="暂无成员邀请" /> }}
+                  scroll={{ x: 760 }}
+                />
+              </div>
+            </Card>
+          ),
+        }}
+      />
 
       <Modal
         title={memberModalMode === 'invite' ? '邀请成员' : '直接加入成员'}

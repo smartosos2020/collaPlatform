@@ -2,8 +2,8 @@
 title: 项目协作平台长期专项规划
 status: active
 program: PROJECT-PLATFORM
-revision: 49
-updated_at: 2026-07-29
+revision: 50
+updated_at: 2026-07-30
 planning_mode: rolling
 current_stage: PROJECT-PLATFORM-S21
 initiative_index_doc: docs/00-product/initiatives/README.md
@@ -18,7 +18,7 @@ target_architecture_doc: docs/01-architecture/project-platform-target-architectu
 
 规划采用滚动维护：当前 Stage 细化到 Task，下一 Stage 细化到 Milestone，后续 Stage 只冻结目标、依赖和退出证据。新调研、技术验证、代码事实或真实用户反馈可以修改未来规划，但不得静默改写已完成 Stage 的历史结论，也不得在没有变更记录的情况下改变正在执行 Stage 的目标。
 
-`PROJECT-PLATFORM-S08` 至 `PROJECT-PLATFORM-S20` 均已完成并归档。S21 已在 revision 49 激活为 5 个 Milestone、60 个 Task，当前唯一入口为 `PROJECT-PLATFORM-S21-M1-T01`；本次激活只建立迁移审计、legacy 退出、全量工程验证、真人试用和最终 Go/No-Go 路线，不声明任何 S21 实现或真人结论。`PLATFORM-SCALE-S01-S04` 已建立模块边界门禁、公共合同、双 API、可靠双 Worker、双 Event Gateway、统一客户端校准和唯一知识协同协议；`PLATFORM-SCALE-S05-M1` 只建立容量验证环境、确定性种子和四类加载器，M2-M5 继续 Deferred，不构成生产容量或基础设施 HA 承诺。
+`PROJECT-PLATFORM-S08` 至 `PROJECT-PLATFORM-S20` 均已完成并归档；S20 不存在剩余 Task。S21-M1 至 M7 已完成。revision 50 根据当前项目空间认知复杂度与真人试用准入反馈，把 S21 扩展为 9 个 Milestone、108 个 Task：M4-M7 完成信息架构、角色化简洁模式、渐进式配置/引导和兼容复验，revision 49 未启动的真人试用与最终收口由 M8/M9 承接。当前 schema 为 V141，V139 是旧产品合同退出的历史锚点，V140/V141 分别承载项目空间体验偏好与首次使用引导状态；当前唯一入口为 `PROJECT-PLATFORM-S21-M8` 真人试用准备点，M8-T01 至 T12 仍全部 Pending。`PLATFORM-SCALE-S01-S04` 已建立模块边界门禁、公共合同、双 API、可靠双 Worker、双 Event Gateway、统一客户端校准和唯一知识协同协议；`PLATFORM-SCALE-S05-M1` 只建立容量验证环境、确定性种子和四类加载器，M2-M5 继续 Deferred，不构成生产容量或基础设施 HA 承诺。
 
 ## 2. 专项目标
 
@@ -85,7 +85,7 @@ target_architecture_doc: docs/01-architecture/project-platform-target-architectu
 | PROJECT-PLATFORM-S18 | 跨空间授权、关系和数据同步 | S10-S17 | Completed | M1-M4、48 个 Task、V127-V130 与真实隔离 route-final 完成；路线已归档 |
 | PROJECT-PLATFORM-S19 | 度量、效能、治理和管理驾驶舱 | S13-S18 | Completed | M1-M4、48 个 Task、V131-V134 与真实隔离 route-final 完成；路线已归档 |
 | PROJECT-PLATFORM-S20 | 研发、市场、HR 和交付场景模板 | S02-S19 | Completed | M1-M5、60 个 Task、V135-V137 与完整 route-final 已完成；路线已归档 |
-| PROJECT-PLATFORM-S21 | 旧模型退出、全量验证和真实团队试用 | S01-S20 | Active | M1-M5、60 个 Task；当前入口为 S21-M1-T01 |
+| PROJECT-PLATFORM-S21 | 旧模型退出、项目空间易用性收敛、全量验证和真实团队试用 | S01-S20 | Active | M1-M7 已完成；M8 Active 但仅为真人试用准备点且 12 个 Task 全部 Pending；M9 Pending；共 108 个 Task |
 
 ## 6. Stage 与 Milestone 规划
 
@@ -283,15 +283,23 @@ S02 固定输入见目标架构 17：落 `project_spaces`、成员、角色分�
 | PROJECT-PLATFORM-S20-M4 | 客户交付模板 | 项目-任务-风险-交付物-验收闭环 |
 | PROJECT-PLATFORM-S20-M5 | 模板安装、差异化和升级验证 | 四类模板可调整而不修改平台代码 |
 
-### PROJECT-PLATFORM-S21 旧模型退出、全量验证和真实团队试用
+### PROJECT-PLATFORM-S21 旧模型退出、项目空间易用性收敛、全量验证和真实团队试用
 
 | Milestone | 交付目标 | 退出条件 |
 | --- | --- | --- |
 | PROJECT-PLATFORM-S21-M1 | 存量迁移完成度与数据一致性审计 | 未迁移、重复、悬空和权限偏差为零或有决定 |
 | PROJECT-PLATFORM-S21-M2 | 删除旧 issues 产品 API、DTO、页面和写路径 | 只保留不可变历史迁移与审计证据 |
 | PROJECT-PLATFORM-S21-M3 | 性能、安全、备份、恢复和 route-final | 全量工程门禁通过 |
-| PROJECT-PLATFORM-S21-M4 | 研发、市场、HR、交付真人任务试用 | 真实参与者完成规定场景并记录原始反馈 |
-| PROJECT-PLATFORM-S21-M5 | 缺陷修复、复验和产品 Go/No-Go | P0/P1 清零，工程与人工结论分离 |
+| PROJECT-PLATFORM-S21-M4 | 信息架构、角色视图与术语收敛 | 五入口、角色能力、术语、响应式和深链兼容合同冻结 |
+| PROJECT-PLATFORM-S21-M5 | 简洁模式与角色化项目空间 | 默认简洁 Shell、项目管理聚合、设置中心和模式偏好通过六身份验收 |
+| PROJECT-PLATFORM-S21-M6 | 渐进式配置与首次使用引导 | 四类模板和空白空间可在不理解完整元模型时完成首个协作闭环 |
+| PROJECT-PLATFORM-S21-M7 | 兼容迁移、安全、可观测与工程复验 | 旧深链/偏好可迁移回退，权限与性能无阻断，给出 M8 Engineering Go |
+| PROJECT-PLATFORM-S21-M8 | 研发、市场、HR、交付真人任务试用 | 真实参与者完成规定场景并记录原始反馈；AI/自动化不代签 |
+| PROJECT-PLATFORM-S21-M9 | 缺陷修复、复验和产品 Go/No-Go | P0/P1 清零，工程与人工结论分离，完成最终 route-final |
+
+revision 49 的 `S21-M4-T01..T12` 与 `S21-M5-T01..T12` 均未启动，revision 50 分别按语义顺延为 `S21-M8-T01..T12` 与 `S21-M9-T01..T12`。S20 的四类场景模板保持 Completed，只作为 M6 引导、M7 回归与 M8 真人试用输入，不重开历史 Stage。
+
+revision 50 当前执行状态：S21-M1 至 M7 为 Completed；M8 为 Active，但仅激活 `PROJECT-PLATFORM-S21-M8` 真人试用准备点，M8-T01 至 T12 均保持 Pending，M9 保持 Pending。启动 M8 Task 需要 5 位真人参与者、知情同意、隔离试用环境和真人主持全部就绪；当前没有 M8 人工执行或签署结论，也不归档 S21。
 
 ## 7. 全局验收标准
 
@@ -299,7 +307,7 @@ S02 固定输入见目标架构 17：落 `project_spaces`、成员、角色分�
 - 配置安全：草稿不影响运行；发布、升级、回滚和实例模板版本均可追溯。
 - 权限正确：组织、空间、工作项、字段、节点和关系权限分层清晰，无标题或数据泄露。
 - 运行可靠：状态流、节点流、关系、自动化和同步均具备幂等、并发、失败补偿和审计。
-- 用户可用：普通成员通过工作台、搜索和视图完成工作，不必进入配置后台理解元模型。
+- 用户可用：普通成员通过工作台、搜索、视图和项目空间简洁模式完成工作，不必进入配置后台理解元模型；管理者只在需要时渐进进入高级配置。
 - 多团队适配：研发、市场、HR 和交付模板只通过配置差异实现核心流程，不复制业务模块。
 - 迁移收口：旧 `issues` 合同按观测、迁移、切流、删除退出，不保留永久双读双写。
 - 证据完整：每个 Stage 有逐 Milestone 报告，Stage 最终里程碑执行 `route-final` 并更新本文。
@@ -369,6 +377,7 @@ S02 固定输入见目标架构 17：落 `project_spaces`、成员、角色分�
 | 47 | 2026-07-29 | 归档 S19 完成路线并激活 S20；把研发、市场、HR、交付四类场景目录和统一安装/差异/升级细化为 5 个 Milestone、60 个 Task | S20 必须复用 S03-S19 owner 公共配置/运行合同；模板目录不授权，安装不得写私表或静默覆盖本地调整，S21 旧模型退出与真人试用不得提前实现 | S20 Active；当前入口切换为 PROJECT-PLATFORM-S20-M1-T01；S19 路线归档；S21 保持 Planned |
 | 48 | 2026-07-29 | 完成 S20 五个 Milestone、60 个 Task；交付 V135-V137 四类不可变场景目录、公共 owner 安装编排、三方差异/冲突、升级/重试/解绑和完整真实隔离 route-final | 场景目录、运行和统计不授权；安装逐次校准当前 manager 与空间状态，只调用 owner 公共合同，不写私表、不静默覆盖本地调整、不删除 owner 事实；S21 旧模型退出和真人试用仍未实现 | S20 Completed；`current_stage` 置 none；Go S21 但保持 Planned，需先独立归档 S20 并生成新当前路线 |
 | 49 | 2026-07-29 | 归档 S20 完成路线并激活 S21；把存量迁移审计、旧 issues 产品合同删除、性能/安全/备份恢复 route-final、四场景真人试用和缺陷复验细化为 5 个 Milestone、60 个 Task | S21 必须先 inventory 和对账再删除，保留不可变迁移/审计证据；本地合成证据不授权生产切流，AI/自动化不得冒充真人参与者或产品结论 | S21 Active；当前入口切换为 PROJECT-PLATFORM-S21-M1-T01；S20 路线归档；工程与真人 Go/No-Go 仍待执行 |
+| 50 | 2026-07-30 | 保留 S20 归档和 S21-M1 至 M3 完成历史，在真人试用前插入信息架构/术语、角色化简洁模式、渐进配置/引导、兼容迁移/安全/可观测四个 Milestone；将未启动的原 M4/M5 分别顺延为 M8/M9，S21 扩展为 9 个 Milestone、108 个 Task | 当前项目空间能力完整但入口与配置认知负担过高，直接开展真人试用会把已知信息架构问题混入采用结论；先降低复杂度再试用，可保留旧深链、权限权威和真人证据边界 | S21 保持唯一 Active Stage；revision 50 初始入口为 S21-M4-T01，M4-M7 后续完成后当前入口停在 S21-M8 真人试用准备点；M8 Task 尚未启动，M9 继续承担最终 Go/No-Go，S20 历史不变 |
 
 ## 10. 主要产品参考
 

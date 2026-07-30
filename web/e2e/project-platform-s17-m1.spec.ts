@@ -162,6 +162,10 @@ test.describe('PROJECT-PLATFORM-S17 M1', () => {
 
       await installSession(page, owner)
       await page.goto(`/project-spaces/${spaceId}/work-items`)
+      await page
+        .getByTestId('project-work-items-secondary-tabs')
+        .getByRole('tab', { name: '自动化规则', exact: true })
+        .click()
       await expect(page.getByTestId('automation-rules-panel')).toBeVisible()
       await expect(page.getByTestId('automation-rules-panel')).toContainText(suffix)
       await expect(page.getByLabel('触发事件')).toBeVisible()
@@ -185,6 +189,10 @@ test.describe('PROJECT-PLATFORM-S17 M1', () => {
 
       await installSession(page, member)
       await page.goto(`/project-spaces/${spaceId}/work-items`)
+      await page
+        .getByTestId('project-work-items-secondary-tabs')
+        .getByRole('tab', { name: '自动化规则', exact: true })
+        .click()
       await expect(page.getByRole('button', { name: '保存规则草稿' })).toBeDisabled()
     } finally {
       await page.context().setOffline(false).catch(() => undefined)

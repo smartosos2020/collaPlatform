@@ -181,6 +181,10 @@ test.describe('PROJECT-PLATFORM-S15 M4', () => {
 
       await installSession(page, owner)
       await page.goto(`/project-spaces/${spaceId}/work-items`)
+      await page
+        .getByTestId('project-work-items-secondary-tabs')
+        .getByRole('tab', { name: '项目概况', exact: true })
+        .click()
       const panel = page.getByTestId('project-detail-panel')
       await expect(panel).toBeVisible()
       await expect(page.getByTestId('project-health-status')).toContainText('严重')
@@ -207,6 +211,10 @@ test.describe('PROJECT-PLATFORM-S15 M4', () => {
 
       await installSession(page, guest)
       await page.goto(`/project-spaces/${spaceId}/work-items`)
+      await page
+        .getByTestId('project-work-items-secondary-tabs')
+        .getByRole('tab', { name: '项目概况', exact: true })
+        .click()
       await expect(page.getByTestId('project-detail-panel')).toBeVisible()
       await expect(page.getByTestId('project-health-status')).toContainText('严重')
     } finally {

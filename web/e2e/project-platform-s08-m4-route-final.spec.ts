@@ -81,10 +81,14 @@ test.describe('PROJECT-PLATFORM-S08 route final', () => {
       await editor.getByRole('button', { name: '保存到草稿' }).click()
       expect((await saveDraftResponse).ok()).toBeTruthy()
       await expect(page.getByText('状态流已保存到配置草稿')).toBeVisible()
+      await page.getByTestId('project-space-types-secondary-tabs')
+        .getByRole('tab', { name: '配置发布', exact: true }).click()
       await page.getByRole('button', { name: '校验配置' }).click()
       await expect(page.getByRole('region', { name: '配置草稿状态' })).toContainText('校验通过')
       await expect(page.getByRole('region', { name: '配置草稿状态' })).toContainText(/兼容性/)
 
+      await page.getByTestId('project-space-types-secondary-tabs')
+        .getByRole('tab', { name: '类型目录', exact: true }).click()
       const backfillPanel = page.getByTestId('work-item-state-backfill-panel')
       await expect(backfillPanel).toBeVisible()
       await backfillPanel.getByText('显式 manifest').locator('..').getByRole('combobox').click()
@@ -106,6 +110,8 @@ test.describe('PROJECT-PLATFORM-S08 route final', () => {
 
       await installSession(page, member)
       await page.goto(`/project-spaces/${spaceId}/work-items/${fixture.item.id}`)
+      await page.getByTestId('project-work-item-detail-secondary-tabs')
+        .getByRole('tab', { name: '状态流', exact: true }).click()
       const workflowPanel = page.getByTestId('work-item-workflow-panel')
       await expect(workflowPanel.locator('.work-item-workflow-state-tag')).toHaveText('待处理')
       await expect(workflowPanel.getByRole('button', { name: /开始处理/ })).toBeVisible()
@@ -125,6 +131,8 @@ test.describe('PROJECT-PLATFORM-S08 route final', () => {
 
       await installSession(page, spaceAdmin)
       await page.goto(`/project-spaces/${spaceId}/work-items/${fixture.item.id}`)
+      await page.getByTestId('project-work-item-detail-secondary-tabs')
+        .getByRole('tab', { name: '状态流', exact: true }).click()
       await page.getByTestId('work-item-workflow-panel').getByRole('button', { name: '受控纠错' }).click()
       const correctionDialog = page.getByRole('dialog', { name: '受控状态纠错' })
       await correctionDialog.getByLabel('目标状态永久 key').fill('in_progress')
@@ -147,6 +155,8 @@ test.describe('PROJECT-PLATFORM-S08 route final', () => {
 
       await installSession(page, member)
       await page.goto(`/project-spaces/${spaceId}/work-items/${fixture.item.id}`)
+      await page.getByTestId('project-work-item-detail-secondary-tabs')
+        .getByRole('tab', { name: '状态流', exact: true }).click()
       await expect(page.getByTestId('work-item-workflow-panel').locator('.work-item-workflow-state-tag')).toHaveText('已完成')
       await page.getByTestId('work-item-workflow-panel').getByRole('button', { name: /重新打开/ }).click()
       await expect(page.getByTestId('work-item-workflow-panel').locator('.work-item-workflow-state-tag')).toHaveText('待处理')
@@ -170,6 +180,8 @@ test.describe('PROJECT-PLATFORM-S08 route final', () => {
       for (const width of [1366, 820]) {
         await page.setViewportSize({ width, height: 900 })
         await page.goto(`/project-spaces/${spaceId}/work-items/${fixture.item.id}`)
+        await page.getByTestId('project-work-item-detail-secondary-tabs')
+          .getByRole('tab', { name: '状态流', exact: true }).click()
         await expect(page.getByTestId('work-item-workflow-panel')).toBeVisible()
         expect(await page.evaluate(() =>
           document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1)
@@ -234,6 +246,8 @@ async function assertIdentityBoundaries(
   expect(guestWorkflow.availableActions).toEqual([])
   await installSession(page, sessions.guest)
   await page.goto(`/project-spaces/${target.spaceId}/work-items/${target.workItemId}`)
+  await page.getByTestId('project-work-item-detail-secondary-tabs')
+    .getByRole('tab', { name: '状态流', exact: true }).click()
   await expect(page.getByTestId('work-item-workflow-panel')).toBeVisible()
   await expect(page.getByTestId('work-item-workflow-panel').getByRole('button', { name: '受控纠错' })).toHaveCount(0)
   await expect(page.getByTestId('work-item-workflow-panel')).toContainText('当前没有服务端允许的动作')
@@ -263,6 +277,12 @@ async function assertConcurrentAction(
     await Promise.all([
       memberPage.goto(`/project-spaces/${spaceId}/work-items/${workItemId}`),
       adminPage.goto(`/project-spaces/${spaceId}/work-items/${workItemId}`),
+    ])
+    await Promise.all([
+      memberPage.getByTestId('project-work-item-detail-secondary-tabs')
+        .getByRole('tab', { name: '状态流', exact: true }).click(),
+      adminPage.getByTestId('project-work-item-detail-secondary-tabs')
+        .getByRole('tab', { name: '状态流', exact: true }).click(),
     ])
     const memberResponse = memberPage.waitForResponse((response) =>
       response.url().endsWith('/workflow/actions/complete'))

@@ -16,7 +16,7 @@ class ScenarioTemplateFoundationIntegrationTests {
             Flyway flyway = Flyway.configure().dataSource(
                 postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword()
             ).load();
-            assertTrue(flyway.migrate().migrationsExecuted >= 139);
+            assertTrue(flyway.migrate().migrationsExecuted >= 141);
             assertEquals(0, flyway.migrate().migrationsExecuted);
             var dataSource = new org.postgresql.ds.PGSimpleDataSource();
             dataSource.setURL(postgres.getJdbcUrl());
@@ -36,7 +36,7 @@ class ScenarioTemplateFoundationIntegrationTests {
                    'project_scenario_template_upgrade_conflicts'
                  )
                 """, Integer.class));
-            assertEquals("139", jdbc.queryForObject(
+            assertEquals("141", jdbc.queryForObject(
                 "select max(version) from flyway_schema_history", String.class
             ));
         }

@@ -20,6 +20,7 @@ import {
 import { useEffect, useMemo, useState } from 'react'
 
 import { useRealtimeSubscription } from '../../../shared/realtime'
+import { useSessionScope } from '../../../shared/session/SessionScopeContext'
 import {
   getMetricFoundation,
   metricKeys,
@@ -32,6 +33,16 @@ import {
   type MetricWindow,
 } from '../api/metricSemanticsApi'
 import type { UserProjectSpace } from '../api/projectSpacesApi'
+import {
+  hasRecoverableLegacyDraft,
+  isProjectSpaceDraftRecord,
+  markLegacyDraftHandled,
+  projectSpaceCacheKey,
+  readProjectSpaceDraft,
+  recoverLegacyProjectSpaceDraft,
+  removeProjectSpaceDraft,
+  writeProjectSpaceDraft,
+} from '../projectSpaceLocalCache'
 import { formatTime } from '../projectSpaceView'
 
 type Editor = {
@@ -66,14 +77,46 @@ const defaultEditor: Editor = {
   comparison: 'previous_period',
 }
 
+function isMetricSemanticsEditor(value: unknown): value is Editor {
+  if (!isProjectSpaceDraftRecord(value)) return false
+  return typeof value.metricKey === 'string'
+    && typeof value.name === 'string'
+    && typeof value.description === 'string'
+    && typeof value.unit === 'string'
+    && typeof value.aggregation === 'string'
+    && typeof value.measureKey === 'string'
+    && Array.isArray(value.dimensionKeys)
+    && value.dimensionKeys.every((item) => typeof item === 'string')
+    && typeof value.windowKind === 'string'
+    && typeof value.windowAmount === 'number'
+    && typeof value.windowUnit === 'string'
+    && typeof value.timeZone === 'string'
+    && typeof value.comparison === 'string'
+}
+
 export function MetricSemanticsPanel({ space }: { space: UserProjectSpace }) {
   const client = useQueryClient()
-  const canManage = space.currentUserRole === 'owner' || space.currentUserRole === 'admin'
-  const draftKey = `colla.metric-draft.${space.id}`
+  const sessionScope = useSessionScope()
+  const canManage = space.availableActions.includes('view_settings')
+  const legacyDraftKey = `colla.metric-draft.${space.id}`
+  const draftScope = useMemo(
+    () => sessionScope
+      ? {
+          workspaceId: sessionScope.workspaceId,
+          userId: sessionScope.userId,
+          spaceId: space.id,
+        }
+      : null,
+    [sessionScope, space.id],
+  )
+  const draftKey = draftScope
+    ? projectSpaceCacheKey(draftScope, 'metric-semantics-draft')
+    : null
   const [form] = Form.useForm<Editor>()
   const [selected, setSelected] = useState<MetricDefinition>()
   const [preview, setPreview] = useState<MetricResult>()
   const [online, setOnline] = useState(() => navigator.onLine)
+  const [handledLegacyDraftKey, setHandledLegacyDraftKey] = useState<string | null>(null)
   const query = useQuery({
     queryKey: metricKeys.foundation(space.id),
     queryFn: () => getMetricFoundation(space.id),
@@ -106,7 +149,10 @@ export function MetricSemanticsPanel({ space }: { space: UserProjectSpace }) {
       },
     }),
     onSuccess: async (metric) => {
-      localStorage.removeItem(draftKey)
+      if (draftScope) {
+        removeProjectSpaceDraft(localStorage, draftScope, 'metric-semantics-draft')
+        markLegacyDraftHandled(localStorage, draftScope, 'metric-semantics-draft')
+      }
       setSelected(metric)
       await client.invalidateQueries({ queryKey: metricKeys.foundation(space.id) })
     },
@@ -138,7 +184,15 @@ export function MetricSemanticsPanel({ space }: { space: UserProjectSpace }) {
       if (navigator.onLine) void client.invalidateQueries({ queryKey: metricKeys.foundation(space.id) })
     }
     const storage = (event: StorageEvent) => {
-      if (event.key === draftKey && event.newValue) form.setFieldsValue(JSON.parse(event.newValue) as Editor)
+      if (event.key === draftKey && draftScope) {
+        const draft = readProjectSpaceDraft(
+          localStorage,
+          draftScope,
+          'metric-semantics-draft',
+          isMetricSemanticsEditor,
+        )
+        if (draft) form.setFieldsValue(draft)
+      }
       calibrate()
     }
     window.addEventListener('online', calibrate)
@@ -151,15 +205,40 @@ export function MetricSemanticsPanel({ space }: { space: UserProjectSpace }) {
       window.removeEventListener('focus', calibrate)
       window.removeEventListener('storage', storage)
     }
-  }, [client, draftKey, form, space.id])
+  }, [client, draftKey, draftScope, form, space.id])
 
   const initial = useMemo(() => {
-    try {
-      return JSON.parse(localStorage.getItem(draftKey) ?? '') as Editor
-    } catch {
-      return defaultEditor
-    }
-  }, [draftKey])
+    if (!draftScope) return defaultEditor
+    return readProjectSpaceDraft(
+      localStorage,
+      draftScope,
+      'metric-semantics-draft',
+      isMetricSemanticsEditor,
+    ) ?? defaultEditor
+  }, [draftScope])
+  const legacyDraftAvailable = Boolean(
+    draftScope
+    && handledLegacyDraftKey !== draftKey
+    && hasRecoverableLegacyDraft(
+      localStorage,
+      draftScope,
+      'metric-semantics-draft',
+      legacyDraftKey,
+      isMetricSemanticsEditor,
+    ),
+  )
+  const recoverLegacyDraft = () => {
+    if (!draftScope) return
+    const recovered = recoverLegacyProjectSpaceDraft(
+      localStorage,
+      draftScope,
+      'metric-semantics-draft',
+      legacyDraftKey,
+      isMetricSemanticsEditor,
+    )
+    if (recovered) form.setFieldsValue(recovered)
+    setHandledLegacyDraftKey(draftKey)
+  }
   const selectMetric = (metric: MetricDefinition) => {
     setSelected(metric)
     setPreview(undefined)
@@ -193,6 +272,15 @@ export function MetricSemanticsPanel({ space }: { space: UserProjectSpace }) {
       extra={<Tag icon={<CloudSyncOutlined />} color={online ? 'green' : 'orange'}>{online ? 'REST 已校准' : '离线草稿'}</Tag>}
     >
       {!online ? <Alert type="warning" showIcon message="当前离线：只保存本地草稿，不发布或伪造指标结果" /> : null}
+      {canManage && legacyDraftAvailable ? (
+        <Alert
+          type="info"
+          showIcon
+          message="检测到旧版本机草稿"
+          description="旧草稿未自动跨账号载入；确认属于当前账号后可恢复。"
+          action={<Button onClick={recoverLegacyDraft}>恢复旧草稿</Button>}
+        />
+      ) : null}
       {query.isError ? <Alert type="error" showIcon message="指标目录加载失败或无权访问" /> : null}
       {query.data?.truncated ? <Alert type="warning" showIcon message="指标目录已截断；截断不折算为完整结果" /> : null}
       <Row gutter={[16, 16]}>
@@ -220,7 +308,16 @@ export function MetricSemanticsPanel({ space }: { space: UserProjectSpace }) {
               form={form}
               layout="vertical"
               initialValues={initial}
-              onValuesChange={(_, values) => localStorage.setItem(draftKey, JSON.stringify(values))}
+              onValuesChange={(_, values) => {
+                if (draftScope) {
+                  writeProjectSpaceDraft(
+                    localStorage,
+                    draftScope,
+                    'metric-semantics-draft',
+                    values,
+                  )
+                }
+              }}
               onFinish={(values) => online && save.mutate(values)}
             >
               <Row gutter={12}>

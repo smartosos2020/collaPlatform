@@ -85,6 +85,8 @@ test.describe('PROJECT-PLATFORM-S07 route final', () => {
       await page.getByRole('button', { name: /保\s*存/ }).click()
       await expect(page.getByText('工作项已保存')).toBeVisible()
 
+      await page.getByTestId('project-work-item-detail-secondary-tabs')
+        .getByRole('tab', { name: '协作记录', exact: true }).click()
       const comment = `真实评论 ${'long-content-'.repeat(30)}`
       const commentBox = page.getByPlaceholder('输入评论，Ctrl/⌘ + Enter 发布')
       await commentBox.fill(comment)

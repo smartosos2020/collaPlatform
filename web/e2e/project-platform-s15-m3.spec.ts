@@ -251,6 +251,10 @@ test.describe('PROJECT-PLATFORM-S15 M3', () => {
 
       await installSession(page, owner)
       await page.goto(`/project-spaces/${spaceId}/work-items`)
+      await page
+        .getByTestId('project-work-items-secondary-tabs')
+        .getByRole('tab', { name: '交付验收', exact: true })
+        .click()
       await expect(page.getByTestId('project-delivery-panel')).toBeVisible()
       await page.getByText(current.deliverable.title, { exact: true }).click()
       await expect(page.getByTestId('project-delivery-panel')).toContainText('不可变版本')
@@ -273,6 +277,10 @@ test.describe('PROJECT-PLATFORM-S15 M3', () => {
 
       await installSession(page, guest)
       await page.goto(`/project-spaces/${spaceId}/work-items`)
+      await page
+        .getByTestId('project-work-items-secondary-tabs')
+        .getByRole('tab', { name: '交付验收', exact: true })
+        .click()
       await expect(page.getByTestId('project-delivery-panel')).toContainText('当前角色只读')
       await expect(page.getByRole('button', { name: '创建交付物' })).toBeDisabled()
     } finally {

@@ -30,7 +30,7 @@ import {
   Tag,
   Typography,
 } from 'antd'
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 
 import { ApiRequestError } from '../../../shared/api/httpClient'
 import type { UserProjectSpace } from '../api/projectSpacesApi'
@@ -54,16 +54,19 @@ import {
   type WorkItemLayoutNodeCommand,
   type WorkItemLayoutNodeType,
 } from '../api/workItemLayoutsApi'
+import { ProjectSpaceSecondaryTabs } from './ProjectSpaceSecondaryTabs'
 import { WorkItemLayoutRenderer } from './WorkItemLayoutRenderer'
 
 export function ProjectWorkItemLayoutsPanel({
   space,
   typeId,
   onBack,
+  configurationDraft,
 }: {
   space: UserProjectSpace
   typeId: string
   onBack: () => void
+  configurationDraft?: ReactNode
 }) {
   const { message } = AntdApp.useApp()
   const queryClient = useQueryClient()
@@ -415,75 +418,87 @@ export function ProjectWorkItemLayoutsPanel({
         </Space>
       </header>
 
-      {pendingCommand ? (
-        <Alert
-          showIcon
-          type="warning"
-          message="布局已被其他人更新"
-          description="本地操作意图已保留。刷新最新版本后可重新提交，不会用整页重载覆盖他人修改。"
-          action={<Button onClick={() => void retryPending()}>刷新并重试</Button>}
-        />
-      ) : null}
-      {layout?.diagnostics.length ? (
-        <Alert
-          showIcon
-          type="warning"
-          message={`${layout.diagnostics.length} 项布局诊断`}
-          description={(
-            <div className="work-item-layout-diagnostics" aria-live="polite">
-              {layout.diagnostics.map((diagnostic) => (
-                <div key={`${diagnostic.code}:${diagnostic.nodeKey ?? diagnostic.fieldKey ?? 'layout'}`}>
-                  <span>
-                    <strong>{diagnostic.nodeKey ?? diagnostic.fieldKey ?? '布局'}</strong>
-                    {diagnostic.message || diagnostic.code}
-                  </span>
-                  {diagnostic.nodeKey ? (
+      <ProjectSpaceSecondaryTabs
+        view="layouts"
+        canManage
+        testId="project-space-layouts-secondary-tabs"
+        ariaLabel="工作项布局内容导航"
+        panels={{
+          'layout-editor': (
+            <>
+              {pendingCommand ? (
+                <Alert
+                  showIcon
+                  type="warning"
+                  message="布局已被其他人更新"
+                  description="本地操作意图已保留。刷新最新版本后可重新提交，不会用整页重载覆盖他人修改。"
+                  action={<Button onClick={() => void retryPending()}>刷新并重试</Button>}
+                />
+              ) : null}
+              {layout?.diagnostics.length ? (
+                <Alert
+                  showIcon
+                  type="warning"
+                  message={`${layout.diagnostics.length} 项布局诊断`}
+                  description={(
+                    <div className="work-item-layout-diagnostics" aria-live="polite">
+                      {layout.diagnostics.map((diagnostic) => (
+                        <div key={`${diagnostic.code}:${diagnostic.nodeKey ?? diagnostic.fieldKey ?? 'layout'}`}>
+                          <span>
+                            <strong>{diagnostic.nodeKey ?? diagnostic.fieldKey ?? '布局'}</strong>
+                            {diagnostic.message || diagnostic.code}
+                          </span>
+                          {diagnostic.nodeKey ? (
+                            <Button
+                              size="small"
+                              onClick={() => setSelectedId(layout.nodes.find((node) =>
+                                node.nodeKey === diagnostic.nodeKey
+                                || (diagnostic.fieldKey && node.fieldKey === diagnostic.fieldKey))?.id)}
+                            >
+                              定位节点
+                            </Button>
+                          ) : diagnostic.fieldKey ? (
+                            <Button
+                              size="small"
+                              onClick={() => setSelectedId(
+                                layout.nodes.find((node) => node.fieldKey === diagnostic.fieldKey)?.id,
+                              )}
+                            >
+                              定位字段
+                            </Button>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                />
+              ) : null}
+              {loading ? <Card><Skeleton active /></Card> : null}
+              {missing ? (
+                <Card className="work-item-layout-empty">
+                  <Empty description={`尚未配置${kind === 'create' ? '新建页' : '详情页'}布局`}>
                     <Button
-                      size="small"
-                      onClick={() => setSelectedId(layout.nodes.find((node) =>
-                        node.nodeKey === diagnostic.nodeKey
-                        || (diagnostic.fieldKey && node.fieldKey === diagnostic.fieldKey))?.id)}
+                      type="primary"
+                      icon={<PlusOutlined />}
+                      loading={saveMutation.isPending}
+                      onClick={initialize}
                     >
-                      定位节点
+                      使用当前字段初始化
                     </Button>
-                  ) : diagnostic.fieldKey ? (
-                    <Button
-                      size="small"
-                      onClick={() => setSelectedId(
-                        layout.nodes.find((node) => node.fieldKey === diagnostic.fieldKey)?.id,
-                      )}
-                    >
-                      定位字段
-                    </Button>
-                  ) : null}
-                </div>
-              ))}
-            </div>
-          )}
-        />
-      ) : null}
-      {loading ? <Card><Skeleton active /></Card> : null}
-      {missing ? (
-        <Card className="work-item-layout-empty">
-          <Empty description={`尚未配置${kind === 'create' ? '新建页' : '详情页'}布局`}>
-            <Button type="primary" icon={<PlusOutlined />} loading={saveMutation.isPending} onClick={initialize}>
-              使用当前字段初始化
-            </Button>
-          </Empty>
-        </Card>
-      ) : null}
-      {workbenchQuery.isError ? (
-        <Alert
-          type="error"
-          showIcon
-          message="页面布局加载失败"
-          description={layoutError(workbenchQuery.error, '请稍后重试')}
-          action={<Button onClick={() => void workbenchQuery.refetch()}>重试</Button>}
-        />
-      ) : null}
+                  </Empty>
+                </Card>
+              ) : null}
+              {workbenchQuery.isError ? (
+                <Alert
+                  type="error"
+                  showIcon
+                  message="页面布局加载失败"
+                  description={layoutError(workbenchQuery.error, '请稍后重试')}
+                  action={<Button onClick={() => void workbenchQuery.refetch()}>重试</Button>}
+                />
+              ) : null}
 
-      {layout ? (
-        <>
+              {layout ? (
           <div className="work-item-layout-editor" data-testid="work-item-layout-editor">
             <Card className="work-item-layout-palette" title={<Space><PlusOutlined />控件</Space>}>
               <div className="work-item-layout-palette-actions">
@@ -560,7 +575,10 @@ export function ProjectWorkItemLayoutsPanel({
               </div>
             </Card>
           </div>
-          <div className="work-item-layout-access-grid">
+              ) : null}
+            </>
+          ),
+          'field-access': layout ? (
             <Card
               className="work-item-layout-policy-card"
               data-testid="work-item-layout-policy-editor"
@@ -598,7 +616,8 @@ export function ProjectWorkItemLayoutsPanel({
                 </div>
               )}
             </Card>
-
+          ) : undefined,
+          'access-preview': layout ? (
             <Card
               className="work-item-layout-preview-card"
               title={<Space><EyeOutlined />服务端访问投影</Space>}
@@ -687,9 +706,10 @@ export function ProjectWorkItemLayoutsPanel({
                 ) : <Empty description="正在读取服务端访问投影" />}
               </div>
             </Card>
-          </div>
-        </>
-      ) : null}
+          ) : undefined,
+          'configuration-draft': configurationDraft,
+        }}
+      />
     </section>
   )
 }

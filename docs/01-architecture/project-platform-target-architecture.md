@@ -2,12 +2,12 @@
 title: 项目协作平台目标架构
 status: target
 program: PROJECT-PLATFORM
-program_revision: 49
+program_revision: 50
 domain_contract_version: 1
 domain_contract_status: frozen-s01-m3
 migration_contract_version: 1
-stage_review_status: s21-active
-updated_at: 2026-07-29
+stage_review_status: s21-active-revision-50
+updated_at: 2026-07-30
 ---
 
 # 项目协作平台目标架构
@@ -1239,7 +1239,7 @@ S09 完成路线已经独立归档，S10 在 Program revision 27 激活为唯一
 - `project.contract.DraftSummaryQuery` 是 workspace 可依赖的 owner 草稿端口。project 只返回当前用户更新、仍在活动空间且具有活动成员身份的配置草稿最小摘要、状态、版本、更新时间与恢复路径，不复制 snapshot 或 diagnostics。
 - V103 新增 platform owner 的 `platform_dashboard_card_layouts` 与 `platform_personalization_commands`。稳定 card key、全目录 replace、唯一 position、expected version 与 caller-stable request ID 共同保证重放稳定、未知卡片失败关闭和多标签冲突显式刷新。
 - 收藏命令使用相同持久回执并继续依赖 `(workspace,user,objectType,objectId)` 唯一事实；recent/favorite/card 每次 REST 重读重新校准，realtime 只作为失效提示，不携带标题或授权快照。
-- workspace Dashboard/Web 已交付最近、收藏、本人草稿、卡片显隐/上移、长名称、空态、冲突提示和 1440/1366/820 响应式入口。M2 不声明全局搜索、动态、提醒或催办闭环。
+- workspace Dashboard/Web 已交付 12 张统一卡片的显隐、拖拽/键盘排序、三种响应式布局、长名称、空态、冲突提示和 1440/1366/820 入口；目录覆盖四类个人工作、最近/收藏对象、本人草稿、最近事项、未读会话、审批待办、最新通知以及最近知识内容和表格。M2 不声明全局搜索、动态、提醒或催办闭环。
 
 ### 28.7 S12-M3 已实现边界
 
@@ -1618,11 +1618,11 @@ S09 完成路线已经独立归档，S10 在 Program revision 27 激活为唯一
 
 ### 29.41 S20 归档与 S21 激活边界
 
-- S20 完成路线已通过独立 archive-only 工作循环归档至 `docs/99-archive/superseded-roadmaps/project-platform-s20-roadmap-completed-2026-07-29.md`；S21 在 Program revision 49 激活，当前唯一入口是 `PROJECT-PLATFORM-S21-M1-T01`。
-- S21 当前路线固定为 5 个 Milestone、60 个 Task：M1 存量迁移完成度与数据一致性审计，M2 删除旧 issues 产品 API/DTO/页面/写路径，M3 性能/安全/备份恢复与 route-final，M4 四类真实团队任务试用，M5 缺陷复验与产品 Go/No-Go。
+- S20 完成路线已通过独立 archive-only 工作循环归档至 `docs/99-archive/superseded-roadmaps/project-platform-s20-roadmap-completed-2026-07-29.md`；S21 在 Program revision 49 激活，当时唯一入口是 `PROJECT-PLATFORM-S21-M1-T01`。
+- revision 49 的 S21 初始路线为 5 个 Milestone、60 个 Task：M1 存量迁移完成度与数据一致性审计，M2 删除旧 issues 产品 API/DTO/页面/写路径，M3 性能/安全/备份恢复与 route-final，M4 四类真实团队任务试用，M5 缺陷复验与产品 Go/No-Go。revision 50 在 M1-M3 完成后按 29.45 重新规划未执行范围。
 - M1 必须先对代码、API、路由、事件、平台对象、数据库、map/batch/unit/provenance、权限和运行流量形成可审计 inventory；未知活动调用方、未映射、重复、悬空或权限偏差不得被默认视为可删除。
 - M2 只按 M1 冻结的 removal decision 退出活动 legacy 产品合同；migration map、batch、provenance、verification、audit/outbox 等不可变证据不得随产品入口一并删除，禁止恢复 legacy 写或建立永久双读双写。
-- M3 的本地/隔离容量、恢复和 route-final 证据不自动授权生产切流；M4 必须由真实研发、市场、HR、交付参与者执行规定任务，AI、维护者或自动化浏览器不能代签人工结论。revision 49 激活不声明任何 S21 实现、生产批准或真人试用事实。
+- M3 的本地/隔离容量、恢复和 route-final 证据不自动授权生产切流；revision 49 的原 M4 真人责任在 revision 50 顺延到 M8，仍必须由真实研发、市场、HR、交付参与者执行规定任务，AI、维护者或自动化浏览器不能代签人工结论。revision 49 激活不声明任何 S21 实现、生产批准或真人试用事实。
 
 ### 29.42 S21-M1 退出审计目标边界
 
@@ -1637,6 +1637,7 @@ S09 完成路线已经独立归档，S10 在 Program revision 27 激活为唯一
 - 历史源表和迁移证据不是产品读模型。其唯一允许调用方为明确登记的 migration、compatibility-location、audit 与 recovery owner，且不得创建新的 legacy 事实。
 - `work_item` 是搜索、平台对象、通知目标、消息转换、知识关系和工作台摘要的唯一事项身份；`project_space` 是项目容器身份。
 - V139 是退出恢复锚点：只删除产品注册与派生索引，不物理删除旧源事实或不可变迁移审计证据。生产物理删除仍须后续独立批准。
+- V088/V089 的 map、batch、unit、cutover、shadow、provenance 与 verification 只保留为历史/恢复兼容控制面。M2 产品退出后，feature flag、kill switch、恢复演练或后续路线都不得把旧 Project/Issue 列表、详情、搜索、对象注册或写入重新激活，也不得建立永久双读双写。
 
 ### 29.44 S21-M3 工程就绪与恢复目标边界
 
@@ -1644,4 +1645,64 @@ S09 完成路线已经独立归档，S10 在 Program revision 27 激活为唯一
 - PostgreSQL 备份必须固定 schema 版本、归档格式、校验和、恢复目标与一致性 digest；恢复在隔离数据库执行全量 Flyway/事实对账，并验证中断事务不会留下部分规范事实。对象存储需要版本、数量和内容校验，Redis 只允许作为可重建缓存/传输状态。
 - 安全门禁必须同时覆盖身份、权限、最小披露、注入/SSRF/文件边界和 legacy route/SQL/event/objectType 禁止项；未知项、P0/P1 或恢复不一致均为 M4 Reopen。
 - 运行/恢复证据入口只暴露当前角色可见的状态、来源、时间和安全诊断，不向浏览器下发数据库、对象存储、Redis 或加密凭据，也不把证据索引当作授权。
-- M3 Go 只允许准备真人试用。M4 的 consent、参与者、任务原始记录、定性反馈和清理撤权必须由真实参与者与试用主持人执行，不能由工程自动化替代。
+- revision 49 的 M3 Go 只允许准备真人试用；revision 50 还必须先完成 M4-M7 易用性收敛与复验。原 M4 的 consent、参与者、任务原始记录、定性反馈和清理撤权责任顺延到 M8，仍必须由真实参与者与试用主持人执行，不能由工程自动化替代。
+
+### 29.45 revision 50 的 S21 易用性重排边界
+
+- S20 的 5 个 Milestone、60 个 Task 已完成并归档，不存在可后移的 S20 剩余；研发、市场、HR、交付场景模板只作为 S21-M6 引导、M7 回归和 M8 真人试用的只读规划输入。
+- S21-M1 至 M3 的实现、报告与结论保持完成历史。revision 50 不修改其代码事实，也不把 M3 的工程 Go 描述为产品或真人 Go。
+- 当前用户反馈表明完整平台能力直接暴露为长导航和连续配置面板，真人试用前需要先降低信息架构和配置认知负担。S21 因此扩展为 9 个 Milestone、108 个 Task；M4-M7 已按该重排完成，当前停在 `PROJECT-PLATFORM-S21-M8` 真人试用准备点。
+- revision 49 的 M4/M5 均未启动、24 个 Task 全部为 Pending；其语义分别顺延到 revision 50 的 M8/M9。旧 `project-platform-s21-m4-human-trial-preparation.md` 仅保留为当时准备输入，不能充当 M8 人工证据。
+- 当前 Flyway 最新 schema 为 V141。本次重排不激活 S22，不同时维护第二条活动路线，也不把含未完成真人任务的 S21 宣告 Completed。
+
+### 29.46 项目空间目标信息架构与授权边界
+
+- 默认简洁模式最多提供五个一级入口，顺序为“概览、工作项、项目管理、成员、设置”；入口是否出现由当前空间状态和服务端 capability 决定，而不是只按角色名称或前端配置判断。
+- “概览”承载工作入口、动态、健康摘要和待处理提示；“工作项”承载受权查询、保存视图、列表/看板及详情；“项目管理”聚合计划/里程碑、风险/决策、交付/验收、资源/排期和当前受权指标；“成员”承载成员、邀请与角色；“设置”承载基本信息、生命周期和高级配置入口。
+- “设置/高级配置”按工作模型、流程与权限、自动化与协同、度量治理、场景模板分组。任务模板/工作项类型、字段、表单与页面、发布配置、状态/节点流、关系、数据权限、规则/连接器、跨空间和指标定义仍由既有 owner 持有。
+- 执行结果可以在工作项或项目管理中查看，配置定义只能在设置上下文管理。导航聚合层不得读取 owner 私表、复制配置/业务事实或成为第二权限权威。
+- owner/admin 可见当前受权的五入口并按需进入高级配置；member/guest 只见当前可执行/可读内容；enterprise-admin 非空间成员继续停留在治理 Shell，不获得私有空间内容旁路；归档/停用空间提供明确只读和受权恢复入口。
+- 简洁/高级模式是用户+空间维度的呈现偏好，不是授权、角色或发布状态。偏好、引导状态、feature flag、缓存、realtime 和遥测都不能扩大权限或保存授权快照。
+
+### 29.47 S21-M4 信息架构与合同冻结目标边界
+
+- M4 必须先形成导航、二级 Tab、路由、面板、API、角色和测试依赖的完整 surface inventory，再冻结五入口、高级分组、术语、角色能力矩阵和默认落点；禁止直接按现有组件位置搬家。
+- 术语面向业务任务收敛，“任务模板/工作项类型”“表单与页面”“审批与协作流程”“发布配置”等名称需保留唯一含义；稳定 domain key、API、schema 和审计语义不因界面文案改变。
+- 深链兼容矩阵必须覆盖 `typeId`、`create`、`savedViewId`、`panel`、工作项详情、收藏和通知来源。旧配置路径在迁移窗口内仍可直达，并解释为“设置/高级配置”上下文；不得出现重定向循环或目标丢失。
+- 响应式合同覆盖 1440/1366/820、键盘、焦点、屏幕阅读器、长名称、面包屑和返回路径。无权入口不得通过数量、加载、错误、预取或占位泄漏存在性。
+- M4 只冻结目标和可验证原型，不声明运行实现；只有四场景关键路径、权限威胁模型与兼容决定无阻断时才可进入 M5。
+- M4 已按上述边界冻结集中静态合同和 surface audit：五入口逐项声明服务端 capability，角色仅用于默认落点/文案，未来自定义角色保持 capability-only 兼容，enterprise-admin 非成员显式分流到治理 Shell。运行时五入口、偏好与聚合页面仍只由 M5 交付。
+
+### 29.48 S21-M5/M6 简洁运行与渐进引导目标边界
+
+- M5 通过一个集中导航注册表和唯一 route-context resolver 实现角色化简洁 Shell、项目管理聚合、设置中心和高级配置分组。旧路由仍使用既有页面/API，第一阶段不删除配置路由或重写业务 owner。
+- 项目管理聚合只组合各 owner 的当前受权公共响应，不复制计划、风险、交付、资源或指标事实；隐藏面板不预取，缓存和 realtime 只触发 REST 校准。
+- 模式偏好按 workspace/space/user 隔离并版本化；读取或迁移失败时安全回到简洁默认。切换、刷新、前进后退和旧深链应保留查询、草稿与返回上下文，但不能绕过当前 capability。
+- M6 的 OnboardingState/Checklist/Dismissal/Version/Reset 只是可重置体验状态。研发、市场、HR、交付模板或空白空间的向导必须展示安装/发布影响，且只调用 S03-S20 owner 公共命令。
+- 管理者路径按模板、成员、首项、交接渐进展开；成员路径按找到工作、新建/更新、评论/附件、流转和通知展开。配置顺序固定为工作模型、字段/页面、流程、权限、发布，再按需展示自动化/指标。
+- 引导遥测仅允许步骤、结果、耗时区间和错误码，不保存标题、字段值、文件名、候选人/员工/客户信息，不用于个人绩效、成员排名或隐式评分。
+- M5 已实现 V140 服务端模式偏好、逐入口 capability、集中五入口 Shell、`/management` 聚合与 advanced 设置分组，并保留旧配置深链。M6 的服务端引导状态与角色化首次使用路径不能把 M5 的模式偏好当作引导完成或授权事实。
+- M6 已以 V141、统一 GET/command/telemetry 合同和现有 Shell Drawer 交付上述体验状态与角色路径。四类场景/基础空间选择固定为零业务副作用；场景安装、配置发布、成员和 WorkItem 的完成事实仍逐次来自原 owner 响应，reset 与 dismissal 不撤销任何业务事实。
+
+### 29.49 S21-M7 兼容、安全、可观测与工程准入边界
+
+- 路由、偏好、引导与缓存迁移必须版本化、幂等、可回滚；失败只能回到简洁默认，不得删除业务配置、草稿、收藏、审计或不可变回执。
+- feature flag/kill switch 可按 workspace/space/user 分阶段开放，但开关不授权。关闭后必须恢复受支持旧导航上下文，且不能重新暴露已退出的 legacy project/issue 产品入口。
+- 六身份复验覆盖模式切换、直达 URL、预加载、客户端缓存、错误外形和 enterprise governance；所有读取与 mutation 继续依赖 S11 当前 decision、current manager gate、expected version、审计和 exact receipt。
+- 可观测只记录低敏入口/模式/帮助/结果/路由错误/恢复状态，显式携带 freshness、unknown 和采样上限；它不是业务事实、权限权威或个人采用评分。
+- M7 必须回归 S20 四类模板在新入口下的安装、差异、升级、首项和发布，但不得修改 S20 完成历史。完整单测、集成、六身份 E2E、安全、离线、三视口、兼容路由和干净隔离 route-final 无 P0/P1，才可给出 M8 Engineering Go。
+- M7 已实现 canonical-only 兼容适配：`/projects`、legacy project/issue identity 与 `/types/**` 只能解析到受权站内 `project_space`/`work_item` 路由；目标路由分别使用 query allowlist，hash 不参与授权，跨 origin、协议、路径穿越、开放重定向参数和循环 patch 一律失败关闭。rollout 关闭不能挂回已退出产品。
+- v2 体验缓存按 workspace/user 隔离最近空间，并按 workspace/user/space/kind 隔离显式草稿恢复 envelope；未知 schema、过期、坏值、quota、登出或身份切换只能 miss/回退，不得删除服务端偏好、onboarding、收藏、业务草稿、published version、审计或 receipt。
+- rollout 服务端按 workspace/space/user include/exclude 和稳定分桶求值；只有 fresh `enabled` 决策可启用增强呈现，baseline、kill、unknown、TTL 过期和请求失败都回到 canonical baseline。生产安全默认固定为 rollout disabled、kill switch enabled、rollout 0 basis points、telemetry disabled、sampling 0；开关永远不授权。
+- 体验 telemetry 使用严格 schema v1 低敏枚举 allowlist、20 条硬批量上限、显式 freshness/unknown 和 opt-out/offline gate，不接收身份、空间、对象、URL query/hash 或业务正文。浏览器不做概率采样，服务端按 event ID、policy version 与 salt 做唯一确定性采样；观测失败不影响产品。
+- 可选 members、onboarding、WorkItem configuration、CrossSpace、Scenario 与 Metric surface 已经通过 `React.lazy`/`Suspense` 首次挂载分块；隐藏面板不预取，query 合并/失效有界，route chunk 继续受 500 KiB 预算约束。
+- M7 已用真实 API、随机身份和私有空间的隔离浏览器流程覆盖六身份、兼容路由、缓存、rollout/kill、telemetry、离线、1440/1366/820、S20 四场景事实不丢和 finally 清理，不用网络 mock。fresh 工程门禁、P0/P1 清零与可恢复环境形成 M8 Engineering Go；它只授权进入真人试用准备，不是生产切流、产品 Go 或人工采用结论。
+
+### 29.50 S21-M8/M9 真人试用与最终收口边界
+
+- 当前停在 M8 真人试用准备点；M8 trial run、参与者操作、观察、反馈、撤权和环境恢复均尚未执行，M9 也未开始。
+- M8 重新冻结适配新界面的 trialRun、participant、consent、任务、观察、原始反馈、finding、清理和恢复合同。revision 49 准备包可作为素材，但不能替代重新确认或真人操作。
+- 研发、市场、HR、交付至少各一名真实参与者独立完成规定闭环；另由真实管理者完成模板、成员、必要高级设置、交接、收权、深链和恢复。AI、维护者、模拟账号和自动化浏览器不能代签。
+- 原始记录与汇总分离；P0/P1 安全、越权、隐私或不可恢复损坏立即停止相关试用。试用后必须撤权、终止会话、清理未批准合成数据并恢复隔离环境。
+- M9 只修复 M1-M8 证据中的阻断，不能借收口扩展产品范围。P0/P1/P2 修复需自动化防回归，原问题场景仍需真人定向复验。
+- 最终 route-final 同时覆盖迁移、legacy 禁止项、六身份、简洁/高级模式、三视口、键盘、离线、收权、深链、安全、备份恢复与四场景；只有 108 Task、九份报告、工程和人工证据一致且 P0/P1 为零时，S21 才可给出产品 Go、归档并将 `current_stage` 置为 `none`。

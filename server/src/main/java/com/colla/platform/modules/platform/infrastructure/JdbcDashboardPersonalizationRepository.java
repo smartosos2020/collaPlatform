@@ -89,6 +89,11 @@ public class JdbcDashboardPersonalizationRepository implements DashboardPersonal
         long nextVersion,
         List<CardPreference> cards
     ) {
+        jdbcTemplate.query(
+            "select pg_advisory_xact_lock(hashtextextended(?, 0))",
+            resultSet -> null,
+            workspaceId + ":" + userId
+        );
         if (currentVersion(workspaceId, userId) != expectedVersion) {
             return false;
         }

@@ -63,7 +63,7 @@ class ResourcePlanningFoundationIntegrationTests {
                     """,
                 Boolean.class
             ));
-            assertEquals("139", jdbc.queryForObject(
+            assertEquals("141", jdbc.queryForObject(
                 "select max(version) from flyway_schema_history", String.class
             ));
         } finally {

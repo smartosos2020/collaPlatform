@@ -144,6 +144,8 @@ test.describe('PROJECT-PLATFORM-S11 route final', () => {
 
       await installSession(page, member)
       await page.goto(`/project-spaces/${spaceId}/work-items/${item.id}`)
+      await page.getByTestId('project-work-item-detail-secondary-tabs')
+        .getByRole('tab', { name: '权限', exact: true }).click()
       const permissionPanel = page.locator('.work-item-permissions-panel')
       await expect(permissionPanel).toBeVisible()
       await expect(permissionPanel).toContainText('所有能力均来自服务端决策')
@@ -156,12 +158,16 @@ test.describe('PROJECT-PLATFORM-S11 route final', () => {
 
       await installSession(page, guest)
       await page.goto(`/project-spaces/${spaceId}/work-items/${item.id}`)
+      await page.getByTestId('project-work-item-detail-secondary-tabs')
+        .getByRole('tab', { name: '权限', exact: true }).click()
       await expect(page.locator('.work-item-permissions-panel')).toBeVisible()
       await expect(page.getByRole('button', { name: '保存' })).toHaveCount(0)
 
       for (const width of [1366, 820]) {
         await page.setViewportSize({ width, height: 900 })
         await page.goto(`/project-spaces/${spaceId}/work-items/${item.id}`)
+        await page.getByTestId('project-work-item-detail-secondary-tabs')
+          .getByRole('tab', { name: '权限', exact: true }).click()
         await expect(page.locator('.work-item-permissions-panel')).toBeVisible()
         expect(await page.evaluate(() =>
           document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1)

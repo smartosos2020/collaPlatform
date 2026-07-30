@@ -1,7 +1,7 @@
 ---
 title: 长期专项索引
 status: active
-updated_at: 2026-07-29
+updated_at: 2026-07-30
 tracked_paused_programs: KB-PRODUCT, PLATFORM-SCALE
 ---
 
@@ -11,7 +11,7 @@ tracked_paused_programs: KB-PRODUCT, PLATFORM-SCALE
 
 | Program | Status | Current Stage | Remaining Commitment | Source |
 | --- | --- | --- | --- | --- |
-| PROJECT-PLATFORM | Active | PROJECT-PLATFORM-S21 | S01-S20 已归档；S21 M1-M5、60 个 Task 从迁移审计到真人 Go/No-Go，当前入口为 S21-M1-T01 | `project-platform-program.md` |
+| PROJECT-PLATFORM | Active | PROJECT-PLATFORM-S21 | S01-S20 已归档且无 S20 剩余；S21 M1-M7 Completed；M8 Active 但仅开放真人试用准备点，T01-T12 均 Pending，需 5 位真人、知情同意、隔离环境和真人主持；M9 Pending；当前唯一入口为 S21-M8 | `project-platform-program.md` |
 | PLATFORM-SCALE | Paused | none | S05-M1 已完成；M2-M5 待核心功能、接口、数据模型和负载模型稳定后恢复 | `platform-scale-program.md` |
 | KB-PRODUCT | Paused | none | KB-PRODUCT-M12-T06 至 T10：真实参与者试用、反馈、复验和 Go/No-Go | `../../99-archive/superseded-roadmaps/kb-product-roadmap-paused-2026-07-18.md` |
 

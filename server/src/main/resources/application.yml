@@ -117,6 +117,17 @@ colla:
     password: admin123456
     display-name: Administrator
     email: admin@colla.local
+  project-space-experience:
+    enabled: ${COLLA_PROJECT_SPACE_EXPERIENCE_ENABLED:true}
+    kill-switch: ${COLLA_PROJECT_SPACE_EXPERIENCE_KILL_SWITCH:false}
+    policy-version: ${COLLA_PROJECT_SPACE_EXPERIENCE_POLICY_VERSION:s21-m7-v1}
+    rollout-basis-points: ${COLLA_PROJECT_SPACE_EXPERIENCE_ROLLOUT_BASIS_POINTS:10000}
+    evaluation-salt: ${COLLA_PROJECT_SPACE_EXPERIENCE_EVALUATION_SALT:s21-m7-local-rollout}
+    cache-max-age-seconds: ${COLLA_PROJECT_SPACE_EXPERIENCE_CACHE_MAX_AGE_SECONDS:30}
+    telemetry:
+      enabled: ${COLLA_PROJECT_SPACE_EXPERIENCE_TELEMETRY_ENABLED:true}
+      sample-basis-points: ${COLLA_PROJECT_SPACE_EXPERIENCE_TELEMETRY_SAMPLE_BASIS_POINTS:10000}
+      max-batch-size: ${COLLA_PROJECT_SPACE_EXPERIENCE_TELEMETRY_MAX_BATCH_SIZE:20}
   knowledge-collaboration:
     public-url: ${COLLA_COLLABORATION_PUBLIC_URL:ws://localhost:1234}
     internal-url: ${COLLA_COLLABORATION_INTERNAL_URL:http://localhost:1234}

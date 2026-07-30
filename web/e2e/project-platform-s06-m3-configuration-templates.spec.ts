@@ -34,6 +34,8 @@ test.describe('PROJECT-PLATFORM-S06-M3 configuration templates', () => {
       await installSession(page, owner)
       await page.setViewportSize({ width: 1366, height: 768 })
       await page.goto(`/project-spaces/${spaceId}/types/${typeId}`)
+      await page.getByTestId('project-space-types-secondary-tabs')
+        .getByRole('tab', { name: '配置发布', exact: true }).click()
 
       const draftPanel = page.getByRole('region', { name: '配置草稿状态' })
       await expect(draftPanel).toBeVisible()

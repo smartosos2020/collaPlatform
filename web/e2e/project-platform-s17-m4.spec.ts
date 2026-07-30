@@ -78,6 +78,10 @@ test.describe('PROJECT-PLATFORM-S17 M4', () => {
 
       await installSession(page, owner)
       await page.goto(`/project-spaces/${spaceId}/work-items`)
+      await page
+        .getByTestId('project-work-items-secondary-tabs')
+        .getByRole('tab', { name: '连接器', exact: true })
+        .click()
       await expect(page.getByTestId('automation-connectors-panel')).toBeVisible()
       await expect(page.getByTestId('automation-connectors-panel')).toContainText(suffix)
       for (const width of [1440, 1366, 820]) {
@@ -88,6 +92,10 @@ test.describe('PROJECT-PLATFORM-S17 M4', () => {
       await page.screenshot({ path: testInfo.outputPath('s17-m4-connectors-820.png'), fullPage: true })
       await installSession(page, member)
       await page.goto(`/project-spaces/${spaceId}/work-items`)
+      await page
+        .getByTestId('project-work-items-secondary-tabs')
+        .getByRole('tab', { name: '连接器', exact: true })
+        .click()
       await expect(page.getByRole('button', { name: '保存连接器' })).toBeDisabled()
     } finally {
       for (const id of [spaceId, otherSpaceId]) if (id) {

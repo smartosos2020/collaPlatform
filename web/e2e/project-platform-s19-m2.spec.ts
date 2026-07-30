@@ -396,6 +396,10 @@ test.describe('PROJECT-PLATFORM-S19 M2', () => {
 
       await installSession(page, owner)
       await page.goto(`/project-spaces/${sourceSpaceId}`)
+      await page
+        .getByTestId('project-space-overview-secondary-tabs')
+        .getByRole('tab', { name: '指标看板', exact: true })
+        .click()
       const panel = page.getByTestId('metric-dashboards-panel')
       await expect(panel).toBeVisible()
       await expect(panel).toContainText('图表、看板与跨空间数据源')
@@ -405,6 +409,10 @@ test.describe('PROJECT-PLATFORM-S19 M2', () => {
       await expect(panel).toContainText('freshness：current')
       const secondPage = await page.context().newPage()
       await secondPage.goto(`/project-spaces/${sourceSpaceId}`)
+      await secondPage
+        .getByTestId('project-space-overview-secondary-tabs')
+        .getByRole('tab', { name: '指标看板', exact: true })
+        .click()
       const secondPanel = secondPage.getByTestId('metric-dashboards-panel')
       await expect(secondPanel).toBeVisible()
       await secondPanel.getByLabel('看板名称').fill(`多标签看板草稿 ${suffix}`)

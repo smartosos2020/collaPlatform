@@ -22,9 +22,15 @@ import {
   Tag,
   Typography,
 } from 'antd'
-import { useEffect, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react'
 
 import { useRealtimeSubscription } from '../../../shared/realtime'
+import { useSessionScope } from '../../../shared/session/SessionScopeContext'
 import {
   actOnRiskSignal,
   evaluateRisks,
@@ -36,6 +42,16 @@ import {
   type RiskSignal,
 } from '../api/metricRisksApi'
 import type { UserProjectSpace } from '../api/projectSpacesApi'
+import {
+  hasRecoverableLegacyDraft,
+  isProjectSpaceDraftRecord,
+  markLegacyDraftHandled,
+  projectSpaceCacheKey,
+  readProjectSpaceDraft,
+  recoverLegacyProjectSpaceDraft,
+  removeProjectSpaceDraft,
+  writeProjectSpaceDraft,
+} from '../projectSpaceLocalCache'
 import { formatTime } from '../projectSpaceView'
 
 type PolicyEditor = {
@@ -56,21 +72,50 @@ const initialPolicy: PolicyEditor = {
   cooldownHours: 24,
 }
 
+function isMetricRiskPolicyEditor(value: unknown): value is PolicyEditor {
+  if (!isProjectSpaceDraftRecord(value)) return false
+  return typeof value.policyKey === 'string'
+    && typeof value.name === 'string'
+    && typeof value.description === 'string'
+    && Array.isArray(value.signalTypes)
+    && value.signalTypes.every((item) => typeof item === 'string')
+    && ['info', 'warning', 'critical'].includes(String(value.severity))
+    && typeof value.cooldownHours === 'number'
+}
+
 export function MetricRisksPanel({ space }: { space: UserProjectSpace }) {
   const client = useQueryClient()
+  const sessionScope = useSessionScope()
   const [form] = Form.useForm<PolicyEditor>()
-  const canManage = space.currentUserRole === 'owner' || space.currentUserRole === 'admin'
-  const draftKey = `colla.metric-risk-policy.${space.id}`
+  const canManage = space.availableActions.includes('view_settings')
+  const legacyDraftKey = `colla.metric-risk-policy.${space.id}`
+  const draftScope = useMemo(
+    () => sessionScope
+      ? {
+          workspaceId: sessionScope.workspaceId,
+          userId: sessionScope.userId,
+          spaceId: space.id,
+        }
+      : null,
+    [sessionScope, space.id],
+  )
+  const draftKey = draftScope
+    ? projectSpaceCacheKey(draftScope, 'metric-risk-policy-draft')
+    : null
   const [selected, setSelected] = useState<RiskPolicy>()
   const [online, setOnline] = useState(() => navigator.onLine)
+  const [handledLegacyDraftKey, setHandledLegacyDraftKey] = useState<string | null>(null)
   const foundation = useQuery({
     queryKey: metricRiskKeys.foundation(space.id),
     queryFn: () => getRiskFoundation(space.id),
     retry: false,
   })
-  const refresh = () => client.invalidateQueries({
-    queryKey: metricRiskKeys.foundation(space.id),
-  })
+  const refresh = useCallback(
+    () => client.invalidateQueries({
+      queryKey: metricRiskKeys.foundation(space.id),
+    }),
+    [client, space.id],
+  )
   const save = useMutation({
     mutationFn: (values: PolicyEditor) => saveRiskPolicy(space.id, {
       ...values,
@@ -79,7 +124,10 @@ export function MetricRisksPanel({ space }: { space: UserProjectSpace }) {
     }),
     onSuccess: async policy => {
       setSelected(policy)
-      localStorage.removeItem(draftKey)
+      if (draftScope) {
+        removeProjectSpaceDraft(localStorage, draftScope, 'metric-risk-policy-draft')
+        markLegacyDraftHandled(localStorage, draftScope, 'metric-risk-policy-draft')
+      }
       await refresh()
     },
   })
@@ -119,8 +167,14 @@ export function MetricRisksPanel({ space }: { space: UserProjectSpace }) {
       if (navigator.onLine) void refresh()
     }
     const storage = (event: StorageEvent) => {
-      if (event.key === draftKey && event.newValue) {
-        form.setFieldsValue(JSON.parse(event.newValue) as PolicyEditor)
+      if (event.key === draftKey && draftScope) {
+        const draft = readProjectSpaceDraft(
+          localStorage,
+          draftScope,
+          'metric-risk-policy-draft',
+          isMetricRiskPolicyEditor,
+        )
+        if (draft) form.setFieldsValue(draft)
       }
     }
     window.addEventListener('online', calibrate)
@@ -133,7 +187,40 @@ export function MetricRisksPanel({ space }: { space: UserProjectSpace }) {
       window.removeEventListener('focus', calibrate)
       window.removeEventListener('storage', storage)
     }
-  }, [draftKey, form, space.id])
+  }, [draftKey, draftScope, form, refresh])
+
+  const initial = useMemo(() => {
+    if (!draftScope) return initialPolicy
+    return readProjectSpaceDraft(
+      localStorage,
+      draftScope,
+      'metric-risk-policy-draft',
+      isMetricRiskPolicyEditor,
+    ) ?? initialPolicy
+  }, [draftScope])
+  const legacyDraftAvailable = Boolean(
+    draftScope
+    && handledLegacyDraftKey !== draftKey
+    && hasRecoverableLegacyDraft(
+      localStorage,
+      draftScope,
+      'metric-risk-policy-draft',
+      legacyDraftKey,
+      isMetricRiskPolicyEditor,
+    ),
+  )
+  const recoverLegacyDraft = () => {
+    if (!draftScope) return
+    const recovered = recoverLegacyProjectSpaceDraft(
+      localStorage,
+      draftScope,
+      'metric-risk-policy-draft',
+      legacyDraftKey,
+      isMetricRiskPolicyEditor,
+    )
+    if (recovered) form.setFieldsValue(recovered)
+    setHandledLegacyDraftKey(draftKey)
+  }
 
   const selectPolicy = (policy: RiskPolicy) => {
     setSelected(policy)
@@ -163,6 +250,15 @@ export function MetricRisksPanel({ space }: { space: UserProjectSpace }) {
           type="warning"
           showIcon
           message="离线不伪造风险关闭或评估；恢复后会重新校准当前来源权限"
+        />
+      ) : null}
+      {canManage && legacyDraftAvailable ? (
+        <Alert
+          type="info"
+          showIcon
+          message="检测到旧版本机草稿"
+          description="旧草稿未自动跨账号载入；确认属于当前账号后可恢复。"
+          action={<Button onClick={recoverLegacyDraft}>恢复旧草稿</Button>}
         />
       ) : null}
       {foundation.isError ? (
@@ -199,8 +295,17 @@ export function MetricRisksPanel({ space }: { space: UserProjectSpace }) {
             <Form<PolicyEditor>
               form={form}
               layout="vertical"
-              initialValues={initialPolicy}
-              onValuesChange={(_, values) => localStorage.setItem(draftKey, JSON.stringify(values))}
+              initialValues={initial}
+              onValuesChange={(_, values) => {
+                if (draftScope) {
+                  writeProjectSpaceDraft(
+                    localStorage,
+                    draftScope,
+                    'metric-risk-policy-draft',
+                    values,
+                  )
+                }
+              }}
               onFinish={values => online && save.mutate(values)}
             >
               <Row gutter={12}>

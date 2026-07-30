@@ -89,6 +89,8 @@ test.describe('PROJECT-PLATFORM-S09 route final', () => {
 
       await installSession(page, member)
       await page.goto(`/project-spaces/${spaceId}/work-items/${item.id}`)
+      await page.getByTestId('project-work-item-detail-secondary-tabs')
+        .getByRole('tab', { name: '节点流', exact: true }).click()
       const panel = page.getByTestId('work-item-node-workflow-panel')
       await expect(panel).toBeVisible()
       await expect(panel).toContainText('plan')
@@ -114,6 +116,8 @@ test.describe('PROJECT-PLATFORM-S09 route final', () => {
 
       await installSession(page, guest)
       await page.goto(`/project-spaces/${spaceId}/work-items/${item.id}`)
+      await page.getByTestId('project-work-item-detail-secondary-tabs')
+        .getByRole('tab', { name: '节点流', exact: true }).click()
       await expect(page.getByTestId('work-item-node-workflow-panel')).toBeVisible()
       await page.getByTestId('work-item-node-workflow-panel').getByRole('tab', { name: /任务/ }).click()
       await expect(page.getByTestId('work-item-node-workflow-panel').locator('.node-task-execution button')).toHaveCount(0)
@@ -122,6 +126,8 @@ test.describe('PROJECT-PLATFORM-S09 route final', () => {
       for (const width of [1366, 820]) {
         await page.setViewportSize({ width, height: 900 })
         await page.goto(`/project-spaces/${spaceId}/work-items/${item.id}`)
+        await page.getByTestId('project-work-item-detail-secondary-tabs')
+          .getByRole('tab', { name: '节点流', exact: true }).click()
         await expect(page.getByTestId('work-item-node-workflow-panel')).toBeVisible()
         expect(await page.evaluate(() =>
           document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1)

@@ -246,6 +246,10 @@ test.describe('PROJECT-PLATFORM-S18 M2', () => {
 
       await installSession(page, sourceOwner)
       await page.goto(`/project-spaces/${sourceSpaceId}`)
+      await page
+        .getByTestId('project-space-overview-secondary-tabs')
+        .getByRole('tab', { name: '跨空间关系', exact: true })
+        .click()
       const panel = page.getByTestId('cross-space-relations-panel')
       await expect(panel).toBeVisible()
       await expect(panel).toContainText('depends_on')

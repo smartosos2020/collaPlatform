@@ -1,4 +1,4 @@
-import { apiDelete, apiGet, apiPatch, apiPost } from '../../../shared/api/httpClient'
+import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from '../../../shared/api/httpClient'
 
 export type ProjectSpaceStatus = 'active' | 'disabled' | 'archived'
 export type ProjectSpaceVisibility = 'private' | 'workspace'
@@ -20,6 +20,14 @@ export type UserProjectSpace = {
   disabledAt?: string | null
   archivedAt?: string | null
   availableActions: string[]
+}
+
+export type ProjectSpaceExperiencePreference = {
+  schemaVersion: number
+  mode: 'simple' | 'advanced'
+  version: number
+  updatedAt?: string | null
+  availableModes: Array<'simple' | 'advanced'>
 }
 
 export type ProjectSpaceMember = {
@@ -119,6 +127,30 @@ export function createProjectSpace(request: {
 
 export function getProjectSpace(spaceId: string) {
   return apiGet<UserProjectSpace>(`/project-spaces/${spaceId}`)
+}
+
+export function getProjectSpaceExperiencePreference(spaceId: string) {
+  return apiGet<ProjectSpaceExperiencePreference>(
+    `/project-spaces/${spaceId}/experience-preference`,
+  )
+}
+
+export function saveProjectSpaceExperiencePreference(
+  spaceId: string,
+  mode: 'simple' | 'advanced',
+  expectedVersion: number,
+) {
+  return apiPut<ProjectSpaceExperiencePreference>(
+    `/project-spaces/${spaceId}/experience-preference`,
+    { schemaVersion: 1, mode, expectedVersion },
+  )
+}
+
+export function resetProjectSpaceExperiencePreference(spaceId: string, expectedVersion: number) {
+  const params = new URLSearchParams({ expectedVersion: String(expectedVersion) })
+  return apiDelete<ProjectSpaceExperiencePreference>(
+    `/project-spaces/${spaceId}/experience-preference?${params}`,
+  )
 }
 
 export type LegacySpaceResolveStatus = 'mapped' | 'unmigrated' | 'failed' | 'unavailable'

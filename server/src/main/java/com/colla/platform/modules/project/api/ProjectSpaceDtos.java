@@ -11,10 +11,20 @@ final class ProjectSpaceDtos {
     private ProjectSpaceDtos() {
     }
 
-    static UserProjectSpaceView user(ProjectSpaceSummary space) {        List<String> actions = new ArrayList<>();
+    static UserProjectSpaceView user(ProjectSpaceSummary space) {
+        List<String> actions = new ArrayList<>();
         actions.add("open");
+        actions.add("view_overview");
+        if (space.isMember()) {
+            actions.add("view_work_items");
+            if (!"guest".equals(space.currentUserRole())) {
+                actions.add("view_project_management");
+            }
+        }
         if (space.canManage()) {
             actions.add("settings");
+            actions.add("view_members");
+            actions.add("view_settings");
             if ("active".equals(space.status())) {
                 actions.add("disable");
                 actions.add("archive");

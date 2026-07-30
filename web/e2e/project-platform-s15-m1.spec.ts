@@ -182,6 +182,10 @@ test.describe('PROJECT-PLATFORM-S15 M1', () => {
 
       await installSession(page, owner)
       await page.goto(`/project-spaces/${spaceId}/work-items`)
+      await page
+        .getByTestId('project-work-items-secondary-tabs')
+        .getByRole('tab', { name: '项目计划', exact: true })
+        .click()
       await expect(page.getByTestId('project-plan-panel')).toBeVisible()
       await page.getByLabel('项目计划').click()
       await page.getByText(
@@ -210,6 +214,10 @@ test.describe('PROJECT-PLATFORM-S15 M1', () => {
 
       await installSession(page, guest)
       await page.goto(`/project-spaces/${spaceId}/work-items`)
+      await page
+        .getByTestId('project-work-items-secondary-tabs')
+        .getByRole('tab', { name: '项目计划', exact: true })
+        .click()
       await expect(page.getByTestId('project-plan-panel')).toContainText('当前身份只读')
       await expect(page.getByRole('button', { name: '新建计划' })).toBeDisabled()
     } finally {

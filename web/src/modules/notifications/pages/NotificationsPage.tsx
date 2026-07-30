@@ -3,6 +3,7 @@ import { Alert, Badge, Button, Card, Checkbox, Empty, List, Select, Space, Switc
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
+import { PageHeader } from '../../../shared/components/PageHeader'
 import { InternalLinkCard } from '../../platform/components/InternalLinkCard'
 import {
   getUnreadCount,
@@ -116,25 +117,25 @@ export function NotificationsPage() {
   }
 
   return (
-    <Space orientation="vertical" size={16} className="page-stack">
-      <Space className="page-toolbar">
-        <Space>
-          <Typography.Title level={2}>通知</Typography.Title>
-          <Badge count={unreadCountQuery.data?.count ?? 0} />
-        </Space>
-        <Space>
-          <Button
-            disabled={unreadSelectedIds.length === 0}
-            loading={markSelectedReadMutation.isPending}
-            onClick={() => markSelectedReadMutation.mutate(unreadSelectedIds)}
-          >
-            批量已读
-          </Button>
-          <Button loading={markAllReadMutation.isPending} onClick={() => markAllReadMutation.mutate()}>
-            全部已读
-          </Button>
-        </Space>
-      </Space>
+    <Space orientation="vertical" size={16} className="page-stack workspace-page">
+      <PageHeader
+        title="通知"
+        meta={<Badge count={unreadCountQuery.data?.count ?? 0} />}
+        actions={
+          <Space>
+            <Button
+              disabled={unreadSelectedIds.length === 0}
+              loading={markSelectedReadMutation.isPending}
+              onClick={() => markSelectedReadMutation.mutate(unreadSelectedIds)}
+            >
+              批量已读
+            </Button>
+            <Button loading={markAllReadMutation.isPending} onClick={() => markAllReadMutation.mutate()}>
+              全部已读
+            </Button>
+          </Space>
+        }
+      />
 
       {notificationsQuery.isError ? <Alert type="error" showIcon message="通知暂时无法加载" description="请检查网络连接后重试。" /> : null}
 

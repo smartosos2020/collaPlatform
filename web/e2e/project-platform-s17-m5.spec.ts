@@ -89,6 +89,7 @@ test.describe('PROJECT-PLATFORM-S17 M5',()=>{
     request,`${apiBaseUrl}/project-spaces/${otherSpaceId}/automation/management`,owner)
    expect(cross.rules.rules).toHaveLength(0);expect(cross.quotas).toHaveLength(0)
    await installSession(page,owner);await page.goto(`/project-spaces/${spaceId}/work-items`)
+   await page.getByTestId('project-work-items-secondary-tabs').getByRole('tab',{name:'自动化治理',exact:true}).click()
    await expect(page.getByTestId('automation-management-panel')).toBeVisible()
    await expect(page.getByTestId('automation-management-panel')).toContainText('4')
    for(const width of [1440,1366,820]){
@@ -97,10 +98,13 @@ test.describe('PROJECT-PLATFORM-S17 M5',()=>{
    }
    await page.screenshot({path:testInfo.outputPath('s17-m5-management-820.png'),fullPage:true})
    await installSession(page,admin);await page.goto(`/project-spaces/${spaceId}/work-items`)
+   await page.getByTestId('project-work-items-secondary-tabs').getByRole('tab',{name:'自动化治理',exact:true}).click()
    await expect(page.getByTestId('automation-management-panel').getByRole('button',{name:'暂停'}).first()).toBeEnabled()
    await installSession(page,member);await page.goto(`/project-spaces/${spaceId}/work-items`)
+   await page.getByTestId('project-work-items-secondary-tabs').getByRole('tab',{name:'自动化治理',exact:true}).click()
    await expect(page.getByTestId('automation-management-panel').getByRole('button',{name:'暂停'}).first()).toBeDisabled()
    await installSession(page,guest);await page.goto(`/project-spaces/${spaceId}/work-items`)
+   await page.getByTestId('project-work-items-secondary-tabs').getByRole('tab',{name:'自动化治理',exact:true}).click()
    await expect(page.getByTestId('automation-management-panel').getByRole('button',{name:'暂停'}).first()).toBeDisabled()
   }finally{
    for(const id of [spaceId,otherSpaceId])if(id)await request.post(`${apiBaseUrl}/project-spaces/${id}/settings/archive`,

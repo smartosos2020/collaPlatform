@@ -162,6 +162,10 @@ test.describe('PROJECT-PLATFORM-S20 route final', () => {
 
       await installSession(page, owner)
       await page.goto(`/project-spaces/${spaceId}`)
+      await page
+        .getByTestId('project-space-overview-secondary-tabs')
+        .getByRole('tab', { name: '场景模板', exact: true })
+        .click()
       const workbench = page.getByTestId('scenario-install-workbench')
       await expect(workbench).toBeVisible({ timeout: 30_000 })
       const preflightButton = workbench.getByRole('button', { name: /预\s*检/ })

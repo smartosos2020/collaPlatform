@@ -159,6 +159,10 @@ test.describe('PROJECT-PLATFORM-S17 M2', () => {
 
       await installSession(page, owner)
       await page.goto(`/project-spaces/${spaceId}/work-items`)
+      await page
+        .getByTestId('project-work-items-secondary-tabs')
+        .getByRole('tab', { name: '运行记录', exact: true })
+        .click()
       await expect(page.getByTestId('automation-execution-panel')).toBeVisible()
       await expect(page.getByTestId('automation-execution-panel')).toContainText(first.id)
       for (const width of [1440, 1366, 820]) {
@@ -174,6 +178,10 @@ test.describe('PROJECT-PLATFORM-S17 M2', () => {
       })
       await installSession(page, member)
       await page.goto(`/project-spaces/${spaceId}/work-items`)
+      await page
+        .getByTestId('project-work-items-secondary-tabs')
+        .getByRole('tab', { name: '运行记录', exact: true })
+        .click()
       await expect(page.getByRole('button', { name: '无副作用预览' })).toBeDisabled()
       await expect(page.getByRole('button', { name: '执行受控操作' })).toBeDisabled()
     } finally {
