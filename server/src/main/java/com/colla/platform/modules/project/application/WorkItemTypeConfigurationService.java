@@ -16,6 +16,8 @@ import com.colla.platform.modules.project.infrastructure.ProjectSpaceRepository;
 import com.colla.platform.modules.project.infrastructure.WorkItemTypeCommandRepository;
 import com.colla.platform.modules.project.infrastructure.WorkItemTypeCommandRepository.CommandReceipt;
 import com.colla.platform.modules.project.infrastructure.WorkItemTypeCommandRepository.CommandStart;
+import com.colla.platform.modules.project.runtime.PublishedSnapshotAdapter;
+import com.colla.platform.modules.project.runtime.PublishedSnapshotAdapter.SnapshotBinding;
 import com.colla.platform.shared.auth.CurrentUser;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
@@ -41,6 +43,7 @@ public class WorkItemTypeConfigurationService {
     private final ProjectAuthorization permissionService;
     private final ObjectMapper objectMapper;
     private final WorkItemConfigurationDraftService draftService;
+    private final PublishedSnapshotAdapter snapshotAdapter;
 
     public WorkItemTypeConfigurationService(
         WorkItemTypeDefinitionService definitionService,
@@ -52,7 +55,8 @@ public class WorkItemTypeConfigurationService {
         AuditLog auditService,
         ProjectAuthorization permissionService,
         ObjectMapper objectMapper,
-        WorkItemConfigurationDraftService draftService
+        WorkItemConfigurationDraftService draftService,
+        PublishedSnapshotAdapter snapshotAdapter
     ) {
         this.definitionService = definitionService;
         this.spaceRepository = spaceRepository;
@@ -64,6 +68,7 @@ public class WorkItemTypeConfigurationService {
         this.permissionService = permissionService;
         this.objectMapper = objectMapper;
         this.draftService = draftService;
+        this.snapshotAdapter = snapshotAdapter;
     }
 
     public Configuration configuration(CurrentUser user, UUID spaceId, String status) {
@@ -81,8 +86,27 @@ public class WorkItemTypeConfigurationService {
         if (!"active".equals(space.status())) {
             return List.of();
         }
-        return definitionService.list(user.workspaceId(), spaceId, "active").stream()
-            .map(type -> new UserTypeSummary(type.id(), type.typeKey(), type.name(), type.icon(), type.sortOrder()))
+        List<WorkItemTypeDefinition> types = definitionService.list(
+            user.workspaceId(),
+            spaceId,
+            "active"
+        );
+        Map<UUID, Boolean> readiness = snapshotAdapter.completeReadiness(
+            user.workspaceId(),
+            spaceId,
+            types.stream()
+                .map(type -> new SnapshotBinding(type.id(), type.currentVersionId()))
+                .toList()
+        );
+        return types.stream()
+            .map(type -> new UserTypeSummary(
+                type.id(),
+                type.typeKey(),
+                type.name(),
+                type.icon(),
+                type.sortOrder(),
+                readiness.getOrDefault(type.id(), false)
+            ))
             .toList();
     }
 

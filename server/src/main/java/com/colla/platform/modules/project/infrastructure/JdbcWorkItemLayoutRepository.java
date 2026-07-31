@@ -56,6 +56,30 @@ public class JdbcWorkItemLayoutRepository implements WorkItemLayoutRepository {
     }
 
     @Override
+    public Optional<LayoutDefinition> findAnyByKind(
+        UUID workspaceId,
+        UUID spaceId,
+        UUID typeId,
+        String layoutKind
+    ) {
+        try {
+            return Optional.ofNullable(jdbcTemplate.queryForObject(
+                LAYOUT_SELECT + """
+                     where workspace_id = ? and space_id = ? and type_definition_id = ?
+                       and layout_kind = ?
+                    """,
+                this::mapLayout,
+                workspaceId,
+                spaceId,
+                typeId,
+                layoutKind
+            ));
+        } catch (EmptyResultDataAccessException exception) {
+            return Optional.empty();
+        }
+    }
+
+    @Override
     public Optional<LayoutDefinition> findById(
         UUID workspaceId,
         UUID spaceId,
@@ -81,32 +105,54 @@ public class JdbcWorkItemLayoutRepository implements WorkItemLayoutRepository {
 
     @Override
     public List<LayoutNode> listNodes(UUID workspaceId, UUID layoutId) {
+        return listNodes(workspaceId, layoutId, true);
+    }
+
+    @Override
+    public List<LayoutNode> listAllNodes(UUID workspaceId, UUID layoutId) {
+        return listNodes(workspaceId, layoutId, false);
+    }
+
+    private List<LayoutNode> listNodes(UUID workspaceId, UUID layoutId, boolean activeOnly) {
         return jdbcTemplate.query(
             """
                 select id, parent_id, node_key, node_type, field_id, field_key, sort_order,
                        config, visibility_condition
                   from project_work_item_layout_nodes
-                 where workspace_id = ? and layout_id = ? and status = 'active'
+                 where workspace_id = ? and layout_id = ?
+                   and (? = false or status = 'active')
                  order by sort_order, node_key, id
                 """,
             this::mapNode,
             workspaceId,
-            layoutId
+            layoutId,
+            activeOnly
         );
     }
 
     @Override
     public List<FieldAccessPolicy> listPolicies(UUID workspaceId, UUID layoutId) {
+        return listPolicies(workspaceId, layoutId, true);
+    }
+
+    @Override
+    public List<FieldAccessPolicy> listAllPolicies(UUID workspaceId, UUID layoutId) {
+        return listPolicies(workspaceId, layoutId, false);
+    }
+
+    private List<FieldAccessPolicy> listPolicies(UUID workspaceId, UUID layoutId, boolean activeOnly) {
         return jdbcTemplate.query(
             """
                 select id, field_id, field_key, policy_key, policy, config_hash
                   from project_work_item_field_access_policies
-                 where workspace_id = ? and layout_id = ? and status = 'active'
+                 where workspace_id = ? and layout_id = ?
+                   and (? = false or status = 'active')
                  order by policy_key, id
                 """,
             this::mapPolicy,
             workspaceId,
-            layoutId
+            layoutId,
+            activeOnly
         );
     }
 

@@ -20,7 +20,14 @@ public final class WorkItemTypeConfigurationModels {
     public record ConfiguredType(WorkItemTypeDefinition definition, List<String> availableActions) {
     }
 
-    public record UserTypeSummary(UUID id, String typeKey, String name, String icon, int sortOrder) {
+    public record UserTypeSummary(
+        UUID id,
+        String typeKey,
+        String name,
+        String icon,
+        int sortOrder,
+        boolean configurationReady
+    ) {
     }
 
     public record ReorderType(UUID typeId, int sortOrder, long aggregateVersion) {

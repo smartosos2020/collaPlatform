@@ -943,6 +943,9 @@ function ProjectSpaceOverview({
     queryFn: () => listActiveWorkItemTypes(space.id),
     retry: false,
   })
+  const canCreateWorkItems = space.status === 'active' && space.currentUserRole !== 'guest'
+  const readyTypeCount = typesQuery.data?.filter((type) => type.configurationReady).length ?? 0
+  const pendingTypeCount = (typesQuery.data?.length ?? 0) - readyTypeCount
 
   return (
     <ProjectSpaceSecondaryTabs
@@ -952,25 +955,96 @@ function ProjectSpaceOverview({
       ariaLabel="协作概览内容导航"
       panels={{
         'active-types': (
-          <Card className="content-card project-space-active-types" title={<Space><TagsOutlined />可用工作项类型</Space>}>
+          <Card
+            className="content-card project-space-active-types"
+            title={<Space><TagsOutlined />工作入口</Space>}
+            extra={!typesQuery.isLoading && !typesQuery.isError ? (
+              <Space wrap size={6}>
+                <Tag color="success">配置就绪 {readyTypeCount}</Tag>
+                {pendingTypeCount > 0 ? <Tag color="warning">待配置 {pendingTypeCount}</Tag> : null}
+              </Space>
+            ) : null}
+          >
             {typesQuery.isLoading ? <Skeleton active paragraph={{ rows: 2 }} /> : null}
             {typesQuery.isError ? <Alert type="error" showIcon message="工作项类型加载失败" action={<Button size="small" onClick={() => typesQuery.refetch()}>重试</Button>} /> : null}
             {!typesQuery.isLoading && !typesQuery.isError && typesQuery.data?.length === 0 ? (
               <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前没有可用的工作项类型" />
             ) : null}
-            <div className="project-space-active-type-list" aria-label="可用工作项类型">
-              {typesQuery.data?.map((type) => (
-                <button
-                  type="button"
-                  className="project-space-active-type"
-                  key={type.id}
-                  onClick={() => navigate(`/project-spaces/${space.id}/work-items?typeId=${type.id}&create=1`)}
-                >
-                  <span className="work-item-type-glyph" aria-hidden="true">{(type.icon?.trim() || type.name.slice(0, 1)).slice(0, 2)}</span>
-                  <span><strong>{type.name}</strong><small>{type.typeKey}</small></span>
-                  <EyeOutlined aria-hidden="true" />
-                </button>
-              ))}
+            <div className="project-space-active-type-list" aria-label="工作入口" role="list">
+              {typesQuery.data?.map((type) => {
+                const glyph = (type.icon?.trim() || type.name.slice(0, 1)).slice(0, 2)
+                return (
+                  <div
+                    className="project-space-active-type-item"
+                    data-testid={`project-space-work-entry-${type.typeKey}`}
+                    key={type.id}
+                    role="listitem"
+                  >
+                    {type.configurationReady && canCreateWorkItems ? (
+                      <button
+                        type="button"
+                        className="project-space-active-type is-ready"
+                        aria-label={`新建${type.name}（${type.typeKey}）`}
+                        onClick={() => navigate(`/project-spaces/${space.id}/work-items?typeId=${type.id}&create=1`)}
+                      >
+                        <span className="work-item-type-glyph" aria-hidden="true">{glyph}</span>
+                        <span className="project-space-active-type-copy">
+                          <strong>{type.name}</strong>
+                          <small>{type.typeKey}</small>
+                          <Tag color="success">配置就绪</Tag>
+                        </span>
+                        <PlusOutlined aria-hidden="true" />
+                      </button>
+                    ) : type.configurationReady ? (
+                      <div
+                        className="project-space-active-type is-readonly"
+                        aria-label={`${type.name}（${type.typeKey}）仅查看`}
+                        role="group"
+                      >
+                        <span className="work-item-type-glyph" aria-hidden="true">{glyph}</span>
+                        <span className="project-space-active-type-copy">
+                          <strong>{type.name}</strong>
+                          <small>{type.typeKey}</small>
+                          <Tag>仅查看</Tag>
+                        </span>
+                        <Typography.Text className="project-space-active-type-guidance" type="secondary">
+                          访客不可创建
+                        </Typography.Text>
+                      </div>
+                    ) : (
+                      <div
+                        className="project-space-active-type is-configuration-required"
+                        aria-label={`${type.name}（${type.typeKey}）待发布配置`}
+                        role="group"
+                      >
+                        <span className="work-item-type-glyph" aria-hidden="true">{glyph}</span>
+                        <span className="project-space-active-type-copy">
+                          <strong>{type.name}</strong>
+                          <small>{type.typeKey}</small>
+                          <Tag color="warning">待发布配置</Tag>
+                        </span>
+                        {canManage ? (
+                          <Button
+                            aria-label={`去配置${type.name}（${type.typeKey}）`}
+                            size="small"
+                            type="link"
+                            icon={<SettingOutlined />}
+                            onClick={() => navigate(
+                              `/project-spaces/${space.id}/types/${type.id}?panel=configuration-draft&source=overview`,
+                            )}
+                          >
+                            去配置
+                          </Button>
+                        ) : (
+                          <Typography.Text className="project-space-active-type-guidance" type="secondary">
+                            请联系空间管理员
+                          </Typography.Text>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
             </div>
           </Card>
         ),

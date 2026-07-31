@@ -11,6 +11,7 @@ import {
 } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Alert, App as AntdApp, Button, Divider, List, Skeleton, Space, Tag, Tooltip, Typography } from 'antd'
+import { useState } from 'react'
 
 import {
   abandonWorkItemConfigurationDraft,
@@ -26,8 +27,13 @@ import {
   type ConfigurationVersion,
   type WorkItemConfigurationDraft,
 } from '../api/workItemConfigurationApi'
+import { workItemKeys } from '../api/workItemsApi'
 import { workItemTypeKeys } from '../api/workItemTypesApi'
 import { errorMessage, formatTime } from '../projectSpaceView'
+import {
+  isWorkItemConfigurationCompatibilityReady,
+  requiresWorkItemConfigurationCompatibility,
+} from '../workItemConfigurationPublication'
 import { ProjectWorkItemConfigurationTemplatePanel } from './ProjectWorkItemConfigurationTemplatePanel'
 import { ProjectWorkItemNodeBackfillPanel } from './ProjectWorkItemNodeBackfillPanel'
 import { ProjectWorkItemNodeFlowDesigner } from './ProjectWorkItemNodeFlowDesigner'
@@ -47,6 +53,7 @@ export function ProjectWorkItemConfigurationDraftPanel({
 }) {
   const { message, modal } = AntdApp.useApp()
   const queryClient = useQueryClient()
+  const [dirtyStateFlowDraftId, setDirtyStateFlowDraftId] = useState<string | null>(null)
   const queryKey = workItemConfigurationDraftKeys.detail(spaceId, typeId)
   const draftQuery = useQuery({
     queryKey,
@@ -60,6 +67,9 @@ export function ProjectWorkItemConfigurationDraftPanel({
     retry: false,
     refetchOnWindowFocus: false,
   })
+  const currentVersion = versionsQuery.data?.find((version) => version.status === 'published')
+  const compatibilityRequired = versionsQuery.isSuccess
+    && requiresWorkItemConfigurationCompatibility(currentVersion)
   const draftDiffQuery = useQuery({
     queryKey: workItemConfigurationVersionKeys.draftDiff(
       spaceId,
@@ -67,7 +77,7 @@ export function ProjectWorkItemConfigurationDraftPanel({
       draftQuery.data?.configHash ?? 'pending',
     ),
     queryFn: () => getWorkItemConfigurationDraftDiff(spaceId, typeId),
-    enabled: Boolean(draftQuery.data && versionsQuery.data?.[0]?.completeSnapshot),
+    enabled: Boolean(draftQuery.data && compatibilityRequired),
     retry: false,
     refetchOnWindowFocus: false,
   })
@@ -78,7 +88,7 @@ export function ProjectWorkItemConfigurationDraftPanel({
       draftQuery.data?.configHash ?? 'pending',
     ),
     queryFn: () => getWorkItemConfigurationDraftCompatibility(spaceId, typeId),
-    enabled: Boolean(draftQuery.data && versionsQuery.data?.[0]?.completeSnapshot),
+    enabled: Boolean(draftQuery.data && compatibilityRequired),
     retry: false,
     refetchOnWindowFocus: false,
   })
@@ -133,6 +143,9 @@ export function ProjectWorkItemConfigurationDraftPanel({
         queryClient.invalidateQueries({
           queryKey: [...workItemTypeKeys.all, spaceId],
         }),
+        queryClient.removeQueries({
+          queryKey: workItemKeys.createForm(spaceId, typeId),
+        }),
       ])
     },
     onError: (error) => {
@@ -173,20 +186,28 @@ export function ProjectWorkItemConfigurationDraftPanel({
   const draft = draftQuery.data
   if (!draft) return null
 
+  const stateFlowDirty = dirtyStateFlowDraftId === draft.id
   const errors = draft.diagnostics.filter((item) => item.severity === 'error')
   const warnings = draft.diagnostics.filter((item) => item.severity === 'warning')
-  const canValidate = !readOnly && draft.availableActions.includes('validate')
-  const canAbandon = !readOnly && draft.availableActions.includes('abandon')
-  const currentVersion = versionsQuery.data?.find((version) => version.status === 'published')
+  const canValidate = !readOnly && !stateFlowDirty && draft.availableActions.includes('validate')
+  const canAbandon = !readOnly && !stateFlowDirty && draft.availableActions.includes('abandon')
   const compatibilityImpact = compatibilityQuery.data?.overallImpact
   const publicationBlocked = compatibilityImpact === 'blocked'
   const migrationConfirmationRequired = compatibilityImpact === 'migration_required'
-  const compatibilityReady = !currentVersion || compatibilityQuery.isSuccess
+  const compatibilityReady = isWorkItemConfigurationCompatibilityReady(
+    currentVersion,
+    {
+      versionsQuerySucceeded: versionsQuery.isSuccess,
+      compatibilityQuerySucceeded: compatibilityQuery.isSuccess,
+    },
+  )
   const canPublish = !readOnly
+    && !stateFlowDirty
     && draft.status === 'valid'
     && compatibilityReady
     && !publicationBlocked
   const breaking = draftDiffQuery.data?.breaking ?? false
+  const showNodeFlowEditor = hasNodeFlow(draft.snapshot) && !stateFlowDirty
 
   const confirmPublish = () => {
     const confirmationRequired = breaking || migrationConfirmationRequired
@@ -283,11 +304,20 @@ export function ProjectWorkItemConfigurationDraftPanel({
           description="前端和服务端都不会提供普通绕过入口；请保留旧绑定或另行完成受控恢复方案。"
         />
       ) : null}
+      {stateFlowDirty ? (
+        <Alert
+          className="work-item-publication-block"
+          type="warning"
+          showIcon
+          message="状态流有未保存修改"
+          description="请先保存或放弃状态流的本地修改；在此之前，校验、发布、放弃草稿、模板操作和其他配置编辑均保持禁用，避免发布旧快照。"
+        />
+      ) : null}
       <ProjectWorkItemPermissionPolicyEditor
         key={`permissions:${draft.id}:${draft.aggregateVersion}`}
         spaceId={spaceId}
         typeId={typeId}
-        readOnly={readOnly || draft.status === 'abandoned'}
+        readOnly={readOnly || stateFlowDirty || draft.status === 'abandoned'}
         draft={draft}
         onDraftSaved={updateCachedDraft}
       />
@@ -295,17 +325,17 @@ export function ProjectWorkItemConfigurationDraftPanel({
         key={`relations:${draft.id}:${draft.aggregateVersion}`}
         spaceId={spaceId}
         typeId={typeId}
-        readOnly={readOnly || draft.status === 'abandoned'}
+        readOnly={readOnly || stateFlowDirty || draft.status === 'abandoned'}
         draft={draft}
         onDraftSaved={updateCachedDraft}
       />
-      {hasNodeFlow(draft.snapshot) ? (
+      {showNodeFlowEditor ? (
         <>
           <ProjectWorkItemNodeFlowDesigner
             key={`${draft.id}:${draft.aggregateVersion}`}
             spaceId={spaceId}
             typeId={typeId}
-            readOnly={readOnly || draft.status === 'abandoned'}
+            readOnly={readOnly || stateFlowDirty || draft.status === 'abandoned'}
             draft={draft}
             onDraftSaved={updateCachedDraft}
           />
@@ -319,12 +349,13 @@ export function ProjectWorkItemConfigurationDraftPanel({
       ) : (
         <>
           <ProjectWorkItemStateFlowEditor
-            key={`${draft.id}:${draft.aggregateVersion}`}
+            key={draft.id}
             spaceId={spaceId}
             typeId={typeId}
             readOnly={readOnly || draft.status === 'abandoned'}
             draft={draft}
             onDraftSaved={updateCachedDraft}
+            onDirtyChange={(dirty) => setDirtyStateFlowDraftId(dirty ? draft.id : null)}
           />
           <ProjectWorkItemStateBackfillPanel
             spaceId={spaceId}
@@ -337,7 +368,7 @@ export function ProjectWorkItemConfigurationDraftPanel({
       <ProjectWorkItemConfigurationTemplatePanel
         spaceId={spaceId}
         typeId={typeId}
-        readOnly={readOnly}
+        readOnly={readOnly || stateFlowDirty}
         draft={draft}
         currentVersion={currentVersion}
       />
@@ -413,6 +444,7 @@ export function ProjectWorkItemConfigurationDraftPanel({
                 icon={<RollbackOutlined />}
                 disabled={
                   readOnly
+                  || stateFlowDirty
                   || !version.completeSnapshot
                   || version.status === 'published'
                   || rollbackMutation.isPending

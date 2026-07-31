@@ -371,6 +371,14 @@ class WorkItemTypeConfigurationControllerIntegrationTests {
         String base = configPath(spaceId) + "/" + typeId;
         String draftPath = base + "/draft";
 
+        mockMvc.perform(get("/api/project-spaces/" + spaceId + "/work-item-types")
+                .header("Authorization", bearer(owner.token())))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath(
+                "$[?(@.typeKey == 'wicp_task')].configurationReady",
+                contains(false)
+            ));
+
         JsonNode draft = json(mockMvc.perform(get(draftPath)
                 .header("Authorization", bearer(owner.token())))
             .andExpect(status().isOk())
@@ -400,6 +408,14 @@ class WorkItemTypeConfigurationControllerIntegrationTests {
             .andReturn());
         String version2Id = published.at("/version/id").asText();
         String version2Hash = published.at("/version/configHash").asText();
+
+        mockMvc.perform(get("/api/project-spaces/" + spaceId + "/work-item-types")
+                .header("Authorization", bearer(owner.token())))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath(
+                "$[?(@.typeKey == 'wicp_task')].configurationReady",
+                contains(true)
+            ));
 
         mockMvc.perform(post(base + "/draft:publish")
                 .header("Authorization", bearer(owner.token()))
@@ -635,8 +651,11 @@ class WorkItemTypeConfigurationControllerIntegrationTests {
                     .header("Authorization", bearer(readonly.token())))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].typeKey").value("custom_task"))
+                .andExpect(jsonPath("$[0].configurationReady").value(false))
                 .andExpect(jsonPath("$[*].typeKey", not(hasItem("custom_bug"))))
                 .andExpect(jsonPath("$[0].currentVersion").doesNotExist())
+                .andExpect(jsonPath("$[0].snapshotSchemaVersion").doesNotExist())
+                .andExpect(jsonPath("$[0].configHash").doesNotExist())
                 .andExpect(jsonPath("$[0].status").doesNotExist());
         }
         for (TestUser hidden : List.of(outsider, root)) {

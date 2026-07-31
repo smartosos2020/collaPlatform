@@ -4,7 +4,11 @@ import static com.colla.platform.modules.project.domain.WorkItemConfigurationMod
 
 import com.colla.platform.modules.project.application.WorkItemConfigurationSnapshotCanonicalizer;
 import com.colla.platform.modules.project.domain.WorkItemConfigurationModels.PublishedConfigurationVersion;
+import com.colla.platform.modules.project.domain.WorkItemConfigurationModels.WorkItemConfigurationException;
 import com.fasterxml.jackson.databind.JsonNode;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.stereotype.Component;
 
@@ -33,6 +37,40 @@ public final class PublishedSnapshotAdapter {
             "NOT_FOUND_OR_HIDDEN",
             "Published configuration snapshot is not available"
         ));
+        return requireComplete(version);
+    }
+
+    public Map<UUID, Boolean> completeReadiness(
+        UUID workspaceId,
+        UUID spaceId,
+        List<SnapshotBinding> bindings
+    ) {
+        List<SnapshotBinding> safeBindings = bindings == null ? List.of() : List.copyOf(bindings);
+        Map<UUID, PublishedConfigurationVersion> versionsById = new LinkedHashMap<>();
+        snapshotReader.findPublishedSnapshots(
+            workspaceId,
+            spaceId,
+            safeBindings.stream().map(SnapshotBinding::versionId).toList()
+        ).forEach(version -> versionsById.put(version.id(), version));
+
+        Map<UUID, Boolean> readiness = new LinkedHashMap<>();
+        for (SnapshotBinding binding : safeBindings) {
+            PublishedConfigurationVersion version = versionsById.get(binding.versionId());
+            boolean ready = false;
+            if (version != null && version.typeDefinitionId().equals(binding.typeId())) {
+                try {
+                    requireComplete(version);
+                    ready = true;
+                } catch (WorkItemConfigurationException exception) {
+                    ready = false;
+                }
+            }
+            readiness.put(binding.typeId(), ready);
+        }
+        return Map.copyOf(readiness);
+    }
+
+    private RuntimeConfiguration requireComplete(PublishedConfigurationVersion version) {
         if (!version.completeSnapshot() || !version.supportedSnapshot()) {
             throw failure(
                 "UNSUPPORTED_SNAPSHOT_SCHEMA",
@@ -100,6 +138,9 @@ public final class PublishedSnapshotAdapter {
         public String nodeFlowAvailability() {
             return hasNodeFlowDefinition() ? "available" : "not_configured";
         }
+    }
+
+    public record SnapshotBinding(UUID typeId, UUID versionId) {
     }
 
     public record SnapshotAvailability(String status, int snapshotSchemaVersion, String configHash) {

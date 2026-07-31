@@ -9,7 +9,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.dao.EmptyResultDataAccessException;
@@ -106,6 +109,36 @@ public class JdbcConfigurationPublicationRepository
         UUID versionId
     ) {
         return findVersion(workspaceId, spaceId, typeId, versionId);
+    }
+
+    @Override
+    public List<PublishedConfigurationVersion> findPublishedSnapshots(
+        UUID workspaceId,
+        UUID spaceId,
+        List<UUID> versionIds
+    ) {
+        List<UUID> distinctVersionIds = versionIds == null
+            ? List.of()
+            : versionIds.stream().filter(Objects::nonNull).distinct().toList();
+        if (distinctVersionIds.isEmpty()) {
+            return List.of();
+        }
+        String placeholders = String.join(
+            ", ",
+            Collections.nCopies(distinctVersionIds.size(), "?")
+        );
+        List<Object> arguments = new ArrayList<>(distinctVersionIds.size() + 2);
+        arguments.add(workspaceId);
+        arguments.add(spaceId);
+        arguments.addAll(distinctVersionIds);
+        return jdbcTemplate.query(
+            VERSION_SELECT + """
+                 where workspace_id = ? and space_id = ?
+                   and status in ('published', 'superseded')
+                   and id in (""" + placeholders + ")",
+            this::mapVersion,
+            arguments.toArray()
+        );
     }
 
     @Override

@@ -227,9 +227,10 @@ export function WorkItemWorkflowPanel({
           {workflow.availableActions.map((action) => (
             <Button
               key={action.actionKey}
+              data-testid={`work-item-workflow-action-${action.actionKey}`}
               type={action.kind === 'forward' ? 'primary' : 'default'}
               danger={action.kind === 'terminate'}
-              disabled={!online}
+              disabled={!online || actionMutation.isPending}
               loading={actionMutation.isPending && commandDraft?.actionKey === action.actionKey}
               onClick={() => execute(action)}
             >

@@ -328,6 +328,7 @@ public class JdbcConfigurationTemplateRepository implements ConfigurationTemplat
         UUID typeId,
         UUID installationId,
         UUID expectedUpstreamVersionId,
+        long expectedAggregateVersion,
         UUID nextUpstreamVersionId,
         JsonNode lineageSummary,
         UUID actorId
@@ -339,7 +340,8 @@ public class JdbcConfigurationTemplateRepository implements ConfigurationTemplat
                        aggregate_version = aggregate_version + 1,
                        updated_by = ?, updated_at = now()
                  where workspace_id = ? and space_id = ? and type_definition_id = ?
-                   and id = ? and upstream_version_id = ? and status = 'attached'
+                   and id = ? and upstream_version_id = ? and aggregate_version = ?
+                   and status = 'attached'
                 """,
             nextUpstreamVersionId,
             json(lineageSummary),
@@ -348,7 +350,8 @@ public class JdbcConfigurationTemplateRepository implements ConfigurationTemplat
             spaceId,
             typeId,
             installationId,
-            expectedUpstreamVersionId
+            expectedUpstreamVersionId,
+            expectedAggregateVersion
         );
     }
 

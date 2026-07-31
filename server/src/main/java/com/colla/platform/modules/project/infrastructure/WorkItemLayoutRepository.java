@@ -10,11 +10,17 @@ import java.util.UUID;
 public interface WorkItemLayoutRepository {
     Optional<LayoutDefinition> findByKind(UUID workspaceId, UUID spaceId, UUID typeId, String layoutKind);
 
+    Optional<LayoutDefinition> findAnyByKind(UUID workspaceId, UUID spaceId, UUID typeId, String layoutKind);
+
     Optional<LayoutDefinition> findById(UUID workspaceId, UUID spaceId, UUID typeId, UUID layoutId);
 
     List<LayoutNode> listNodes(UUID workspaceId, UUID layoutId);
 
+    List<LayoutNode> listAllNodes(UUID workspaceId, UUID layoutId);
+
     List<FieldAccessPolicy> listPolicies(UUID workspaceId, UUID layoutId);
+
+    List<FieldAccessPolicy> listAllPolicies(UUID workspaceId, UUID layoutId);
 
     void insertLayout(LayoutDefinitionInsert definition);
 

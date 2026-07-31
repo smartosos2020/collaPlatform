@@ -74,7 +74,11 @@ import {
   type WorkItem,
   type WorkItemRuntime,
 } from '../api/workItemsApi'
-import { listActiveWorkItemTypes, workItemTypeKeys } from '../api/workItemTypesApi'
+import {
+  listActiveWorkItemTypes,
+  workItemTypeKeys,
+  type ActiveWorkItemTypeSummary,
+} from '../api/workItemTypesApi'
 import {
   bulkWorkItems,
   exportWorkItemView,
@@ -1353,7 +1357,10 @@ function WorkItemCollection({ space }: { space: UserProjectSpace }) {
             value={selectedTypeId}
             placeholder="全部类型"
             loading={typesQuery.isLoading}
-            options={typesQuery.data?.map((type) => ({ label: type.name, value: type.id }))}
+            options={typesQuery.data?.map((type) => ({
+              label: type.configurationReady ? type.name : `${type.name} · 待发布配置`,
+              value: type.id,
+            }))}
             onChange={(value) => {
               setSelectedTypeOverride(value)
               setBoardColumnsOverride(undefined)
@@ -2307,8 +2314,12 @@ function WorkItemCollection({ space }: { space: UserProjectSpace }) {
       <CreateWorkItemModal
         key={selectedTypeId ?? 'no-type'}
         space={space}
-        typeId={selectedTypeId}
+        type={selectedType}
         open={createOpen}
+        canConfigure={space.availableActions.includes('view_settings')}
+        onConfigure={() => selectedType && navigate(
+          `/project-spaces/${space.id}/types/${selectedType.id}?panel=configuration-draft&source=work_items`,
+        )}
         onCancel={() => {
           setCreateOpen(false)
           setSearchParams(
@@ -2326,13 +2337,17 @@ function WorkItemCollection({ space }: { space: UserProjectSpace }) {
 
 function CreateWorkItemModal({
   space,
-  typeId,
+  type,
   open,
+  canConfigure,
+  onConfigure,
   onCancel,
 }: {
   space: UserProjectSpace
-  typeId?: string
+  type?: ActiveWorkItemTypeSummary
   open: boolean
+  canConfigure: boolean
+  onConfigure: () => void
   onCancel: () => void
 }) {
   const { message } = AntdApp.useApp()
@@ -2344,14 +2359,21 @@ function CreateWorkItemModal({
     runtimeKey: string
     values: WorkItemLayoutValues
   } | null>(null)
+  const typeId = type?.id
   const formQuery = useQuery({
     queryKey: workItemKeys.createForm(space.id, typeId ?? ''),
     queryFn: () => getWorkItemCreateForm(space.id, typeId as string),
-    enabled: open && Boolean(typeId),
+    enabled: open && Boolean(typeId) && type?.configurationReady === true,
     retry: false,
   })
+  const unsupportedConfiguration = formQuery.error instanceof ApiRequestError
+    && formQuery.error.code === 'unsupported_snapshot_schema'
+  const configurationUnavailable = type?.configurationReady === false
+    || unsupportedConfiguration
 
-  const runtime = formQuery.data?.runtime
+  const runtime = !configurationUnavailable && !formQuery.isError && !formQuery.isFetching
+    ? formQuery.data?.runtime
+    : undefined
   const runtimeKey = runtime ? `${runtime.typeVersionId}:${runtime.configHash}` : ''
   const values = draftValues?.runtimeKey === runtimeKey
     ? draftValues.values
@@ -2359,13 +2381,25 @@ function CreateWorkItemModal({
       ? defaultValues(runtime)
       : {}
   const setValues = (next: WorkItemLayoutValues) => setDraftValues({ runtimeKey, values: next })
+  const canSubmit = Boolean(
+    online
+    && typeId
+    && type?.configurationReady
+    && runtime
+    && title.trim()
+    && !formQuery.isError
+    && !formQuery.isFetching,
+  )
   const mutation = useMutation({
     mutationFn: () => {
       if (!online || !navigator.onLine) {
         throw new Error('当前处于离线状态，输入已保留，请联网后重试')
       }
+      if (!canSubmit || !typeId || !runtime) {
+        throw new Error('创建表单尚未就绪，请刷新后重试')
+      }
       return createWorkItem(space.id, {
-        typeId: typeId as string,
+        typeId,
         title: title.trim(),
         fieldValues: values,
       })
@@ -2381,18 +2415,44 @@ function CreateWorkItemModal({
     <Modal
       width={880}
       open={open}
-      title={`新建${formQuery.data?.typeName ?? '工作项'}`}
+      title={`新建${type?.name ?? formQuery.data?.typeName ?? '工作项'}`}
       okText="创建"
       cancelText="取消"
-      okButtonProps={{ disabled: !online || !title.trim() || !runtime }}
+      okButtonProps={{
+        disabled: !canSubmit,
+      }}
       confirmLoading={mutation.isPending}
       onCancel={onCancel}
-      onOk={() => mutation.mutate()}
+      onOk={() => {
+        if (canSubmit) mutation.mutate()
+      }}
       destroyOnHidden={false}
     >
       {!typeId ? <Alert type="warning" showIcon message="请先选择工作项类型" /> : null}
-      {formQuery.isLoading ? <Skeleton active /> : null}
-      {formQuery.isError ? <Alert type="error" showIcon message="创建表单加载失败" description={errorMessage(formQuery.error, '请稍后重试')} /> : null}
+      {formQuery.isFetching ? <Skeleton active /> : null}
+      {configurationUnavailable ? (
+        <Alert
+          type="warning"
+          showIcon
+          message="该类型尚未发布可用配置"
+          description={canConfigure
+            ? '请先完成配置校验并发布版本；发布成功后即可创建该类型的工作项。'
+            : '请联系空间管理员完成配置发布；当前不会发送创建请求。'}
+          action={canConfigure ? (
+            <Button size="small" type="primary" onClick={onConfigure}>
+              去配置
+            </Button>
+          ) : undefined}
+        />
+      ) : null}
+      {formQuery.isError && !unsupportedConfiguration ? (
+        <Alert
+          type="error"
+          showIcon
+          message="创建表单加载失败"
+          description={errorMessage(formQuery.error, '请稍后重试')}
+        />
+      ) : null}
       {runtime ? (
         <div className="project-work-item-form">
           <Form layout="vertical">
@@ -2405,7 +2465,9 @@ function CreateWorkItemModal({
                 placeholder="输入工作项标题"
                 onChange={(event) => setTitle(event.target.value)}
                 onPressEnter={(event) => {
-                  if (!event.nativeEvent.isComposing && title.trim()) mutation.mutate()
+                  if (!event.nativeEvent.isComposing && canSubmit && !mutation.isPending) {
+                    mutation.mutate()
+                  }
                 }}
               />
             </Form.Item>

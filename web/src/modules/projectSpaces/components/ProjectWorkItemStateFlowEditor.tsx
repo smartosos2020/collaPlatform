@@ -23,7 +23,11 @@ import {
 } from 'antd'
 import { useMemo, useState } from 'react'
 
-import { saveWorkItemConfigurationDraft, type WorkItemConfigurationDraft } from '../api/workItemConfigurationApi'
+import {
+  saveWorkItemConfigurationDraft,
+  workItemConfigurationDraftKeys,
+  type WorkItemConfigurationDraft,
+} from '../api/workItemConfigurationApi'
 import { errorMessage } from '../projectSpaceView'
 
 type JsonRecord = Record<string, unknown>
@@ -70,6 +74,10 @@ type StateFlow = {
   transitions: TransitionDefinition[]
   guards: GuardDefinition[]
 }
+type LocalStateFlowEdit = {
+  flow: StateFlow
+  baseServerFlowSignature: string
+}
 
 const roleOptions = ['owner', 'admin', 'member', 'guest', 'assignee', 'collaborator', 'watcher']
   .map((value) => ({ label: value, value }))
@@ -86,41 +94,66 @@ export function ProjectWorkItemStateFlowEditor({
   readOnly,
   draft,
   onDraftSaved,
+  onDirtyChange,
 }: {
   spaceId: string
   typeId: string
   readOnly: boolean
   draft: WorkItemConfigurationDraft
   onDraftSaved: (draft: WorkItemConfigurationDraft) => void
+  onDirtyChange: (dirty: boolean) => void
 }) {
   const { message } = AntdApp.useApp()
   const queryClient = useQueryClient()
   const snapshot = useMemo(() => normalizeObject(draft.snapshot), [draft.snapshot])
-  const [flow, setFlow] = useState<StateFlow>(() => normalizeFlow(snapshot.stateFlow))
-  const [dirty, setDirty] = useState(false)
+  const serverFlow = useMemo(() => normalizeFlow(snapshot.stateFlow), [snapshot.stateFlow])
+  const serverFlowSignature = useMemo(() => JSON.stringify(serverFlow), [serverFlow])
+  const [localEdit, setLocalEdit] = useState<LocalStateFlowEdit | null>(null)
+  const flow = localEdit?.flow ?? serverFlow
+  const dirty = localEdit !== null
+  const serverFlowChanged = localEdit !== null
+    && localEdit.baseServerFlowSignature !== serverFlowSignature
   const fieldKeys = useMemo(() => normalizeArray<JsonRecord>(snapshot.fields)
     .map((field) => String(field.fieldKey ?? ''))
     .filter(Boolean), [snapshot.fields])
   const localDiagnostics = useMemo(() => localValidate(flow), [flow])
 
   const update = (next: StateFlow) => {
-    setFlow(normalizeSortOrders(next))
-    setDirty(true)
+    if (!localEdit) onDirtyChange(true)
+    setLocalEdit({
+      flow: normalizeSortOrders(next),
+      baseServerFlowSignature: localEdit?.baseServerFlowSignature ?? serverFlowSignature,
+    })
   }
   const saveMutation = useMutation({
     mutationFn: () => {
+      if (!localEdit || serverFlowChanged) {
+        throw new Error('State flow local edit is unavailable or conflicts with the server draft')
+      }
       const next = structuredClone(snapshot)
-      next.stateFlow = flow
+      next.stateFlow = localEdit.flow
       return saveWorkItemConfigurationDraft(spaceId, typeId, next, draft.aggregateVersion)
     },
     onSuccess: async (saved) => {
-      setDirty(false)
+      setLocalEdit(null)
+      onDirtyChange(false)
       onDraftSaved(saved)
       await queryClient.invalidateQueries({ queryKey: ['work-item-configuration-versions', spaceId, typeId] })
       message.success('状态流已保存到配置草稿')
     },
-    onError: (error) => message.error(errorMessage(error, '保存失败，本地状态流输入已保留')),
+    onError: (error) => {
+      void queryClient.invalidateQueries({
+        queryKey: workItemConfigurationDraftKeys.detail(spaceId, typeId),
+      })
+      message.error(errorMessage(error, '保存失败，本地状态流输入已保留'))
+    },
   })
+  const editorReadOnly = readOnly || saveMutation.isPending
+  const discardLocalEdit = () => {
+    if (saveMutation.isPending) return
+    setLocalEdit(null)
+    onDirtyChange(false)
+  }
 
   return (
     <Card
@@ -128,15 +161,28 @@ export function ProjectWorkItemStateFlowEditor({
       data-testid="work-item-state-flow-editor"
       title={<Space><ForkOutlined /><span>轻量状态流配置</span>{dirty ? <Tag color="warning">未保存</Tag> : null}</Space>}
       extra={(
-        <Button
-          type="primary"
-          icon={<SaveOutlined />}
-          disabled={readOnly || !dirty || localDiagnostics.some((item) => item.severity === 'error')}
-          loading={saveMutation.isPending}
-          onClick={() => saveMutation.mutate()}
-        >
-          保存到草稿
-        </Button>
+        <Space>
+          <Button
+            disabled={!dirty || saveMutation.isPending}
+            onClick={discardLocalEdit}
+          >
+            放弃本地修改
+          </Button>
+          <Button
+            type="primary"
+            icon={<SaveOutlined />}
+            disabled={
+              readOnly
+              || !dirty
+              || serverFlowChanged
+              || localDiagnostics.some((item) => item.severity === 'error')
+            }
+            loading={saveMutation.isPending}
+            onClick={() => saveMutation.mutate()}
+          >
+            保存到草稿
+          </Button>
+        </Space>
       )}
     >
       <Alert
@@ -145,6 +191,15 @@ export function ProjectWorkItemStateFlowEditor({
         message="定义随完整配置草稿发布"
         description="永久 key 用于历史、事件和兼容映射；修改展示名不会改变 key。此处不创建节点 token、并行或会签。"
       />
+      {serverFlowChanged ? (
+        <Alert
+          data-testid="work-item-state-flow-conflict"
+          type="error"
+          showIcon
+          message="服务器状态流已变化"
+          description="本地输入已保留，但不能覆盖新的服务器状态流。请先复制需要保留的内容，再放弃本地修改并基于最新草稿重新编辑。"
+        />
+      ) : null}
       <div className="work-item-state-flow-diagnostics" aria-live="polite">
         {[...localDiagnostics, ...draft.diagnostics
           .filter((item) => item.keyPath.startsWith('stateFlow'))]
@@ -172,7 +227,7 @@ export function ProjectWorkItemStateFlowEditor({
                 title="状态"
                 empty="还没有状态。有效状态流必须恰好有一个 initial。"
                 items={flow.states}
-                readOnly={readOnly}
+                readOnly={editorReadOnly}
                 add={() => update({
                   ...flow,
                   states: [...flow.states, {
@@ -194,11 +249,11 @@ export function ProjectWorkItemStateFlowEditor({
                 })}
                 render={(state, index) => (
                   <div className="state-flow-definition-grid">
-                    <Labeled label="永久 key"><Input value={state.stateKey} disabled={readOnly} onChange={(event) => updateAt(flow, 'states', index, { ...state, stateKey: event.target.value }, update)} /></Labeled>
-                    <Labeled label="展示名"><Input value={state.label} disabled={readOnly} onChange={(event) => updateAt(flow, 'states', index, { ...state, label: event.target.value }, update)} /></Labeled>
-                    <Labeled label="分类"><Select value={state.category} disabled={readOnly} options={categoryOptions} onChange={(category) => updateAt(flow, 'states', index, { ...state, category }, update)} /></Labeled>
-                    <Labeled label="颜色"><Input value={state.color} disabled={readOnly} placeholder="#1677ff 或语义色" onChange={(event) => updateAt(flow, 'states', index, { ...state, color: event.target.value }, update)} /></Labeled>
-                    <Labeled label="说明" wide><Input value={state.description} disabled={readOnly} onChange={(event) => updateAt(flow, 'states', index, { ...state, description: event.target.value }, update)} /></Labeled>
+                    <Labeled label="永久 key"><Input value={state.stateKey} disabled={editorReadOnly} onChange={(event) => updateAt(flow, 'states', index, { ...state, stateKey: event.target.value }, update)} /></Labeled>
+                    <Labeled label="展示名"><Input value={state.label} disabled={editorReadOnly} onChange={(event) => updateAt(flow, 'states', index, { ...state, label: event.target.value }, update)} /></Labeled>
+                    <Labeled label="分类"><Select value={state.category} disabled={editorReadOnly} options={categoryOptions} onChange={(category) => updateAt(flow, 'states', index, { ...state, category }, update)} /></Labeled>
+                    <Labeled label="颜色"><Input value={state.color} disabled={editorReadOnly} placeholder="#1677ff 或语义色" onChange={(event) => updateAt(flow, 'states', index, { ...state, color: event.target.value }, update)} /></Labeled>
+                    <Labeled label="说明" wide><Input value={state.description} disabled={editorReadOnly} onChange={(event) => updateAt(flow, 'states', index, { ...state, description: event.target.value }, update)} /></Labeled>
                   </div>
                 )}
               />
@@ -212,7 +267,7 @@ export function ProjectWorkItemStateFlowEditor({
                 title="动作"
                 empty="还没有动作。动作必须通过转换连接来源和目标状态。"
                 items={flow.actions}
-                readOnly={readOnly}
+                readOnly={editorReadOnly}
                 add={() => update({
                   ...flow,
                   actions: [...flow.actions, {
@@ -237,12 +292,12 @@ export function ProjectWorkItemStateFlowEditor({
                 })}
                 render={(action, index) => (
                   <div className="state-flow-definition-grid">
-                    <Labeled label="永久 key"><Input value={action.actionKey} disabled={readOnly} onChange={(event) => updateAt(flow, 'actions', index, { ...action, actionKey: event.target.value }, update)} /></Labeled>
-                    <Labeled label="展示名"><Input value={action.label} disabled={readOnly} onChange={(event) => updateAt(flow, 'actions', index, { ...action, label: event.target.value }, update)} /></Labeled>
-                    <Labeled label="动作类型"><Select value={action.kind} disabled={readOnly} options={actionKindOptions} onChange={(kind) => updateAt(flow, 'actions', index, { ...action, kind }, update)} /></Labeled>
-                    <Labeled label="授权角色" wide><Select mode="multiple" value={action.authorizedRoles} disabled={readOnly} options={roleOptions} onChange={(authorizedRoles) => updateAt(flow, 'actions', index, { ...action, authorizedRoles }, update)} /></Labeled>
-                    <Labeled label="必填字段" wide><Select mode="multiple" value={action.requiredFieldKeys} disabled={readOnly} options={fieldKeys.map((value) => ({ label: value, value }))} onChange={(requiredFieldKeys) => updateAt(flow, 'actions', index, { ...action, requiredFieldKeys }, update)} /></Labeled>
-                    <Labeled label="说明" wide><Input value={action.description} disabled={readOnly} onChange={(event) => updateAt(flow, 'actions', index, { ...action, description: event.target.value }, update)} /></Labeled>
+                    <Labeled label="永久 key"><Input value={action.actionKey} disabled={editorReadOnly} onChange={(event) => updateAt(flow, 'actions', index, { ...action, actionKey: event.target.value }, update)} /></Labeled>
+                    <Labeled label="展示名"><Input value={action.label} disabled={editorReadOnly} onChange={(event) => updateAt(flow, 'actions', index, { ...action, label: event.target.value }, update)} /></Labeled>
+                    <Labeled label="动作类型"><Select value={action.kind} disabled={editorReadOnly} options={actionKindOptions} onChange={(kind) => updateAt(flow, 'actions', index, { ...action, kind }, update)} /></Labeled>
+                    <Labeled label="授权角色" wide><Select mode="multiple" value={action.authorizedRoles} disabled={editorReadOnly} options={roleOptions} onChange={(authorizedRoles) => updateAt(flow, 'actions', index, { ...action, authorizedRoles }, update)} /></Labeled>
+                    <Labeled label="必填字段" wide><Select mode="multiple" value={action.requiredFieldKeys} disabled={editorReadOnly} options={fieldKeys.map((value) => ({ label: value, value }))} onChange={(requiredFieldKeys) => updateAt(flow, 'actions', index, { ...action, requiredFieldKeys }, update)} /></Labeled>
+                    <Labeled label="说明" wide><Input value={action.description} disabled={editorReadOnly} onChange={(event) => updateAt(flow, 'actions', index, { ...action, description: event.target.value }, update)} /></Labeled>
                   </div>
                 )}
               />
@@ -256,7 +311,7 @@ export function ProjectWorkItemStateFlowEditor({
                 title="连接"
                 empty="还没有转换。使用“新增连接”把动作连接到来源和目标状态。"
                 items={flow.transitions}
-                readOnly={readOnly}
+                readOnly={editorReadOnly}
                 add={() => update({
                   ...flow,
                   transitions: [...flow.transitions, {
@@ -278,11 +333,11 @@ export function ProjectWorkItemStateFlowEditor({
                 })}
                 render={(transition, index) => (
                   <div className="state-flow-definition-grid">
-                    <Labeled label="转换 key"><Input value={transition.transitionKey} disabled={readOnly} onChange={(event) => updateAt(flow, 'transitions', index, { ...transition, transitionKey: event.target.value }, update)} /></Labeled>
-                    <Labeled label="动作"><Select value={transition.actionKey} disabled={readOnly} options={flow.actions.map((item) => ({ label: `${item.label} (${item.actionKey})`, value: item.actionKey }))} onChange={(actionKey) => updateAt(flow, 'transitions', index, { ...transition, actionKey }, update)} /></Labeled>
-                    <Labeled label="来源状态"><Select value={transition.fromStateKey} disabled={readOnly} options={stateOptions(flow)} onChange={(fromStateKey) => updateAt(flow, 'transitions', index, { ...transition, fromStateKey }, update)} /></Labeled>
-                    <Labeled label="目标状态"><Select value={transition.toStateKey} disabled={readOnly} options={stateOptions(flow)} onChange={(toStateKey) => updateAt(flow, 'transitions', index, { ...transition, toStateKey }, update)} /></Labeled>
-                    <Labeled label="守卫"><Select allowClear value={transition.guardKey ?? undefined} disabled={readOnly} options={flow.guards.map((item) => ({ label: item.guardKey, value: item.guardKey }))} onChange={(guardKey) => updateAt(flow, 'transitions', index, { ...transition, guardKey: guardKey ?? null }, update)} /></Labeled>
+                    <Labeled label="转换 key"><Input value={transition.transitionKey} disabled={editorReadOnly} onChange={(event) => updateAt(flow, 'transitions', index, { ...transition, transitionKey: event.target.value }, update)} /></Labeled>
+                    <Labeled label="动作"><Select value={transition.actionKey} disabled={editorReadOnly} options={flow.actions.map((item) => ({ label: `${item.label} (${item.actionKey})`, value: item.actionKey }))} onChange={(actionKey) => updateAt(flow, 'transitions', index, { ...transition, actionKey }, update)} /></Labeled>
+                    <Labeled label="来源状态"><Select value={transition.fromStateKey} disabled={editorReadOnly} options={stateOptions(flow)} onChange={(fromStateKey) => updateAt(flow, 'transitions', index, { ...transition, fromStateKey }, update)} /></Labeled>
+                    <Labeled label="目标状态"><Select value={transition.toStateKey} disabled={editorReadOnly} options={stateOptions(flow)} onChange={(toStateKey) => updateAt(flow, 'transitions', index, { ...transition, toStateKey }, update)} /></Labeled>
+                    <Labeled label="守卫"><Select allowClear value={transition.guardKey ?? undefined} disabled={editorReadOnly} options={flow.guards.map((item) => ({ label: item.guardKey, value: item.guardKey }))} onChange={(guardKey) => updateAt(flow, 'transitions', index, { ...transition, guardKey: guardKey ?? null }, update)} /></Labeled>
                   </div>
                 )}
               />
@@ -296,7 +351,7 @@ export function ProjectWorkItemStateFlowEditor({
                 title="声明式守卫"
                 empty="没有守卫。无守卫转换仍受服务端动作授权和生命周期规则约束。"
                 items={flow.guards}
-                readOnly={readOnly}
+                readOnly={editorReadOnly}
                 add={() => update({
                   ...flow,
                   guards: [...flow.guards, {
@@ -317,14 +372,14 @@ export function ProjectWorkItemStateFlowEditor({
                 move={() => undefined}
                 render={(guard, index) => (
                   <div className="state-flow-definition-grid">
-                    <Labeled label="守卫 key"><Input value={guard.guardKey} disabled={readOnly} onChange={(event) => updateAt(flow, 'guards', index, { ...guard, guardKey: event.target.value }, update)} /></Labeled>
-                    <Labeled label="类型"><Select value={guard.kind} disabled={readOnly} options={guardKindOptions} onChange={(kind) => updateAt(flow, 'guards', index, { ...guard, kind }, update)} /></Labeled>
-                    <Labeled label="操作符"><Input value={guard.operator} disabled={readOnly} placeholder="present / eq / in / has_role" onChange={(event) => updateAt(flow, 'guards', index, { ...guard, operator: event.target.value }, update)} /></Labeled>
-                    <Labeled label="字段"><Select allowClear value={guard.fieldKey ?? undefined} disabled={readOnly} options={fieldKeys.map((value) => ({ label: value, value }))} onChange={(fieldKey) => updateAt(flow, 'guards', index, { ...guard, fieldKey: fieldKey ?? null }, update)} /></Labeled>
-                    <Labeled label="参与者角色"><Select allowClear value={guard.participantRole ?? undefined} disabled={readOnly} options={roleOptions} onChange={(participantRole) => updateAt(flow, 'guards', index, { ...guard, participantRole: participantRole ?? null }, update)} /></Labeled>
-                    <Labeled label="空间角色" wide><Select mode="multiple" value={guard.spaceRoles} disabled={readOnly} options={roleOptions.slice(0, 4)} onChange={(spaceRoles) => updateAt(flow, 'guards', index, { ...guard, spaceRoles }, update)} /></Labeled>
-                    <Labeled label="组合守卫" wide><Select mode="multiple" value={guard.guardKeys} disabled={readOnly} options={flow.guards.filter((item) => item.guardKey !== guard.guardKey).map((item) => ({ label: item.guardKey, value: item.guardKey }))} onChange={(guardKeys) => updateAt(flow, 'guards', index, { ...guard, guardKeys }, update)} /></Labeled>
-                    <Labeled label="比较值（JSON）" wide><Input value={guard.value == null ? '' : JSON.stringify(guard.value)} disabled={readOnly} onChange={(event) => updateAt(flow, 'guards', index, { ...guard, value: parseJsonValue(event.target.value) }, update)} /></Labeled>
+                    <Labeled label="守卫 key"><Input value={guard.guardKey} disabled={editorReadOnly} onChange={(event) => updateAt(flow, 'guards', index, { ...guard, guardKey: event.target.value }, update)} /></Labeled>
+                    <Labeled label="类型"><Select value={guard.kind} disabled={editorReadOnly} options={guardKindOptions} onChange={(kind) => updateAt(flow, 'guards', index, { ...guard, kind }, update)} /></Labeled>
+                    <Labeled label="操作符"><Input value={guard.operator} disabled={editorReadOnly} placeholder="present / eq / in / has_role" onChange={(event) => updateAt(flow, 'guards', index, { ...guard, operator: event.target.value }, update)} /></Labeled>
+                    <Labeled label="字段"><Select allowClear value={guard.fieldKey ?? undefined} disabled={editorReadOnly} options={fieldKeys.map((value) => ({ label: value, value }))} onChange={(fieldKey) => updateAt(flow, 'guards', index, { ...guard, fieldKey: fieldKey ?? null }, update)} /></Labeled>
+                    <Labeled label="参与者角色"><Select allowClear value={guard.participantRole ?? undefined} disabled={editorReadOnly} options={roleOptions} onChange={(participantRole) => updateAt(flow, 'guards', index, { ...guard, participantRole: participantRole ?? null }, update)} /></Labeled>
+                    <Labeled label="空间角色" wide><Select mode="multiple" value={guard.spaceRoles} disabled={editorReadOnly} options={roleOptions.slice(0, 4)} onChange={(spaceRoles) => updateAt(flow, 'guards', index, { ...guard, spaceRoles }, update)} /></Labeled>
+                    <Labeled label="组合守卫" wide><Select mode="multiple" value={guard.guardKeys} disabled={editorReadOnly} options={flow.guards.filter((item) => item.guardKey !== guard.guardKey).map((item) => ({ label: item.guardKey, value: item.guardKey }))} onChange={(guardKeys) => updateAt(flow, 'guards', index, { ...guard, guardKeys }, update)} /></Labeled>
+                    <Labeled label="比较值（JSON）" wide><Input value={guard.value == null ? '' : JSON.stringify(guard.value)} disabled={editorReadOnly} onChange={(event) => updateAt(flow, 'guards', index, { ...guard, value: parseJsonValue(event.target.value) }, update)} /></Labeled>
                   </div>
                 )}
               />

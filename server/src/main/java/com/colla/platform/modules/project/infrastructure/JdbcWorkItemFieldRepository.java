@@ -180,6 +180,45 @@ public class JdbcWorkItemFieldRepository implements WorkItemFieldRepository {
         );
     }
 
+    @Override
+    public int hydrate(
+        UUID workspaceId,
+        UUID spaceId,
+        UUID typeId,
+        UUID fieldId,
+        String name,
+        String description,
+        JsonNode config,
+        String configHash,
+        int sortOrder,
+        String status,
+        UUID actorId,
+        long expectedAggregateVersion
+    ) {
+        return jdbcTemplate.update(
+            """
+                update project_work_item_field_definitions
+                   set name = ?, description = ?, config = ?::jsonb, config_hash = ?,
+                       sort_order = ?, status = ?, updated_by = ?, updated_at = now(),
+                       aggregate_version = aggregate_version + 1
+                 where workspace_id = ? and space_id = ? and type_definition_id = ? and id = ?
+                   and aggregate_version = ?
+                """,
+            name,
+            description,
+            json(config),
+            configHash,
+            sortOrder,
+            status,
+            actorId,
+            workspaceId,
+            spaceId,
+            typeId,
+            fieldId,
+            expectedAggregateVersion
+        );
+    }
+
     private FieldDefinition map(ResultSet resultSet, int rowNumber) throws SQLException {
         return new FieldDefinition(
             resultSet.getObject("id", UUID.class),

@@ -19,6 +19,7 @@ logs/
 
 # Local-only generated reports and issue drafts
 /.github/ISSUE_TEMPLATE/
+/.ua/
 
 # Java
 target/

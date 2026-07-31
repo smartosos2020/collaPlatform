@@ -46,6 +46,21 @@ public interface WorkItemFieldRepository {
         long expectedAggregateVersion
     );
 
+    int hydrate(
+        UUID workspaceId,
+        UUID spaceId,
+        UUID typeId,
+        UUID fieldId,
+        String name,
+        String description,
+        JsonNode config,
+        String configHash,
+        int sortOrder,
+        String status,
+        UUID actorId,
+        long expectedAggregateVersion
+    );
+
     record NewFieldDefinition(
         UUID id,
         UUID workspaceId,

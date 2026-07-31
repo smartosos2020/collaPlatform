@@ -63,6 +63,7 @@ public class WorkItemConfigurationTemplateService {
     private final WorkItemRelationDefinitionPresetCatalog relationDefinitionPresetCatalog;
     private final WorkItemPermissionPresetCatalog permissionPresetCatalog;
     private final WorkItemConfigurationSnapshotCanonicalizer canonicalizer;
+    private final WorkItemConfigurationAuthorStateHydrator authorStateHydrator;
     private final WorkItemConfigurationValidator validator;
     private final WorkItemConfigurationThreeWayMerge mergeEngine;
     private final WorkItemTypeConfigCanonicalizer requestCanonicalizer;
@@ -82,6 +83,7 @@ public class WorkItemConfigurationTemplateService {
         WorkItemRelationDefinitionPresetCatalog relationDefinitionPresetCatalog,
         WorkItemPermissionPresetCatalog permissionPresetCatalog,
         WorkItemConfigurationSnapshotCanonicalizer canonicalizer,
+        WorkItemConfigurationAuthorStateHydrator authorStateHydrator,
         WorkItemConfigurationValidator validator,
         WorkItemConfigurationThreeWayMerge mergeEngine,
         WorkItemTypeConfigCanonicalizer requestCanonicalizer,
@@ -100,6 +102,7 @@ public class WorkItemConfigurationTemplateService {
         this.relationDefinitionPresetCatalog = relationDefinitionPresetCatalog;
         this.permissionPresetCatalog = permissionPresetCatalog;
         this.canonicalizer = canonicalizer;
+        this.authorStateHydrator = authorStateHydrator;
         this.validator = validator;
         this.mergeEngine = mergeEngine;
         this.requestCanonicalizer = requestCanonicalizer;
@@ -277,18 +280,22 @@ public class WorkItemConfigurationTemplateService {
         if (command.replay()) {
             return replay(command.receipt(), TemplateCommandResult.class);
         }
-        ConfigurationDraft draft = lockDraft(user, spaceId, typeId, expectedDraftVersion);
+        requireDraftVersion(user, spaceId, typeId, expectedDraftVersion);
         WorkItemTypeDefinition target = requireType(user, spaceId, typeId);
         ConfigurationSnapshot rebound = canonicalizer.canonicalize(
             rebind(version.snapshot(), target)
         );
-        ValidationResult validation = validator.validate(rebound.payload());
-        updateDraft(draft, rebound, validation, user.id());
+        ConfigurationSnapshot hydrated = authorStateHydrator.hydrate(
+            user.workspaceId(), spaceId, typeId, rebound, user.id()
+        );
+        ConfigurationDraft draft = lockDraft(user, spaceId, typeId, expectedDraftVersion);
+        ValidationResult validation = validator.validate(hydrated.payload());
+        ConfigurationDraft savedDraft = updateDraft(draft, hydrated, validation, user.id());
         JsonNode lineage = objectMapper.valueToTree(Map.of(
             "templateId", template.id().toString(),
             "templateVersionId", version.id().toString(),
             "templateHash", version.configHash(),
-            "installedHash", rebound.configHash()
+            "installedHash", hydrated.configHash()
         ));
         UUID installationId = templateRepository.findInstallation(user.workspaceId(), spaceId, typeId)
             .map(TemplateInstallation::id)
@@ -314,13 +321,13 @@ public class WorkItemConfigurationTemplateService {
             "install",
             version.id(),
             version.id(),
-            rebound.configHash(),
+            hydrated.configHash(),
             lineage,
             user.id()
         ));
         TemplateCommandResult result = new TemplateCommandResult(
             installationView(installed),
-            draftResult(draft, rebound, validation),
+            draftResult(savedDraft),
             Map.of("conflicts", 0),
             false
         );
@@ -328,7 +335,7 @@ public class WorkItemConfigurationTemplateService {
         record(user, spaceId, typeId, "work_item_configuration.template_installed", installed.id(), Map.of(
             "templateId", template.id().toString(),
             "templateVersionId", version.id().toString(),
-            "configHash", rebound.configHash()
+            "configHash", hydrated.configHash()
         ));
         return result;
     }
@@ -366,16 +373,18 @@ public class WorkItemConfigurationTemplateService {
         if (command.replay()) {
             return replay(command.receipt(), TemplateCommandResult.class);
         }
-        TemplateInstallation installation = templateRepository.lockInstallation(
+        TemplateInstallation installation = templateRepository.findInstallation(
             user.workspaceId(), spaceId, typeId
         ).filter(TemplateInstallation::attached)
             .orElseThrow(() -> failure("TEMPLATE_NOT_ATTACHED", "No attached configuration template"));
         if (installation.aggregateVersion() != expectedInstallationVersion) {
             throw failure("TEMPLATE_INSTALLATION_VERSION_CONFLICT", "Template installation changed");
         }
-        ConfigurationDraft draft = lockDraft(user, spaceId, typeId, expectedDraftVersion);
+        ConfigurationDraft observedDraft = requireDraftVersion(
+            user, spaceId, typeId, expectedDraftVersion
+        );
         TemplateUpgradePreview preview = previewLocked(
-            user, spaceId, typeId, installation, draft, targetVersionId, resolutions
+            user, spaceId, typeId, installation, observedDraft, targetVersionId, resolutions
         );
         if (!preview.conflicts().isEmpty()) {
             boolean unresolved = preview.conflicts().stream()
@@ -385,13 +394,17 @@ public class WorkItemConfigurationTemplateService {
             }
         }
         ConfigurationSnapshot merged = canonicalizer.canonicalize(preview.mergedSnapshot());
-        ValidationResult validation = validator.validate(merged.payload());
-        updateDraft(draft, merged, validation, user.id());
+        ConfigurationSnapshot hydrated = authorStateHydrator.hydrate(
+            user.workspaceId(), spaceId, typeId, merged, user.id()
+        );
+        ConfigurationDraft draft = lockDraft(user, spaceId, typeId, expectedDraftVersion);
+        ValidationResult validation = validator.validate(hydrated.payload());
+        ConfigurationDraft savedDraft = updateDraft(draft, hydrated, validation, user.id());
         JsonNode lineage = objectMapper.valueToTree(Map.of(
             "baseVersionId", installation.upstreamVersionId().toString(),
             "upstreamVersionId", targetVersionId.toString(),
             "localHash", preview.localHash(),
-            "mergedHash", preview.mergedHash(),
+            "mergedHash", hydrated.configHash(),
             "conflictCount", preview.conflicts().size()
         ));
         if (templateRepository.upgrade(
@@ -400,6 +413,7 @@ public class WorkItemConfigurationTemplateService {
             typeId,
             installation.id(),
             installation.upstreamVersionId(),
+            expectedInstallationVersion,
             targetVersionId,
             lineage,
             user.id()
@@ -418,13 +432,13 @@ public class WorkItemConfigurationTemplateService {
             "upgrade",
             installation.upstreamVersionId(),
             targetVersionId,
-            merged.configHash(),
+            hydrated.configHash(),
             lineage,
             user.id()
         ));
         TemplateCommandResult result = new TemplateCommandResult(
             installationView(upgraded),
-            draftResult(draft, merged, validation),
+            draftResult(savedDraft),
             preview.summary(),
             false
         );
@@ -432,7 +446,7 @@ public class WorkItemConfigurationTemplateService {
         record(user, spaceId, typeId, "work_item_configuration.template_upgraded", upgraded.id(), Map.of(
             "fromVersionId", installation.upstreamVersionId().toString(),
             "toVersionId", targetVersionId.toString(),
-            "configHash", merged.configHash()
+            "configHash", hydrated.configHash()
         ));
         return result;
     }
@@ -684,7 +698,7 @@ public class WorkItemConfigurationTemplateService {
         return root;
     }
 
-    private void updateDraft(
+    private ConfigurationDraft updateDraft(
         ConfigurationDraft draft,
         ConfigurationSnapshot snapshot,
         ValidationResult validation,
@@ -705,6 +719,23 @@ public class WorkItemConfigurationTemplateService {
         )) != 1) {
             throw failure("DRAFT_VERSION_CONFLICT", "Configuration draft changed");
         }
+        return draftRepository.findById(
+            draft.workspaceId(), draft.spaceId(), draft.typeDefinitionId(), draft.id()
+        ).orElseThrow(() -> failure("NOT_FOUND_OR_HIDDEN", "Configuration draft is not available"));
+    }
+
+    private ConfigurationDraft requireDraftVersion(
+        CurrentUser user,
+        UUID spaceId,
+        UUID typeId,
+        long expectedVersion
+    ) {
+        ConfigurationDraft draft = draftRepository.findActive(user.workspaceId(), spaceId, typeId)
+            .orElseThrow(() -> failure("NOT_FOUND_OR_HIDDEN", "Configuration draft is not available"));
+        if (draft.aggregateVersion() != expectedVersion) {
+            throw failure("DRAFT_VERSION_CONFLICT", "Configuration draft changed");
+        }
+        return draft;
     }
 
     private ConfigurationDraft lockDraft(CurrentUser user, UUID spaceId, UUID typeId, long expectedVersion) {
@@ -814,6 +845,15 @@ public class WorkItemConfigurationTemplateService {
             previous.aggregateVersion() + (snapshot.configHash().equals(previous.configHash()) ? 0 : 1),
             validation.valid() ? "valid" : "invalid",
             snapshot.configHash()
+        );
+    }
+
+    private DraftResult draftResult(ConfigurationDraft persisted) {
+        return new DraftResult(
+            persisted.id(),
+            persisted.aggregateVersion(),
+            persisted.status(),
+            persisted.configHash()
         );
     }
 

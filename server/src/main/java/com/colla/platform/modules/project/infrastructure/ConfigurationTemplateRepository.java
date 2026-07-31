@@ -46,6 +46,7 @@ public interface ConfigurationTemplateRepository {
         UUID typeId,
         UUID installationId,
         UUID expectedUpstreamVersionId,
+        long expectedAggregateVersion,
         UUID nextUpstreamVersionId,
         JsonNode lineageSummary,
         UUID actorId

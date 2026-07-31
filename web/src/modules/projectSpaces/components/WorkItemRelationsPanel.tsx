@@ -43,7 +43,7 @@ import {
   type WorkItemRelation,
 } from '../api/workItemRelationsApi'
 import { listWorkItems, type WorkItem } from '../api/workItemsApi'
-import { listActiveWorkItemTypes } from '../api/workItemTypesApi'
+import { listActiveWorkItemTypes, workItemTypeKeys } from '../api/workItemTypesApi'
 import { errorMessage } from '../projectSpaceView'
 
 type RelationDefinition = {
@@ -295,9 +295,12 @@ function HierarchyTab({
     queryFn: () => listWorkItems(space.id),
   })
   const types = useQuery({
-    queryKey: ['project-spaces', space.id, 'work-item-types', 'split-candidates'],
+    queryKey: workItemTypeKeys.active(space.id),
     queryFn: () => listActiveWorkItemTypes(space.id),
   })
+  const canMutateHierarchy = online
+    && space.status === 'active'
+    && item.availableActions.includes('edit')
   const refresh = async () => {
     await Promise.all([
       navigation.refetch(),
@@ -369,7 +372,8 @@ function HierarchyTab({
     })
   }
   const splitChild = () => {
-    let childTypeId = types.data?.[0]?.id ?? ''
+    const creatableTypes = types.data?.filter((type) => type.configurationReady) ?? []
+    let childTypeId = creatableTypes[0]?.id ?? ''
     let title = ''
     modal.confirm({
       title: '拆解子工作项',
@@ -378,7 +382,7 @@ function HierarchyTab({
           <Select
             aria-label="子工作项类型"
             defaultValue={childTypeId}
-            options={types.data?.map((type) => ({ value: type.id, label: type.name }))}
+            options={creatableTypes.map((type) => ({ value: type.id, label: type.name }))}
             onChange={(value) => { childTypeId = value }}
           />
           <Input aria-label="子工作项标题" placeholder="输入子工作项标题" onChange={(event) => { title = event.target.value }} />
@@ -396,8 +400,15 @@ function HierarchyTab({
     <div className="work-item-hierarchy-tab">
       <Space wrap>
         <Select value={relationKey} options={hierarchyDefinitions.map((definition) => ({ value: definition.relationKey, label: definition.forwardName }))} onChange={setRelationKey} />
-        <Button icon={<SwapOutlined />} disabled={!online || !navigation.data?.parent} onClick={chooseParent}>调整父项</Button>
-        <Button type="primary" icon={<ApartmentOutlined />} disabled={!online} onClick={splitChild}>拆解子项</Button>
+        <Button icon={<SwapOutlined />} disabled={!canMutateHierarchy || !navigation.data?.parent} onClick={chooseParent}>调整父项</Button>
+        <Button
+          type="primary"
+          icon={<ApartmentOutlined />}
+          disabled={!canMutateHierarchy || !types.data?.some((type) => type.configurationReady)}
+          onClick={splitChild}
+        >
+          拆解子项
+        </Button>
       </Space>
       {navigation.isError ? <Alert type="error" showIcon message="局部层级不可用" description="不会退化为全局树或猜测祖先；请刷新后重试。" /> : null}
       {navigation.data ? (

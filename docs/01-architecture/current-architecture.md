@@ -1,7 +1,7 @@
 ---
 title: 当前技术架构
 status: active
-last_code_check: 2026-07-30
+last_code_check: 2026-07-31
 ---
 
 # 当前技术架构
@@ -192,7 +192,7 @@ S01-M2 已接受 `platform-module-contracts.md`，并以 `platform-modules.json`
 
 | 边界 | 主要前缀 | 规则 |
 | --- | --- | --- |
-| 用户协作 | `/api/workspace`、`/api/conversations`、`/api/project-spaces`、`/api/knowledge-bases`、`/api/bases`、`/api/approvals`、`/api/notifications`、`/api/search` | 返回当前用户可见和可操作内容，不夹带后台治理字段；项目产品只使用 canonical `project_space`/`work_item` 合同，空间类型配置只对空间 owner/admin 开放，成员摘要只返回 active 展示语义 |
+| 用户协作 | `/api/workspace`、`/api/conversations`、`/api/project-spaces`、`/api/knowledge-bases`、`/api/bases`、`/api/approvals`、`/api/notifications`、`/api/search` | 返回当前用户可见和可操作内容，不夹带后台治理字段；项目产品只使用 canonical `project_space`/`work_item` 合同，空间类型配置只对空间 owner/admin 开放，成员摘要只返回 active 展示语义和最小布尔 `configurationReady`，该布尔不授权 |
 | Legacy 定位兼容 | `/api/compat/work-items/legacy/issues/{issueId}/location`、`/api/project-spaces/legacy-resolve/{legacyProjectId}` | 只在重新鉴权后返回站内 canonical 相对位置或统一不可用状态，不返回旧 Project/Issue DTO、列表、搜索、写入口或产品事实 |
 | 管理治理 | `/api/admin/*` | 返回组织、权限、风险、审计、统计和治理动作，必须显式校验后台权限 |
 | 共享平台 | `/api/platform`、`/api/resource-permissions`、`/api/files` | 只提供对象摘要、权限原语和文件能力，不决定页面信息架构 |
@@ -644,7 +644,7 @@ S16-M1-M4 已交付 V118-V121 日历/例外/显式估分、实际工时/不可�
 
 ## S20 归档与 S21 当前执行边界
 
-- S21-M1 至 M7 已完成。Program revision 50 保留 9 个 Milestone、108 个 Task；当前停在 `PROJECT-PLATFORM-S21-M8` 真人试用准备点，尚未执行任何 M8 真人任务。
+- S21-M1 至 M7 已完成。Program revision 51 已依次关闭真实管理者配置走查和概览工作入口体验走查两次重开的 S21-M7-T10 至 T12，并以 fresh 定向、构建、隔离 smoke 和 Chrome 研发需求闭环恢复 Engineering Go；M8 仅激活真人试用准备点，尚未执行任何真人任务。
 - M4-M7 已交付信息架构合同、角色化简洁模式、渐进引导以及兼容/安全/可观测复验。当前 Flyway 最新 schema 为 V141；M8/M9 仍无真人结论、产品 Go、生产切流批准或归档结论。
 - V088/V089 migration map、batch、unit、cutover、shadow、provenance 与 verification 仅保留为历史/恢复兼容证据。S21-M2 已退出 `/projects`、旧 Issue 产品 DTO/API/页面/搜索/写路径和活动 `project`/`issue` 注册，后续 rollout、kill switch 或恢复动作均不得把它们重新变成活跃产品。
 
@@ -701,8 +701,13 @@ S16-M1-M4 已交付 V118-V121 日历/例外/显式估分、实际工时/不可�
 - `GET /api/project-spaces/{spaceId}/experience-rollout` 由服务端合并 workspace/space/user include/exclude 与稳定分桶；只有 fresh 且显式 `enabled` 才启用增强呈现。baseline、kill、unknown、TTL 过期和读取失败全部回到 canonical project-space baseline。生产安全默认配置为 rollout 关闭、kill switch 开启、0 basis points、telemetry 关闭和 0 sampling，开关从不缓存或扩大 capability，也绝不恢复已退出的 Project/Issue 产品。
 - `POST /api/project-space-experience/telemetry` 只接受 schema v1 的严格枚举 allowlist 和最多 20 条批量，事件不携带 user/workspace/space/object ID、URL query/hash、标题、正文、字段值、文件名、成员、角色或个人评分。浏览器只执行 opt-out/offline/allowlist/batch gate，服务端按 event ID、policy version 与 salt 做一次确定性采样；观测失败不阻塞产品。
 - members、onboarding、WorkItem 配置、CrossSpace、Scenario 和 Metric 等可选 surface 已改为 `React.lazy`/`Suspense` 首次挂载加载；隐藏面板不预取，rollout cache 只在 fresh TTL 内复用，身份边界变化立即失效，route chunk 继续受 500 KiB 预算约束。
-- M7 使用真实 API、随机身份和私有空间的隔离浏览器证据，不用网络 mock，覆盖六身份、canonical/legacy 路由、缓存迁移、rollout/kill、低敏遥测、离线、1440/1366/820、S20 四场景业务事实不丢及 finally 清理。P0/P1 清零和可恢复环境只形成进入 M8 准备的 Engineering Go；该结论不是生产批准、产品 Go 或真人试用证据。
+- revision 51 的同一修复循环已关闭两个工程阻断：legacy partial v1 首次完整发布不再被不存在的 compatibility 结果死锁，完整 published baseline 仍失败关闭；模板安装/升级通过 `WorkItemConfigurationAuthorStateHydrator` 水合 live 字段、选项、布局节点和策略，再按永久 field/option/layout key 以 author-state→draft→installation 固定锁顺序提交，最终 installation 更新同时校验上游版本和 aggregate version。重复 requestId 返回已持久化 draft 聚合，避免陈旧回执；空模板布局片段不破坏既有作者态，disabled 布局和 identity/version 冲突稳定失败。
+- Web 工作流动作在 mutation pending 时禁用，避免同一 expected version 连击；状态流编辑器以稳定 `draft.id` identity 保持当前 Tab 与 dirty 本地输入。dirty 会上报父层并禁用校验、发布、放弃及其他配置写入口；保存期间冻结输入。服务端 stateFlow 基线改变时显示显式冲突并保留本地内容，只有用户放弃本地修改后才同步远端状态；仅其他聚合片段改变时可安全重基。后端定向 10/10、前端 helper 4/4、lint/build 与 real-isolated smoke 1/1 通过。
+- 第二轮重开把公开 `GET /api/project-spaces/{spaceId}/work-item-types` 摘要的 `configurationReady` 绑定到与创建表单相同的 `PublishedSnapshotAdapter.requireComplete` 门禁；一次批量读取当前 published versions 后逐版本 canonicalize/hash 校验，避免逐类型数据库 N+1。缺失、不完整、不支持或完整性失败一律投影为 `false`，但不向普通成员暴露 schema、version、hash 或失败原因。
+- 概览入口以“配置就绪”而非权限承诺表达 readiness；未就绪类型向 manager 提供配置深链、向其他成员提供最小说明。工作项筛选保留历史浏览但标注待配置；拆分子项复用标准类型 query key，仅对配置就绪且当前事项可编辑的 active 空间开放。创建弹窗对陈旧缓存/旧深链的 `unsupported_snapshot_schema` 提供中文提示，发布后清除旧 create-form cache，OK、Enter 与 mutation 函数共享同一就绪/错误/加载/在线门禁。
+- readiness API 集成 9/9、adapter batch 单测 6/6、Web lint/build 与 real-isolated“待配置→管理员配置→发布→配置就绪→需求上线关单”1/1 通过；该链路不修改长期环境数据，也不把维护者/自动化证据描述为真人采用结论。
+- Chrome 真实研发团队项目空间已发布 requirement v2，并创建 `REQUIREMENT-1`（`25c7a28a-c066-4967-8ecc-e1dcb1d1bbd5`，标题“研发需求链路验收：工作台个性化配置上线”），按 cancel→restore→start_progress→submit_test→test_failed→submit_test→test_passed→release→complete 推进，最终为 `done`/`#10`。这是维护者工程复验，不是 M8 真人参与或人工采用结论。
 
 ## S21-M8 真人试用准备边界
 
-- 当前只允许重新确认 trialRun、participant、consent、任务、观察、原始反馈、finding、清理与恢复合同并准备隔离环境。M8 尚未执行，AI、维护者、模拟账号和自动化浏览器都不能代签研发、市场、HR、交付参与者或真实管理者的操作与结论。
+- 当前恢复到 M8 真人试用准备点。M8 尚未执行，AI、维护者、模拟账号和自动化浏览器都不能代签研发、市场、HR、交付参与者或真实管理者的操作与结论；revision 51 浏览器链路仅作为修复后的工程复验。

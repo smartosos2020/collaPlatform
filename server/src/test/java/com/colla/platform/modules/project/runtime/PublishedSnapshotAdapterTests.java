@@ -5,6 +5,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.colla.platform.modules.project.application.WorkItemConfigurationSnapshotCanonicalizer;
@@ -12,6 +14,7 @@ import com.colla.platform.modules.project.domain.WorkItemConfigurationModels.Pub
 import com.colla.platform.modules.project.domain.WorkItemConfigurationModels.WorkItemConfigurationException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -165,6 +168,63 @@ class PublishedSnapshotAdapterTests {
         assertTrue(result.hasNodeFlowDefinition());
         assertEquals("available", result.nodeFlowAvailability());
         assertFalse(result.hasStateFlow());
+    }
+
+    @Test
+    void resolvesReadinessWithOneBatchReadAndFailsClosedPerBinding() throws Exception {
+        var repository = mock(PublishedSnapshotReader.class);
+        var canonicalizer = new WorkItemConfigurationSnapshotCanonicalizer(objectMapper);
+        var readySnapshot = objectMapper.readTree("""
+            {"snapshotSchemaVersion":1,"typeDefinition":{"typeKey":"task"},"fields":[],"layouts":[]}
+            """);
+        var readyCanonical = canonicalizer.canonicalize(readySnapshot);
+        var legacySnapshot = objectMapper.readTree("{\"typeKey\":\"bug\"}");
+        UUID workspaceId = UUID.randomUUID();
+        UUID spaceId = UUID.randomUUID();
+        UUID readyTypeId = UUID.randomUUID();
+        UUID readyVersionId = UUID.randomUUID();
+        UUID legacyTypeId = UUID.randomUUID();
+        UUID legacyVersionId = UUID.randomUUID();
+        UUID missingTypeId = UUID.randomUUID();
+        UUID missingVersionId = UUID.randomUUID();
+        List<UUID> versionIds = List.of(readyVersionId, legacyVersionId, missingVersionId);
+        when(repository.findPublishedSnapshots(workspaceId, spaceId, versionIds))
+            .thenReturn(List.of(
+                version(
+                    workspaceId,
+                    spaceId,
+                    readyTypeId,
+                    readyVersionId,
+                    1,
+                    readyCanonical.configHash(),
+                    readySnapshot
+                ),
+                version(
+                    workspaceId,
+                    spaceId,
+                    legacyTypeId,
+                    legacyVersionId,
+                    0,
+                    "a".repeat(64),
+                    legacySnapshot
+                )
+            ));
+
+        var readiness = new PublishedSnapshotAdapter(repository, canonicalizer)
+            .completeReadiness(
+                workspaceId,
+                spaceId,
+                List.of(
+                    new PublishedSnapshotAdapter.SnapshotBinding(readyTypeId, readyVersionId),
+                    new PublishedSnapshotAdapter.SnapshotBinding(legacyTypeId, legacyVersionId),
+                    new PublishedSnapshotAdapter.SnapshotBinding(missingTypeId, missingVersionId)
+                )
+            );
+
+        assertTrue(readiness.get(readyTypeId));
+        assertFalse(readiness.get(legacyTypeId));
+        assertFalse(readiness.get(missingTypeId));
+        verify(repository, times(1)).findPublishedSnapshots(workspaceId, spaceId, versionIds);
     }
 
     private PublishedConfigurationVersion version(
