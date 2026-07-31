@@ -1,5 +1,6 @@
 import {
   AppstoreOutlined,
+  CloudUploadOutlined,
   EyeOutlined,
   FileDoneOutlined,
   LockOutlined,
@@ -8,6 +9,7 @@ import {
   PlusOutlined,
   ProjectOutlined,
   ReloadOutlined,
+  SafetyCertificateOutlined,
   SettingOutlined,
   TagsOutlined,
   TeamOutlined,
@@ -59,6 +61,9 @@ import {
 } from '../api/projectSpacesApi'
 import { ProjectSpaceSecondaryTabs } from '../components/ProjectSpaceSecondaryTabs'
 import {
+  ProjectSpaceTypeScopedConfigurationEntries,
+} from '../components/ProjectSpaceTypeScopedConfigurationEntries'
+import {
   listProjectSpacePersonalActivities,
   listProjectSpacePersonalWork,
 } from '../api/projectSpacePersonalWorkApi'
@@ -90,6 +95,7 @@ import {
   projectSpaceLocationWithContext,
   resolveCanonicalProjectSpaceLocation,
 } from '../projectSpaceRouteContract'
+import { projectSpaceConfigurationLocation } from '../projectSpaceConfigurationNavigation'
 import { canonicalProjectSpaceSurfaceLocation } from '../projectSpaceSurfaceContract'
 import {
   projectSpaceExperienceFreshness,
@@ -1532,13 +1538,44 @@ function ProjectSpaceSettingsPanel({
                 (group) => group.key === 'work-model',
               )?.description}
             </Typography.Paragraph>
-            <Space wrap>
-              <Button icon={<TagsOutlined />} onClick={() => navigate(
-                `/project-spaces/${space.id}/types`,
-              )}>任务模板</Button>
-              <Button icon={<LayoutOutlined />} onClick={() => navigate(
-                `/project-spaces/${space.id}/types`,
-              )}>字段、表单与页面</Button>
+            <Space direction="vertical" size={10} style={{ width: '100%' }}>
+              <Space wrap>
+                <Button
+                  icon={<TagsOutlined />}
+                  onClick={() => {
+                    const target = projectSpaceConfigurationLocation({
+                      spaceId: space.id,
+                      destination: 'type-catalog',
+                    })
+                    if (target) navigate(target)
+                  }}
+                >
+                  任务模板
+                </Button>
+              </Space>
+              <Typography.Text type="secondary">
+                字段、表单与页面及发布配置都属于具体任务模板；存在多个模板时请先明确选择。
+              </Typography.Text>
+              <ProjectSpaceTypeScopedConfigurationEntries
+                spaceId={space.id}
+                actions={[
+                  {
+                    destination: 'fields',
+                    label: '字段',
+                    icon: <SettingOutlined />,
+                  },
+                  {
+                    destination: 'layouts',
+                    label: '表单与页面',
+                    icon: <LayoutOutlined />,
+                  },
+                  {
+                    destination: 'publication',
+                    label: '发布配置',
+                    icon: <CloudUploadOutlined />,
+                  },
+                ]}
+              />
             </Space>
           </Card>
         ),
@@ -1549,9 +1586,19 @@ function ProjectSpaceSettingsPanel({
                 (group) => group.key === 'flow-access',
               )?.description}
             </Typography.Paragraph>
-            <Button onClick={() => navigate(`/project-spaces/${space.id}/types`)}>
-              进入任务模板的流程与权限配置
-            </Button>
+            <Typography.Paragraph type="secondary">
+              流程与权限属于具体任务模板；存在多个模板时请先明确选择。
+            </Typography.Paragraph>
+            <ProjectSpaceTypeScopedConfigurationEntries
+              spaceId={space.id}
+              actions={[
+                {
+                  destination: 'flow-access',
+                  label: '进入任务模板的流程与权限配置',
+                  icon: <SafetyCertificateOutlined />,
+                },
+              ]}
+            />
           </Card>
         ),
         'automation-collaboration': (

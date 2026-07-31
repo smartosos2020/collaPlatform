@@ -6565,6 +6565,29 @@ body {
   padding-left: 45px;
 }
 
+.work-item-flow-access-section {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 10px;
+  scroll-margin-top: 20px;
+  border-radius: 8px;
+}
+
+.work-item-flow-access-section:focus-visible {
+  outline: 2px solid #6d4cff;
+  outline-offset: 4px;
+}
+
+.work-item-flow-access-heading {
+  padding: 8px 10px 0;
+  border-top: 1px solid #e4e8f2;
+}
+
+.work-item-flow-access-heading .ant-typography {
+  margin-bottom: 4px;
+}
+
 .work-item-publication-block,
 .work-item-state-flow-editor,
 .work-item-state-backfill-panel {

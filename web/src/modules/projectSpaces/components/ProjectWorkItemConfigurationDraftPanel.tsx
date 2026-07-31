@@ -11,7 +11,8 @@ import {
 } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Alert, App as AntdApp, Button, Divider, List, Skeleton, Space, Tag, Tooltip, Typography } from 'antd'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 
 import {
   abandonWorkItemConfigurationDraft,
@@ -53,6 +54,8 @@ export function ProjectWorkItemConfigurationDraftPanel({
 }) {
   const { message, modal } = AntdApp.useApp()
   const queryClient = useQueryClient()
+  const location = useLocation()
+  const flowAccessRef = useRef<HTMLElement>(null)
   const [dirtyStateFlowDraftId, setDirtyStateFlowDraftId] = useState<string | null>(null)
   const queryKey = workItemConfigurationDraftKeys.detail(spaceId, typeId)
   const draftQuery = useQuery({
@@ -92,6 +95,15 @@ export function ProjectWorkItemConfigurationDraftPanel({
     retry: false,
     refetchOnWindowFocus: false,
   })
+
+  useEffect(() => {
+    if (location.hash !== '#flow-access' || !draftQuery.data?.id) return
+    const frame = window.requestAnimationFrame(() => {
+      flowAccessRef.current?.scrollIntoView({ block: 'start' })
+      flowAccessRef.current?.focus({ preventScroll: true })
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [draftQuery.data?.id, location.hash])
 
   const updateCachedDraft = (draft: WorkItemConfigurationDraft) => {
     queryClient.setQueryData(queryKey, draft)
@@ -313,58 +325,74 @@ export function ProjectWorkItemConfigurationDraftPanel({
           description="请先保存或放弃状态流的本地修改；在此之前，校验、发布、放弃草稿、模板操作和其他配置编辑均保持禁用，避免发布旧快照。"
         />
       ) : null}
-      <ProjectWorkItemPermissionPolicyEditor
-        key={`permissions:${draft.id}:${draft.aggregateVersion}`}
-        spaceId={spaceId}
-        typeId={typeId}
-        readOnly={readOnly || stateFlowDirty || draft.status === 'abandoned'}
-        draft={draft}
-        onDraftSaved={updateCachedDraft}
-      />
-      <ProjectWorkItemRelationDefinitionsEditor
-        key={`relations:${draft.id}:${draft.aggregateVersion}`}
-        spaceId={spaceId}
-        typeId={typeId}
-        readOnly={readOnly || stateFlowDirty || draft.status === 'abandoned'}
-        draft={draft}
-        onDraftSaved={updateCachedDraft}
-      />
-      {showNodeFlowEditor ? (
-        <>
-          <ProjectWorkItemNodeFlowDesigner
-            key={`${draft.id}:${draft.aggregateVersion}`}
-            spaceId={spaceId}
-            typeId={typeId}
-            readOnly={readOnly || stateFlowDirty || draft.status === 'abandoned'}
-            draft={draft}
-            onDraftSaved={updateCachedDraft}
-          />
-          <ProjectWorkItemNodeBackfillPanel
-            spaceId={spaceId}
-            typeId={typeId}
-            currentVersion={currentVersion}
-            readOnly={readOnly}
-          />
-        </>
-      ) : (
-        <>
-          <ProjectWorkItemStateFlowEditor
-            key={draft.id}
-            spaceId={spaceId}
-            typeId={typeId}
-            readOnly={readOnly || draft.status === 'abandoned'}
-            draft={draft}
-            onDraftSaved={updateCachedDraft}
-            onDirtyChange={(dirty) => setDirtyStateFlowDraftId(dirty ? draft.id : null)}
-          />
-          <ProjectWorkItemStateBackfillPanel
-            spaceId={spaceId}
-            typeId={typeId}
-            currentVersion={currentVersion}
-            readOnly={readOnly}
-          />
-        </>
-      )}
+      <section
+        id="flow-access"
+        ref={flowAccessRef}
+        className="work-item-flow-access-section"
+        tabIndex={-1}
+        aria-labelledby="work-item-flow-access-heading"
+      >
+        <div className="work-item-flow-access-heading">
+          <Typography.Title id="work-item-flow-access-heading" level={4}>
+            流程与权限
+          </Typography.Title>
+          <Typography.Paragraph type="secondary">
+            配置数据权限、关系、状态流程及审批与协作流程。变更写入当前任务模板草稿，发布前不会影响成员运行时。
+          </Typography.Paragraph>
+        </div>
+        <ProjectWorkItemPermissionPolicyEditor
+          key={`permissions:${draft.id}:${draft.aggregateVersion}`}
+          spaceId={spaceId}
+          typeId={typeId}
+          readOnly={readOnly || stateFlowDirty || draft.status === 'abandoned'}
+          draft={draft}
+          onDraftSaved={updateCachedDraft}
+        />
+        <ProjectWorkItemRelationDefinitionsEditor
+          key={`relations:${draft.id}:${draft.aggregateVersion}`}
+          spaceId={spaceId}
+          typeId={typeId}
+          readOnly={readOnly || stateFlowDirty || draft.status === 'abandoned'}
+          draft={draft}
+          onDraftSaved={updateCachedDraft}
+        />
+        {showNodeFlowEditor ? (
+          <>
+            <ProjectWorkItemNodeFlowDesigner
+              key={`${draft.id}:${draft.aggregateVersion}`}
+              spaceId={spaceId}
+              typeId={typeId}
+              readOnly={readOnly || stateFlowDirty || draft.status === 'abandoned'}
+              draft={draft}
+              onDraftSaved={updateCachedDraft}
+            />
+            <ProjectWorkItemNodeBackfillPanel
+              spaceId={spaceId}
+              typeId={typeId}
+              currentVersion={currentVersion}
+              readOnly={readOnly}
+            />
+          </>
+        ) : (
+          <>
+            <ProjectWorkItemStateFlowEditor
+              key={draft.id}
+              spaceId={spaceId}
+              typeId={typeId}
+              readOnly={readOnly || draft.status === 'abandoned'}
+              draft={draft}
+              onDraftSaved={updateCachedDraft}
+              onDirtyChange={(dirty) => setDirtyStateFlowDraftId(dirty ? draft.id : null)}
+            />
+            <ProjectWorkItemStateBackfillPanel
+              spaceId={spaceId}
+              typeId={typeId}
+              currentVersion={currentVersion}
+              readOnly={readOnly}
+            />
+          </>
+        )}
+      </section>
       <ProjectWorkItemConfigurationTemplatePanel
         spaceId={spaceId}
         typeId={typeId}

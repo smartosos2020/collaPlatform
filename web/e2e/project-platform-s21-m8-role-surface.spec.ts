@@ -397,6 +397,116 @@ test.describe('PROJECT-PLATFORM-S21-M8 role-layered project space', () => {
         { exact: true },
       )).toBeVisible()
 
+      const configurationDestinations: string[] = []
+      const openSettingsGroup = async (group: '工作模型' | '流程与权限') => {
+        await ownerBrowser.page.getByRole('navigation', { name: '空间导航' })
+          .getByRole('button', { name: '设置', exact: true })
+          .click()
+        await ownerBrowser.page.getByRole('tab', { name: group, exact: true }).click()
+        await expect(ownerBrowser.page.getByRole('tabpanel', {
+          name: group,
+          exact: true,
+        })).toBeVisible()
+      }
+      const choosePublishedType = async (dialogName: string) => {
+        const dialog = ownerBrowser.page.getByRole('dialog', {
+          name: dialogName,
+          exact: true,
+        })
+        await expect(dialog).toBeVisible()
+        await dialog.getByRole('button', {
+          name: `选择任务模板：${ownerProjectType.name}`,
+          exact: true,
+        }).click()
+      }
+
+      await openSettingsGroup('工作模型')
+      await ownerBrowser.page.getByRole('tabpanel', {
+        name: '工作模型',
+        exact: true,
+      }).getByRole('button', { name: /任务模板$/ }).click()
+      await expect(ownerBrowser.page.getByRole('tab', {
+        name: '任务模板',
+        exact: true,
+      })).toHaveAttribute('aria-selected', 'true')
+      const typeCatalogLocation = new URL(ownerBrowser.page.url())
+      expect(typeCatalogLocation.searchParams.get('source')).toBe('settings-work-model')
+      expect(typeCatalogLocation.searchParams.get('panel')).toBe('type-catalog')
+      configurationDestinations.push(`${typeCatalogLocation.pathname}?type-catalog`)
+
+      await openSettingsGroup('工作模型')
+      await ownerBrowser.page.getByRole('tabpanel', {
+        name: '工作模型',
+        exact: true,
+      }).getByRole('button', { name: /字段$/ }).click()
+      await choosePublishedType('选择任务模板 · 字段')
+      await expect(ownerBrowser.page.getByTestId('work-item-fields-panel')).toBeVisible()
+      const fieldsLocation = new URL(ownerBrowser.page.url())
+      expect(fieldsLocation.pathname).toBe(
+        `/project-spaces/${spaceId}/types/${published.typeId}/fields`,
+      )
+      expect(fieldsLocation.searchParams.get('source')).toBe('settings-work-model')
+      expect(fieldsLocation.searchParams.get('panel')).toBe('field-catalog')
+      configurationDestinations.push(fieldsLocation.pathname)
+
+      await openSettingsGroup('工作模型')
+      await ownerBrowser.page.getByRole('tabpanel', {
+        name: '工作模型',
+        exact: true,
+      }).getByRole('button', { name: /表单与页面$/ }).click()
+      await choosePublishedType('选择任务模板 · 表单与页面')
+      await expect(ownerBrowser.page.getByTestId('work-item-layouts-panel')).toBeVisible()
+      const layoutsLocation = new URL(ownerBrowser.page.url())
+      expect(layoutsLocation.pathname).toBe(
+        `/project-spaces/${spaceId}/types/${published.typeId}/layouts`,
+      )
+      expect(layoutsLocation.searchParams.get('source')).toBe('settings-work-model')
+      expect(layoutsLocation.searchParams.get('panel')).toBe('layout-editor')
+      configurationDestinations.push(layoutsLocation.pathname)
+
+      await openSettingsGroup('流程与权限')
+      await ownerBrowser.page.getByRole('tabpanel', {
+        name: '流程与权限',
+        exact: true,
+      }).getByRole('button', {
+        name: /进入任务模板的流程与权限配置$/,
+      }).click()
+      await choosePublishedType('选择任务模板 · 进入任务模板的流程与权限配置')
+      const flowAccessRegion = ownerBrowser.page.getByRole('region', {
+        name: '流程与权限',
+        exact: true,
+      })
+      await expect(flowAccessRegion).toBeVisible()
+      await expect(flowAccessRegion).toBeFocused()
+      await expect(flowAccessRegion.getByText('数据权限策略', { exact: true })).toBeVisible()
+      const flowEditor = flowAccessRegion.locator(
+        '[data-testid="work-item-state-flow-editor"], '
+        + '[data-testid="work-item-node-flow-designer"]',
+      )
+      await expect(flowEditor).toHaveCount(1)
+      await expect(flowEditor).toBeVisible()
+      await expect(ownerBrowser.page.getByRole('tab', {
+        name: '发布配置',
+        exact: true,
+      })).toHaveAttribute('aria-selected', 'true')
+      const flowAccessLocation = new URL(ownerBrowser.page.url())
+      expect(flowAccessLocation.pathname).toBe(
+        `/project-spaces/${spaceId}/types/${published.typeId}`,
+      )
+      expect(flowAccessLocation.searchParams.get('source')).toBe('settings-flow-access')
+      expect(flowAccessLocation.searchParams.get('panel')).toBe('configuration-draft')
+      expect(flowAccessLocation.hash).toBe('#flow-access')
+      configurationDestinations.push(`${flowAccessLocation.pathname}#flow-access`)
+      expect(new Set(configurationDestinations).size).toBe(4)
+
+      await ownerBrowser.page.getByRole('navigation', { name: '空间导航' })
+        .getByRole('button', { name: '设置', exact: true })
+        .click()
+      await expect(ownerBrowser.page.getByRole('tab', {
+        name: '管理首页',
+        exact: true,
+      })).toHaveAttribute('aria-selected', 'true')
+
       const previewContentRequests: string[] = []
       const requestListener = (browserRequest: { url(): string }) => {
         const url = browserRequest.url()
