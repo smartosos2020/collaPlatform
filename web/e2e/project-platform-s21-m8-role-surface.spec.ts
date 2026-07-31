@@ -335,7 +335,9 @@ test.describe('PROJECT-PLATFORM-S21-M8 role-layered project space', () => {
       const ownerBrowser = await openSurface(browser, owner)
       surfaces.push(ownerBrowser)
       await ownerBrowser.page.setViewportSize({ width: 1440, height: 900 })
-      await ownerBrowser.page.goto(`/project-spaces/${spaceId}`)
+      await ownerBrowser.page.goto(
+        `/project-spaces/${spaceId}?source=m8-navigation-regression`,
+      )
       await dismissAutomaticOnboarding(ownerBrowser.page, spaceId)
       await expectPrimaryNavigation(
         ownerBrowser.page,
@@ -350,6 +352,34 @@ test.describe('PROJECT-PLATFORM-S21-M8 role-layered project space', () => {
       await expect(ownerBrowser.page.getByTestId(
         'project-space-task-zone-space-management',
       )).toBeVisible()
+
+      await ownerBrowser.page.getByTestId('project-space-overview-secondary-tabs')
+        .getByRole('tab', { name: '空间动态', exact: true })
+        .click()
+      await expect(ownerBrowser.page).toHaveURL(/panel=activity/)
+      const ownerNavigation = ownerBrowser.page.getByRole('navigation', {
+        name: '空间导航',
+      })
+      await ownerNavigation.getByRole('button', {
+        name: '工作项',
+        exact: true,
+      }).click()
+      await expect(ownerBrowser.page.getByTestId(
+        'project-work-items-secondary-tabs',
+      )).toBeVisible()
+      await expect(ownerNavigation.getByRole('button', {
+        name: '工作项',
+        exact: true,
+      })).toHaveAttribute('aria-current', 'page')
+      await ownerBrowser.page.waitForTimeout(300)
+      const workItemsLocation = new URL(ownerBrowser.page.url())
+      expect(workItemsLocation.pathname).toBe(
+        `/project-spaces/${spaceId}/work-items`,
+      )
+      expect(workItemsLocation.searchParams.get('source')).toBe(
+        'm8-navigation-regression',
+      )
+      expect(workItemsLocation.searchParams.has('panel')).toBe(false)
 
       await ownerBrowser.page.getByRole('navigation', { name: '空间导航' })
         .getByRole('button', { name: '设置', exact: true })

@@ -263,14 +263,16 @@ export function WorkItemWorkflowPanel({
     )
   }
   if (workflow.capability !== 'available') {
-    if (workflow.capability === 'not_configured') return null
+    const notConfigured = workflow.capability === 'not_configured'
     return (
       <Alert
         className="work-item-workflow-capability"
         type="warning"
         showIcon
-        message="状态流程尚未准备好"
-        description="请联系空间管理员完成初始化；准备完成前不会显示可执行动作。"
+        message={notConfigured ? '状态流程尚未配置' : '状态流程尚未准备好'}
+        description={notConfigured
+          ? '当前事项仍可查看；如需推进状态，请联系空间管理员完成流程配置。'
+          : '请联系空间管理员完成初始化；准备完成前不会显示可执行动作。'}
       />
     )
   }

@@ -84,6 +84,24 @@ export function projectSpaceLocationWithContext(
   )
 }
 
+/**
+ * Moving between primary product surfaces must not carry view-local state.
+ * `source` is the only query value that remains meaningful across surfaces;
+ * the bounded hash stays available for a caller-owned focus target.
+ */
+export function projectSpaceCrossSurfaceLocation(
+  targetPathname: string,
+  currentSearch: URLSearchParams | string,
+  currentHash = '',
+): string | null {
+  return projectSpaceLocationWithContext(
+    targetPathname,
+    currentSearch,
+    currentHash,
+    ['source'],
+  )
+}
+
 export function resolveCanonicalProjectSpaceLocation(
   target: string,
   currentSearch: URLSearchParams | string,

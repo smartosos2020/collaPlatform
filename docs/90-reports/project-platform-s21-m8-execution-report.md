@@ -26,6 +26,7 @@ PROJECT-PLATFORM-S21-M8-T01 到 PROJECT-PLATFORM-S21-M8-T12。
 ## Completed Items
 
 - 冻结三类任务分区与五条 canonical route；每个二级 panel 只有一个 owner，旧 panel 深链执行幂等兼容迁移。
+- 2026-07-31 真人试用回归修复主导航跨 surface 携带旧 `panel` 后被 canonical owner 拉回概览的问题；主导航与切换空间现在只保留跨 surface 的 `source` 与安全 hash。
 - 成员默认落到概览，只看到当前空间的待办、负责、参与、关注、可用工作项与协作动态；个人工作在服务端按 `spaceId` 先过滤再分页。
 - 类型摘要新增与运行时权限一致的 `availableActions`；未发布或运行时不完整的类型返回空动作并从成员入口失败关闭。
 - 详情首屏新增当前状态、负责人、截止时间和下一步动作，普通流程不显示 UUID、hash、schema 或内部英文状态 key。
@@ -39,7 +40,7 @@ PROJECT-PLATFORM-S21-M8-T01 到 PROJECT-PLATFORM-S21-M8-T12。
 | Task | Acceptance criterion | Implementation evidence | Automated evidence | Browser evidence | Status |
 | --- | --- | --- | --- | --- | --- |
 | PROJECT-PLATFORM-S21-M8-T01 | 路径、角色任务、重复入口、finding 与证据边界完整 | revision 52 路线图、信息架构合同与本报告对账；不使用审计图替代实现事实 | `planning check` 通过 revision 52、10 Milestone、120 Task；quick checkpoint PASS | Browser not required；该项以代码/文档静态审计关闭 | Done |
-| PROJECT-PLATFORM-S21-M8-T02 | 三类任务分区与五 route 兼容，深链上下文无损且无循环 | `projectSpaceInformationArchitecture.ts`、`projectSpaceSecondaryTabs.ts`、`projectSpaceSurfaceContract.ts` | 前端 route/IA/tab/surface 合同测试 35/35 | real isolated：旧 automation panel 迁移到 settings/automation-rules，逐项保留 source/typeId/create/savedViewId/hash | Done |
+| PROJECT-PLATFORM-S21-M8-T02 | 三类任务分区与五 route 兼容，深链上下文无损且无循环 | `projectSpaceInformationArchitecture.ts`、`projectSpaceSurfaceContract.ts`、`projectSpaceCrossSurfaceLocation` 与主导航/切空间接线 | route/IA/surface 定向合同 26/26，frontend lint/build PASS | real shared 页面五入口可切换；real isolated 从 `panel=activity` 点击工作项后稳定停留 canonical `/work-items`，保留 source、清除旧 panel，1/1 PASS | Done |
 | PROJECT-PLATFORM-S21-M8-T03 | 导航、按钮、类型与动作只取服务端 capability 和 readiness | `ProjectSpaceDtos` surface action assembler、`WorkItemTypeConfigurationService`、`projectSpaceMemberContent.ts` | 后端相关测试 31/31；custom-role capability fixture 通过 | real isolated：owner/admin/member/guest/outsider/enterprise-admin surface 与类型动作边界正确 | Done |
 | PROJECT-PLATFORM-S21-M8-T04 | 未就绪类型不可创建，成员两次内到事项，详情给出行动摘要且不泄漏技术标识 | `ProjectWorkItemsPanel.tsx`、`WorkItemWorkflowPanel.tsx`、类型 readiness/action 投影 | frontend lint/build PASS；类型权限集成 9/9 | real isolated：发布前动作为空，发布后 member 可创建、guest 只读；详情摘要与技术字段负断言通过 | Done |
 | PROJECT-PLATFORM-S21-M8-T05 | 成员首页只含当前参与工作、可用类型与动态，不进入配置后台 | scoped personal-work/activity controller、service、repository 与 `ProjectSpaceOverview` | PersonalWork/Collaboration/Snapshot 测试 15/15 | real isolated：成员仅见概览/工作项，当前 watcher 事项与深链可达，管理分区均未挂载 | Done |
@@ -54,16 +55,24 @@ PROJECT-PLATFORM-S21-M8-T01 到 PROJECT-PLATFORM-S21-M8-T12。
 ## Code Changes
 
 - Backend：个人工作与活动新增空间范围过滤；类型摘要新增精确 `view/create` 动作；新增 member/guest surface preview 与共享 surface capability assembler。
-- Frontend：重组项目空间主/次导航，新增成员工作首页、空间管理首页、成员视图预览、创建影响预览、详情行动摘要与 canonical panel 迁移合同。
-- Tests：新增 PersonalWork controller 集成测试、成员内容/surface ownership 单测与 S21-M8 真实隔离 E2E；更新 M7 角色入口回归。
+- Frontend：重组项目空间主/次导航，新增成员工作首页、空间管理首页、成员视图预览、创建影响预览、详情行动摘要与 canonical panel 迁移合同；回归修复新增跨 surface 查询隔离，并让未配置状态流程显示中文可行动提示而非空白面板。
+- Tests：新增 PersonalWork controller 集成测试、成员内容/surface ownership 单测与 S21-M8 真实隔离 E2E；更新 M7 角色入口回归；追加“空间动态 → 工作项”跨 surface 稳定切换断言。
 - Documentation：路线图将 M8-T01 至 T12 对账为 Done，并保留 M9 真人参与者、consent、隔离环境和主持人前置门禁。
+
+## 2026-07-31 Navigation Regression Reopen
+
+- 现象：进入项目空间显示概览后，点击工作项、项目管理、成员或设置，URL 短暂变化但内容立即回到概览。
+- 根因：旧导航函数默认保留全部查询参数；概览的 `panel=member-home/activity/collaboration-boundary` 被带入目标 route 后，M8 canonical surface owner 规则按该 panel 的唯一归属 replace 回概览。
+- 修复：新增 `projectSpaceCrossSurfaceLocation`，主导航和切换空间仅保留 `source` 与安全 hash；surface 内导航仍保留各自合法局部上下文，canonical owner 规则不放松。
+- 防回归：E2E 先真实点击“空间动态”生成 `panel=activity`，再点击“工作项”，验证目标内容、`aria-current`、稳定 pathname、source 保留和旧 panel 清除。
+- 复验补充：首次完整隔离运行在既有“状态流程”空白面板处失败；trace 证明接口 200 返回 `not_configured`，组件直接 `return null`。改为中文可行动 Alert 后，同一完整隔离用例 1/1 PASS，未降低断言。
 
 ## Validation
 
 - Backend tests: `mvn -Dtest=ProjectSpaceControllerIntegrationTests,ProjectSpaceDtosTests,PersonalWorkControllerIntegrationTests,PersonalWorkServiceTests,PersonalCollaborationServiceTests,PublishedSnapshotAdapterTests,WorkItemTypeConfigurationControllerIntegrationTests test`，31/31 PASS。
-- Frontend build: `pnpm web:lint` 与 `pnpm web:build` PASS；M8 IA/route/tab/member/surface/onboarding 合同测试 43/43 PASS。
-- Local quality gate: `pnpm work:finish -- --validation-profile stage ...` PASS，证据为 `.local-reports/quality-gate-20260731T075713.md`，包含 targeted backend、frontend lint/build、架构、安全、敏感数据与文档合同。
-- Browser smoke: work-cycle real isolated `project-platform-s21-m8-role-surface.spec.ts` 1/1 PASS（33.1s），证据为 `.local-reports/work-cycle-browser-20260731T075713.log`；截图为 `s21-m8-member-workspace-820.png` 与 `s21-m8-space-management.png`。
+- Frontend build: `pnpm --dir web lint` 与 `pnpm --dir web build` PASS；route/IA/surface 定向合同 26/26 PASS。
+- Local quality gate: 回归 `work:finish` stage PASS，fresh 证据为 `.local-reports/quality-gate-20260731T083410.md`；checkpoint `.local-reports/quality-gate-20260731T082955.md` 与原 M8 stage gate 继续保留。
+- Browser smoke: `work:finish` real isolated `project-platform-s21-m8-role-surface.spec.ts` 1/1 PASS（31.6s），证据为 `.local-reports/work-cycle-browser-20260731T083410.log`；共享真实页面额外验证概览、工作项、项目管理、成员、设置五入口均可稳定切换。
 
 ## Remaining Gaps
 

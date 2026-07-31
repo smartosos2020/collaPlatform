@@ -5,8 +5,8 @@ import {
   isCanonicalProjectSpacePath,
   legacyProjectSpaceLocation,
   patchProjectSpaceSearch,
+  projectSpaceCrossSurfaceLocation,
   projectSpaceListLocation,
-  projectSpaceLocationWithContext,
   resolveCanonicalProjectSpaceLocation,
   sanitizeProjectSpaceHash,
   sanitizeProjectSpaceSearch,
@@ -46,13 +46,13 @@ describe('project space query contract', () => {
 
   it('can preserve only cross-surface trace context', () => {
     assert.equal(
-      projectSpaceLocationWithContext(
+      projectSpaceCrossSurfaceLocation(
         '/project-spaces/space-1/settings',
-        '?source=m7&panel=project-plan&typeId=type-1',
+        '?source=m8&panel=project-plan&metricPanel=risks&metricConfig=metric-semantics'
+          + '&automationPanel=automation-rules&typeId=type-1&create=1&savedViewId=view-1',
         '#focus',
-        ['source'],
       ),
-      '/project-spaces/space-1/settings?source=m7#focus',
+      '/project-spaces/space-1/settings?source=m8#focus',
     )
   })
 

@@ -86,6 +86,7 @@ import {
 } from '../projectSpaceLocalCache'
 import {
   patchProjectSpaceSearch,
+  projectSpaceCrossSurfaceLocation,
   projectSpaceLocationWithContext,
   resolveCanonicalProjectSpaceLocation,
 } from '../projectSpaceRouteContract'
@@ -369,7 +370,7 @@ export function ProjectSpacesPage() {
     const target = spaces.find((space) => space.id === id)
     const targetPath = target ? defaultProjectSpacePath(target) : `/project-spaces/${id}`
     navigate(
-      projectSpaceLocationWithContext(
+      projectSpaceCrossSurfaceLocation(
         targetPath,
         location.search,
         location.hash,
@@ -399,8 +400,14 @@ export function ProjectSpacesPage() {
           target as ProjectSpacePrimaryView,
         )
       : `/project-spaces/${currentSpaceId}/${target}`
-    navigateProjectSpacePath(targetPath)
-  }, [currentSpaceId, navigateProjectSpacePath])
+    navigate(
+      projectSpaceCrossSurfaceLocation(
+        targetPath,
+        location.search,
+        location.hash,
+      ) ?? targetPath,
+    )
+  }, [currentSpaceId, location.hash, location.search, navigate])
   const selectType = useCallback((
     selectedId: string,
     options: Readonly<{ replace?: boolean }> = {},

@@ -258,3 +258,5 @@ revision 49 的 S21-M4/M5 均未启动、全部为 Pending。revision 50 因首�
 S20 已完成并归档；S21-M1 至 M7 已完成，当前 schema 为 V141。Program revision 51 的第二轮重开已让公开类型摘要与 `PublishedSnapshotAdapter.requireComplete` 使用同一配置就绪判断，并通过单次批量快照读取避免逐类型 N+1：概览“工作入口”区分“配置就绪/待发布配置”，管理者可直接进入配置，普通成员得到安全说明；工作项筛选、拆分子项与创建弹窗同步失败关闭，旧深链/陈旧缓存触发的 `unsupported_snapshot_schema` 只显示中文可行动提示，OK/Enter/提交函数共享同一就绪门禁。后端 readiness 集成 9/9、前端 lint/build、真实隔离“待配置→发布→配置就绪→上线关单”1/1 均通过，M7-T10 至 T12 再次 Done。
 
 Program revision 52 新增的 S21-M8 角色分层 UX 收敛已完成：三类任务分区与五条 canonical route 保持兼容，普通成员只看到服务端 capability、配置就绪与当前参与范围允许的内容，项目管理与空间管理分别收口，Owner/受权管理员可在不授权、不加载隐藏内容的前提下预览成员/访客入口。前后端合同、43 项前端单测、31 项后端测试、lint/build 与真实隔离 route-final 均通过，M8-T01 至 T12 已 Done，并给出仅限工程 UX 的 M9 Go。下一候选入口是 `PROJECT-PLATFORM-S21-M9-T01`；M9 仍为 Pending，只有 5 位真人参与者、知情同意、隔离环境和真人主持全部落实后方可启动，不得提前执行 M10、归档 S21 或激活 S22。
+
+2026-07-31 16:30 真人试用发现概览二级 `panel` 被主导航跨 surface 保留，触发 canonical owner 将 `/work-items` 等目标立即拉回概览；M8-T02 已按 Reopened 流程修复为跨主 surface/空间只保留 `source` 与安全 hash，并补充“空间动态 → 工作项”的真实点击回归。隔离复验同时发现未配置状态流程原先返回空白面板，已改为中文可行动提示；定向合同、lint/build、共享真实页面五入口与完整真实隔离 E2E fresh 通过后，M8-T02 恢复 Done，M8 恢复 Completed。
