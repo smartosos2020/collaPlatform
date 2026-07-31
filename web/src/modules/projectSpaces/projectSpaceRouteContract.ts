@@ -3,6 +3,7 @@ export const PROJECT_SPACE_QUERY_KEYS = [
   'panel',
   'metricPanel',
   'metricConfig',
+  'automationPanel',
   'typeId',
   'create',
   'savedViewId',

@@ -10,6 +10,7 @@ public interface PersonalWorkRepository {
     List<PersonalCandidate> listCandidates(
         UUID workspaceId,
         UUID userId,
+        UUID spaceId,
         Instant beforeUpdatedAt,
         UUID beforeWorkItemId,
         int limit

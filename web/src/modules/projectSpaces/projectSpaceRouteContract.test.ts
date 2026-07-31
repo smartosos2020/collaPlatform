@@ -24,13 +24,14 @@ describe('project space query contract', () => {
   it('patches only named keys and preserves the remaining navigation context', () => {
     const patched = patchProjectSpaceSearch(
       '?panel=work-item-collection&source=m7&typeId=type-1&savedViewId=view-1',
-      { create: '1', savedViewId: null },
+      { create: '1', savedViewId: null, automationPanel: 'automation-rules' },
     )
 
     assert.equal(patched.get('panel'), 'work-item-collection')
     assert.equal(patched.get('source'), 'm7')
     assert.equal(patched.get('typeId'), 'type-1')
     assert.equal(patched.get('create'), '1')
+    assert.equal(patched.get('automationPanel'), 'automation-rules')
     assert.equal(patched.has('savedViewId'), false)
   })
 

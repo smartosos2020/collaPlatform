@@ -38,20 +38,32 @@ public class PersonalWorkController {
 
     @GetMapping
     public PersonalWorkPage list(
+        @RequestParam(required = false) UUID spaceId,
         @RequestParam(required = false) String cursor,
         @RequestParam(defaultValue = "50") int limit,
         Authentication authentication
     ) {
-        return service.list((CurrentUser) authentication.getPrincipal(), cursor, limit);
+        return service.list(
+            (CurrentUser) authentication.getPrincipal(),
+            spaceId,
+            cursor,
+            limit
+        );
     }
 
     @GetMapping("/activities")
     public ActivityPage activities(
+        @RequestParam(required = false) UUID spaceId,
         @RequestParam(required = false) Long before,
         @RequestParam(defaultValue = "30") int limit,
         Authentication authentication
     ) {
-        return collaboration.activities(currentUser(authentication), before, limit);
+        return collaboration.activities(
+            currentUser(authentication),
+            spaceId,
+            before,
+            limit
+        );
     }
 
     @PostMapping("/activities:read")

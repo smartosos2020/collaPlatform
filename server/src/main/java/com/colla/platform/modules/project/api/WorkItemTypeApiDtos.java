@@ -46,7 +46,8 @@ final class WorkItemTypeApiDtos {
             summary.name(),
             summary.icon(),
             summary.sortOrder(),
-            summary.configurationReady()
+            summary.configurationReady(),
+            summary.availableActions()
         );
     }
 
@@ -92,7 +93,8 @@ final class WorkItemTypeApiDtos {
         String name,
         String icon,
         int sortOrder,
-        boolean configurationReady
+        boolean configurationReady,
+        List<String> availableActions
     ) {
     }
 

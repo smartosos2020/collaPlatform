@@ -13,7 +13,11 @@ import java.util.UUID;
  * hints and are never an authorization source.</p>
  */
 public interface PersonalCollaborationQuery {
-    ActivityPage activities(CurrentUser user, Long beforeSequence, int limit);
+    ActivityPage activities(CurrentUser user, UUID spaceId, Long beforeSequence, int limit);
+
+    default ActivityPage activities(CurrentUser user, Long beforeSequence, int limit) {
+        return activities(user, null, beforeSequence, limit);
+    }
 
     ReadState markActivitiesRead(CurrentUser user, long throughSequence);
 

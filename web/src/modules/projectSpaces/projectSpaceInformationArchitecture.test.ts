@@ -7,9 +7,12 @@ import {
   PROJECT_SPACE_PERSONA_TASK_MATRIX,
   PROJECT_SPACE_PRIMARY_NAVIGATION,
   PROJECT_SPACE_SCENARIO_PATHS,
+  PROJECT_SPACE_TASK_ZONES,
   PROJECT_SPACE_TERMINOLOGY,
   PROJECT_SPACE_VIEWPORT_CONTRACT,
   getVisibleProjectSpacePrimaryNavigation,
+  getVisibleProjectSpaceTaskZones,
+  projectSpacePreviewAccess,
   projectSpacePrimaryPath,
   resolveProjectSpaceRouteContext,
 } from './projectSpaceInformationArchitecture'
@@ -31,6 +34,58 @@ describe('project space primary information architecture', () => {
       PROJECT_SPACE_PRIMARY_NAVIGATION.map((item) => item.order),
       [10, 20, 30, 40, 50],
     )
+  })
+
+  it('groups the five canonical entries into three task zones', () => {
+    assert.deepEqual(
+      PROJECT_SPACE_TASK_ZONES.map((zone) => ({
+        key: zone.key,
+        primaryViews: zone.primaryViews,
+      })),
+      [
+        { key: 'member-workspace', primaryViews: ['overview', 'work-items'] },
+        { key: 'project-management', primaryViews: ['management'] },
+        { key: 'space-management', primaryViews: ['members', 'settings'] },
+      ],
+    )
+    const visibleZones = getVisibleProjectSpaceTaskZones({
+      member: true,
+      currentUserRole: 'admin',
+      status: 'active',
+      availableActions: ['view_overview', 'view_work_items', 'view_members', 'view_settings'],
+    })
+    assert.deepEqual(
+      visibleZones.map((zone) => [zone.key, zone.navigation.map((item) => item.key)]),
+      [
+        ['member-workspace', ['overview', 'work-items']],
+        ['space-management', ['members', 'settings']],
+      ],
+    )
+  })
+
+  it('keeps member preview presentational and can only reduce signed-in actions', () => {
+    const ownerAccess = {
+      member: true,
+      currentUserRole: 'owner',
+      status: 'active',
+      availableActions: [
+        'view_overview',
+        'view_work_items',
+        'view_project_management',
+        'view_members',
+        'view_settings',
+        'update_space',
+      ],
+    } as const
+    assert.deepEqual(
+      projectSpacePreviewAccess(ownerAccess, 'member').availableActions,
+      ['view_overview', 'view_work_items', 'view_project_management'],
+    )
+    assert.deepEqual(
+      projectSpacePreviewAccess(ownerAccess, 'guest').availableActions,
+      ['view_overview', 'view_work_items'],
+    )
+    assert.equal(projectSpacePreviewAccess(ownerAccess, 'member').currentUserRole, 'member')
   })
 
   it('uses current access facts instead of the display mode as navigation authority', () => {

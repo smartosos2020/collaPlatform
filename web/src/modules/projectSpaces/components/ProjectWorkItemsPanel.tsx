@@ -156,7 +156,7 @@ import { WorkItemLayoutRenderer, type WorkItemLayoutValues } from './WorkItemLay
 import { WorkItemNodeWorkflowPanel } from './WorkItemNodeWorkflowPanel'
 import { WorkItemRelationsPanel } from './WorkItemRelationsPanel'
 import { WorkItemPermissionsPanel } from './WorkItemPermissionsPanel'
-import { WorkItemWorkflowPanel } from './WorkItemWorkflowPanel'
+import { WorkItemActionSummary, WorkItemWorkflowPanel } from './WorkItemWorkflowPanel'
 import { errorMessage, formatTime } from '../projectSpaceView'
 import {
   createProjectPlan,
@@ -173,11 +173,11 @@ import { ResourcePlanningPanel } from './ResourcePlanningPanel'
 import { ResourceWorklogPanel } from './ResourceWorklogPanel'
 import { ResourceCapacityPanel } from './ResourceCapacityPanel'
 import { ResourceSchedulePanel } from './ResourceSchedulePanel'
-import { AutomationRulesPanel } from './AutomationRulesPanel'
-import { AutomationExecutionPanel } from './AutomationExecutionPanel'
-import { AutomationConnectorsPanel } from './AutomationConnectorsPanel'
-import { AutomationManagementPanel } from './AutomationManagementPanel'
 import { getProjectSpaceSecondaryTabs } from '../projectSpaceSecondaryTabs'
+import {
+  creatableProjectSpaceWorkItemTypes,
+  visibleProjectSpaceWorkItemTypes,
+} from '../projectSpaceMemberContent'
 import { patchProjectSpaceSearch } from '../projectSpaceRouteContract'
 
 export function ProjectWorkItemsPanel({
@@ -202,7 +202,7 @@ function ProjectWorkItemSecondaryTabs({
   surface: 'work-items' | 'management'
 }) {
   const [searchParams, setSearchParams] = useSearchParams()
-  const configuredTabs = getProjectSpaceSecondaryTabs('work-items')
+  const configuredTabs = getProjectSpaceSecondaryTabs(surface)
   const tabDefinitions = surface === 'management'
     ? configuredTabs.filter((tab) => (
         tab.key === 'project-detail'
@@ -210,9 +210,18 @@ function ProjectWorkItemSecondaryTabs({
       ))
     : configuredTabs
   const requestedPanel = searchParams.get('panel')
+  const firstTab = tabDefinitions.at(0)
+  if (!firstTab) {
+    return (
+      <Empty
+        image={Empty.PRESENTED_IMAGE_SIMPLE}
+        description="当前没有可用内容，请返回项目空间概览或联系空间管理员。"
+      />
+    )
+  }
   const activePanel = tabDefinitions.some(({ key }) => key === requestedPanel)
     ? requestedPanel!
-    : tabDefinitions[0].key
+    : firstTab.key
   const items = tabDefinitions.map((tab) => {
     if (tab.key !== activePanel) {
       return {
@@ -249,18 +258,6 @@ function ProjectWorkItemSecondaryTabs({
         break
       case 'project-delivery':
         children = <ProjectDeliveryPanel space={space} />
-        break
-      case 'automation-rules':
-        children = <AutomationRulesPanel space={space} />
-        break
-      case 'automation-execution':
-        children = <AutomationExecutionPanel space={space} />
-        break
-      case 'automation-connectors':
-        children = <AutomationConnectorsPanel space={space} />
-        break
-      case 'automation-management':
-        children = <AutomationManagementPanel space={space} />
         break
     }
     return {
@@ -354,7 +351,7 @@ function ProjectPlanPanel({ space }: { space: UserProjectSpace }) {
     onError: (error) => message.error(errorMessage(error, '项目计划操作失败，请刷新后重试')),
   })
   const current = detailQuery.data
-  const writable = space.status === 'active' && space.currentUserRole !== 'guest'
+  const writable = space.availableActions.includes('manage_project')
   const validCreate = name.trim()
     && startDate
     && endDate
@@ -538,7 +535,21 @@ function WorkItemCollection({ space }: { space: UserProjectSpace }) {
     queryKey: workItemTypeKeys.active(space.id),
     queryFn: () => listActiveWorkItemTypes(space.id),
   })
-  const selectedTypeId = selectedTypeOverride ?? typesQuery.data?.[0]?.id
+  const visibleTypes = useMemo(
+    () => visibleProjectSpaceWorkItemTypes(typesQuery.data),
+    [typesQuery.data],
+  )
+  const creatableTypes = useMemo(
+    () => creatableProjectSpaceWorkItemTypes(typesQuery.data),
+    [typesQuery.data],
+  )
+  const selectedTypeId = useMemo(() => (
+    selectedTypeOverride
+      ? visibleTypes.find((type) => type.id === selectedTypeOverride)?.id
+      : createOpen
+        ? creatableTypes[0]?.id
+        : visibleTypes[0]?.id
+  ), [creatableTypes, createOpen, selectedTypeOverride, visibleTypes])
   const preferenceQuery = useQuery({
     queryKey: workItemViewKeys.preference(space.id),
     queryFn: () => getWorkItemViewPreference(space.id),
@@ -606,7 +617,13 @@ function WorkItemCollection({ space }: { space: UserProjectSpace }) {
     cursor: null,
   }), [columns, selectedTypeId])
   const definition = savedDefinitionOverride ?? defaultDefinition
-  const selectedType = typesQuery.data?.find((type) => type.id === selectedTypeId)
+  const selectedType = useMemo(
+    () => visibleTypes.find((type) => type.id === selectedTypeId),
+    [selectedTypeId, visibleTypes],
+  )
+  const createUnavailable = createOpen
+    && typesQuery.isSuccess
+    && !selectedType?.availableActions.includes('create')
   const boardViewKey = `type-${selectedTypeId ?? 'none'}`
   const defaultBoardColumns = useMemo<WorkItemBoardColumn[]>(() => {
     if (selectedType?.typeKey === 'bug') {
@@ -1304,7 +1321,13 @@ function WorkItemCollection({ space }: { space: UserProjectSpace }) {
   })
 
   const openCreate = (typeId?: string) => {
-    const nextType = typeId ?? selectedTypeId ?? typesQuery.data?.[0]?.id
+    const nextType = creatableTypes.find((type) => type.id === typeId)?.id
+      ?? creatableTypes.find((type) => type.id === selectedTypeId)?.id
+      ?? creatableTypes[0]?.id
+    if (!nextType) {
+      message.warning('当前没有你可以创建的任务模板。')
+      return
+    }
     setSelectedTypeOverride(nextType)
     setCreateOpen(true)
     setSearchParams(
@@ -1315,13 +1338,32 @@ function WorkItemCollection({ space }: { space: UserProjectSpace }) {
       { replace: true },
     )
   }
+  const closeCreate = () => {
+    setCreateOpen(false)
+    setSearchParams(
+      (current) => patchProjectSpaceSearch(current, {
+        typeId: selectedTypeId ?? null,
+        create: null,
+      }),
+      { replace: true },
+    )
+  }
 
   return (
     <section className="project-work-items" data-testid="project-work-items">
+      {createUnavailable ? (
+        <Alert
+          type="warning"
+          showIcon
+          message="当前任务模板不可创建"
+          description="该入口可能已失效或你的权限已经变化；页面没有加载创建表单。"
+          action={<Button size="small" onClick={closeCreate}>返回工作项</Button>}
+        />
+      ) : null}
       <Card
         className="content-card"
         title={<Space><FileOutlined />工作项</Space>}
-        extra={space.status === 'active' && space.currentUserRole !== 'guest'
+        extra={space.status === 'active' && creatableTypes.length > 0
           ? <Button type="primary" icon={<PlusOutlined />} onClick={() => openCreate()}>新建工作项</Button>
           : null}
       >
@@ -1357,8 +1399,8 @@ function WorkItemCollection({ space }: { space: UserProjectSpace }) {
             value={selectedTypeId}
             placeholder="全部类型"
             loading={typesQuery.isLoading}
-            options={typesQuery.data?.map((type) => ({
-              label: type.configurationReady ? type.name : `${type.name} · 待发布配置`,
+            options={visibleTypes.map((type) => ({
+              label: type.name,
               value: type.id,
             }))}
             onChange={(value) => {
@@ -1637,7 +1679,7 @@ function WorkItemCollection({ space }: { space: UserProjectSpace }) {
         {!treeMode && !boardMode && !calendarMode && !ganttMode && !itemsQuery.isLoading
           && !itemsQuery.isError && itemsQuery.data?.rows.length === 0 ? (
           <Empty description="当前类型还没有工作项">
-            {space.status === 'active' && space.currentUserRole !== 'guest'
+            {space.status === 'active' && creatableTypes.length > 0
               ? <Button type="primary" onClick={() => openCreate()}>创建第一条工作项</Button>
               : null}
           </Empty>
@@ -2315,21 +2357,12 @@ function WorkItemCollection({ space }: { space: UserProjectSpace }) {
         key={selectedTypeId ?? 'no-type'}
         space={space}
         type={selectedType}
-        open={createOpen}
+        open={createOpen && !createUnavailable}
         canConfigure={space.availableActions.includes('view_settings')}
         onConfigure={() => selectedType && navigate(
           `/project-spaces/${space.id}/types/${selectedType.id}?panel=configuration-draft&source=work_items`,
         )}
-        onCancel={() => {
-          setCreateOpen(false)
-          setSearchParams(
-            (current) => patchProjectSpaceSearch(current, {
-              typeId: selectedTypeId ?? null,
-              create: null,
-            }),
-            { replace: true },
-          )
-        }}
+        onCancel={closeCreate}
       />
     </section>
   )
@@ -2363,7 +2396,10 @@ function CreateWorkItemModal({
   const formQuery = useQuery({
     queryKey: workItemKeys.createForm(space.id, typeId ?? ''),
     queryFn: () => getWorkItemCreateForm(space.id, typeId as string),
-    enabled: open && Boolean(typeId) && type?.configurationReady === true,
+    enabled: open
+      && Boolean(typeId)
+      && type?.configurationReady === true
+      && type.availableActions.includes('create'),
     retry: false,
   })
   const unsupportedConfiguration = formQuery.error instanceof ApiRequestError
@@ -2385,6 +2421,7 @@ function CreateWorkItemModal({
     online
     && typeId
     && type?.configurationReady
+    && type.availableActions.includes('create')
     && runtime
     && title.trim()
     && !formQuery.isError
@@ -2583,7 +2620,9 @@ function WorkItemDetail({ space, workItemId }: { space: UserProjectSpace; workIt
                 <Button type="text" aria-label="返回工作项列表" icon={<ArrowLeftOutlined />} onClick={() => navigate(`/project-spaces/${space.id}/work-items`)} />
                 <Tag color="purple">{item.typeName}</Tag>
                 <Typography.Text type="secondary">{item.displayKey}</Typography.Text>
-                <Tag color={item.status === 'active' ? 'green' : 'default'}>{item.status}</Tag>
+                <Tag color={item.status === 'active' ? 'green' : 'default'}>
+                  {item.status === 'active' ? '进行中' : '已归档'}
+                </Tag>
               </Space>
             )}
             extra={(
@@ -2608,6 +2647,15 @@ function WorkItemDetail({ space, workItemId }: { space: UserProjectSpace; workIt
               </Space>
             )}
           >
+            <WorkItemActionSummary
+              item={item}
+              onOpenWorkflow={() => {
+                setSearchParams(
+                  (current) => patchProjectSpaceSearch(current, { panel: 'workflow' }),
+                  { replace: true },
+                )
+              }}
+            />
             <Form layout="vertical">
               <Form.Item label="标题" htmlFor="work-item-detail-title" required>
                 <Input

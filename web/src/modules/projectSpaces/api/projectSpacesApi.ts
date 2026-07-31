@@ -30,6 +30,17 @@ export type ProjectSpaceExperiencePreference = {
   availableModes: Array<'simple' | 'advanced'>
 }
 
+export type ProjectSpaceSurfacePreview = {
+  schemaVersion: number
+  spaceId: string
+  targetRole: 'member' | 'guest'
+  availableActions: string[]
+  defaultPath: string
+  readOnly: boolean
+  contentIncluded: false
+  explanation: string
+}
+
 export type ProjectSpaceMember = {
   id: string
   spaceId: string
@@ -127,6 +138,16 @@ export function createProjectSpace(request: {
 
 export function getProjectSpace(spaceId: string) {
   return apiGet<UserProjectSpace>(`/project-spaces/${spaceId}`)
+}
+
+export function getProjectSpaceSurfacePreview(
+  spaceId: string,
+  targetRole: ProjectSpaceSurfacePreview['targetRole'],
+) {
+  const params = new URLSearchParams({ targetRole })
+  return apiGet<ProjectSpaceSurfacePreview>(
+    `/project-spaces/${spaceId}/surface-preview?${params}`,
+  )
 }
 
 export function getProjectSpaceExperiencePreference(spaceId: string) {

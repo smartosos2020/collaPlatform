@@ -225,8 +225,8 @@ test.describe('PROJECT-PLATFORM-S21-M7 migration and engineering readiness', () 
       expect(memberSpace.availableActions).toEqual(expect.arrayContaining([
         'view_overview',
         'view_work_items',
-        'view_project_management',
       ]))
+      expect(memberSpace.availableActions).not.toContain('view_project_management')
       expect(memberSpace.availableActions).not.toContain('view_settings')
       expect(guestSpace.availableActions).toEqual(expect.arrayContaining([
         'view_overview',
@@ -547,7 +547,7 @@ test.describe('PROJECT-PLATFORM-S21-M7 migration and engineering readiness', () 
       extraContexts.push(memberSurface.context)
       await expectPrimaryNavigation(
         memberSurface.page,
-        ['概览', '工作项', '项目管理'],
+        ['概览', '工作项'],
       )
       await expect(memberSurface.page.getByTestId('project-space-mode-switch')).toHaveCount(0)
       expect(memberSurface.requests.some(current =>

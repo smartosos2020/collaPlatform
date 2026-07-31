@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -58,7 +59,9 @@ class PersonalWorkServiceTests {
             Set.of("collaborator"),
             false
         );
-        when(repository.listCandidates(eq(WORKSPACE), eq(USER), any(), any(), anyInt()))
+        when(repository.listCandidates(
+            eq(WORKSPACE), eq(USER), isNull(), any(), any(), anyInt()
+        ))
             .thenReturn(List.of(first, second));
 
         JwtTokenProperties tokenProperties = new JwtTokenProperties();
@@ -88,10 +91,78 @@ class PersonalWorkServiceTests {
             .singleElement()
             .extracting(bucket -> bucket.items().getFirst().workItemId())
             .isEqualTo(first.item().id());
+        var personalItem = page.buckets().stream()
+            .filter(bucket -> bucket.bucket() == WorkBucket.responsible)
+            .findFirst()
+            .orElseThrow()
+            .items()
+            .getFirst();
+        assertThat(personalItem.availableActions()).isEqualTo(personalItem.capabilities());
         verify(repository).synchronizeProjection(eq(WORKSPACE), eq(USER), any(), eq(NOW));
 
         UUID otherUser = UUID.fromString("30000000-0000-0000-0000-000000000002");
         assertThatThrownBy(() -> service.list(user(otherUser), page.nextCursor(), 1))
+            .hasMessageContaining("cursor is invalid");
+        assertThatThrownBy(() -> service.list(user(USER), SPACE, page.nextCursor(), 1))
+            .hasMessageContaining("cursor is invalid");
+    }
+
+    @Test
+    void appliesSpaceScopeBeforeScanningAndBindsCursorToThatScope() {
+        PersonalWorkRepository repository = mock(PersonalWorkRepository.class);
+        ProjectSpaceRepository spaces = mock(ProjectSpaceRepository.class);
+        PublishedSnapshotAdapter snapshots = mock(PublishedSnapshotAdapter.class);
+        RuntimeConfiguration configuration = configuration();
+        when(snapshots.requireComplete(eq(WORKSPACE), eq(SPACE), any(), eq(VERSION)))
+            .thenReturn(configuration);
+        when(spaces.listVisible(WORKSPACE, USER)).thenReturn(List.of(space(USER)));
+
+        PersonalCandidate first = candidate(
+            UUID.fromString("50000000-0000-0000-0000-000000000002"),
+            NOW.minusSeconds(10),
+            Set.of("assignee"),
+            false
+        );
+        PersonalCandidate second = candidate(
+            UUID.fromString("50000000-0000-0000-0000-000000000001"),
+            NOW.minusSeconds(20),
+            Set.of("collaborator"),
+            false
+        );
+        when(repository.listCandidates(
+            eq(WORKSPACE), eq(USER), eq(SPACE), any(), any(), anyInt()
+        )).thenReturn(List.of(first, second));
+
+        JwtTokenProperties tokenProperties = new JwtTokenProperties();
+        tokenProperties.setAccessSecret("personal-work-test-key-with-sufficient-entropy");
+        PersonalWorkService service = new PersonalWorkService(
+            repository,
+            spaces,
+            snapshots,
+            new WorkItemPermissionDecisionService(
+                new WorkItemPermissionRuntimeAdapter(),
+                Clock.fixed(NOW, ZoneOffset.UTC)
+            ),
+            tokenProperties,
+            Clock.fixed(NOW, ZoneOffset.UTC)
+        );
+
+        var page = service.list(user(USER), SPACE, null, 1);
+
+        assertThat(page.nextCursor()).isNotBlank();
+        verify(repository).listCandidates(
+            WORKSPACE,
+            USER,
+            SPACE,
+            null,
+            null,
+            6
+        );
+        assertThat(service.list(user(USER), SPACE, page.nextCursor(), 1)).isNotNull();
+        UUID otherSpace = UUID.fromString("20000000-0000-0000-0000-000000000002");
+        assertThatThrownBy(() -> service.list(user(USER), otherSpace, page.nextCursor(), 1))
+            .hasMessageContaining("cursor is invalid");
+        assertThatThrownBy(() -> service.list(user(USER), page.nextCursor(), 1))
             .hasMessageContaining("cursor is invalid");
     }
 
@@ -101,7 +172,9 @@ class PersonalWorkServiceTests {
         ProjectSpaceRepository spaces = mock(ProjectSpaceRepository.class);
         PublishedSnapshotAdapter snapshots = mock(PublishedSnapshotAdapter.class);
         PersonalCandidate candidate = candidate(UUID.randomUUID(), NOW, Set.of("assignee"), false);
-        when(repository.listCandidates(eq(WORKSPACE), eq(USER), any(), any(), anyInt()))
+        when(repository.listCandidates(
+            eq(WORKSPACE), eq(USER), isNull(), any(), any(), anyInt()
+        ))
             .thenReturn(List.of(candidate));
         when(spaces.listVisible(WORKSPACE, USER)).thenReturn(List.of());
         JwtTokenProperties tokenProperties = new JwtTokenProperties();

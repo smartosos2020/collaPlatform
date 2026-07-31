@@ -28,7 +28,7 @@ S21 是退出、易用性收敛与验证 Stage，不建立新的业务元模型�
 - 生产 canonical write cutover 仍需目标环境画像、备份恢复、观测窗口、容量证据和批准；本地 PostgreSQL/Testcontainers rehearsal 不自动授权生产切流。
 - 活动旧产品兼容已在 S21-M2 退出；只保留经批准的历史 map、批次、provenance、verification、audit、outbox 和恢复证据，不得丢失可追溯性，也不得借恢复或 rollout 重新激活旧产品合同。
 - revision 49 的 M4 真人试用准备包和 revision 51 的 M8 准备材料只作为历史输入，不是人工结论；revision 52 将真人试用顺延为 M9，并要求按角色分层改造后的界面重新冻结协议与任务脚本。
-- M8 当前只激活角色分层 UX 收敛准备点，M8-T01 至 T12 仍全部为 Pending。M8 给出 Go 前不得启动 M9 真人试用；启动 M9 Task 还必须落实 5 位真人参与者、知情同意（consent）、隔离试用环境和真人主持，自动化只用于准备环境和复验，不替代人工执行或结论。
+- M8 已完成角色分层 UX 收敛并给出工程 UX Go：三类任务分区、五条 canonical route、成员工作区、项目管理、空间管理、成员视图预览、中文最小披露与兼容深链均由 fresh 自动化和真实隔离浏览器证据关闭。M9 仍为 Pending；启动 M9 Task 还必须落实 5 位真人参与者、知情同意（consent）、隔离试用环境和真人主持，自动化只用于准备环境和复验，不替代人工执行或结论。
 
 ## 3. 不做范围
 
@@ -52,7 +52,7 @@ S21 是退出、易用性收敛与验证 Stage，不建立新的业务元模型�
 | PROJECT-PLATFORM-S21-M5 | 简洁模式与角色化项目空间 | M4 信息架构与兼容合同 | `docs/90-reports/project-platform-s21-m5-execution-report.md` | Completed |
 | PROJECT-PLATFORM-S21-M6 | 渐进式配置与首次使用引导 | M5 简洁 Shell；S20 四类模板 | `docs/90-reports/project-platform-s21-m6-execution-report.md` | Completed |
 | PROJECT-PLATFORM-S21-M7 | 兼容迁移、安全、可观测与工程复验 | M4-M6 完成 | `docs/90-reports/project-platform-s21-m7-execution-report.md` | Completed |
-| PROJECT-PLATFORM-S21-M8 | 项目空间角色分层 UX 收敛 | M4-M7 合同与工程证据；2026-07-31 管理者走查 | `docs/90-reports/project-platform-s21-m8-execution-report.md` | Active |
+| PROJECT-PLATFORM-S21-M8 | 项目空间角色分层 UX 收敛 | M4-M7 合同与工程证据；2026-07-31 管理者走查 | `docs/90-reports/project-platform-s21-m8-execution-report.md` | Completed |
 | PROJECT-PLATFORM-S21-M9 | 研发、市场、HR、交付真人任务试用 | M8 UX Go；5 位真人参与者、知情同意、隔离环境与真人主持就绪 | `docs/90-reports/project-platform-s21-m9-execution-report.md` | Pending |
 | PROJECT-PLATFORM-S21-M10 | 缺陷修复、复验和产品 Go/No-Go | M9 原始反馈与缺陷分级 | `docs/90-reports/project-platform-s21-m10-execution-report.md` | Pending |
 
@@ -181,18 +181,18 @@ S21 是退出、易用性收敛与验证 Stage，不建立新的业务元模型�
 
 | 任务 | 内容 | 验收标准 | 状态 |
 | --- | --- | --- | --- |
-| PROJECT-PLATFORM-S21-M8-T01 | 复核 M4-M7 信息架构、capability、canonical route、深链、六身份和 2026-07-31 管理者走查 finding | 现状路径、角色任务、重复入口、P0/P1/P2、owner 和证据边界完整；不把审计图或旧会话当实现事实 | Pending |
-| PROJECT-PLATFORM-S21-M8-T02 | 冻结“成员工作区、项目管理、空间管理”三类任务分区与五条 canonical route 的兼容映射 | 成员工作区承接概览/工作项，项目管理保持唯一管理聚合，空间管理承接成员/设置；`typeId/create/savedViewId/panel/source` 可恢复且无循环或上下文丢失 | Pending |
-| PROJECT-PLATFORM-S21-M8-T03 | 冻结成员内容判定、默认落点和服务端 capability 合同 | 导航、按钮、可创建类型和详情动作统一取 `availableActions`；成员内容满足 capability、配置就绪和当前参与范围，不按角色名、模式或客户端缓存授权 | Pending |
-| PROJECT-PLATFORM-S21-M8-T04 | 消除默认未发布类型、不可用创建、无动作空态和详情行动埋藏等 P0 死路 | 只展示已发布且运行时完整的类型；成员最多两次点击到首个可执行事项，详情首屏给出当前状态、负责人、截止时间和下一步，不暴露 UUID/schema/hash/内部英文编码 | Pending |
-| PROJECT-PLATFORM-S21-M8-T05 | 建设成员工作区的空间首页、我的工作、工作项、视图和动态主线 | 普通成员默认只看到用途、重点、待办/参与/关注、可用工作项和协作动态；无任务时给出其有权执行的下一步，不进入配置后台 | Pending |
-| PROJECT-PLATFORM-S21-M8-T06 | 收敛项目管理为计划、里程碑、排期、容量、风险、决策、交付、验收和结果指标唯一主入口 | 项目管理按 capability 显示；工作项和概览只保留必要摘要或上下文跳转，每项管理事实只有一个可编辑 owner | Pending |
-| PROJECT-PLATFORM-S21-M8-T07 | 建设空间管理首页并集中成员、工作模型、流程权限、自动化、度量、模板和生命周期 | 配置健康、配置待办、最近入口和危险操作分区明确；管理员最多两层到达任一配置，未就绪类型只在配置待办出现 | Pending |
-| PROJECT-PLATFORM-S21-M8-T08 | 实现 Owner/受权管理员的成员视图预览和角色切换解释 | 预览准确反映目标身份可见入口且不挂载/预取隐藏内容；预览、模式切换和 enterprise-admin 身份不授权，退出后恢复原上下文 | Pending |
-| PROJECT-PLATFORM-S21-M8-T09 | 统一面向成员与管理员的术语、空态、错误、状态和技术信息最小披露 | 清理旧同义词、英文运行时错误和技术标识；权限不足、隐藏对象、只读、离线和未配置状态均有中文可行动解释且不泄漏存在性 | Pending |
-| PROJECT-PLATFORM-S21-M8-T10 | 优化空间创建、模板/克隆/预览、上下文帮助和首次起步路径 | 空白、模板、克隆的影响可预览；管理者按依赖完成配置、发布、成员、首项和交接，普通成员无需理解完整元模型 | Pending |
-| PROJECT-PLATFORM-S21-M8-T11 | 执行六身份、四场景、三视口、键盘、焦点、离线、多标签、深链、缓存、最小披露和真实隔离 route-final | owner/admin/custom-role/member/guest/non-member/enterprise-admin 边界正确；隐藏内容不加载，canonical 深链可恢复，P0/P1 自动化与真实浏览器证据 fresh | Pending |
-| PROJECT-PLATFORM-S21-M8-T12 | 对账 P0/P1/P2、兼容、安全、性能和可访问性证据，给出 M9 真人试用 Go/Reopen | P0/P1 为零；P2 已完成或有 owner/影响/决定，回退可用、环境可恢复；工程结论不替代真人结论 | Pending |
+| PROJECT-PLATFORM-S21-M8-T01 | 复核 M4-M7 信息架构、capability、canonical route、深链、六身份和 2026-07-31 管理者走查 finding | 现状路径、角色任务、重复入口、P0/P1/P2、owner 和证据边界完整；不把审计图或旧会话当实现事实 | Done |
+| PROJECT-PLATFORM-S21-M8-T02 | 冻结“成员工作区、项目管理、空间管理”三类任务分区与五条 canonical route 的兼容映射 | 成员工作区承接概览/工作项，项目管理保持唯一管理聚合，空间管理承接成员/设置；`typeId/create/savedViewId/panel/source` 可恢复且无循环或上下文丢失 | Done |
+| PROJECT-PLATFORM-S21-M8-T03 | 冻结成员内容判定、默认落点和服务端 capability 合同 | 导航、按钮、可创建类型和详情动作统一取 `availableActions`；成员内容满足 capability、配置就绪和当前参与范围，不按角色名、模式或客户端缓存授权 | Done |
+| PROJECT-PLATFORM-S21-M8-T04 | 消除默认未发布类型、不可用创建、无动作空态和详情行动埋藏等 P0 死路 | 只展示已发布且运行时完整的类型；成员最多两次点击到首个可执行事项，详情首屏给出当前状态、负责人、截止时间和下一步，不暴露 UUID/schema/hash/内部英文编码 | Done |
+| PROJECT-PLATFORM-S21-M8-T05 | 建设成员工作区的空间首页、我的工作、工作项、视图和动态主线 | 普通成员默认只看到用途、重点、待办/参与/关注、可用工作项和协作动态；无任务时给出其有权执行的下一步，不进入配置后台 | Done |
+| PROJECT-PLATFORM-S21-M8-T06 | 收敛项目管理为计划、里程碑、排期、容量、风险、决策、交付、验收和结果指标唯一主入口 | 项目管理按 capability 显示；工作项和概览只保留必要摘要或上下文跳转，每项管理事实只有一个可编辑 owner | Done |
+| PROJECT-PLATFORM-S21-M8-T07 | 建设空间管理首页并集中成员、工作模型、流程权限、自动化、度量、模板和生命周期 | 配置健康、配置待办、最近入口和危险操作分区明确；管理员最多两层到达任一配置，未就绪类型只在配置待办出现 | Done |
+| PROJECT-PLATFORM-S21-M8-T08 | 实现 Owner/受权管理员的成员视图预览和角色切换解释 | 预览准确反映目标身份可见入口且不挂载/预取隐藏内容；预览、模式切换和 enterprise-admin 身份不授权，退出后恢复原上下文 | Done |
+| PROJECT-PLATFORM-S21-M8-T09 | 统一面向成员与管理员的术语、空态、错误、状态和技术信息最小披露 | 清理旧同义词、英文运行时错误和技术标识；权限不足、隐藏对象、只读、离线和未配置状态均有中文可行动解释且不泄漏存在性 | Done |
+| PROJECT-PLATFORM-S21-M8-T10 | 优化空间创建、模板/克隆/预览、上下文帮助和首次起步路径 | 空白、模板、克隆的影响可预览；管理者按依赖完成配置、发布、成员、首项和交接，普通成员无需理解完整元模型 | Done |
+| PROJECT-PLATFORM-S21-M8-T11 | 执行六类真实身份、四场景、三视口、键盘、焦点、离线、多标签、深链、缓存、最小披露和真实隔离 route-final，并补充 custom-role capability fixture | owner/admin/member/guest/non-member/enterprise-admin 六类真实身份边界正确；custom-role 由 capability-only fixture 证明前端不依赖角色名白名单；隐藏内容不加载，canonical 深链可恢复，P0/P1 自动化与真实浏览器证据 fresh | Done |
+| PROJECT-PLATFORM-S21-M8-T12 | 对账 P0/P1/P2、兼容、安全、性能和可访问性证据，给出 M9 真人试用 Go/Reopen | P0/P1 为零；P2 已完成或有 owner/影响/决定，回退可用、环境可恢复；工程结论不替代真人结论 | Done |
 
 ### PROJECT-PLATFORM-S21-M9 研发、市场、HR、交付真人任务试用
 
@@ -248,7 +248,7 @@ revision 49 的 S21-M4/M5 均未启动、全部为 Pending。revision 50 因首�
 - 普通成员最多两次点击找到首个可执行事项，不加载或展示未发布配置、UUID、schema/hash 或内部英文编码；成员内容只来自当前 capability、配置就绪和参与范围。
 - 项目管理只承载计划、资源、风险、交付和结果指标；空间管理按工作模型、流程与权限、自动化与协同、度量治理、场景模板和生命周期渐进展开，管理员最多两层到达任一配置能力。
 - Owner 可预览普通成员视图，但预览、模式切换和 enterprise-admin 身份均不授权；隐藏内容不挂载、不预取，旧深链兼容可回退。
-- 简洁/高级模式、偏好、引导、缓存、开关和遥测均不授权；六身份、最小披露、离线、三视口和键盘边界通过。
+- 简洁/高级模式、偏好、引导、缓存、开关和遥测均不授权；owner/admin/member/guest/non-member/enterprise-admin 六类真实身份、custom-role capability fixture、最小披露、离线、三视口和键盘边界通过。
 - 研发、市场、HR、交付四类真实参与者在 M9 完成规定任务并保存原始反馈；自动化不冒充人工验收。
 - 所有 P0/P1 清零，P2/P3 有明确决定；工程与人工证据分别可复核。
 - 产品 Go/No-Go 由完成的 120 个 Task 和新鲜证据支持，不以计划、合成样本或口头结论替代。
@@ -257,4 +257,4 @@ revision 49 的 S21-M4/M5 均未启动、全部为 Pending。revision 50 因首�
 
 S20 已完成并归档；S21-M1 至 M7 已完成，当前 schema 为 V141。Program revision 51 的第二轮重开已让公开类型摘要与 `PublishedSnapshotAdapter.requireComplete` 使用同一配置就绪判断，并通过单次批量快照读取避免逐类型 N+1：概览“工作入口”区分“配置就绪/待发布配置”，管理者可直接进入配置，普通成员得到安全说明；工作项筛选、拆分子项与创建弹窗同步失败关闭，旧深链/陈旧缓存触发的 `unsupported_snapshot_schema` 只显示中文可行动提示，OK/Enter/提交函数共享同一就绪门禁。后端 readiness 集成 9/9、前端 lint/build、真实隔离“待配置→发布→配置就绪→上线关单”1/1 均通过，M7-T10 至 T12 再次 Done。
 
-Program revision 52 根据 2026-07-31 项目空间管理者走查，在真人试用前新增 S21-M8 角色分层 UX 收敛：三类任务分区必须与五条 canonical route 兼容，普通成员只看到可执行内容，项目管理与空间管理各自收口，Owner 可安全预览成员视图。当前唯一入口是 `PROJECT-PLATFORM-S21-M8-T01`，M8-T01 至 T12 均为 Pending；M8 给出 UX Go 前不得启动 M9 真人试用，不得提前执行 M10、归档 S21 或激活 S22。
+Program revision 52 新增的 S21-M8 角色分层 UX 收敛已完成：三类任务分区与五条 canonical route 保持兼容，普通成员只看到服务端 capability、配置就绪与当前参与范围允许的内容，项目管理与空间管理分别收口，Owner/受权管理员可在不授权、不加载隐藏内容的前提下预览成员/访客入口。前后端合同、43 项前端单测、31 项后端测试、lint/build 与真实隔离 route-final 均通过，M8-T01 至 T12 已 Done，并给出仅限工程 UX 的 M9 Go。下一候选入口是 `PROJECT-PLATFORM-S21-M9-T01`；M9 仍为 Pending，只有 5 位真人参与者、知情同意、隔离环境和真人主持全部落实后方可启动，不得提前执行 M10、归档 S21 或激活 S22。

@@ -79,9 +79,14 @@ public class PersonalCollaborationService implements PersonalCollaborationQuery 
     }
 
     @Override
-    public ActivityPage activities(CurrentUser user, Long beforeSequence, int limit) {
+    public ActivityPage activities(
+        CurrentUser user,
+        UUID spaceId,
+        Long beforeSequence,
+        int limit
+    ) {
         int safeLimit = Math.min(Math.max(limit, 1), 100);
-        List<PersonalWorkItem> visible = visibleWork(user);
+        List<PersonalWorkItem> visible = visibleWork(user, spaceId);
         Set<UUID> visibleIds = visible.stream()
             .map(PersonalWorkItem::workItemId)
             .collect(java.util.stream.Collectors.toUnmodifiableSet());
@@ -328,9 +333,15 @@ public class PersonalCollaborationService implements PersonalCollaborationQuery 
     }
 
     private List<PersonalWorkItem> visibleWork(CurrentUser user) {
-        PersonalWorkPage page = personalWork.list(user, null, 100);
+        return visibleWork(user, null);
+    }
+
+    private List<PersonalWorkItem> visibleWork(CurrentUser user, UUID spaceId) {
+        PersonalWorkPage page = personalWork.list(user, spaceId, null, 100);
         LinkedHashMap<UUID, PersonalWorkItem> values = new LinkedHashMap<>();
-        page.buckets().forEach(bucket -> bucket.items().forEach(item -> values.putIfAbsent(item.workItemId(), item)));
+        page.buckets().forEach(bucket -> bucket.items().stream()
+            .filter(item -> spaceId == null || spaceId.equals(item.spaceId()))
+            .forEach(item -> values.putIfAbsent(item.workItemId(), item)));
         return List.copyOf(values.values());
     }
 

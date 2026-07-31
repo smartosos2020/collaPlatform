@@ -1,6 +1,7 @@
 package com.colla.platform.modules.project.api;
 
 import com.colla.platform.modules.project.api.ProjectSpaceDtos.LegacySpaceResolutionView;
+import com.colla.platform.modules.project.api.ProjectSpaceDtos.ProjectSpaceSurfacePreviewView;
 import com.colla.platform.modules.project.api.ProjectSpaceDtos.UserProjectSpaceView;
 import com.colla.platform.modules.project.application.ProjectSpaceService;
 import com.colla.platform.shared.auth.CurrentUser;
@@ -9,13 +10,18 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/api/project-spaces")
@@ -52,6 +58,22 @@ public class ProjectSpaceController {
         return ProjectSpaceDtos.user(projectSpaceService.getVisible(currentUser(authentication), spaceId));
     }
 
+    @GetMapping("/{spaceId}/surface-preview")
+    public ResponseEntity<ProjectSpaceSurfacePreviewView> surfacePreview(
+        @PathVariable UUID spaceId,
+        @RequestParam String targetRole,
+        Authentication authentication
+    ) {
+        String supportedTargetRole = supportedPreviewRole(targetRole);
+        ProjectSpaceSurfacePreviewView preview = ProjectSpaceDtos.surfacePreview(
+            projectSpaceService.getSurfacePreviewSpace(currentUser(authentication), spaceId),
+            supportedTargetRole
+        );
+        return ResponseEntity.ok()
+            .header(HttpHeaders.CACHE_CONTROL, "private, no-store")
+            .body(preview);
+    }
+
     @GetMapping("/legacy-resolve/{legacyProjectId}")
     public LegacySpaceResolutionView legacyResolve(@PathVariable UUID legacyProjectId, Authentication authentication) {
         return ProjectSpaceDtos.legacyResolution(
@@ -61,6 +83,13 @@ public class ProjectSpaceController {
 
     private CurrentUser currentUser(Authentication authentication) {
         return (CurrentUser) authentication.getPrincipal();
+    }
+
+    private String supportedPreviewRole(String targetRole) {
+        if (!"member".equals(targetRole) && !"guest".equals(targetRole)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "targetRole must be member or guest");
+        }
+        return targetRole;
     }
 
     public record CreateProjectSpaceRequest(

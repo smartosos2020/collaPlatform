@@ -9,6 +9,11 @@ export type ProjectSpacePrimaryView =
 
 export type ProjectSpaceExperienceMode = 'simple' | 'advanced'
 export type ProjectSpaceStatus = 'active' | 'disabled' | 'archived'
+export type ProjectSpaceTaskZoneKey =
+  | 'member-workspace'
+  | 'project-management'
+  | 'space-management'
+export type ProjectSpacePreviewPersona = 'member' | 'guest'
 export type ProjectSpaceNavigationCapability =
   | 'view_overview'
   | 'view_work_items'
@@ -44,7 +49,7 @@ export type ProjectSpacePrimaryNavigationItem = Readonly<{
   label: string
   order: number
   pathSuffix: string
-  taskLayer: 'frequent-execution' | 'project-management' | 'space-governance'
+  taskLayer: ProjectSpaceTaskZoneKey
   requiredAction: ProjectSpaceNavigationCapability
   allowedStatuses: readonly ProjectSpaceStatus[]
   deniedBehavior: 'omit'
@@ -58,7 +63,7 @@ export const PROJECT_SPACE_PRIMARY_NAVIGATION = [
     label: '概览',
     order: 10,
     pathSuffix: '',
-    taskLayer: 'frequent-execution',
+    taskLayer: 'member-workspace',
     requiredAction: 'view_overview',
     allowedStatuses: ['active', 'disabled', 'archived'],
     deniedBehavior: 'omit',
@@ -70,7 +75,7 @@ export const PROJECT_SPACE_PRIMARY_NAVIGATION = [
     label: '工作项',
     order: 20,
     pathSuffix: '/work-items',
-    taskLayer: 'frequent-execution',
+    taskLayer: 'member-workspace',
     requiredAction: 'view_work_items',
     allowedStatuses: ['active', 'disabled', 'archived'],
     deniedBehavior: 'omit',
@@ -94,7 +99,7 @@ export const PROJECT_SPACE_PRIMARY_NAVIGATION = [
     label: '成员',
     order: 40,
     pathSuffix: '/members',
-    taskLayer: 'space-governance',
+    taskLayer: 'space-management',
     requiredAction: 'view_members',
     allowedStatuses: ['active', 'disabled', 'archived'],
     deniedBehavior: 'omit',
@@ -106,7 +111,7 @@ export const PROJECT_SPACE_PRIMARY_NAVIGATION = [
     label: '设置',
     order: 50,
     pathSuffix: '/settings',
-    taskLayer: 'space-governance',
+    taskLayer: 'space-management',
     requiredAction: 'view_settings',
     allowedStatuses: ['active', 'disabled', 'archived'],
     deniedBehavior: 'omit',
@@ -114,6 +119,34 @@ export const PROJECT_SPACE_PRIMARY_NAVIGATION = [
     emptyState: '显示基本设置和当前受权的高级配置入口。',
   },
 ] as const satisfies readonly ProjectSpacePrimaryNavigationItem[]
+
+export type ProjectSpaceTaskZone = Readonly<{
+  key: ProjectSpaceTaskZoneKey
+  label: string
+  description: string
+  primaryViews: readonly ProjectSpacePrimaryView[]
+}>
+
+export const PROJECT_SPACE_TASK_ZONES = [
+  {
+    key: 'member-workspace',
+    label: '成员工作区',
+    description: '聚焦我的事项、团队工作项与协作动态。',
+    primaryViews: ['overview', 'work-items'],
+  },
+  {
+    key: 'project-management',
+    label: '项目管理',
+    description: '集中管理计划、资源、风险、交付与结果指标。',
+    primaryViews: ['management'],
+  },
+  {
+    key: 'space-management',
+    label: '空间管理',
+    description: '集中管理成员、工作模型、流程权限和空间生命周期。',
+    primaryViews: ['members', 'settings'],
+  },
+] as const satisfies readonly ProjectSpaceTaskZone[]
 
 export const PROJECT_SPACE_ADVANCED_CONFIGURATION = [
   {
@@ -184,10 +217,10 @@ export const PROJECT_SPACE_PERSONA_TASK_MATRIX = {
     explanation: '展示身份只提供默认落点；实际入口完全由服务端 capability 决定。',
   },
   member: {
-    primaryViews: ['overview', 'work-items', 'management'],
+    primaryViews: ['overview', 'work-items'],
     modeSwitch: false,
-    defaultView: 'work-items',
-    explanation: '完成日常工作和当前受权的项目管理任务。',
+    defaultView: 'overview',
+    explanation: '只展示日常工作与当前参与内容；管理入口仍以服务端 capability 为准。',
   },
   guest: {
     primaryViews: ['overview', 'work-items'],
@@ -358,6 +391,43 @@ export function getVisibleProjectSpacePrimaryNavigation(
     actions.has(item.requiredAction)
     && item.allowedStatuses.includes(access.status)
   ))
+}
+
+export function getVisibleProjectSpaceTaskZones(
+  access: ProjectSpaceAccessSnapshot,
+): ReadonlyArray<ProjectSpaceTaskZone & {
+  navigation: readonly ProjectSpacePrimaryNavigationItem[]
+}> {
+  const visibleNavigation = getVisibleProjectSpacePrimaryNavigation(access)
+  return PROJECT_SPACE_TASK_ZONES.flatMap((zone) => {
+    const navigation = visibleNavigation.filter((item) => item.taskLayer === zone.key)
+    return navigation.length > 0 ? [{ ...zone, navigation }] : []
+  })
+}
+
+/**
+ * Builds a presentation-only view of the current capability snapshot.
+ * It can only remove actions from the signed-in user's server snapshot and must
+ * never be used as an authorization source for API requests.
+ */
+export function projectSpacePreviewAccess(
+  access: ProjectSpaceAccessSnapshot,
+  persona: ProjectSpacePreviewPersona,
+): ProjectSpaceAccessSnapshot {
+  const presentationActions = new Set<ProjectSpaceNavigationCapability>(
+    persona === 'guest'
+      ? ['view_overview', 'view_work_items']
+      : ['view_overview', 'view_work_items', 'view_project_management'],
+  )
+  return {
+    ...access,
+    member: true,
+    currentUserRole: persona,
+    enterpriseGovernanceOnly: false,
+    availableActions: access.availableActions.filter((action) => (
+      presentationActions.has(action as ProjectSpaceNavigationCapability)
+    )),
+  }
 }
 
 export function projectSpacePrimaryPath(spaceId: string, view: ProjectSpacePrimaryView): string {

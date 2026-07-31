@@ -12,6 +12,7 @@ import {
   App as AntdApp,
   Button,
   Card,
+  Descriptions,
   Empty,
   Form,
   Input,
@@ -25,13 +26,19 @@ import { useMemo, useState } from 'react'
 
 import { ApiRequestError } from '../../../shared/api/httpClient'
 import type { UserProjectSpace } from '../api/projectSpacesApi'
-import type { WorkItem } from '../api/workItemsApi'
+import {
+  listWorkItemParticipants,
+  workItemKeys,
+  type WorkItem,
+  type WorkItemParticipant,
+} from '../api/workItemsApi'
 import {
   correctWorkItemWorkflowState,
   executeWorkItemWorkflowAction,
   getWorkItemWorkflow,
   listWorkItemWorkflowHistory,
   workItemWorkflowKeys,
+  type WorkItemWorkflow,
   type WorkItemWorkflowAction,
 } from '../api/workItemWorkflowApi'
 import { errorMessage, formatTime } from '../projectSpaceView'
@@ -39,6 +46,85 @@ import { errorMessage, formatTime } from '../projectSpaceView'
 type WorkflowCommandDraft = {
   actionKey: string
   requestId: string
+}
+
+type NextActionSummary = {
+  key: string
+  label: string
+  source: 'workflow' | 'item'
+  primary: boolean
+  danger: boolean
+}
+
+export function WorkItemActionSummary({
+  item,
+  onOpenWorkflow,
+}: {
+  item: WorkItem
+  onOpenWorkflow: () => void
+}) {
+  const workflow = embeddedWorkflow(item)
+  const participantsQuery = useQuery({
+    queryKey: workItemKeys.participants(item.spaceId, item.id),
+    queryFn: () => listWorkItemParticipants(item.spaceId, item.id),
+    enabled: item.availableActions.includes('view'),
+    retry: (count, error) => !(error instanceof ApiRequestError && [403, 404].includes(error.status)) && count < 2,
+  })
+  const nextActions = nextActionSummaries(item, workflow)
+  const responsible = responsiblePeopleLabel(
+    participantsQuery.data?.items,
+    participantsQuery.isLoading,
+    participantsQuery.isError,
+  )
+  const deadline = readableDeadline(item) ?? '未设置'
+
+  return (
+    <Card
+      size="small"
+      className="work-item-action-summary"
+      data-testid="work-item-action-summary"
+      style={{ marginBottom: 16 }}
+      title="行动摘要"
+    >
+      <Descriptions size="small" column={{ xs: 1, sm: 3 }}>
+        <Descriptions.Item label="当前状态">
+          <Tag color={item.status === 'archived' ? 'default' : stateColor(workflow?.currentStateCategory)}>
+            {currentStateLabel(workflow, item.status)}
+          </Tag>
+        </Descriptions.Item>
+        <Descriptions.Item label="负责人">{responsible}</Descriptions.Item>
+        <Descriptions.Item label="截止时间">{deadline}</Descriptions.Item>
+      </Descriptions>
+      <Space direction="vertical" size={6}>
+        <Typography.Text strong>下一步动作</Typography.Text>
+        {nextActions.length > 0 ? (
+          <Space wrap>
+            {nextActions.map((action) => (
+              action.source === 'workflow' ? (
+                <Button
+                  key={action.key}
+                  size="small"
+                  type={action.primary ? 'primary' : 'default'}
+                  danger={action.danger}
+                  onClick={onOpenWorkflow}
+                >
+                  {action.label}
+                </Button>
+              ) : (
+                <Tag key={action.key} color={action.danger ? 'red' : 'blue'}>
+                  {action.label}
+                </Tag>
+              )
+            ))}
+          </Space>
+        ) : (
+          <Typography.Text type="secondary">
+            当前没有需要你处理的动作；如有疑问，请联系负责人确认。
+          </Typography.Text>
+        )}
+      </Space>
+    </Card>
+  )
 }
 
 export function WorkItemWorkflowPanel({
@@ -181,12 +267,10 @@ export function WorkItemWorkflowPanel({
     return (
       <Alert
         className="work-item-workflow-capability"
-        type={workflow.capability === 'uninitialized' ? 'warning' : 'info'}
+        type="warning"
         showIcon
-        message={workflow.capability === 'uninitialized' ? '状态尚未显式初始化' : '当前绑定版本未配置状态流'}
-        description={workflow.capability === 'uninitialized'
-          ? '空间管理员需要通过存量状态初始化创建可审计事实；页面不会猜测默认状态。'
-          : '此工作项继续按自身绑定版本运行，不会回读最新配置。'}
+        message="状态流程尚未准备好"
+        description="请联系空间管理员完成初始化；准备完成前不会显示可执行动作。"
       />
     )
   }
@@ -197,7 +281,7 @@ export function WorkItemWorkflowPanel({
     <Card
       className="content-card work-item-workflow-panel"
       data-testid="work-item-workflow-panel"
-      title={<Space><SafetyCertificateOutlined /><span>状态流</span></Space>}
+      title={<Space><SafetyCertificateOutlined /><span>状态流程</span></Space>}
       extra={canCorrect ? (
         <Button icon={<ToolOutlined />} onClick={() => setCorrectionOpen(true)}>
           受控纠错
@@ -217,33 +301,40 @@ export function WorkItemWorkflowPanel({
           <Typography.Text type="secondary">当前状态</Typography.Text>
           <Space wrap>
             <Tag color={stateColor(workflow.currentStateCategory)} className="work-item-workflow-state-tag">
-              {workflow.currentStateLabel}
+              {currentStateLabel(workflow, item.status)}
             </Tag>
-            <Typography.Text code>{workflow.currentStateKey}</Typography.Text>
-            <Typography.Text type="secondary">策略 {workflow.policyVersion}</Typography.Text>
           </Space>
         </div>
         <Space wrap className="work-item-workflow-actions" aria-label="可执行状态动作">
-          {workflow.availableActions.map((action) => (
-            <Button
-              key={action.actionKey}
-              data-testid={`work-item-workflow-action-${action.actionKey}`}
-              type={action.kind === 'forward' ? 'primary' : 'default'}
-              danger={action.kind === 'terminate'}
-              disabled={!online || actionMutation.isPending}
-              loading={actionMutation.isPending && commandDraft?.actionKey === action.actionKey}
-              onClick={() => execute(action)}
-            >
-              <span className="work-item-workflow-action-label">{action.label}</span>
-              {action.requiredFieldKeys.length > 0 ? (
-                <span className="work-item-workflow-requirement">
-                  需 {action.requiredFieldKeys.map((key) => fieldLabels.get(key) ?? key).join('、')}
-                </span>
-              ) : null}
-            </Button>
-          ))}
+          {workflow.availableActions.map((action) => {
+            const requiredLabels = action.requiredFieldKeys
+              .map((key) => fieldLabels.get(key))
+              .filter((label): label is string => Boolean(label) && !looksTechnicalIdentifier(label!))
+            return (
+              <Button
+                key={action.actionKey}
+                data-testid={`work-item-workflow-action-${action.actionKey}`}
+                type={action.kind === 'forward' ? 'primary' : 'default'}
+                danger={action.kind === 'terminate'}
+                disabled={!online || actionMutation.isPending}
+                loading={actionMutation.isPending && commandDraft?.actionKey === action.actionKey}
+                onClick={() => execute(action)}
+              >
+                <span className="work-item-workflow-action-label">{workflowActionLabel(action)}</span>
+                {action.requiredFieldKeys.length > 0 ? (
+                  <span className="work-item-workflow-requirement">
+                    {requiredLabels.length > 0
+                      ? `需 ${requiredLabels.join('、')}`
+                      : '需补充必填信息'}
+                  </span>
+                ) : null}
+              </Button>
+            )
+          })}
           {workflow.availableActions.length === 0 ? (
-            <Typography.Text type="secondary">当前没有服务端允许的动作</Typography.Text>
+            <Typography.Text type="secondary">
+              当前无需你推进；如需继续，请联系负责人确认流程状态。
+            </Typography.Text>
           ) : null}
         </Space>
       </div>
@@ -253,7 +344,7 @@ export function WorkItemWorkflowPanel({
           type="warning"
           showIcon
           message="动作请求已保留"
-          description="重试将复用同一 request ID，服务端会精确重放或拒绝异载荷。"
+          description="重试会安全复用本次动作请求，不会重复推进状态。"
         />
       ) : null}
       <div className="work-item-workflow-history">
@@ -268,12 +359,13 @@ export function WorkItemWorkflowPanel({
                 avatar={entry.actionKey ? <CheckCircleOutlined /> : <ExclamationCircleOutlined />}
                 title={(
                   <Space wrap>
-                    <Typography.Text strong>{entry.actionKey ?? 'initialize'}</Typography.Text>
-                    <Tag>{entry.fromStateKey ?? '∅'} → {entry.toStateKey}</Tag>
-                    <Typography.Text type="secondary">#{entry.sequenceNumber}</Typography.Text>
+                    <Typography.Text strong>
+                      {historyActionLabel(entry.actionKey, entry.actionKind, workflow.availableActions)}
+                    </Typography.Text>
+                    <Tag>状态已更新</Tag>
                   </Space>
                 )}
-                description={`${formatTime(entry.occurredAt)} · ${entry.actionKind}`}
+                description={formatTime(entry.occurredAt)}
               />
             </List.Item>
           )}
@@ -329,4 +421,188 @@ function stateColor(category?: string | null) {
   if (category === 'canceled') return 'default'
   if (category === 'initial') return 'blue'
   return 'processing'
+}
+
+function embeddedWorkflow(item: WorkItem): WorkItemWorkflow | null {
+  const runtime = item.runtime as WorkItem['runtime'] & { workflow?: unknown }
+  const workflow = runtime.workflow
+  if (!workflow || typeof workflow !== 'object') return null
+  const candidate = workflow as Partial<WorkItemWorkflow>
+  if (!['available', 'not_configured', 'uninitialized'].includes(candidate.capability ?? '')) {
+    return null
+  }
+  return {
+    capability: candidate.capability!,
+    policyVersion: typeof candidate.policyVersion === 'string' ? candidate.policyVersion : '',
+    currentStateKey: typeof candidate.currentStateKey === 'string' ? candidate.currentStateKey : null,
+    currentStateLabel: typeof candidate.currentStateLabel === 'string' ? candidate.currentStateLabel : null,
+    currentStateCategory: candidate.currentStateCategory ?? null,
+    aggregateVersion: typeof candidate.aggregateVersion === 'number' ? candidate.aggregateVersion : 0,
+    availableActions: Array.isArray(candidate.availableActions) ? candidate.availableActions : [],
+  }
+}
+
+function currentStateLabel(
+  workflow: WorkItemWorkflow | null | undefined,
+  itemStatus: WorkItem['status'],
+) {
+  if (itemStatus === 'archived') return '已归档'
+  if (!workflow || workflow.capability === 'not_configured') return '进行中'
+  if (workflow.capability === 'uninitialized') return '待启动'
+  const configured = humanReadableLabel(workflow.currentStateLabel)
+  if (configured) return configured
+  if (workflow.currentStateCategory === 'initial') return '待开始'
+  if (workflow.currentStateCategory === 'terminal') return '已完成'
+  if (workflow.currentStateCategory === 'canceled') return '已终止'
+  return '进行中'
+}
+
+function nextActionSummaries(
+  item: WorkItem,
+  workflow: WorkItemWorkflow | null,
+): NextActionSummary[] {
+  if (workflow?.capability === 'available' && workflow.availableActions.length > 0) {
+    return [...workflow.availableActions]
+      .sort((left, right) => left.sortOrder - right.sortOrder)
+      .map((action) => ({
+        key: `workflow-${action.actionKey}`,
+        label: workflowActionLabel(action),
+        source: 'workflow' as const,
+        primary: action.kind === 'forward',
+        danger: action.kind === 'terminate',
+      }))
+  }
+  const labels: Partial<Record<WorkItem['availableActions'][number], string>> = {
+    edit: '补充事项信息',
+    archive: '可归档事项',
+    restore: '可恢复事项',
+  }
+  return item.availableActions.flatMap((action) => {
+    const label = labels[action]
+    return label ? [{
+      key: `item-${action}`,
+      label,
+      source: 'item' as const,
+      primary: action === 'edit',
+      danger: action === 'archive',
+    }] : []
+  })
+}
+
+function workflowActionLabel(action: WorkItemWorkflowAction) {
+  const configured = humanReadableLabel(action.label)
+  if (configured) return configured
+  return ({
+    forward: '继续推进',
+    return_action: '退回处理',
+    reopen: '重新打开',
+    terminate: '终止流程',
+    restore: '恢复流程',
+  } as const)[action.kind]
+}
+
+function historyActionLabel(
+  actionKey: string | null | undefined,
+  actionKind: string,
+  availableActions: WorkItemWorkflowAction[],
+) {
+  if (!actionKey) return '流程已初始化'
+  const configured = availableActions.find((action) => action.actionKey === actionKey)
+  if (configured) return workflowActionLabel(configured)
+  return ({
+    forward: '状态已推进',
+    return_action: '事项已退回',
+    reopen: '事项已重新打开',
+    terminate: '流程已终止',
+    restore: '流程已恢复',
+    initialize: '流程已初始化',
+  } as Record<string, string>)[actionKind] ?? '状态已更新'
+}
+
+function humanReadableLabel(value?: string | null) {
+  const label = value?.trim()
+  if (!label) return null
+  const normalized = label.toLowerCase().replaceAll(/[\s.-]+/g, '_')
+  const localized = ({
+    new: '待开始',
+    open: '待开始',
+    todo: '待开始',
+    initial: '待开始',
+    active: '进行中',
+    doing: '进行中',
+    in_progress: '进行中',
+    done: '已完成',
+    completed: '已完成',
+    closed: '已完成',
+    terminal: '已完成',
+    canceled: '已终止',
+    cancelled: '已终止',
+    terminated: '已终止',
+  } as Record<string, string>)[normalized]
+  if (localized) return localized
+  return looksTechnicalIdentifier(label) ? null : label
+}
+
+function looksTechnicalIdentifier(value: string) {
+  const compact = value.trim()
+  return looksOpaqueIdentifier(compact)
+    || /^[a-z][a-z0-9_.:-]*$/i.test(compact)
+}
+
+function looksOpaqueIdentifier(value: string) {
+  const compact = value.trim()
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(compact)
+    || /^[0-9a-f]{24,}$/i.test(compact)
+}
+
+function responsiblePeopleLabel(
+  participants: WorkItemParticipant[] | undefined,
+  loading: boolean,
+  failed: boolean,
+) {
+  if (loading) return '正在确认…'
+  if (failed) return '暂不可用'
+  const assignees = (participants ?? []).filter((participant) => participant.role === 'assignee')
+  const responsible = assignees.length > 0
+    ? assignees
+    : (participants ?? []).filter((participant) => participant.role === 'owner')
+  const names = [...new Set(responsible.flatMap((participant) => {
+    const name = participant.displayName?.trim()
+    return name && !looksOpaqueIdentifier(name) ? [name] : []
+  }))]
+  return names.length > 0 ? names.join('、') : '未指定'
+}
+
+function readableDeadline(item: WorkItem) {
+  const fieldByKey = new Map(item.runtime.snapshot.fields.flatMap((field) => {
+    const key = typeof field.fieldKey === 'string' ? field.fieldKey : ''
+    return key ? [[key, field] as const] : []
+  }))
+  const candidates = Object.entries(item.fieldValues)
+    .filter(([key]) => item.runtime.accessProjection[key]?.mode !== 'hidden')
+    .map(([key, value]) => {
+      const field = fieldByKey.get(key)
+      const normalizedKey = key.toLowerCase().replaceAll(/[^a-z0-9]/g, '')
+      const name = String(field?.name ?? field?.label ?? '').toLowerCase()
+      const exactKey = ['dueat', 'duedate', 'deadline'].includes(normalizedKey)
+      const semanticName = /截止|到期|deadline|due date/.test(name)
+      return {
+        value,
+        score: exactKey ? 100 : semanticName ? 80 : 0,
+      }
+    })
+    .filter((candidate) => candidate.score > 0 && typeof candidate.value === 'string')
+    .sort((left, right) => right.score - left.score)
+  const value = candidates[0]?.value
+  if (typeof value !== 'string' || !value.trim()) return null
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return null
+  return new Intl.DateTimeFormat('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(parsed)
 }

@@ -9,6 +9,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -77,10 +78,14 @@ public class JdbcPersonalWorkRepository implements PersonalWorkRepository {
     public List<PersonalCandidate> listCandidates(
         UUID workspaceId,
         UUID userId,
+        UUID spaceId,
         Instant beforeUpdatedAt,
         UUID beforeWorkItemId,
         int limit
     ) {
+        String scope = spaceId == null ? "" : """
+             and wi.space_id = ?
+            """;
         String cursor = beforeUpdatedAt == null ? "" : """
              and (wi.updated_at, wi.id) < (?, ?)
             """;
@@ -89,29 +94,24 @@ public class JdbcPersonalWorkRepository implements PersonalWorkRepository {
              order by wi.updated_at desc, wi.id desc
              limit ?
             """;
-        if (beforeUpdatedAt == null) {
-            return jdbcTemplate.query(
-                CANDIDATE_SELECT + suffix,
-                this::mapCandidate,
-                userId,
-                userId,
-                userId,
-                workspaceId,
-                userId,
-                limit
-            );
+        List<Object> parameters = new ArrayList<>();
+        parameters.add(userId);
+        parameters.add(userId);
+        parameters.add(userId);
+        parameters.add(workspaceId);
+        parameters.add(userId);
+        if (spaceId != null) {
+            parameters.add(spaceId);
         }
+        if (beforeUpdatedAt != null) {
+            parameters.add(Timestamp.from(beforeUpdatedAt));
+            parameters.add(beforeWorkItemId);
+        }
+        parameters.add(limit);
         return jdbcTemplate.query(
-            CANDIDATE_SELECT + cursor + suffix,
+            CANDIDATE_SELECT + scope + cursor + suffix,
             this::mapCandidate,
-            userId,
-            userId,
-            userId,
-            workspaceId,
-            userId,
-            Timestamp.from(beforeUpdatedAt),
-            beforeWorkItemId,
-            limit
+            parameters.toArray()
         );
     }
 

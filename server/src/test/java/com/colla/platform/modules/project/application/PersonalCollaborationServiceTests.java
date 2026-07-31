@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -45,7 +46,7 @@ class PersonalCollaborationServiceTests {
     @Test
     void activityAndReminderOnlyUseCurrentlyVisiblePersonalWork() {
         Fixture fixture = fixture();
-        when(fixture.personalWork.list(any(), eq(null), eq(100))).thenReturn(page());
+        when(fixture.personalWork.list(any(), isNull(), isNull(), eq(100))).thenReturn(page());
         when(fixture.repository.readThroughSequence(WORKSPACE, USER)).thenReturn(0L);
         when(fixture.repository.listActivities(eq(WORKSPACE), eq(Set.of(ITEM)), eq(null), eq(31)))
             .thenReturn(List.of(
@@ -78,6 +79,30 @@ class PersonalCollaborationServiceTests {
                     com.colla.platform.modules.project.contract.PersonalCollaborationQuery.ReminderState.approaching
                 );
             });
+    }
+
+    @Test
+    void activityScopeIsAppliedToPersonalWorkAndDefensivelyFilteredBeforePaging() {
+        Fixture fixture = fixture();
+        UUID otherSpace = UUID.fromString("30000000-0000-0000-0000-000000000002");
+        UUID otherItem = UUID.fromString("40000000-0000-0000-0000-000000000002");
+        when(fixture.personalWork.list(any(), eq(SPACE), isNull(), eq(100)))
+            .thenReturn(page(List.of(
+                personalWorkItem(ITEM, SPACE),
+                personalWorkItem(otherItem, otherSpace)
+            )));
+        when(fixture.repository.readThroughSequence(WORKSPACE, USER)).thenReturn(0L);
+        when(fixture.repository.listActivities(
+            eq(WORKSPACE),
+            eq(Set.of(ITEM)),
+            isNull(),
+            eq(31)
+        )).thenReturn(List.of());
+
+        fixture.service.activities(user(), SPACE, null, 30);
+
+        verify(fixture.personalWork).list(any(), eq(SPACE), isNull(), eq(100));
+        verify(fixture.repository).listActivities(WORKSPACE, Set.of(ITEM), null, 31);
     }
 
     @Test
@@ -187,9 +212,27 @@ class PersonalCollaborationServiceTests {
     }
 
     private PersonalWorkPage page() {
-        PersonalWorkItem item = new PersonalWorkItem(
-            ITEM,
-            SPACE,
+        return page(List.of(personalWorkItem(ITEM, SPACE)));
+    }
+
+    private PersonalWorkPage page(List<PersonalWorkItem> items) {
+        return new PersonalWorkPage(
+            List.of(
+                new WorkBucketView(WorkBucket.todo, items.size(), items),
+                new WorkBucketView(WorkBucket.responsible, 0, List.of()),
+                new WorkBucketView(WorkBucket.participating, 0, List.of()),
+                new WorkBucketView(WorkBucket.watching, 0, List.of())
+            ),
+            null,
+            false,
+            NOW
+        );
+    }
+
+    private PersonalWorkItem personalWorkItem(UUID itemId, UUID spaceId) {
+        return new PersonalWorkItem(
+            itemId,
+            spaceId,
             "Operations",
             "task",
             "Task",
@@ -206,18 +249,7 @@ class PersonalCollaborationServiceTests {
                 NOW.plusSeconds(3600)
             )),
             List.of("view", "edit"),
-            "/project-spaces/" + SPACE + "/work-items/" + ITEM
-        );
-        return new PersonalWorkPage(
-            List.of(
-                new WorkBucketView(WorkBucket.todo, 1, List.of(item)),
-                new WorkBucketView(WorkBucket.responsible, 0, List.of()),
-                new WorkBucketView(WorkBucket.participating, 0, List.of()),
-                new WorkBucketView(WorkBucket.watching, 0, List.of())
-            ),
-            null,
-            false,
-            NOW
+            "/project-spaces/" + spaceId + "/work-items/" + itemId
         );
     }
 

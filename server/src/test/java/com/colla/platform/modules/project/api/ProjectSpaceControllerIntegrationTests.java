@@ -1,5 +1,6 @@
 package com.colla.platform.modules.project.api;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasItem;
@@ -7,11 +8,14 @@ import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -144,6 +148,85 @@ class ProjectSpaceControllerIntegrationTests {
                 .header("Authorization", bearer(enterpriseAdminToken)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.contentAccessGranted").value(false));
+    }
+
+    @Test
+    void surfacePreviewReusesUserCapabilitiesAndDisclosesOnlyPresentationMetadata() throws Exception {
+        String enterpriseAdminToken = login("admin", "admin123456", "space-preview-root-" + UUID.randomUUID());
+        UUID ownerId = createMember(enterpriseAdminToken, "previewowner" + suffix(), "Preview Owner");
+        String ownerToken = login(username(ownerId), "member123456", "space-preview-owner-" + UUID.randomUUID());
+        UUID spaceId = createSpace(ownerToken, key("preview"), "Surface Preview Space", "private");
+
+        UUID adminId = createMember(enterpriseAdminToken, "previewadmin" + suffix(), "Preview Admin");
+        UUID memberId = createMember(enterpriseAdminToken, "previewmember" + suffix(), "Preview Member");
+        UUID guestId = createMember(enterpriseAdminToken, "previewguest" + suffix(), "Preview Guest");
+        UUID outsiderId = createMember(enterpriseAdminToken, "previewout" + suffix(), "Preview Outsider");
+        addSpaceMember(spaceId, adminId, "admin", ownerId);
+        addSpaceMember(spaceId, memberId, "member", ownerId);
+        addSpaceMember(spaceId, guestId, "guest", ownerId);
+
+        String adminToken = login(username(adminId), "member123456", "space-preview-admin-" + UUID.randomUUID());
+        String memberToken = login(username(memberId), "member123456", "space-preview-member-" + UUID.randomUUID());
+        String guestToken = login(username(guestId), "member123456", "space-preview-guest-" + UUID.randomUUID());
+        String outsiderToken = login(username(outsiderId), "member123456", "space-preview-outsider-" + UUID.randomUUID());
+
+        JsonNode actualMember = projectSpace(memberToken, spaceId);
+        String memberPreviewBody = mockMvc.perform(get("/api/project-spaces/" + spaceId + "/surface-preview")
+                .queryParam("targetRole", "member")
+                .header("Authorization", bearer(ownerToken)))
+            .andExpect(status().isOk())
+            .andExpect(header().string("Cache-Control", "private, no-store"))
+            .andExpect(jsonPath("$.schemaVersion").value(1))
+            .andExpect(jsonPath("$.spaceId").value(spaceId.toString()))
+            .andExpect(jsonPath("$.targetRole").value("member"))
+            .andExpect(jsonPath("$.defaultPath").value("/project-spaces/" + spaceId))
+            .andExpect(jsonPath("$.readOnly").value(false))
+            .andExpect(jsonPath("$.contentIncluded").value(false))
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+        JsonNode memberPreview = objectMapper.readTree(memberPreviewBody);
+        assertThat(memberPreview.get("availableActions")).isEqualTo(actualMember.get("availableActions"));
+        assertSurfacePreviewFieldWhitelist(memberPreview);
+
+        JsonNode actualGuest = projectSpace(guestToken, spaceId);
+        String guestPreviewBody = mockMvc.perform(get("/api/project-spaces/" + spaceId + "/surface-preview")
+                .queryParam("targetRole", "guest")
+                .header("Authorization", bearer(ownerToken)))
+            .andExpect(status().isOk())
+            .andExpect(header().string("Cache-Control", "private, no-store"))
+            .andExpect(jsonPath("$.defaultPath").value("/project-spaces/" + spaceId))
+            .andExpect(jsonPath("$.readOnly").value(true))
+            .andExpect(jsonPath("$.contentIncluded").value(false))
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+        JsonNode guestPreview = objectMapper.readTree(guestPreviewBody);
+        assertThat(guestPreview.get("availableActions")).isEqualTo(actualGuest.get("availableActions"));
+        assertSurfacePreviewFieldWhitelist(guestPreview);
+
+        mockMvc.perform(get("/api/project-spaces/" + spaceId + "/surface-preview")
+                .queryParam("targetRole", "member")
+                .header("Authorization", bearer(adminToken)))
+            .andExpect(status().isOk());
+
+        for (String deniedToken : List.of(memberToken, guestToken)) {
+            mockMvc.perform(get("/api/project-spaces/" + spaceId + "/surface-preview")
+                    .queryParam("targetRole", "member")
+                    .header("Authorization", bearer(deniedToken)))
+                .andExpect(status().isForbidden());
+        }
+        for (String hiddenToken : List.of(outsiderToken, enterpriseAdminToken)) {
+            mockMvc.perform(get("/api/project-spaces/" + spaceId + "/surface-preview")
+                    .queryParam("targetRole", "member")
+                    .header("Authorization", bearer(hiddenToken)))
+                .andExpect(status().isNotFound());
+        }
+
+        mockMvc.perform(get("/api/project-spaces/" + spaceId + "/surface-preview")
+                .queryParam("targetRole", "owner")
+                .header("Authorization", bearer(ownerToken)))
+            .andExpect(status().isBadRequest());
     }
 
     @Test
@@ -335,6 +418,33 @@ class ProjectSpaceControllerIntegrationTests {
                 .header("Authorization", bearer(token)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.currentUserRole").value(role));
+    }
+
+    private JsonNode projectSpace(String token, UUID spaceId) throws Exception {
+        String body = mockMvc.perform(get("/api/project-spaces/" + spaceId)
+                .header("Authorization", bearer(token)))
+            .andExpect(status().isOk())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+        return objectMapper.readTree(body);
+    }
+
+    private void assertSurfacePreviewFieldWhitelist(JsonNode preview) {
+        List<String> fields = new ArrayList<>();
+        preview.fieldNames().forEachRemaining(fields::add);
+        assertThat(fields).containsExactlyInAnyOrder(
+            "schemaVersion",
+            "spaceId",
+            "targetRole",
+            "availableActions",
+            "defaultPath",
+            "readOnly",
+            "contentIncluded",
+            "explanation"
+        );
+        assertThat(preview.get("availableActions").isArray()).isTrue();
+        assertThat(preview.get("explanation").asText()).isNotBlank();
     }
 
     private void addSpaceMember(UUID spaceId, UUID userId, String role, UUID actorId) {

@@ -23,6 +23,7 @@ import {
   Input,
   Modal,
   Segmented,
+  Select,
   Skeleton,
   Space,
   Tag,
@@ -47,6 +48,7 @@ import {
   getProjectSpace,
   getProjectSpaceExperiencePreference,
   getProjectSpaceSettings,
+  getProjectSpaceSurfacePreview,
   listProjectSpaces,
   resetProjectSpaceExperiencePreference,
   saveProjectSpaceExperiencePreference,
@@ -56,21 +58,38 @@ import {
   type UserProjectSpace,
 } from '../api/projectSpacesApi'
 import { ProjectSpaceSecondaryTabs } from '../components/ProjectSpaceSecondaryTabs'
+import {
+  listProjectSpacePersonalActivities,
+  listProjectSpacePersonalWork,
+} from '../api/projectSpacePersonalWorkApi'
+import {
+  commandProjectSpaceOnboarding,
+  getProjectSpaceOnboarding,
+} from '../api/projectSpaceOnboardingApi'
 import { listActiveWorkItemTypes, workItemTypeKeys } from '../api/workItemTypesApi'
 import { errorMessage, formatTime, roleLabel, statusLabel, visibilityLabel } from '../projectSpaceView'
 import {
   PROJECT_SPACE_ADVANCED_CONFIGURATION,
-  getVisibleProjectSpacePrimaryNavigation,
+  getVisibleProjectSpaceTaskZones,
   projectSpacePrimaryPath,
   resolveProjectSpaceRouteContext,
   type ProjectSpaceExperienceMode,
   type ProjectSpacePrimaryView,
 } from '../projectSpaceInformationArchitecture'
 import {
+  visibleProjectSpacePersonalWork,
+  visibleProjectSpaceWorkItemTypes,
+} from '../projectSpaceMemberContent'
+import {
   readRecentProjectSpaceIds,
   rememberRecentProjectSpace,
 } from '../projectSpaceLocalCache'
-import { projectSpaceLocationWithContext } from '../projectSpaceRouteContract'
+import {
+  patchProjectSpaceSearch,
+  projectSpaceLocationWithContext,
+  resolveCanonicalProjectSpaceLocation,
+} from '../projectSpaceRouteContract'
+import { canonicalProjectSpaceSurfaceLocation } from '../projectSpaceSurfaceContract'
 import {
   projectSpaceExperienceFreshness,
   projectSpaceExperiencePreferenceQueryKey,
@@ -79,6 +98,10 @@ import {
   type ProjectSpaceExperienceEventMode,
   type ProjectSpaceExperienceEventOutcome,
 } from '../projectSpaceExperience'
+import {
+  startingPointCommand,
+  type ProjectSpaceOnboardingScenarioKey,
+} from '../projectSpaceOnboarding'
 import {
   useProjectSpaceExperienceRollout,
   useProjectSpaceExperienceTelemetry,
@@ -89,6 +112,9 @@ type CreateSpaceForm = {
   spaceKey?: string
   description?: string
   visibility: ProjectSpaceVisibility
+  startingMode: 'blank' | 'scenario' | 'clone'
+  scenarioKey?: ProjectSpaceOnboardingScenarioKey
+  referenceSpaceId?: string
 }
 
 type SettingsForm = Pick<CreateSpaceForm, 'name' | 'description' | 'visibility'>
@@ -151,6 +177,18 @@ const ProjectWorkItemTypesPanel = lazy(async () => ({
 const ProjectWorkItemsPanel = lazy(async () => ({
   default: (await import('../components/ProjectWorkItemsPanel')).ProjectWorkItemsPanel,
 }))
+const AutomationRulesPanel = lazy(async () => ({
+  default: (await import('../components/AutomationRulesPanel')).AutomationRulesPanel,
+}))
+const AutomationExecutionPanel = lazy(async () => ({
+  default: (await import('../components/AutomationExecutionPanel')).AutomationExecutionPanel,
+}))
+const AutomationConnectorsPanel = lazy(async () => ({
+  default: (await import('../components/AutomationConnectorsPanel')).AutomationConnectorsPanel,
+}))
+const AutomationManagementPanel = lazy(async () => ({
+  default: (await import('../components/AutomationManagementPanel')).AutomationManagementPanel,
+}))
 
 export function ProjectSpacesPage() {
   const { message } = AntdApp.useApp()
@@ -163,6 +201,9 @@ export function ProjectSpacesPage() {
   const [search, setSearch] = useState('')
   const [recentIds, setRecentIds] = useState<string[]>([])
   const [createForm] = Form.useForm<CreateSpaceForm>()
+  const startingMode = Form.useWatch('startingMode', createForm) ?? 'blank'
+  const selectedScenario = Form.useWatch('scenarioKey', createForm)
+  const referenceSpaceId = Form.useWatch('referenceSpaceId', createForm)
 
   const spacesQuery = useQuery({ queryKey: ['project-spaces'], queryFn: listProjectSpaces })
   const spaceQuery = useQuery({
@@ -180,6 +221,14 @@ export function ProjectSpacesPage() {
     && !spaceQuery.isFetching
     ? spaceQuery.data
     : undefined
+  const canonicalSurfaceLocation = currentSpace
+    ? canonicalProjectSpaceSurfaceLocation({
+        spaceId: currentSpace.id,
+        pathname: location.pathname,
+        search: location.search,
+        hash: location.hash,
+      })
+    : null
   const view = resolveProjectSpaceRouteContext(location.pathname).renderView
   const recentScope = sessionScope
   const accessibleSpaceIds = useMemo(
@@ -219,6 +268,12 @@ export function ProjectSpacesPage() {
       )
     }
   }, [location.hash, location.search, navigate, spaceId, spaces])
+
+  useEffect(() => {
+    if (canonicalSurfaceLocation) {
+      navigate(canonicalSurfaceLocation, { replace: true })
+    }
+  }, [canonicalSurfaceLocation, navigate])
 
   useEffect(() => {
     if (
@@ -267,13 +322,45 @@ export function ProjectSpacesPage() {
   )
 
   const createMutation = useMutation({
-    mutationFn: createProjectSpace,
-    onSuccess: async (space) => {
+    mutationFn: (values: CreateSpaceForm) => createProjectSpace({
+      name: values.name,
+      spaceKey: values.spaceKey,
+      description: values.description,
+      visibility: values.visibility,
+    }),
+    onSuccess: async (space, values) => {
       await queryClient.invalidateQueries({ queryKey: ['project-spaces'] })
+      try {
+        const onboarding = await getProjectSpaceOnboarding(space.id)
+        const startingPoint = values.startingMode === 'scenario' && values.scenarioKey
+          ? values.scenarioKey
+          : 'blank'
+        await commandProjectSpaceOnboarding(
+          space.id,
+          onboarding.version,
+          startingPointCommand(startingPoint),
+        )
+      } catch {
+        message.warning('空间已创建，但起步引导暂未保存；可在空间内重新选择。')
+      }
+      if (values.startingMode === 'clone' && values.referenceSpaceId && recentScope) {
+        const reference = spaces.find((candidate) => candidate.id === values.referenceSpaceId)
+        rememberProjectSpaceCloneReference(
+          sessionStorage,
+          `${recentScope.workspaceId}:${recentScope.userId}`,
+          space.id,
+          reference?.name ?? '参考空间',
+        )
+      }
       setCreateOpen(false)
       createForm.resetFields()
       message.success('项目空间已创建')
-      navigate(`/project-spaces/${space.id}`)
+      const panel = values.startingMode === 'scenario'
+        ? 'scenario-templates'
+        : values.startingMode === 'clone'
+          ? 'work-model'
+          : 'management-home'
+      navigate(`/project-spaces/${space.id}/settings?panel=${panel}&source=create`)
     },
     onError: (error) => message.error(errorMessage(error, '创建项目空间失败')),
   })
@@ -407,7 +494,7 @@ export function ProjectSpacesPage() {
         ) : null}
         {spaceQuery.isError ? <ProjectSpaceLoadError error={spaceQuery.error} onBack={() => navigate('/project-spaces')} /> : null}
         {spaceId && (spaceQuery.isLoading || spaceQuery.isFetching) ? <Card><Skeleton active /></Card> : null}
-        {currentSpace ? (
+        {currentSpace && !canonicalSurfaceLocation ? (
           <ProjectSpaceShell
             key={currentSpace.id}
             space={currentSpace}
@@ -430,16 +517,75 @@ export function ProjectSpacesPage() {
         okText="创建空间"
         cancelText="取消"
         confirmLoading={createMutation.isPending}
-        onCancel={() => setCreateOpen(false)}
+        onCancel={() => {
+          setCreateOpen(false)
+          createForm.resetFields()
+        }}
         onOk={() => createForm.submit()}
         destroyOnHidden
       >
         <Form<CreateSpaceForm>
           form={createForm}
           layout="vertical"
-          initialValues={{ visibility: 'private' }}
+          initialValues={{ visibility: 'private', startingMode: 'blank' }}
           onFinish={(values) => createMutation.mutate({ ...values, name: values.name.trim(), spaceKey: values.spaceKey?.trim() || undefined })}
         >
+          <Form.Item
+            name="startingMode"
+            label="起步方式"
+            rules={[{ required: true }]}
+          >
+            <Segmented
+              block
+              options={[
+                { label: '空白空间', value: 'blank' },
+                { label: '场景模板', value: 'scenario' },
+                { label: '克隆配置', value: 'clone' },
+              ]}
+            />
+          </Form.Item>
+          {startingMode === 'scenario' ? (
+            <Form.Item
+              name="scenarioKey"
+              label="场景模板"
+              rules={[{ required: true, message: '请选择场景模板' }]}
+            >
+              <Select
+                placeholder="选择适合团队的起步模板"
+                options={[
+                  { label: '研发协作', value: 'development' },
+                  { label: '市场项目', value: 'marketing' },
+                  { label: 'HR 事务', value: 'human-resources' },
+                  { label: '交付管理', value: 'delivery' },
+                ]}
+              />
+            </Form.Item>
+          ) : null}
+          {startingMode === 'clone' ? (
+            <Form.Item
+              name="referenceSpaceId"
+              label="参考空间"
+              rules={[{ required: true, message: '请选择参考空间' }]}
+            >
+              <Select
+                showSearch
+                optionFilterProp="label"
+                placeholder="选择一个有权访问的空间"
+                options={spaces.map((space) => ({ label: space.name, value: space.id }))}
+              />
+            </Form.Item>
+          ) : null}
+          <Card size="small" title="影响预览" className="project-space-create-impact">
+            <div className="project-space-fact-list">
+              {createStartingModeImpact(
+                startingMode,
+                selectedScenario,
+                spaces.find((space) => space.id === referenceSpaceId)?.name,
+              ).map((item) => (
+                <div key={item.label}><span>{item.label}</span><strong>{item.value}</strong></div>
+              ))}
+            </div>
+          </Card>
           <Form.Item name="name" label="空间名称" rules={[{ required: true, whitespace: true, message: '请输入空间名称' }, { max: 128 }]}>
             <Input autoFocus placeholder="例如：市场增长项目" />
           </Form.Item>
@@ -497,6 +643,8 @@ function ProjectSpaceShell({
   const queryClient = useQueryClient()
   const sessionScope = useSessionScope()
   const [online, setOnline] = useState(() => navigator.onLine)
+  const [previewOpen, setPreviewOpen] = useState(false)
+  const [previewRole, setPreviewRole] = useState<'member' | 'guest'>('member')
   const { rollout } = useProjectSpaceExperienceRollout(space.id)
   const enhancedExperience = rollout.enabled && rollout.state === 'enabled'
   const experienceTelemetry = useProjectSpaceExperienceTelemetry({
@@ -539,17 +687,27 @@ function ProjectSpaceShell({
   const experienceMode: ProjectSpaceExperienceEventMode = enhancedExperience
     ? mode
     : 'baseline'
-  const visibleNavigation = getVisibleProjectSpacePrimaryNavigation({
+  const accessSnapshot = {
     member: space.member,
     currentUserRole: space.currentUserRole,
     status: space.status,
     availableActions: space.availableActions,
-  })
+  } as const
+  const visibleTaskZones = getVisibleProjectSpaceTaskZones(accessSnapshot)
+  const visibleNavigation = visibleTaskZones.flatMap((zone) => zone.navigation)
   const activePrimaryView = resolveProjectSpaceRouteContext(location.pathname).primaryView
   const routeAccessDenied = view !== 'overview'
     && !visibleNavigation.some((item) => item.key === activePrimaryView)
   const canManage = space.availableActions.includes('view_settings')
+  const canPreview = canManage
+    && (space.currentUserRole === 'owner' || space.currentUserRole === 'admin')
   const readOnly = space.status !== 'active'
+  const previewQuery = useQuery({
+    queryKey: ['project-spaces', space.id, 'surface-preview', previewRole],
+    queryFn: () => getProjectSpaceSurfacePreview(space.id, previewRole),
+    enabled: previewOpen && canPreview,
+    retry: false,
+  })
   useEffect(() => {
     if (!experienceTelemetry.ready) return
     const entryKey = `${space.id}:${routeKey}:${rollout.policyVersion}:${experienceMode}`
@@ -671,6 +829,20 @@ function ProjectSpaceShell({
     outcome,
     errorCode,
   })
+  const previewTaskZones = previewQuery.data
+    ? getVisibleProjectSpaceTaskZones({
+        member: true,
+        currentUserRole: previewQuery.data.targetRole,
+        status: previewQuery.data.readOnly ? 'disabled' : 'active',
+        availableActions: previewQuery.data.availableActions,
+      })
+    : []
+  const closePreview = () => {
+    setPreviewOpen(false)
+    queryClient.removeQueries({
+      queryKey: ['project-spaces', space.id, 'surface-preview'],
+    })
+  }
 
   return (
     <div
@@ -725,6 +897,15 @@ function ProjectSpaceShell({
             </Button>
           </Space>
         ) : null}
+        {canPreview ? (
+          <Button
+            icon={<EyeOutlined />}
+            data-testid="project-space-member-preview-open"
+            onClick={() => setPreviewOpen(true)}
+          >
+            成员视图预览
+          </Button>
+        ) : null}
         {enhancedExperience && space.member ? (
           <Suspense fallback={<Button loading disabled>使用引导</Button>}>
             <ProjectSpaceOnboarding
@@ -756,27 +937,87 @@ function ProjectSpaceShell({
         aria-label="空间导航"
         data-testid="project-space-primary-navigation"
       >
-        {visibleNavigation.map((item) => (
-          <Button
-            key={item.key}
-            aria-label={item.label}
-            aria-current={activePrimaryView === item.key ? 'page' : undefined}
-            type={activePrimaryView === item.key ? 'primary' : 'text'}
-            icon={primaryNavigationIcon(item.key)}
-            onClick={() => onNavigate(item.key)}
+        {visibleTaskZones.map((zone) => (
+          <div
+            className="project-space-task-zone"
+            data-testid={`project-space-task-zone-${zone.key}`}
+            key={zone.key}
           >
-            {item.label}
-          </Button>
+            <Typography.Text className="project-space-task-zone-label" type="secondary">
+              {zone.label}
+            </Typography.Text>
+            <div className="project-space-task-zone-actions">
+              {zone.navigation.map((item) => (
+                <Button
+                  key={item.key}
+                  aria-label={item.label}
+                  aria-current={activePrimaryView === item.key ? 'page' : undefined}
+                  type={activePrimaryView === item.key ? 'primary' : 'text'}
+                  icon={primaryNavigationIcon(item.key)}
+                  onClick={() => onNavigate(item.key)}
+                >
+                  {item.label}
+                </Button>
+              ))}
+            </div>
+          </div>
         ))}
       </nav>
+
+      <Modal
+        title="成员视图预览"
+        open={previewOpen}
+        footer={<Button onClick={closePreview}>退出预览</Button>}
+        onCancel={closePreview}
+        destroyOnHidden
+        data-testid="project-space-member-preview"
+      >
+        <Alert
+          type="info"
+          showIcon
+          message="这是入口展示预览，不会改变你的权限"
+          description="预览只返回服务端计算的导航元数据，不加载工作项、成员、配置或指标内容。"
+        />
+        <Segmented
+          block
+          value={previewRole}
+          options={[
+            { label: '普通成员', value: 'member' },
+            { label: '访客', value: 'guest' },
+          ]}
+          onChange={(value) => setPreviewRole(value as 'member' | 'guest')}
+        />
+        {previewQuery.isLoading ? <Skeleton active paragraph={{ rows: 3 }} /> : null}
+        {previewQuery.isError ? (
+          <Alert
+            type="error"
+            showIcon
+            message="预览加载失败"
+            description="当前权限或网络状态不允许获取预览；实际访问权限没有变化。"
+            action={<Button size="small" onClick={() => previewQuery.refetch()}>重试</Button>}
+          />
+        ) : null}
+        {previewQuery.data ? (
+          <div className="project-space-preview-zones" aria-label={`${previewRole === 'member' ? '普通成员' : '访客'}可见入口`}>
+            {previewTaskZones.map((zone) => (
+              <Card key={zone.key} size="small" title={zone.label}>
+                <Space wrap>
+                  {zone.navigation.map((item) => <Tag key={item.key}>{item.label}</Tag>)}
+                </Space>
+              </Card>
+            ))}
+            <Typography.Paragraph type="secondary">
+              {previewQuery.data.explanation}
+            </Typography.Paragraph>
+          </div>
+        ) : null}
+      </Modal>
 
       <Suspense fallback={<ProjectSpacePanelFallback />}>
         {view === 'overview' ? (
           space.member
             ? <ProjectSpaceOverview
                 space={space}
-                enhancedExperience={enhancedExperience}
-                onTaskResult={recordTaskResult}
               />
             : <ProjectSpaceMetadataOverview space={space} />
         ) : null}
@@ -862,7 +1103,6 @@ function ProjectSpaceShell({
           ? <ProjectSpaceSettingsPanel
               space={space}
               mode={mode}
-              enhancedExperience={enhancedExperience}
               onTaskResult={recordTaskResult}
             />
           : null}
@@ -905,152 +1145,251 @@ function ProjectSpaceMetadataOverview({ space }: { space: UserProjectSpace }) {
 }
 
 function ProjectSpaceManagementPanel({ space }: { space: UserProjectSpace }) {
+  const location = useLocation()
+  const navigate = useNavigate()
+  const requestedPanel = new URLSearchParams(location.search).get('panel')
+  const supplementalPanels = new Set([
+    'cross-space-relations',
+    'cross-space-sync',
+    'cross-team-panorama',
+    'metric-dashboards',
+    'metric-risks',
+  ])
+  const openPanel = (panel: string) => {
+    const target = projectSpaceLocationWithContext(
+      location.pathname,
+      patchProjectSpaceSearch(location.search, { panel }),
+      location.hash,
+    )
+    if (target) navigate(target, { replace: true })
+  }
+
+  if (requestedPanel && supplementalPanels.has(requestedPanel)) {
+    return (
+      <section data-testid="project-space-management">
+        <Button type="link" onClick={() => openPanel('project-detail')}>
+          返回项目管理
+        </Button>
+        <ProjectSpaceSecondaryTabs
+          view="management"
+          testId="project-space-management-results"
+          ariaLabel="项目协作与结果导航"
+          panels={{
+            'cross-space-relations': <CrossSpaceRelationsPanel space={space} />,
+            'cross-space-sync': <CrossSpaceSyncPanel space={space} />,
+            'cross-team-panorama': <CrossTeamPanoramaPanel space={space} />,
+            'metric-dashboards': <MetricDashboardsPanel space={space} />,
+            'metric-risks': <MetricRisksPanel space={space} />,
+          }}
+        />
+      </section>
+    )
+  }
+
   return (
     <section data-testid="project-space-management">
       <ProjectWorkItemsPanel space={space} surface="management" />
-      <ProjectSpaceSecondaryTabs
-        view="overview"
-        canManage={space.availableActions.includes('view_settings')}
-        testId="project-space-management-metrics"
-        ariaLabel="项目指标内容导航"
-        queryParameter="metricPanel"
-        panels={{
-          'metric-dashboards': <MetricDashboardsPanel space={space} />,
-          'metric-risks': <MetricRisksPanel space={space} />,
-          'metric-governance': <MetricGovernancePanel space={space} />,
-        }}
-      />
+      <Card className="content-card project-space-management-links" title="协作与结果">
+        <Typography.Paragraph type="secondary">
+          管理事实只在项目管理中维护；成员工作区只展示与你相关的摘要。
+        </Typography.Paragraph>
+        <Space wrap>
+          <Button onClick={() => openPanel('cross-space-relations')}>跨空间关系</Button>
+          <Button onClick={() => openPanel('cross-space-sync')}>跨空间同步</Button>
+          <Button onClick={() => openPanel('cross-team-panorama')}>跨团队全景</Button>
+          <Button onClick={() => openPanel('metric-dashboards')}>结果指标</Button>
+          <Button onClick={() => openPanel('metric-risks')}>指标风险</Button>
+        </Space>
+      </Card>
     </section>
   )
 }
 
 function ProjectSpaceOverview({
   space,
-  enhancedExperience,
-  onTaskResult,
 }: {
   space: UserProjectSpace
-  enhancedExperience: boolean
-  onTaskResult: (
-    outcome: ProjectSpaceExperienceEventOutcome,
-    errorCode: ProjectSpaceExperienceErrorCode,
-  ) => void
 }) {
   const navigate = useNavigate()
-  const canManage = space.availableActions.includes('view_settings')
   const typesQuery = useQuery({
     queryKey: workItemTypeKeys.active(space.id),
     queryFn: () => listActiveWorkItemTypes(space.id),
     retry: false,
   })
-  const canCreateWorkItems = space.status === 'active' && space.currentUserRole !== 'guest'
-  const readyTypeCount = typesQuery.data?.filter((type) => type.configurationReady).length ?? 0
-  const pendingTypeCount = (typesQuery.data?.length ?? 0) - readyTypeCount
+  const personalWorkQuery = useQuery({
+    queryKey: ['project-spaces', space.id, 'personal-work'],
+    queryFn: () => listProjectSpacePersonalWork(space.id),
+    retry: false,
+  })
+  const activitiesQuery = useQuery({
+    queryKey: ['project-spaces', space.id, 'personal-activities'],
+    queryFn: () => listProjectSpacePersonalActivities(space.id),
+    retry: false,
+  })
+  const readyTypes = visibleProjectSpaceWorkItemTypes(typesQuery.data)
+  const openDeepLink = (deepLink: string) => {
+    const target = resolveCanonicalProjectSpaceLocation(deepLink, '?source=member-home')
+    if (target) navigate(target)
+  }
 
   return (
     <ProjectSpaceSecondaryTabs
       view="overview"
-      canManage={canManage}
       testId="project-space-overview-secondary-tabs"
-      ariaLabel="协作概览内容导航"
+      ariaLabel="成员工作区内容导航"
       panels={{
-        'active-types': (
-          <Card
-            className="content-card project-space-active-types"
-            title={<Space><TagsOutlined />工作入口</Space>}
-            extra={!typesQuery.isLoading && !typesQuery.isError ? (
-              <Space wrap size={6}>
-                <Tag color="success">配置就绪 {readyTypeCount}</Tag>
-                {pendingTypeCount > 0 ? <Tag color="warning">待配置 {pendingTypeCount}</Tag> : null}
-              </Space>
-            ) : null}
-          >
-            {typesQuery.isLoading ? <Skeleton active paragraph={{ rows: 2 }} /> : null}
-            {typesQuery.isError ? <Alert type="error" showIcon message="工作项类型加载失败" action={<Button size="small" onClick={() => typesQuery.refetch()}>重试</Button>} /> : null}
-            {!typesQuery.isLoading && !typesQuery.isError && typesQuery.data?.length === 0 ? (
-              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前没有可用的工作项类型" />
-            ) : null}
-            <div className="project-space-active-type-list" aria-label="工作入口" role="list">
-              {typesQuery.data?.map((type) => {
-                const glyph = (type.icon?.trim() || type.name.slice(0, 1)).slice(0, 2)
-                return (
-                  <div
-                    className="project-space-active-type-item"
-                    data-testid={`project-space-work-entry-${type.typeKey}`}
-                    key={type.id}
-                    role="listitem"
+        'member-home': (
+          <Space direction="vertical" size={16} style={{ width: '100%' }}>
+            <Card
+              className="content-card project-space-member-work"
+              title="我的工作"
+              extra={personalWorkQuery.data?.truncated ? <Tag>还有更多事项</Tag> : null}
+            >
+              {personalWorkQuery.isLoading ? <Skeleton active paragraph={{ rows: 4 }} /> : null}
+              {personalWorkQuery.isError ? (
+                <Alert
+                  type="error"
+                  showIcon
+                  message="我的工作加载失败"
+                  description="没有展示未经确认的缓存内容。请检查网络后重试。"
+                  action={<Button size="small" onClick={() => personalWorkQuery.refetch()}>重试</Button>}
+                />
+              ) : null}
+              {personalWorkQuery.data ? (
+                <div className="project-space-work-buckets">
+                  {personalWorkQuery.data.buckets.map((bucket) => {
+                    const visibleItems = visibleProjectSpacePersonalWork(bucket.items)
+                    return (
+                    <section className="project-space-work-bucket" key={bucket.bucket}>
+                      <div className="project-space-work-bucket-heading">
+                        <strong>{personalWorkBucketLabel(bucket.bucket)}</strong>
+                        <Tag>{bucket.visibleCount}</Tag>
+                      </div>
+                      {visibleItems.length === 0 ? (
+                        <Typography.Text type="secondary">当前没有事项</Typography.Text>
+                      ) : (
+                        visibleItems.slice(0, 3).map((item) => (
+                          <button
+                            type="button"
+                            className="project-space-personal-work-item"
+                            key={`${bucket.bucket}:${item.workItemId}`}
+                            onClick={() => openDeepLink(item.deepLink)}
+                          >
+                            <span>
+                              <strong>{item.title}</strong>
+                              <small>{item.displayKey} · {item.typeName}</small>
+                            </span>
+                            <Typography.Text type="secondary">打开</Typography.Text>
+                          </button>
+                        ))
+                      )}
+                    </section>
+                    )
+                  })}
+                </div>
+              ) : null}
+              {personalWorkQuery.data
+                && personalWorkQuery.data.buckets.every((bucket) => (
+                  bucket.items.every((item) => !item.availableActions.includes('view'))
+                )) ? (
+                  <Empty
+                    image={Empty.PRESENTED_IMAGE_SIMPLE}
+                    description="当前没有需要你处理、参与或关注的事项"
                   >
-                    {type.configurationReady && canCreateWorkItems ? (
+                    {space.availableActions.includes('view_work_items') ? (
+                      <Button onClick={() => navigate(`/project-spaces/${space.id}/work-items`)}>
+                        浏览团队工作项
+                      </Button>
+                    ) : null}
+                  </Empty>
+                ) : null}
+            </Card>
+
+            <Card
+              className="content-card project-space-active-types"
+              title={<Space><TagsOutlined />可用工作项</Space>}
+            >
+              {typesQuery.isLoading ? <Skeleton active paragraph={{ rows: 2 }} /> : null}
+              {typesQuery.isError ? (
+                <Alert
+                  type="error"
+                  showIcon
+                  message="可用工作项加载失败"
+                  description="请稍后重试；未就绪配置不会在这里显示。"
+                  action={<Button size="small" onClick={() => typesQuery.refetch()}>重试</Button>}
+                />
+              ) : null}
+              {!typesQuery.isLoading && !typesQuery.isError && readyTypes.length === 0 ? (
+                <Empty
+                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                  description="当前没有已发布且可用的工作项"
+                />
+              ) : null}
+              <div className="project-space-active-type-list" aria-label="可用工作项" role="list">
+                {readyTypes.map((type, index) => {
+                  const glyph = (type.icon?.trim() || type.name.slice(0, 1)).slice(0, 2)
+                  const canCreate = space.status === 'active'
+                    && type.availableActions.includes('create')
+                  return (
+                    <div
+                      className="project-space-active-type-item"
+                      data-testid={`project-space-work-entry-${index + 1}`}
+                      key={type.id}
+                      role="listitem"
+                    >
                       <button
                         type="button"
-                        className="project-space-active-type is-ready"
-                        aria-label={`新建${type.name}（${type.typeKey}）`}
-                        onClick={() => navigate(`/project-spaces/${space.id}/work-items?typeId=${type.id}&create=1`)}
-                      >
-                        <span className="work-item-type-glyph" aria-hidden="true">{glyph}</span>
-                        <span className="project-space-active-type-copy">
-                          <strong>{type.name}</strong>
-                          <small>{type.typeKey}</small>
-                          <Tag color="success">配置就绪</Tag>
-                        </span>
-                        <PlusOutlined aria-hidden="true" />
-                      </button>
-                    ) : type.configurationReady ? (
-                      <div
-                        className="project-space-active-type is-readonly"
-                        aria-label={`${type.name}（${type.typeKey}）仅查看`}
-                        role="group"
-                      >
-                        <span className="work-item-type-glyph" aria-hidden="true">{glyph}</span>
-                        <span className="project-space-active-type-copy">
-                          <strong>{type.name}</strong>
-                          <small>{type.typeKey}</small>
-                          <Tag>仅查看</Tag>
-                        </span>
-                        <Typography.Text className="project-space-active-type-guidance" type="secondary">
-                          访客不可创建
-                        </Typography.Text>
-                      </div>
-                    ) : (
-                      <div
-                        className="project-space-active-type is-configuration-required"
-                        aria-label={`${type.name}（${type.typeKey}）待发布配置`}
-                        role="group"
-                      >
-                        <span className="work-item-type-glyph" aria-hidden="true">{glyph}</span>
-                        <span className="project-space-active-type-copy">
-                          <strong>{type.name}</strong>
-                          <small>{type.typeKey}</small>
-                          <Tag color="warning">待发布配置</Tag>
-                        </span>
-                        {canManage ? (
-                          <Button
-                            aria-label={`去配置${type.name}（${type.typeKey}）`}
-                            size="small"
-                            type="link"
-                            icon={<SettingOutlined />}
-                            onClick={() => navigate(
-                              `/project-spaces/${space.id}/types/${type.id}?panel=configuration-draft&source=overview`,
-                            )}
-                          >
-                            去配置
-                          </Button>
-                        ) : (
-                          <Typography.Text className="project-space-active-type-guidance" type="secondary">
-                            请联系空间管理员
-                          </Typography.Text>
+                        className={`project-space-active-type${canCreate ? ' is-ready' : ' is-readonly'}`}
+                        aria-label={canCreate ? `新建${type.name}` : `查看${type.name}`}
+                        onClick={() => navigate(
+                          `/project-spaces/${space.id}/work-items?typeId=${type.id}${canCreate ? '&create=1' : ''}`,
                         )}
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          </Card>
+                      >
+                        <span className="work-item-type-glyph" aria-hidden="true">{glyph}</span>
+                        <span className="project-space-active-type-copy">
+                          <strong>{type.name}</strong>
+                          <small>{canCreate ? '可创建新事项' : '查看已有事项'}</small>
+                        </span>
+                        {canCreate ? <PlusOutlined aria-hidden="true" /> : <EyeOutlined aria-hidden="true" />}
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            </Card>
+          </Space>
         ),
         activity: (
           <Card className="content-card" title="空间动态">
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="空间已就绪，事项与流程能力将在后续阶段接入。" />
+            {activitiesQuery.isLoading ? <Skeleton active paragraph={{ rows: 4 }} /> : null}
+            {activitiesQuery.isError ? (
+              <Alert
+                type="error"
+                showIcon
+                message="空间动态加载失败"
+                action={<Button size="small" onClick={() => activitiesQuery.refetch()}>重试</Button>}
+              />
+            ) : null}
+            {activitiesQuery.data?.items.length === 0 ? (
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="还没有与你相关的空间动态" />
+            ) : null}
+            <div className="project-space-activity-list" role="list">
+              {activitiesQuery.data?.items.map((activity) => (
+                <button
+                  type="button"
+                  className="project-space-activity-item"
+                  key={activity.sequence}
+                  role="listitem"
+                  onClick={() => openDeepLink(activity.deepLink)}
+                >
+                  <span>
+                    <strong>{activity.title}</strong>
+                    <small>{activity.displayKey} · {personalActivityLabel(activity.activityType)}</small>
+                  </span>
+                  <Typography.Text type="secondary">{formatTime(activity.occurredAt)}</Typography.Text>
+                </button>
+              ))}
+            </div>
           </Card>
         ),
         'collaboration-boundary': (
@@ -1065,33 +1404,6 @@ function ProjectSpaceOverview({
             </Typography.Paragraph>
           </Card>
         ),
-        'cross-space-grants': enhancedExperience && canManage
-          ? <CrossSpaceGrantsPanel space={space} />
-          : undefined,
-        'cross-space-relations': enhancedExperience
-          ? <CrossSpaceRelationsPanel space={space} />
-          : undefined,
-        'cross-space-sync': enhancedExperience
-          ? <CrossSpaceSyncPanel space={space} />
-          : undefined,
-        'cross-team-panorama': enhancedExperience
-          ? <CrossTeamPanoramaPanel space={space} />
-          : undefined,
-        'scenario-templates': enhancedExperience
-          ? <ScenarioTemplatesPanel space={space} onTaskResult={onTaskResult} />
-          : undefined,
-        'metric-semantics': enhancedExperience
-          ? <MetricSemanticsPanel space={space} />
-          : undefined,
-        'metric-dashboards': enhancedExperience
-          ? <MetricDashboardsPanel space={space} />
-          : undefined,
-        'metric-risks': enhancedExperience
-          ? <MetricRisksPanel space={space} />
-          : undefined,
-        'metric-governance': enhancedExperience
-          ? <MetricGovernancePanel space={space} />
-          : undefined,
       }}
     />
   )
@@ -1100,12 +1412,10 @@ function ProjectSpaceOverview({
 function ProjectSpaceSettingsPanel({
   space,
   mode,
-  enhancedExperience,
   onTaskResult,
 }: {
   space: UserProjectSpace
   mode: ProjectSpaceExperienceMode
-  enhancedExperience: boolean
   onTaskResult: (
     outcome: ProjectSpaceExperienceEventOutcome,
     errorCode: ProjectSpaceExperienceErrorCode,
@@ -1114,7 +1424,24 @@ function ProjectSpaceSettingsPanel({
   const { message, modal } = AntdApp.useApp()
   const queryClient = useQueryClient()
   const navigate = useNavigate()
+  const location = useLocation()
+  const sessionScope = useSessionScope()
   const [form] = Form.useForm<SettingsForm>()
+
+  useEffect(() => {
+    const panel = new URLSearchParams(location.search).get('panel')
+    if (!panel || panel === 'management-home' || !PROJECT_SPACE_SETTINGS_PANEL_LABELS[panel]) {
+      return
+    }
+    if (sessionScope) {
+      rememberProjectSpaceSettingsPanel(
+        sessionStorage,
+        `${sessionScope.workspaceId}:${sessionScope.userId}`,
+        space.id,
+        panel,
+      )
+    }
+  }, [location.search, sessionScope, space.id])
 
   useEffect(() => {
     form.setFieldsValue({ name: space.name, description: space.description ?? '', visibility: space.visibility })
@@ -1161,6 +1488,9 @@ function ProjectSpaceSettingsPanel({
       testId="project-space-settings-secondary-tabs"
       ariaLabel="空间设置内容导航"
       panels={{
+        'management-home': (
+          <ProjectSpaceManagementHome space={space} mode={mode} />
+        ),
         general: (
           <Card className="content-card" title="基本信息" loading={settingsQuery.isLoading}>
             <Form<SettingsForm> form={form} layout="vertical" onFinish={(values) => updateMutation.mutate({ ...values, name: values.name.trim() })}>
@@ -1172,7 +1502,7 @@ function ProjectSpaceSettingsPanel({
           </Card>
         ),
         lifecycle: (
-          <Card className="content-card project-space-danger-card" title="空间生命周期">
+          <Card className="content-card project-space-danger-card" title="启用、停用与归档">
             <div className="project-space-lifecycle-row">
               <div><strong>当前状态</strong><p>{statusDescription(space.status)}</p></div>
               <StatusBadge status={space.status} />
@@ -1184,7 +1514,7 @@ function ProjectSpaceSettingsPanel({
             </Space>
           </Card>
         ),
-        'work-model': enhancedExperience && mode === 'advanced' ? (
+        'work-model': (
           <Card
             className="content-card"
             data-testid="project-space-advanced-settings"
@@ -1204,8 +1534,8 @@ function ProjectSpaceSettingsPanel({
               )}>字段、表单与页面</Button>
             </Space>
           </Card>
-        ) : undefined,
-        'flow-access': enhancedExperience && mode === 'advanced' ? (
+        ),
+        'flow-access': (
           <Card className="content-card" title="流程与权限">
             <Typography.Paragraph type="secondary">
               {PROJECT_SPACE_ADVANCED_CONFIGURATION.find(
@@ -1216,8 +1546,8 @@ function ProjectSpaceSettingsPanel({
               进入任务模板的流程与权限配置
             </Button>
           </Card>
-        ) : undefined,
-        'automation-collaboration': enhancedExperience && mode === 'advanced' ? (
+        ),
+        'automation-collaboration': (
           <Space direction="vertical" size={16} style={{ width: '100%' }}>
             <Card className="content-card" title="自动化与协同">
               <Typography.Paragraph type="secondary">
@@ -1226,13 +1556,26 @@ function ProjectSpaceSettingsPanel({
                 )?.description}
               </Typography.Paragraph>
             </Card>
-            <CrossSpaceGrantsPanel space={space} />
-            <CrossSpaceSyncPanel space={space} />
+            <ProjectSpaceSecondaryTabs
+              view="automation-settings"
+              canManage
+              testId="project-space-settings-automation"
+              ariaLabel="自动化与协同配置导航"
+              queryParameter="automationPanel"
+              panels={{
+                'automation-rules': <AutomationRulesPanel space={space} />,
+                'automation-execution': <AutomationExecutionPanel space={space} />,
+                'automation-connectors': <AutomationConnectorsPanel space={space} />,
+                'cross-space-grants': <CrossSpaceGrantsPanel space={space} />,
+                'cross-space-sync': <CrossSpaceSyncPanel space={space} />,
+                'automation-management': <AutomationManagementPanel space={space} />,
+              }}
+            />
           </Space>
-        ) : undefined,
-        'metrics-governance': enhancedExperience && mode === 'advanced' ? (
+        ),
+        'metrics-governance': (
           <ProjectSpaceSecondaryTabs
-            view="overview"
+            view="metrics-settings"
             canManage
             testId="project-space-settings-metrics"
             ariaLabel="度量治理配置导航"
@@ -1244,12 +1587,141 @@ function ProjectSpaceSettingsPanel({
               'metric-governance': <MetricGovernancePanel space={space} />,
             }}
           />
-        ) : undefined,
-        'scenario-templates': enhancedExperience && mode === 'advanced'
-          ? <ScenarioTemplatesPanel space={space} onTaskResult={onTaskResult} />
-          : undefined,
+        ),
+        'scenario-templates': (
+          <ScenarioTemplatesPanel space={space} onTaskResult={onTaskResult} />
+        ),
       }}
     />
+  )
+}
+
+function ProjectSpaceManagementHome({
+  space,
+  mode,
+}: {
+  space: UserProjectSpace
+  mode: ProjectSpaceExperienceMode
+}) {
+  const navigate = useNavigate()
+  const sessionScope = useSessionScope()
+  const typesQuery = useQuery({
+    queryKey: workItemTypeKeys.active(space.id),
+    queryFn: () => listActiveWorkItemTypes(space.id),
+    retry: false,
+  })
+  const readyTypes = typesQuery.data?.filter((type) => type.configurationReady) ?? []
+  const pendingTypes = typesQuery.data?.filter((type) => !type.configurationReady) ?? []
+  const storageScope = sessionScope
+    ? `${sessionScope.workspaceId}:${sessionScope.userId}`
+    : 'unavailable'
+  const recentPanels = sessionScope
+    ? readProjectSpaceSettingsPanels(sessionStorage, storageScope, space.id)
+    : []
+  const cloneReference = sessionScope
+    ? readProjectSpaceCloneReference(sessionStorage, storageScope, space.id)
+    : null
+  const openSettingsPanel = (panel: string) => navigate(
+    `/project-spaces/${space.id}/settings?panel=${panel}&source=management-home`,
+  )
+
+  return (
+    <Space direction="vertical" size={16} style={{ width: '100%' }}>
+      <Alert
+        type="info"
+        showIcon
+        message="空间管理集中在这里"
+        description={`${mode === 'advanced' ? '高级' : '简洁'}显示模式只调整说明密度，不会增加权限或隐藏已授权的配置入口。`}
+      />
+      {cloneReference ? (
+        <Alert
+          type="warning"
+          showIcon
+          message={`克隆配置预检：参考“${cloneReference}”`}
+          description="创建空间时没有复制成员、工作项或配置。请在工作模型中逐项确认后，再明确发布。"
+          action={<Button size="small" onClick={() => openSettingsPanel('work-model')}>开始预检</Button>}
+        />
+      ) : null}
+      <div className="project-space-management-home-grid">
+        <Card title="配置健康" loading={typesQuery.isLoading}>
+          {typesQuery.isError ? (
+            <Alert
+              type="error"
+              showIcon
+              message="配置健康暂时不可用"
+              action={<Button size="small" onClick={() => typesQuery.refetch()}>重试</Button>}
+            />
+          ) : (
+            <div className="project-space-fact-list">
+              <div><span>可用任务模板</span><strong>{readyTypes.length}</strong></div>
+              <div><span>待发布配置</span><strong>{pendingTypes.length}</strong></div>
+              <div><span>空间成员</span><strong>{space.memberCount}</strong></div>
+            </div>
+          )}
+        </Card>
+        <Card title="配置待办">
+          {pendingTypes.length === 0 ? (
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="没有待发布的任务模板" />
+          ) : (
+            <Space direction="vertical" size={8} style={{ width: '100%' }}>
+              {pendingTypes.slice(0, 5).map((type) => (
+                <Button
+                  block
+                  key={type.id}
+                  onClick={() => navigate(
+                    `/project-spaces/${space.id}/types/${type.id}?panel=configuration-draft&source=management-home`,
+                  )}
+                >
+                  发布“{type.name}”的配置
+                </Button>
+              ))}
+            </Space>
+          )}
+        </Card>
+        <Card title="最近入口">
+          {recentPanels.length === 0 ? (
+            <Typography.Text type="secondary">使用配置后，最近入口会显示在这里。</Typography.Text>
+          ) : (
+            <Space wrap>
+              {recentPanels.map((panel) => (
+                <Button key={panel} onClick={() => openSettingsPanel(panel)}>
+                  {PROJECT_SPACE_SETTINGS_PANEL_LABELS[panel]}
+                </Button>
+              ))}
+            </Space>
+          )}
+        </Card>
+        <Card title="危险操作">
+          <Typography.Paragraph>
+            当前状态：<strong>{statusLabel(space.status)}</strong>
+          </Typography.Paragraph>
+          <Typography.Paragraph type="secondary">
+            停用与归档会影响所有成员，操作前请确认交接与数据保留安排。
+          </Typography.Paragraph>
+          <Button danger onClick={() => openSettingsPanel('lifecycle')}>
+            查看启用、停用与归档
+          </Button>
+        </Card>
+      </div>
+      <Card title="全部管理入口">
+        <div className="project-space-management-entry-grid">
+          {PROJECT_SPACE_ADVANCED_CONFIGURATION.map((group) => (
+            <button
+              type="button"
+              key={group.key}
+              onClick={() => openSettingsPanel(group.key)}
+            >
+              <strong>{group.label}</strong>
+              <span>{group.description}</span>
+            </button>
+          ))}
+          <button type="button" onClick={() => navigate(`/project-spaces/${space.id}/members`)}>
+            <strong>成员与邀请</strong>
+            <span>调整成员角色、邀请状态与空间协作边界。</span>
+          </button>
+        </div>
+      </Card>
+    </Space>
   )
 }
 
@@ -1279,6 +1751,103 @@ function sortRecentSpaces(
   })
 }
 
+const PROJECT_SPACE_SETTINGS_PANEL_LABELS: Readonly<Record<string, string>> = {
+  general: '基本信息',
+  'work-model': '工作模型',
+  'flow-access': '流程与权限',
+  'automation-collaboration': '自动化与协同',
+  'metrics-governance': '度量治理',
+  'scenario-templates': '场景模板',
+  lifecycle: '启用、停用与归档',
+}
+
+function projectSpaceSettingsRecentKey(scope: string, spaceId: string) {
+  return `colla:project-space-settings-recent:${scope}:${spaceId}`
+}
+
+function projectSpaceCloneReferenceKey(scope: string, spaceId: string) {
+  return `colla:project-space-clone-reference:${scope}:${spaceId}`
+}
+
+function rememberProjectSpaceCloneReference(
+  storage: Storage,
+  scope: string,
+  spaceId: string,
+  referenceName: string,
+) {
+  storage.setItem(projectSpaceCloneReferenceKey(scope, spaceId), referenceName.slice(0, 128))
+}
+
+function readProjectSpaceCloneReference(storage: Storage, scope: string, spaceId: string) {
+  return storage.getItem(projectSpaceCloneReferenceKey(scope, spaceId))
+}
+
+function readProjectSpaceSettingsPanels(
+  storage: Storage,
+  scope: string,
+  spaceId: string,
+): string[] {
+  try {
+    const parsed = JSON.parse(
+      storage.getItem(projectSpaceSettingsRecentKey(scope, spaceId)) ?? '[]',
+    )
+    if (!Array.isArray(parsed)) return []
+    return parsed
+      .filter((panel): panel is string => (
+        typeof panel === 'string' && Boolean(PROJECT_SPACE_SETTINGS_PANEL_LABELS[panel])
+      ))
+      .slice(0, 4)
+  } catch {
+    return []
+  }
+}
+
+function rememberProjectSpaceSettingsPanel(
+  storage: Storage,
+  scope: string,
+  spaceId: string,
+  panel: string,
+) {
+  if (!PROJECT_SPACE_SETTINGS_PANEL_LABELS[panel]) return
+  const recent = readProjectSpaceSettingsPanels(storage, scope, spaceId)
+  storage.setItem(
+    projectSpaceSettingsRecentKey(scope, spaceId),
+    JSON.stringify([panel, ...recent.filter((candidate) => candidate !== panel)].slice(0, 4)),
+  )
+}
+
+function createStartingModeImpact(
+  mode: CreateSpaceForm['startingMode'],
+  scenarioKey?: ProjectSpaceOnboardingScenarioKey,
+  referenceName?: string,
+) {
+  if (mode === 'scenario') {
+    const scenarioLabels: Record<ProjectSpaceOnboardingScenarioKey, string> = {
+      development: '研发协作',
+      marketing: '市场项目',
+      'human-resources': 'HR 事务',
+      delivery: '交付管理',
+    }
+    return [
+      { label: '起步路径', value: scenarioKey ? scenarioLabels[scenarioKey] : '请选择模板' },
+      { label: '创建时', value: '只保存引导选择' },
+      { label: '不会发生', value: '不会自动安装或发布配置' },
+    ]
+  }
+  if (mode === 'clone') {
+    return [
+      { label: '参考来源', value: referenceName ?? '请选择空间' },
+      { label: '创建时', value: '建立空白空间并进入预检' },
+      { label: '不会复制', value: '成员、工作项、附件和权限' },
+    ]
+  }
+  return [
+    { label: '起步路径', value: '基础空间' },
+    { label: '创建时', value: '保留平台基础任务模板' },
+    { label: '后续动作', value: '按依赖配置并明确发布' },
+  ]
+}
+
 function statusDescription(status: string) {
   if (status === 'disabled') return '空间保留数据，但成员不能继续写入或调整成员。'
   if (status === 'archived') return '空间作为历史记录只读保留，可由 owner 或管理员恢复。'
@@ -1286,11 +1855,26 @@ function statusDescription(status: string) {
 }
 
 function defaultProjectSpacePath(space: UserProjectSpace) {
-  if (
-    space.currentUserRole === 'member'
-    && space.availableActions.includes('view_work_items')
-  ) {
-    return `/project-spaces/${space.id}/work-items`
-  }
   return `/project-spaces/${space.id}`
+}
+
+function personalWorkBucketLabel(bucket: string) {
+  if (bucket === 'todo') return '待我处理'
+  if (bucket === 'responsible') return '我负责的'
+  if (bucket === 'participating') return '我参与的'
+  if (bucket === 'watching') return '我关注的'
+  return '我的事项'
+}
+
+function personalActivityLabel(activityType: string) {
+  const labels: Record<string, string> = {
+    created: '已创建',
+    updated: '已更新',
+    transitioned: '状态已变化',
+    commented: '有新协作记录',
+    participant_added: '新增参与人',
+    participant_removed: '参与人已调整',
+    archived: '已归档',
+  }
+  return labels[activityType] ?? '事项有新变化'
 }

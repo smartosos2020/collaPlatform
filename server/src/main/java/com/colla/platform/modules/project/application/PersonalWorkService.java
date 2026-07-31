@@ -89,13 +89,14 @@ public class PersonalWorkService implements PersonalWorkQuery {
 
     @Transactional
     @Override
-    public PersonalWorkPage list(CurrentUser user, String cursor, int limit) {
+    public PersonalWorkPage list(CurrentUser user, UUID spaceId, String cursor, int limit) {
         int safeLimit = Math.max(1, Math.min(limit, MAX_PAGE_SIZE));
-        CursorAnchor anchor = decodeCursor(user, cursor);
+        CursorAnchor anchor = decodeCursor(user, spaceId, cursor);
         int scanLimit = Math.min(MAX_CANDIDATE_SCAN, safeLimit * 5);
         List<PersonalCandidate> candidates = repository.listCandidates(
             user.workspaceId(),
             user.id(),
+            spaceId,
             anchor == null ? null : anchor.updatedAt(),
             anchor == null ? null : anchor.workItemId(),
             scanLimit + 1
@@ -107,7 +108,9 @@ public class PersonalWorkService implements PersonalWorkQuery {
 
         Map<UUID, ProjectSpaceSummary> spaces = new HashMap<>();
         for (ProjectSpaceSummary space : spaceRepository.listVisible(user.workspaceId(), user.id())) {
-            if (space.isMember() && !"archived".equals(space.status())) {
+            if ((spaceId == null || space.id().equals(spaceId))
+                && space.isMember()
+                && !"archived".equals(space.status())) {
                 spaces.put(space.id(), space);
             }
         }
@@ -178,7 +181,12 @@ public class PersonalWorkService implements PersonalWorkQuery {
 
         PreparedCandidate last = page.isEmpty() ? null : page.get(page.size() - 1);
         String nextCursor = (candidateOverflow || visibleOverflow) && last != null
-            ? encodeCursor(user, last.candidate().item().updatedAt(), last.candidate().item().id())
+            ? encodeCursor(
+                user,
+                spaceId,
+                last.candidate().item().updatedAt(),
+                last.candidate().item().id()
+            )
             : null;
         return new PersonalWorkPage(
             buckets,
@@ -202,7 +210,7 @@ public class PersonalWorkService implements PersonalWorkQuery {
 
     @Override
     public PersonalWorkPage dashboard(CurrentUser user) {
-        return list(user, null, 12);
+        return list(user, null, null, 12);
     }
 
     public void invalidate(
@@ -349,33 +357,53 @@ public class PersonalWorkService implements PersonalWorkQuery {
         );
     }
 
-    private String encodeCursor(CurrentUser user, Instant updatedAt, UUID workItemId) {
-        String payload = user.workspaceId() + "|" + user.id() + "|" + updatedAt + "|" + workItemId;
+    private String encodeCursor(
+        CurrentUser user,
+        UUID spaceId,
+        Instant updatedAt,
+        UUID workItemId
+    ) {
+        String payload = spaceId == null
+            ? user.workspaceId() + "|" + user.id() + "|" + updatedAt + "|" + workItemId
+            : user.workspaceId() + "|" + user.id() + "|" + spaceId + "|" + updatedAt + "|" + workItemId;
         String signature = sign(payload);
         return Base64.getUrlEncoder().withoutPadding().encodeToString(
             (payload + "|" + signature).getBytes(StandardCharsets.UTF_8)
         );
     }
 
-    private CursorAnchor decodeCursor(CurrentUser user, String cursor) {
+    private CursorAnchor decodeCursor(CurrentUser user, UUID spaceId, String cursor) {
         if (cursor == null || cursor.isBlank()) {
             return null;
         }
         try {
             String decoded = new String(Base64.getUrlDecoder().decode(cursor), StandardCharsets.UTF_8);
             String[] parts = decoded.split("\\|", -1);
-            if (parts.length != 5) {
+            boolean scoped = parts.length == 6;
+            if ((!scoped && parts.length != 5)
+                || (scoped && spaceId == null)
+                || (!scoped && spaceId != null)) {
                 throw failure("INVALID_PERSONAL_CURSOR", "Personal work cursor is invalid");
             }
-            String payload = String.join("|", parts[0], parts[1], parts[2], parts[3]);
+            int updatedAtIndex = scoped ? 3 : 2;
+            int workItemIdIndex = scoped ? 4 : 3;
+            int signatureIndex = scoped ? 5 : 4;
+            String payload = String.join(
+                "|",
+                java.util.Arrays.copyOf(parts, signatureIndex)
+            );
             if (!MessageDigest.isEqual(
                 sign(payload).getBytes(StandardCharsets.US_ASCII),
-                parts[4].getBytes(StandardCharsets.US_ASCII)
+                parts[signatureIndex].getBytes(StandardCharsets.US_ASCII)
             ) || !user.workspaceId().toString().equals(parts[0])
-                || !user.id().toString().equals(parts[1])) {
+                || !user.id().toString().equals(parts[1])
+                || (scoped && !spaceId.toString().equals(parts[2]))) {
                 throw failure("INVALID_PERSONAL_CURSOR", "Personal work cursor is invalid");
             }
-            return new CursorAnchor(Instant.parse(parts[2]), UUID.fromString(parts[3]));
+            return new CursorAnchor(
+                Instant.parse(parts[updatedAtIndex]),
+                UUID.fromString(parts[workItemIdIndex])
+            );
         } catch (IllegalArgumentException exception) {
             throw failure("INVALID_PERSONAL_CURSOR", "Personal work cursor is invalid", exception);
         }

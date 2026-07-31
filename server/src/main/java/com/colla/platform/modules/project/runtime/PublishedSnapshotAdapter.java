@@ -46,6 +46,30 @@ public final class PublishedSnapshotAdapter {
         List<SnapshotBinding> bindings
     ) {
         List<SnapshotBinding> safeBindings = bindings == null ? List.of() : List.copyOf(bindings);
+        Map<UUID, RuntimeConfiguration> configurations = completeConfigurations(
+            workspaceId,
+            spaceId,
+            safeBindings
+        );
+        Map<UUID, Boolean> readiness = new LinkedHashMap<>();
+        for (SnapshotBinding binding : safeBindings) {
+            readiness.put(binding.typeId(), configurations.containsKey(binding.typeId()));
+        }
+        return Map.copyOf(readiness);
+    }
+
+    /**
+     * Resolves every valid current type binding through one immutable snapshot batch read.
+     *
+     * <p>Unsupported, missing, cross-type, or integrity-invalid snapshots are omitted so
+     * callers can fail closed per type without falling back to N single-snapshot reads.</p>
+     */
+    public Map<UUID, RuntimeConfiguration> completeConfigurations(
+        UUID workspaceId,
+        UUID spaceId,
+        List<SnapshotBinding> bindings
+    ) {
+        List<SnapshotBinding> safeBindings = bindings == null ? List.of() : List.copyOf(bindings);
         Map<UUID, PublishedConfigurationVersion> versionsById = new LinkedHashMap<>();
         snapshotReader.findPublishedSnapshots(
             workspaceId,
@@ -53,21 +77,18 @@ public final class PublishedSnapshotAdapter {
             safeBindings.stream().map(SnapshotBinding::versionId).toList()
         ).forEach(version -> versionsById.put(version.id(), version));
 
-        Map<UUID, Boolean> readiness = new LinkedHashMap<>();
+        Map<UUID, RuntimeConfiguration> configurations = new LinkedHashMap<>();
         for (SnapshotBinding binding : safeBindings) {
             PublishedConfigurationVersion version = versionsById.get(binding.versionId());
-            boolean ready = false;
             if (version != null && version.typeDefinitionId().equals(binding.typeId())) {
                 try {
-                    requireComplete(version);
-                    ready = true;
+                    configurations.put(binding.typeId(), requireComplete(version));
                 } catch (WorkItemConfigurationException exception) {
-                    ready = false;
+                    // Per-binding failure is intentionally closed without aborting other types.
                 }
             }
-            readiness.put(binding.typeId(), ready);
         }
-        return Map.copyOf(readiness);
+        return Map.copyOf(configurations);
     }
 
     private RuntimeConfiguration requireComplete(PublishedConfigurationVersion version) {

@@ -45,6 +45,7 @@ export type ActiveWorkItemTypeSummary = {
   icon?: string | null
   sortOrder: number
   configurationReady: boolean
+  availableActions: string[]
 }
 
 export type WorkItemTypeDraft = {

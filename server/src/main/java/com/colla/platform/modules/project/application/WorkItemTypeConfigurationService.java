@@ -3,11 +3,13 @@ package com.colla.platform.modules.project.application;
 import com.colla.platform.modules.audit.contract.AuditLog;
 import com.colla.platform.modules.event.contract.TransactionalOutbox;
 import com.colla.platform.modules.permission.contract.ProjectAuthorization;
+import com.colla.platform.modules.project.application.WorkItemPermissionDecisionService.DecisionInput;
 import com.colla.platform.modules.project.application.WorkItemTypeConfigurationModels.Configuration;
 import com.colla.platform.modules.project.application.WorkItemTypeConfigurationModels.ConfiguredType;
 import com.colla.platform.modules.project.application.WorkItemTypeConfigurationModels.GovernanceTypeCounts;
 import com.colla.platform.modules.project.application.WorkItemTypeConfigurationModels.ReorderType;
 import com.colla.platform.modules.project.application.WorkItemTypeConfigurationModels.UserTypeSummary;
+import com.colla.platform.modules.project.contract.WorkItemPermissionContracts.SubjectContext;
 import com.colla.platform.modules.project.domain.ProjectSpaceModels.ProjectSpaceSummary;
 import com.colla.platform.modules.project.domain.WorkItemTypeModels.CreateWorkItemType;
 import com.colla.platform.modules.project.domain.WorkItemTypeModels.WorkItemTypeDefinition;
@@ -17,6 +19,7 @@ import com.colla.platform.modules.project.infrastructure.WorkItemTypeCommandRepo
 import com.colla.platform.modules.project.infrastructure.WorkItemTypeCommandRepository.CommandReceipt;
 import com.colla.platform.modules.project.infrastructure.WorkItemTypeCommandRepository.CommandStart;
 import com.colla.platform.modules.project.runtime.PublishedSnapshotAdapter;
+import com.colla.platform.modules.project.runtime.PublishedSnapshotAdapter.RuntimeConfiguration;
 import com.colla.platform.modules.project.runtime.PublishedSnapshotAdapter.SnapshotBinding;
 import com.colla.platform.shared.auth.CurrentUser;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -25,6 +28,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -44,6 +48,7 @@ public class WorkItemTypeConfigurationService {
     private final ObjectMapper objectMapper;
     private final WorkItemConfigurationDraftService draftService;
     private final PublishedSnapshotAdapter snapshotAdapter;
+    private final WorkItemPermissionDecisionService permissionDecisionService;
 
     public WorkItemTypeConfigurationService(
         WorkItemTypeDefinitionService definitionService,
@@ -56,7 +61,8 @@ public class WorkItemTypeConfigurationService {
         ProjectAuthorization permissionService,
         ObjectMapper objectMapper,
         WorkItemConfigurationDraftService draftService,
-        PublishedSnapshotAdapter snapshotAdapter
+        PublishedSnapshotAdapter snapshotAdapter,
+        WorkItemPermissionDecisionService permissionDecisionService
     ) {
         this.definitionService = definitionService;
         this.spaceRepository = spaceRepository;
@@ -69,6 +75,7 @@ public class WorkItemTypeConfigurationService {
         this.objectMapper = objectMapper;
         this.draftService = draftService;
         this.snapshotAdapter = snapshotAdapter;
+        this.permissionDecisionService = permissionDecisionService;
     }
 
     public Configuration configuration(CurrentUser user, UUID spaceId, String status) {
@@ -91,12 +98,18 @@ public class WorkItemTypeConfigurationService {
             spaceId,
             "active"
         );
-        Map<UUID, Boolean> readiness = snapshotAdapter.completeReadiness(
+        Map<UUID, RuntimeConfiguration> configurations = snapshotAdapter.completeConfigurations(
             user.workspaceId(),
             spaceId,
             types.stream()
                 .map(type -> new SnapshotBinding(type.id(), type.currentVersionId()))
                 .toList()
+        );
+        Map<UUID, List<String>> availableActions = userTypeActions(
+            user,
+            space,
+            types,
+            configurations
         );
         return types.stream()
             .map(type -> new UserTypeSummary(
@@ -105,9 +118,66 @@ public class WorkItemTypeConfigurationService {
                 type.name(),
                 type.icon(),
                 type.sortOrder(),
-                readiness.getOrDefault(type.id(), false)
+                configurations.containsKey(type.id()),
+                availableActions.getOrDefault(type.id(), List.of())
             ))
             .toList();
+    }
+
+    private Map<UUID, List<String>> userTypeActions(
+        CurrentUser user,
+        ProjectSpaceSummary space,
+        List<WorkItemTypeDefinition> types,
+        Map<UUID, RuntimeConfiguration> configurations
+    ) {
+        SubjectContext subject = new SubjectContext(
+            user.workspaceId(),
+            user.id(),
+            0,
+            user.roles().stream()
+                .map(role -> role.toLowerCase(Locale.ROOT))
+                .collect(java.util.stream.Collectors.toUnmodifiableSet()),
+            Set.of(space.currentUserRole()),
+            Set.of(),
+            Set.of()
+        );
+        List<TypeActionDecision> pending = new ArrayList<>();
+        for (WorkItemTypeDefinition type : types) {
+            RuntimeConfiguration configuration = configurations.get(type.id());
+            if (configuration == null) {
+                continue;
+            }
+            for (String action : List.of("view", "create")) {
+                pending.add(new TypeActionDecision(
+                    type.id(),
+                    action,
+                    new DecisionInput(configuration, subject, space.id(), null, action)
+                ));
+            }
+        }
+
+        Map<UUID, List<String>> actions = new LinkedHashMap<>();
+        for (int offset = 0; offset < pending.size();
+             offset += WorkItemPermissionDecisionService.MAX_BATCH_SIZE) {
+            int end = Math.min(
+                pending.size(),
+                offset + WorkItemPermissionDecisionService.MAX_BATCH_SIZE
+            );
+            List<TypeActionDecision> batch = pending.subList(offset, end);
+            var decisions = permissionDecisionService.decideBatch(
+                batch.stream().map(TypeActionDecision::input).toList()
+            );
+            for (int index = 0; index < batch.size(); index++) {
+                if (decisions.get(index).allowed()) {
+                    TypeActionDecision allowed = batch.get(index);
+                    actions.computeIfAbsent(allowed.typeId(), ignored -> new ArrayList<>())
+                        .add(allowed.action());
+                }
+            }
+        }
+        Map<UUID, List<String>> immutable = new LinkedHashMap<>();
+        actions.forEach((typeId, values) -> immutable.put(typeId, List.copyOf(values)));
+        return Map.copyOf(immutable);
     }
 
     public GovernanceTypeCounts governanceCounts(CurrentUser user, UUID spaceId) {
@@ -479,5 +549,8 @@ public class WorkItemTypeConfigurationService {
     }
 
     private record Command(boolean replay, String requestId, CommandReceipt receipt) {
+    }
+
+    private record TypeActionDecision(UUID typeId, String action, DecisionInput input) {
     }
 }

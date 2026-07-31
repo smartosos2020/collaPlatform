@@ -1,6 +1,7 @@
 package com.colla.platform.modules.project.api;
 
 import static org.hamcrest.Matchers.contains;
+import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.not;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -361,9 +362,11 @@ class WorkItemTypeConfigurationControllerIntegrationTests {
         TestUser root = root("wicp-root");
         TestUser owner = member(root.token(), "wicpowner");
         TestUser readonly = member(root.token(), "wicpmember");
+        TestUser guest = member(root.token(), "wicpguest");
         TestUser outsider = member(root.token(), "wicpoutside");
         UUID spaceId = createSpace(owner.token(), "wicp-space");
         addSpaceMember(spaceId, readonly.id(), "member", owner.id());
+        addSpaceMember(spaceId, guest.id(), "guest", owner.id());
         JsonNode type = createType(
             owner.token(), spaceId, "wicp_task", "Published Task", 10, "wicp-create-" + suffix()
         );
@@ -377,6 +380,10 @@ class WorkItemTypeConfigurationControllerIntegrationTests {
             .andExpect(jsonPath(
                 "$[?(@.typeKey == 'wicp_task')].configurationReady",
                 contains(false)
+            ))
+            .andExpect(jsonPath(
+                "$[?(@.typeKey == 'wicp_task')].availableActions",
+                contains(empty())
             ));
 
         JsonNode draft = json(mockMvc.perform(get(draftPath)
@@ -415,6 +422,24 @@ class WorkItemTypeConfigurationControllerIntegrationTests {
             .andExpect(jsonPath(
                 "$[?(@.typeKey == 'wicp_task')].configurationReady",
                 contains(true)
+            ))
+            .andExpect(jsonPath(
+                "$[?(@.typeKey == 'wicp_task')].availableActions",
+                contains(contains("view", "create"))
+            ));
+        mockMvc.perform(get("/api/project-spaces/" + spaceId + "/work-item-types")
+                .header("Authorization", bearer(readonly.token())))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath(
+                "$[?(@.typeKey == 'wicp_task')].availableActions",
+                contains(contains("view", "create"))
+            ));
+        mockMvc.perform(get("/api/project-spaces/" + spaceId + "/work-item-types")
+                .header("Authorization", bearer(guest.token())))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath(
+                "$[?(@.typeKey == 'wicp_task')].availableActions",
+                contains(contains("view"))
             ));
 
         mockMvc.perform(post(base + "/draft:publish")

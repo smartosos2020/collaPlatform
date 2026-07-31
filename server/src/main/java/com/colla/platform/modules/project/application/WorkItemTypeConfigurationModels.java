@@ -26,8 +26,12 @@ public final class WorkItemTypeConfigurationModels {
         String name,
         String icon,
         int sortOrder,
-        boolean configurationReady
+        boolean configurationReady,
+        List<String> availableActions
     ) {
+        public UserTypeSummary {
+            availableActions = List.copyOf(availableActions == null ? List.of() : availableActions);
+        }
     }
 
     public record ReorderType(UUID typeId, int sortOrder, long aggregateVersion) {

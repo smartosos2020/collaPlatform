@@ -15,15 +15,16 @@ class ProjectSpaceDtosTests {
                 "view_overview",
                 "view_work_items",
                 "view_project_management",
+                "manage_project",
                 "view_members",
                 "view_settings"
             );
         assertThat(ProjectSpaceDtos.user(space("member", "active")).availableActions())
-            .contains("view_overview", "view_work_items", "view_project_management")
-            .doesNotContain("view_members", "view_settings");
+            .contains("view_overview", "view_work_items")
+            .doesNotContain("view_project_management", "manage_project", "view_members", "view_settings");
         assertThat(ProjectSpaceDtos.user(space("guest", "active")).availableActions())
             .contains("view_overview", "view_work_items")
-            .doesNotContain("view_project_management", "view_members", "view_settings");
+            .doesNotContain("view_project_management", "manage_project", "view_members", "view_settings");
         assertThat(ProjectSpaceDtos.user(space(null, "active")).availableActions())
             .containsExactly("open", "view_overview");
     }
@@ -32,6 +33,7 @@ class ProjectSpaceDtosTests {
     void preservesReadCapabilitiesWhileLifecycleActionsFollowSpaceState() {
         assertThat(ProjectSpaceDtos.user(space("owner", "disabled")).availableActions())
             .contains("view_overview", "view_work_items", "view_project_management", "view_members", "view_settings")
+            .doesNotContain("manage_project")
             .contains("restore", "archive")
             .doesNotContain("disable");
         assertThat(ProjectSpaceDtos.user(space("owner", "archived")).availableActions())

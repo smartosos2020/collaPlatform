@@ -1,0 +1,674 @@
+import {
+  expect,
+  test,
+  type APIRequestContext,
+  type Browser,
+  type BrowserContext,
+  type Page,
+} from '@playwright/test'
+
+import {
+  apiBaseUrl,
+  bearer,
+  installSession,
+  loginByApi,
+  webBaseUrl,
+  type E2eSession,
+} from './support/api'
+import {
+  addMember,
+  createIdentity,
+  createItem,
+  getJson,
+  publishedProjectType,
+  type Identity,
+  type Item,
+} from './support/crossSpace'
+import { requireIsolatedIdentityFixture } from './support/fixtures'
+
+type CurrentUser = {
+  id: string
+}
+
+type SpaceView = {
+  id: string
+  name: string
+  currentUserRole?: string | null
+  availableActions: string[]
+}
+
+type TypeSummary = {
+  id: string
+  typeKey: string
+  name: string
+  configurationReady: boolean
+  availableActions: string[]
+}
+
+type PersonalWorkPage = {
+  buckets: Array<{
+    bucket: 'todo' | 'responsible' | 'participating' | 'watching'
+    visibleCount: number
+    items: Array<{
+      workItemId: string
+      title: string
+      capabilities: string[]
+      availableActions: string[]
+      deepLink: string
+    }>
+  }>
+}
+
+type SurfacePreview = {
+  schemaVersion: number
+  spaceId: string
+  targetRole: 'member' | 'guest'
+  availableActions: string[]
+  defaultPath: string
+  readOnly: boolean
+  contentIncluded: false
+  explanation: string
+}
+
+type BrowserSurface = {
+  context: BrowserContext
+  page: Page
+}
+
+const contentRequestFragments = [
+  '/members',
+  '/work-items',
+  '/configuration/',
+  '/metrics',
+  '/automation',
+  '/cross-space',
+] as const
+
+test.describe('PROJECT-PLATFORM-S21-M8 role-layered project space', () => {
+  test('@smoke closes role surfaces, member work and compatibility in a real isolated stack', async ({
+    browser,
+    request,
+  }, testInfo) => {
+    test.setTimeout(480_000)
+    requireIsolatedIdentityFixture()
+
+    const enterprise = await loginByApi(request)
+    const enterpriseProfile = await getJson<CurrentUser>(
+      request,
+      `${apiBaseUrl}/auth/me`,
+      enterprise,
+    )
+    const suffix = `s21m8_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
+    const identities: Identity[] = []
+    const surfaces: BrowserSurface[] = []
+    let owner: E2eSession | undefined
+    let spaceId: string | undefined
+
+    try {
+      const ownerIdentity = await provisionIdentity(
+        request, enterprise, identities, suffix, 'owner', 'S21 M8 Owner',
+      )
+      const adminIdentity = await provisionIdentity(
+        request, enterprise, identities, suffix, 'admin', 'S21 M8 Space Admin',
+      )
+      const memberIdentity = await provisionIdentity(
+        request, enterprise, identities, suffix, 'member', 'S21 M8 Member',
+      )
+      const guestIdentity = await provisionIdentity(
+        request, enterprise, identities, suffix, 'guest', 'S21 M8 Guest',
+      )
+      const outsiderIdentity = await provisionIdentity(
+        request, enterprise, identities, suffix, 'outsider', 'S21 M8 Outsider',
+      )
+      const [ownerSession, admin, member, guest, outsider] = await Promise.all([
+        loginByApi(request, ownerIdentity.username, ownerIdentity.password),
+        loginByApi(request, adminIdentity.username, adminIdentity.password),
+        loginByApi(request, memberIdentity.username, memberIdentity.password),
+        loginByApi(request, guestIdentity.username, guestIdentity.password),
+        loginByApi(request, outsiderIdentity.username, outsiderIdentity.password),
+      ])
+      owner = ownerSession
+
+      const spaceName = `S21 M8 角色分层 ${suffix}`
+      spaceId = await createSpace(request, owner, suffix, spaceName)
+      await addMember(request, owner, spaceId, adminIdentity.id, 'admin')
+      await addMember(request, owner, spaceId, memberIdentity.id, 'member')
+      await addMember(request, owner, spaceId, guestIdentity.id, 'guest')
+
+      const [ownerSpace, adminSpace, memberSpace, guestSpace] = await Promise.all([
+        getSpace(request, owner, spaceId),
+        getSpace(request, admin, spaceId),
+        getSpace(request, member, spaceId),
+        getSpace(request, guest, spaceId),
+      ])
+      for (const managerSpace of [ownerSpace, adminSpace]) {
+        expect(managerSpace.availableActions).toEqual(expect.arrayContaining([
+          'view_overview',
+          'view_work_items',
+          'view_project_management',
+          'manage_project',
+          'view_members',
+          'view_settings',
+        ]))
+      }
+      for (const memberSurface of [memberSpace, guestSpace]) {
+        expect(memberSurface.availableActions).toEqual(expect.arrayContaining([
+          'view_overview',
+          'view_work_items',
+        ]))
+        expect(memberSurface.availableActions).not.toEqual(expect.arrayContaining([
+          'view_project_management',
+          'view_members',
+          'view_settings',
+        ]))
+      }
+
+      await expectPreviewContract(request, owner, spaceId, 'member', memberSpace)
+      await expectPreviewContract(request, admin, spaceId, 'guest', guestSpace)
+      for (const deniedSession of [member, guest]) {
+        const response = await request.get(
+          `${apiBaseUrl}/project-spaces/${spaceId}/surface-preview?targetRole=member`,
+          { headers: bearer(deniedSession) },
+        )
+        expect(response.status()).toBe(403)
+      }
+      for (const hiddenSession of [outsider, enterprise]) {
+        const response = await request.get(
+          `${apiBaseUrl}/project-spaces/${spaceId}/surface-preview?targetRole=member`,
+          { headers: bearer(hiddenSession) },
+        )
+        expect(response.status()).toBe(404)
+        expect(await response.text()).not.toContain(spaceName)
+      }
+
+      const initialTypes = await getJson<TypeSummary[]>(
+        request,
+        `${apiBaseUrl}/project-spaces/${spaceId}/work-item-types`,
+        owner,
+      )
+      const pendingTypes = initialTypes.filter((type) => !type.configurationReady)
+      expect(pendingTypes.length).toBeGreaterThan(0)
+      expect(pendingTypes.every((type) => type.availableActions.length === 0)).toBeTruthy()
+
+      const published = await publishedProjectType(request, owner, spaceId, suffix)
+      const [ownerTypes, memberTypes, guestTypes] = await Promise.all(
+        [owner, member, guest].map(session => getJson<TypeSummary[]>(
+          request,
+          `${apiBaseUrl}/project-spaces/${spaceId}/work-item-types`,
+          session,
+        )),
+      )
+      const ownerProjectType = typeById(ownerTypes, published.typeId)
+      const memberProjectType = typeById(memberTypes, published.typeId)
+      const guestProjectType = typeById(guestTypes, published.typeId)
+      const currentPendingTypes = ownerTypes.filter(type => !type.configurationReady)
+      expect(ownerProjectType.availableActions).toEqual(['view', 'create'])
+      expect(memberProjectType.availableActions).toEqual(['view', 'create'])
+      expect(guestProjectType.availableActions).toEqual(['view'])
+
+      const itemTitle = `M8 当前参与事项 ${suffix}`
+      const item = await createItem(
+        request,
+        owner,
+        spaceId,
+        published.typeId,
+        itemTitle,
+        `${suffix}-item`,
+      )
+      await putParticipant(
+        request,
+        owner,
+        spaceId,
+        item,
+        memberIdentity.id,
+        'watcher',
+      )
+      const memberWork = await getJson<PersonalWorkPage>(
+        request,
+        `${apiBaseUrl}/personal-work?spaceId=${spaceId}&limit=20`,
+        member,
+      )
+      const watched = bucket(memberWork, 'watching').items.find(
+        candidate => candidate.workItemId === item.id,
+      )
+      expect(watched).toEqual(expect.objectContaining({
+        title: itemTitle,
+        deepLink: `/project-spaces/${spaceId}/work-items/${item.id}`,
+      }))
+      expect(watched?.availableActions).toEqual(watched?.capabilities)
+      expect(watched?.availableActions).toContain('view')
+
+      const memberBrowser = await openSurface(browser, member)
+      surfaces.push(memberBrowser)
+      await memberBrowser.page.setViewportSize({ width: 1440, height: 900 })
+      await memberBrowser.page.goto(`/project-spaces/${spaceId}`)
+      await dismissAutomaticOnboarding(memberBrowser.page, spaceId)
+      await expectPrimaryNavigation(memberBrowser.page, ['概览', '工作项'])
+      await expect(memberBrowser.page.getByTestId(
+        'project-space-task-zone-member-workspace',
+      )).toBeVisible()
+      await expect(memberBrowser.page.getByTestId(
+        'project-space-task-zone-project-management',
+      )).toHaveCount(0)
+      await expect(memberBrowser.page.getByTestId(
+        'project-space-task-zone-space-management',
+      )).toHaveCount(0)
+      await expect(memberBrowser.page.getByText(itemTitle, { exact: true })).toBeVisible()
+      const memberWorkEntries = memberBrowser.page.locator(
+        '[data-testid^="project-space-work-entry-"]',
+      )
+      await expect(
+        memberWorkEntries.getByText(ownerProjectType.name, { exact: true }),
+      ).toBeVisible()
+      for (const pending of currentPendingTypes) {
+        await expect(
+          memberWorkEntries.getByText(pending.name, { exact: true }),
+        ).toHaveCount(0)
+      }
+      const memberText = await memberBrowser.page.locator('body').innerText()
+      expect(memberText).not.toContain(spaceId)
+      expect(memberText).not.toContain(published.typeId)
+
+      await memberBrowser.page.getByText(itemTitle, { exact: true }).click()
+      await expect(memberBrowser.page).toHaveURL(
+        new RegExp(`/project-spaces/${spaceId}/work-items/${item.id}`),
+      )
+      const actionSummary = memberBrowser.page.getByTestId('work-item-action-summary')
+      await expect(actionSummary).toBeVisible()
+      await expect(actionSummary).toContainText('当前状态')
+      await expect(actionSummary).toContainText('负责人')
+      await expect(actionSummary).toContainText('截止时间')
+      await expect(actionSummary).toContainText('下一步动作')
+      await expect(actionSummary).toContainText(ownerIdentity.displayName)
+      await expect(actionSummary).not.toContainText(item.id)
+      await memberBrowser.page.getByTestId('project-work-item-detail-secondary-tabs')
+        .getByRole('tab', { name: '状态流程', exact: true })
+        .click()
+      const workflowTabPanel = memberBrowser.page.getByRole('tabpanel', {
+        name: '状态流程',
+        exact: true,
+      })
+      await expect(workflowTabPanel).toBeVisible()
+      await expect(workflowTabPanel).not.toContainText(
+        /策略|policyVersion|currentStateKey/,
+      )
+
+      await memberBrowser.page.goto(`/project-spaces/${spaceId}`)
+      const secondTab = await memberBrowser.context.newPage()
+      await secondTab.goto(`/project-spaces/${spaceId}`)
+      await expect(secondTab.getByText(itemTitle, { exact: true })).toBeVisible()
+      await secondTab.close()
+      for (const width of [1366, 820]) {
+        await memberBrowser.page.setViewportSize({ width, height: 900 })
+        await memberBrowser.page.goto(`/project-spaces/${spaceId}`)
+        await expect(memberBrowser.page.getByTestId(
+          'project-space-primary-navigation',
+        )).toBeVisible()
+        await expect(memberBrowser.page.getByText(itemTitle, { exact: true })).toBeVisible()
+        expect(await documentOverflow(memberBrowser.page)).toBeLessThanOrEqual(1)
+      }
+
+      await memberBrowser.page.setViewportSize({ width: 820, height: 900 })
+      await memberBrowser.page.goto(`/project-spaces/${spaceId}`)
+      const createEntry = memberBrowser.page.getByRole('button', {
+        name: `新建${memberProjectType.name}`,
+        exact: true,
+      })
+      await expect(createEntry).toBeVisible()
+      await createEntry.click()
+      const offlineCreate = memberBrowser.page.getByRole('dialog', {
+        name: `新建${memberProjectType.name}`,
+      })
+      const offlineTitle = offlineCreate.getByLabel('标题', { exact: true })
+      const offlineSubmit = offlineCreate.getByRole('button', { name: /^创\s*建$/ })
+      await expect(offlineTitle).toBeVisible()
+      await offlineTitle.fill(`离线保留 ${suffix}`)
+      await expect(offlineSubmit).toBeEnabled()
+      await memberBrowser.context.setOffline(true)
+      await expect(offlineSubmit).toBeDisabled()
+      await expect(offlineTitle).toHaveValue(`离线保留 ${suffix}`)
+      await expect(offlineCreate).not.toContainText(/Failed to fetch|Network Error/i)
+      await memberBrowser.context.setOffline(false)
+      await expect(offlineSubmit).toBeEnabled()
+      await offlineCreate.getByRole('button', { name: /^取\s*消$/ }).click()
+
+      const ownerBrowser = await openSurface(browser, owner)
+      surfaces.push(ownerBrowser)
+      await ownerBrowser.page.setViewportSize({ width: 1440, height: 900 })
+      await ownerBrowser.page.goto(`/project-spaces/${spaceId}`)
+      await dismissAutomaticOnboarding(ownerBrowser.page, spaceId)
+      await expectPrimaryNavigation(
+        ownerBrowser.page,
+        ['概览', '工作项', '项目管理', '成员', '设置'],
+      )
+      await expect(ownerBrowser.page.getByTestId(
+        'project-space-task-zone-member-workspace',
+      )).toBeVisible()
+      await expect(ownerBrowser.page.getByTestId(
+        'project-space-task-zone-project-management',
+      )).toBeVisible()
+      await expect(ownerBrowser.page.getByTestId(
+        'project-space-task-zone-space-management',
+      )).toBeVisible()
+
+      await ownerBrowser.page.getByRole('navigation', { name: '空间导航' })
+        .getByRole('button', { name: '设置', exact: true })
+        .click()
+      await expect(ownerBrowser.page.getByRole('tab', {
+        name: '管理首页',
+        exact: true,
+      })).toHaveAttribute('aria-selected', 'true')
+      await expect(ownerBrowser.page.getByText('配置健康', { exact: true })).toBeVisible()
+      await expect(ownerBrowser.page.getByText('配置待办', { exact: true })).toBeVisible()
+      await expect(ownerBrowser.page.getByText('最近入口', { exact: true })).toBeVisible()
+      await expect(ownerBrowser.page.getByText('危险操作', { exact: true })).toBeVisible()
+      await expect(ownerBrowser.page.getByText(
+        `发布“${currentPendingTypes[0].name}”的配置`,
+        { exact: true },
+      )).toBeVisible()
+
+      const previewContentRequests: string[] = []
+      const requestListener = (browserRequest: { url(): string }) => {
+        const url = browserRequest.url()
+        if (contentRequestFragments.some(fragment => url.includes(fragment))) {
+          previewContentRequests.push(url)
+        }
+      }
+      ownerBrowser.page.on('request', requestListener)
+      const contextBeforePreview = ownerBrowser.page.url()
+      await ownerBrowser.page.getByTestId('project-space-member-preview-open').click()
+      const preview = ownerBrowser.page.getByRole('dialog', {
+        name: '成员视图预览',
+      })
+      await expect(preview).toBeVisible()
+      await expect(preview).toContainText('这是入口展示预览，不会改变你的权限')
+      await expect(preview.getByText('成员工作区', { exact: true })).toBeVisible()
+      await expect(preview.getByText('项目管理', { exact: true })).toHaveCount(0)
+      await expect(preview.getByText('空间管理', { exact: true })).toHaveCount(0)
+      await preview.getByText('访客', { exact: true }).click()
+      await expect(preview.getByLabel('访客可见入口')).toBeVisible()
+      await ownerBrowser.page.waitForTimeout(300)
+      expect(previewContentRequests).toEqual([])
+      await ownerBrowser.page.keyboard.press('Escape')
+      await expect(preview).not.toBeVisible()
+      expect(ownerBrowser.page.url()).toBe(contextBeforePreview)
+      await expect(
+        ownerBrowser.page.getByTestId('project-space-member-preview-open'),
+      ).toBeFocused()
+      ownerBrowser.page.off('request', requestListener)
+
+      await ownerBrowser.page.goto(`/project-spaces/${spaceId}`)
+      await ownerBrowser.page.getByLabel('新建项目空间').click()
+      const createSpaceDialog = ownerBrowser.page.getByRole('dialog', {
+        name: '新建项目空间',
+      })
+      const startingImpact = (label: string) => createSpaceDialog.getByText(
+        label,
+        { exact: true },
+      ).locator('..')
+      await expect(startingImpact('起步路径')).toContainText('基础空间')
+      await expect(createSpaceDialog).toContainText('保留平台基础任务模板')
+
+      await createSpaceDialog.getByText('克隆配置', { exact: true }).click()
+      const referenceSelect = createSpaceDialog.getByRole('combobox', {
+        name: /参考空间/,
+      })
+      await referenceSelect.click()
+      await ownerBrowser.page.getByTitle(spaceName, { exact: true }).click()
+      await expect(startingImpact('参考来源')).toContainText(spaceName)
+      await expect(createSpaceDialog).toContainText('成员、工作项、附件和权限')
+
+      await createSpaceDialog.getByText('场景模板', { exact: true }).click()
+      const scenarioSelect = createSpaceDialog.getByRole('combobox', {
+        name: /场景模板/,
+      })
+      await scenarioSelect.click()
+      for (const scenario of ['研发协作', '市场项目', 'HR 事务', '交付管理']) {
+        await expect(ownerBrowser.page.getByTitle(scenario, { exact: true })).toBeVisible()
+      }
+      await ownerBrowser.page.getByTitle('研发协作', { exact: true }).click()
+      await expect(startingImpact('起步路径')).toContainText('研发协作')
+      await expect(createSpaceDialog).toContainText('只保存引导选择')
+      await expect(createSpaceDialog).toContainText('不会自动安装或发布配置')
+      await createSpaceDialog.getByRole('button', { name: /^取\s*消$/ }).click()
+
+      const compatibilityLocation = `/project-spaces/${spaceId}/work-items`
+        + `?panel=automation-rules&source=bookmark&typeId=${published.typeId}`
+        + '&create=1&savedViewId=view-1#focus'
+      await ownerBrowser.page.goto(compatibilityLocation)
+      await expect.poll(() => new URL(ownerBrowser.page.url()).pathname).toBe(
+        `/project-spaces/${spaceId}/settings`,
+      )
+      const canonicalLocation = new URL(ownerBrowser.page.url())
+      expect(Object.fromEntries(canonicalLocation.searchParams)).toEqual({
+        source: 'bookmark',
+        panel: 'automation-collaboration',
+        automationPanel: 'automation-rules',
+        typeId: published.typeId,
+        create: '1',
+        savedViewId: 'view-1',
+      })
+      expect(canonicalLocation.hash).toBe('#focus')
+      await expect(ownerBrowser.page.getByRole('tab', {
+        name: '自动化与协同',
+        exact: true,
+      })).toHaveAttribute('aria-selected', 'true')
+      await expect(ownerBrowser.page.getByTestId('project-space-settings-automation')
+        .getByRole('tab', {
+          name: '自动化规则',
+          exact: true,
+        })).toHaveAttribute('aria-selected', 'true')
+      await expect(ownerBrowser.page.getByTestId('automation-rules-panel')).toBeVisible()
+
+      const guestBrowser = await openSurface(browser, guest)
+      surfaces.push(guestBrowser)
+      await guestBrowser.page.goto(`/project-spaces/${spaceId}`)
+      await dismissAutomaticOnboarding(guestBrowser.page, spaceId)
+      await expectPrimaryNavigation(guestBrowser.page, ['概览', '工作项'])
+      await expect(guestBrowser.page.getByRole('button', {
+        name: `新建${guestProjectType.name}`,
+        exact: true,
+      })).toHaveCount(0)
+      const guestViewEntry = guestBrowser.page.getByRole('button', {
+        name: `查看${guestProjectType.name}`,
+        exact: true,
+      })
+      await expect(guestViewEntry).toBeVisible()
+      await guestViewEntry.click()
+      await expect.poll(() => new URL(guestBrowser.page.url()).pathname).toBe(
+        `/project-spaces/${spaceId}/work-items`,
+      )
+      const guestWorkLocation = new URL(guestBrowser.page.url())
+      expect(guestWorkLocation.searchParams.get('typeId')).toBe(published.typeId)
+      expect(guestWorkLocation.searchParams.has('create')).toBeFalsy()
+      await expect(guestBrowser.page.getByTestId('project-work-items')).toBeVisible()
+      await expect(guestBrowser.page.getByRole('dialog', {
+        name: `新建${guestProjectType.name}`,
+      })).toHaveCount(0)
+      await expect(guestBrowser.page.getByTestId('project-space-member-preview-open')).toHaveCount(0)
+
+      await ownerBrowser.page.screenshot({
+        path: testInfo.outputPath('s21-m8-space-management.png'),
+        fullPage: true,
+      })
+      await memberBrowser.page.screenshot({
+        path: testInfo.outputPath('s21-m8-member-workspace-820.png'),
+        fullPage: true,
+      })
+    } finally {
+      for (const surface of surfaces.reverse()) {
+        await surface.context.setOffline(false).catch(() => undefined)
+        await surface.context.close().catch(() => undefined)
+      }
+      if (spaceId && owner) {
+        await request.post(
+          `${apiBaseUrl}/project-spaces/${spaceId}/settings/archive`,
+          { headers: bearer(owner) },
+        ).catch(() => undefined)
+      }
+      for (const identity of identities.reverse()) {
+        await request.post(`${apiBaseUrl}/admin/users/${identity.id}/offboard`, {
+          headers: bearer(enterprise),
+          data: { handoverToUserId: enterpriseProfile.id },
+        }).catch(() => undefined)
+      }
+    }
+  })
+})
+
+async function provisionIdentity(
+  request: APIRequestContext,
+  enterprise: E2eSession,
+  identities: Identity[],
+  suffix: string,
+  role: string,
+  displayName: string,
+) {
+  const identity = await createIdentity(
+    request,
+    enterprise,
+    `${suffix}_${role}`,
+    displayName,
+  )
+  identities.push(identity)
+  return identity
+}
+
+async function createSpace(
+  request: APIRequestContext,
+  owner: E2eSession,
+  suffix: string,
+  name: string,
+) {
+  const response = await request.post(`${apiBaseUrl}/project-spaces`, {
+    headers: {
+      ...bearer(owner),
+      'X-Colla-Request-Id': `${suffix}-create-space`,
+    },
+    data: {
+      spaceKey: `s21-m8-${suffix.replaceAll('_', '-')}`,
+      name,
+      description: 'S21 M8 real isolated role-layered UX evidence',
+      visibility: 'private',
+    },
+  })
+  expect(response.ok(), await response.text()).toBeTruthy()
+  return (await response.json() as { id: string }).id
+}
+
+function getSpace(
+  request: APIRequestContext,
+  session: E2eSession,
+  spaceId: string,
+) {
+  return getJson<SpaceView>(
+    request,
+    `${apiBaseUrl}/project-spaces/${spaceId}`,
+    session,
+  )
+}
+
+async function expectPreviewContract(
+  request: APIRequestContext,
+  manager: E2eSession,
+  spaceId: string,
+  targetRole: SurfacePreview['targetRole'],
+  actual: SpaceView,
+) {
+  const response = await request.get(
+    `${apiBaseUrl}/project-spaces/${spaceId}/surface-preview?targetRole=${targetRole}`,
+    { headers: bearer(manager) },
+  )
+  expect(response.ok(), await response.text()).toBeTruthy()
+  expect(response.headers()['cache-control']).toBe('private, no-store')
+  const preview = await response.json() as SurfacePreview
+  expect(Object.keys(preview).sort()).toEqual([
+    'availableActions',
+    'contentIncluded',
+    'defaultPath',
+    'explanation',
+    'readOnly',
+    'schemaVersion',
+    'spaceId',
+    'targetRole',
+  ])
+  expect(preview.availableActions).toEqual(actual.availableActions)
+  expect(preview.contentIncluded).toBe(false)
+  expect(preview.defaultPath).toBe(`/project-spaces/${spaceId}`)
+}
+
+function typeById(types: TypeSummary[], typeId: string) {
+  const type = types.find(candidate => candidate.id === typeId)
+  if (!type) throw new Error(`published type ${typeId} is absent`)
+  return type
+}
+
+function bucket(page: PersonalWorkPage, key: PersonalWorkPage['buckets'][number]['bucket']) {
+  const result = page.buckets.find(candidate => candidate.bucket === key)
+  if (!result) throw new Error(`personal work bucket ${key} is absent`)
+  return result
+}
+
+async function putParticipant(
+  request: APIRequestContext,
+  owner: E2eSession,
+  spaceId: string,
+  item: Item,
+  userId: string,
+  role: string,
+) {
+  const response = await request.put(
+    `${apiBaseUrl}/project-spaces/${spaceId}/work-items/${item.id}/participants/${userId}`,
+    {
+      headers: {
+        ...bearer(owner),
+        'X-Colla-Request-Id': `s21-m8-participant-${userId}`,
+      },
+      data: { role, expectedVersion: item.version },
+    },
+  )
+  expect(response.ok(), await response.text()).toBeTruthy()
+}
+
+async function openSurface(
+  browser: Browser,
+  session: E2eSession,
+): Promise<BrowserSurface> {
+  const context = await browser.newContext({ baseURL: webBaseUrl })
+  const page = await context.newPage()
+  page.setDefaultTimeout(25_000)
+  await installSession(page, session)
+  return { context, page }
+}
+
+async function expectPrimaryNavigation(page: Page, expected: string[]) {
+  const navigation = page.getByRole('navigation', { name: '空间导航' })
+  await expect(navigation).toBeVisible()
+  const buttons = navigation.locator('button[aria-label]')
+  await expect(buttons).toHaveCount(expected.length)
+  expect(await buttons.evaluateAll(elements => elements.map(
+    element => element.getAttribute('aria-label'),
+  ))).toEqual(expected)
+}
+
+async function dismissAutomaticOnboarding(page: Page, spaceId: string) {
+  const onboarding = page.getByTestId('project-space-onboarding')
+  const opened = await onboarding
+    .waitFor({ state: 'visible', timeout: 5_000 })
+    .then(() => true)
+    .catch(() => false)
+  if (!opened) return
+  const dismissResponse = page.waitForResponse(response => (
+    response.url().endsWith(`/project-spaces/${spaceId}/onboarding/commands`)
+    && response.request().method() === 'POST'
+  ))
+  await page.getByTestId('onboarding-dismiss').click()
+  expect((await dismissResponse).ok()).toBeTruthy()
+  await expect(onboarding).not.toBeVisible()
+}
+
+function documentOverflow(page: Page) {
+  return page.evaluate(() => (
+    document.documentElement.scrollWidth - document.documentElement.clientWidth
+  ))
+}

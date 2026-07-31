@@ -72,6 +72,15 @@ public class ProjectSpaceService {
         return space;
     }
 
+    public ProjectSpaceSummary getSurfacePreviewSpace(CurrentUser currentUser, UUID spaceId) {
+        ProjectSpaceSummary space = requireSpace(currentUser, spaceId);
+        if (!space.isMember()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Project space not found");
+        }
+        requireSpaceManager(space);
+        return space;
+    }
+
     @Transactional
     public ProjectSpaceSummary create(
         CurrentUser currentUser,

@@ -12,34 +12,64 @@ final class ProjectSpaceDtos {
     }
 
     static UserProjectSpaceView user(ProjectSpaceSummary space) {
-        List<String> actions = new ArrayList<>();
-        actions.add("open");
-        actions.add("view_overview");
-        if (space.isMember()) {
-            actions.add("view_work_items");
-            if (!"guest".equals(space.currentUserRole())) {
-                actions.add("view_project_management");
-            }
-        }
-        if (space.canManage()) {
-            actions.add("settings");
-            actions.add("view_members");
-            actions.add("view_settings");
-            if ("active".equals(space.status())) {
-                actions.add("disable");
-                actions.add("archive");
-            } else if ("disabled".equals(space.status())) {
-                actions.add("restore");
-                actions.add("archive");
-            } else if ("archived".equals(space.status())) {
-                actions.add("restore");
-            }
-        }
+        List<String> actions = surfaceAvailableActions(
+            space.status(),
+            space.isMember(),
+            space.canManage()
+        );
         return new UserProjectSpaceView(
             space.id(), space.spaceKey(), space.name(), space.description(), space.status(), space.visibility(),
             space.version(), space.currentUserRole(), space.memberCount(), space.isMember(),
-            space.createdAt(), space.updatedAt(), space.disabledAt(), space.archivedAt(), List.copyOf(actions)
+            space.createdAt(), space.updatedAt(), space.disabledAt(), space.archivedAt(), actions
         );
+    }
+
+    static ProjectSpaceSurfacePreviewView surfacePreview(ProjectSpaceSummary space, String targetRole) {
+        List<String> actions = surfaceAvailableActions(space.status(), true, false);
+        boolean readOnly = "guest".equals(targetRole);
+        String defaultPath = "/project-spaces/" + space.id();
+        return new ProjectSpaceSurfacePreviewView(
+            1,
+            space.id(),
+            targetRole,
+            actions,
+            defaultPath,
+            readOnly,
+            false,
+            "仅预览目标身份的可见入口，不改变当前权限，也不包含项目内容。"
+        );
+    }
+
+    private static List<String> surfaceAvailableActions(
+        String status,
+        boolean member,
+        boolean manager
+    ) {
+        List<String> actions = new ArrayList<>();
+        actions.add("open");
+        actions.add("view_overview");
+        if (member) {
+            actions.add("view_work_items");
+        }
+        if (manager) {
+            actions.add("view_project_management");
+            if ("active".equals(status)) {
+                actions.add("manage_project");
+            }
+            actions.add("settings");
+            actions.add("view_members");
+            actions.add("view_settings");
+            if ("active".equals(status)) {
+                actions.add("disable");
+                actions.add("archive");
+            } else if ("disabled".equals(status)) {
+                actions.add("restore");
+                actions.add("archive");
+            } else if ("archived".equals(status)) {
+                actions.add("restore");
+            }
+        }
+        return List.copyOf(actions);
     }
 
     static AdminProjectSpaceView admin(
@@ -77,6 +107,18 @@ final class ProjectSpaceDtos {
         Instant disabledAt,
         Instant archivedAt,
         List<String> availableActions
+    ) {
+    }
+
+    record ProjectSpaceSurfacePreviewView(
+        int schemaVersion,
+        UUID spaceId,
+        String targetRole,
+        List<String> availableActions,
+        String defaultPath,
+        boolean readOnly,
+        boolean contentIncluded,
+        String explanation
     ) {
     }
 

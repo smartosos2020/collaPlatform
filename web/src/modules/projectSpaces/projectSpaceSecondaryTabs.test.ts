@@ -12,12 +12,15 @@ import {
 const requiredViews: readonly ProjectSpaceSecondaryTabView[] = [
   'overview',
   'work-items',
+  'management',
   'work-item-detail',
   'types',
   'fields',
   'layouts',
   'members',
   'settings',
+  'automation-settings',
+  'metrics-settings',
 ]
 
 describe('PROJECT_SPACE_SECONDARY_TAB_CONFIG', () => {
@@ -36,14 +39,11 @@ describe('PROJECT_SPACE_SECONDARY_TAB_CONFIG', () => {
     }
   })
 
-  it('puts the core work-item collection before project governance panels', () => {
+  it('keeps member work items separate from the project-management owner surface', () => {
     const tabs = getProjectSpaceSecondaryTabs('work-items')
-    assert.equal(tabs[0]?.key, 'work-item-collection')
-    assert.equal(tabs[0]?.group, 'core')
-    assert.ok(
-      tabs.findIndex((tab) => tab.key === 'project-plan')
-        < tabs.findIndex((tab) => tab.key === 'automation-rules'),
-    )
+    assert.deepEqual(tabs.map((tab) => tab.key), ['work-item-collection'])
+    assert.equal(getProjectSpaceSecondaryTabs('management')[0]?.key, 'project-detail')
+    assert.ok(getProjectSpaceSecondaryTabs('management').some((tab) => tab.key === 'project-plan'))
   })
 })
 
@@ -65,38 +65,36 @@ describe('sortProjectSpaceSecondaryTabs', () => {
 
 describe('getProjectSpaceSecondaryTabs', () => {
   it('filters manager-only content unless management access is explicit', () => {
-    assert.equal(
-      getProjectSpaceSecondaryTabs('overview').some((tab) => tab.key === 'cross-space-grants'),
-      false,
-    )
+    assert.equal(getProjectSpaceSecondaryTabs('overview').some((tab) => tab.managerOnly), false)
     assert.equal(
       getProjectSpaceSecondaryTabs('overview', { canManage: true })
-        .some((tab) => tab.key === 'cross-space-grants'),
-      true,
+        .some((tab) => tab.managerOnly),
+      false,
     )
     assert.deepEqual(getProjectSpaceSecondaryTabs('settings'), [])
     assert.deepEqual(
       getProjectSpaceSecondaryTabs('settings', { canManage: true }).map((tab) => tab.key),
       [
+        'management-home',
         'general',
-        'lifecycle',
         'work-model',
         'flow-access',
         'automation-collaboration',
         'metrics-governance',
         'scenario-templates',
+        'lifecycle',
       ],
     )
   })
 
   it('keeps configured order when a view exposes only selected content blocks', () => {
-    const tabs = getProjectSpaceSecondaryTabs('work-items', {
-      includeKeys: ['project-delivery', 'work-item-collection', 'project-plan'],
+    const tabs = getProjectSpaceSecondaryTabs('management', {
+      includeKeys: ['project-delivery', 'project-plan'],
     })
 
     assert.deepEqual(
       tabs.map((tab) => tab.key),
-      ['work-item-collection', 'project-plan', 'project-delivery'],
+      ['project-plan', 'project-delivery'],
     )
   })
 })

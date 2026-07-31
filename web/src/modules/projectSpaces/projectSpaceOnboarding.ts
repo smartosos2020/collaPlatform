@@ -145,14 +145,14 @@ const STEP_COPY: Record<string, OnboardingStepCopy> = {
   preview_impact: {
     label: '预览模板影响',
     help: '先查看场景计划和影响；预览不会创建任务模板或改变当前配置。',
-    actionLabel: '前往项目管理',
-    requiredAction: 'view_project_management',
+    actionLabel: '前往场景模板',
+    requiredAction: 'view_settings',
   },
   install_scenario: {
     label: '确认安装场景',
     help: '只有在场景模板 owner 页面明确确认才会安装；选择起步方式不会触发安装。',
-    actionLabel: '前往项目管理',
-    requiredAction: 'view_project_management',
+    actionLabel: '前往场景模板',
+    requiredAction: 'view_settings',
   },
   configure_work_model: {
     label: '配置任务模板',
@@ -181,20 +181,20 @@ const STEP_COPY: Record<string, OnboardingStepCopy> = {
   publish_configuration: {
     label: '校验并发布配置',
     help: '先校验差异、兼容性和影响，再明确发布；保存草稿不等于生效。',
-    actionLabel: '前往项目管理',
-    requiredAction: 'view_project_management',
+    actionLabel: '打开发布配置',
+    requiredAction: 'view_settings',
   },
   configure_automation: {
     label: '按需配置自动化',
     help: '基础闭环完成后再配置自动化规则、运行限额和连接器。',
-    actionLabel: '前往项目管理',
-    requiredAction: 'view_project_management',
+    actionLabel: '打开自动化与协同',
+    requiredAction: 'view_settings',
   },
   configure_metrics: {
     label: '按需配置指标',
     help: '需要统一口径、看板或风险治理时，再进入指标 owner 页面。',
-    actionLabel: '前往项目管理',
-    requiredAction: 'view_project_management',
+    actionLabel: '打开度量治理',
+    requiredAction: 'view_settings',
   },
   invite_members: {
     label: '邀请或添加成员',
@@ -426,7 +426,19 @@ export function resolveOnboardingOwnerPath(
   const copy = resolveOnboardingStepCopy(item)
   if (copy.requiredAction === 'view_members') return projectSpacePrimaryPath(spaceId, 'members')
   if (copy.requiredAction === 'view_work_items') return projectSpacePrimaryPath(spaceId, 'work-items')
-  if (copy.requiredAction === 'view_settings') return `/project-spaces/${spaceId}/types`
+  if (copy.requiredAction === 'view_settings') {
+    const candidate = `${item.stepKey} ${item.labelKey} ${copy.label}`.toLowerCase()
+    if (candidate.includes('template') || candidate.includes('scenario') || candidate.includes('模板')) {
+      return `/project-spaces/${spaceId}/settings?panel=scenario-templates`
+    }
+    if (candidate.includes('automation') || candidate.includes('自动化')) {
+      return `/project-spaces/${spaceId}/settings?panel=automation-collaboration`
+    }
+    if (candidate.includes('metric') || candidate.includes('指标') || candidate.includes('度量')) {
+      return `/project-spaces/${spaceId}/settings?panel=metrics-governance`
+    }
+    return `/project-spaces/${spaceId}/settings?panel=work-model`
+  }
   return null
 }
 
@@ -472,17 +484,17 @@ export function contextualOnboardingHelp(pathname: string): Readonly<{
   }
   if (context.primaryView === 'settings') {
     return {
-      title: '设置',
-      what: '管理空间基本信息、生命周期和按需高级配置。',
-      when: '需要改变空间治理或进入工作模型、流程、模板等配置时使用。',
-      next: '选择对应二级页；保存草稿、安装模板和发布配置是三个独立动作。',
+      title: '空间管理',
+      what: '集中管理成员以外的空间信息、工作模型、流程权限、自动化、度量、模板和生命周期。',
+      when: '需要检查配置健康、处理配置待办或改变空间治理时使用。',
+      next: '从管理首页选择对应入口；保存草稿、安装模板和发布配置是三个独立动作。',
     }
   }
   return {
-    title: '概览',
-    what: '展示当前空间摘要和进入日常工作的主要入口。',
-    when: '首次进入空间或需要快速判断下一步时使用。',
-    next: '管理者可继续设置空间，成员可直接进入工作项。',
+    title: '成员工作区',
+    what: '集中展示与你相关的待办、参与、关注、可用工作项和空间动态。',
+    when: '进入空间或需要快速判断下一步时使用。',
+    next: '先处理我的工作；管理者需要配置时进入空间管理。',
   }
 }
 
