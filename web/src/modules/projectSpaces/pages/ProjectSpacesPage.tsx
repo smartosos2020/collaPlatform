@@ -1,15 +1,12 @@
 import {
   AppstoreOutlined,
-  CloudUploadOutlined,
   EyeOutlined,
   FileDoneOutlined,
   LockOutlined,
   InboxOutlined,
-  LayoutOutlined,
   PlusOutlined,
   ProjectOutlined,
   ReloadOutlined,
-  SafetyCertificateOutlined,
   SettingOutlined,
   TagsOutlined,
   TeamOutlined,
@@ -61,9 +58,6 @@ import {
 } from '../api/projectSpacesApi'
 import { ProjectSpaceSecondaryTabs } from '../components/ProjectSpaceSecondaryTabs'
 import {
-  ProjectSpaceTypeScopedConfigurationEntries,
-} from '../components/ProjectSpaceTypeScopedConfigurationEntries'
-import {
   listProjectSpacePersonalActivities,
   listProjectSpacePersonalWork,
 } from '../api/projectSpacePersonalWorkApi'
@@ -71,7 +65,11 @@ import {
   commandProjectSpaceOnboarding,
   getProjectSpaceOnboarding,
 } from '../api/projectSpaceOnboardingApi'
-import { listActiveWorkItemTypes, workItemTypeKeys } from '../api/workItemTypesApi'
+import {
+  listActiveWorkItemTypes,
+  listConfiguredWorkItemTypes,
+  workItemTypeKeys,
+} from '../api/workItemTypesApi'
 import { errorMessage, formatTime, roleLabel, statusLabel, visibilityLabel } from '../projectSpaceView'
 import {
   PROJECT_SPACE_ADVANCED_CONFIGURATION,
@@ -95,7 +93,6 @@ import {
   projectSpaceLocationWithContext,
   resolveCanonicalProjectSpaceLocation,
 } from '../projectSpaceRouteContract'
-import { projectSpaceConfigurationLocation } from '../projectSpaceConfigurationNavigation'
 import { canonicalProjectSpaceSurfaceLocation } from '../projectSpaceSurfaceContract'
 import {
   projectSpaceExperienceFreshness,
@@ -653,6 +650,7 @@ function ProjectSpaceShell({
 }) {
   const { message } = AntdApp.useApp()
   const location = useLocation()
+  const navigate = useNavigate()
   const queryClient = useQueryClient()
   const sessionScope = useSessionScope()
   const [online, setOnline] = useState(() => navigator.onLine)
@@ -715,6 +713,22 @@ function ProjectSpaceShell({
   const canPreview = canManage
     && (space.currentUserRole === 'owner' || space.currentUserRole === 'admin')
   const readOnly = space.status !== 'active'
+  const settingsWorkModelEntry = new URLSearchParams(location.search)
+    .get('source') === 'settings-work-model'
+  const returnToTypeCatalog = useCallback((typeId: string) => {
+    if (!settingsWorkModelEntry) {
+      onSelectType(typeId)
+      return
+    }
+    const target = projectSpaceLocationWithContext(
+      `/project-spaces/${space.id}/settings`,
+      patchProjectSpaceSearch(location.search, {
+        panel: 'work-model',
+        typeId,
+      }),
+    )
+    if (target) navigate(target)
+  }, [location.search, navigate, onSelectType, settingsWorkModelEntry, space.id])
   const previewQuery = useQuery({
     queryKey: ['project-spaces', space.id, 'surface-preview', previewRole],
     queryFn: () => getProjectSpaceSurfacePreview(space.id, previewRole),
@@ -1078,11 +1092,11 @@ function ProjectSpaceShell({
                   space={space}
                   typeId={selectedTypeId}
                   selectedFieldId={selectedFieldId}
-                  onBack={() => onSelectType(selectedTypeId)}
+                  onBack={() => returnToTypeCatalog(selectedTypeId)}
                   onSelectField={(fieldId) => onSelectField(selectedTypeId, fieldId)}
                 />
               ),
-              'configuration-draft': (
+              'configuration-draft': settingsWorkModelEntry ? undefined : (
                 <ProjectWorkItemConfigurationDraftPanel
                   spaceId={space.id}
                   typeId={selectedTypeId}
@@ -1096,8 +1110,8 @@ function ProjectSpaceShell({
           <ProjectWorkItemLayoutsPanel
             space={space}
             typeId={selectedTypeId}
-            onBack={() => onSelectType(selectedTypeId)}
-            configurationDraft={(
+            onBack={() => returnToTypeCatalog(selectedTypeId)}
+            configurationDraft={settingsWorkModelEntry ? undefined : (
               <ProjectWorkItemConfigurationDraftPanel
                 spaceId={space.id}
                 typeId={selectedTypeId}
@@ -1440,6 +1454,36 @@ function ProjectSpaceSettingsPanel({
   const location = useLocation()
   const sessionScope = useSessionScope()
   const [form] = Form.useForm<SettingsForm>()
+  const selectedConfigurationTypeId = new URLSearchParams(location.search)
+    .get('typeId') ?? undefined
+
+  const selectConfigurationType = useCallback((
+    typeId: string,
+    options: Readonly<{ replace?: boolean }> = {},
+  ) => {
+    const next = patchProjectSpaceSearch(location.search, { typeId })
+    const target = projectSpaceLocationWithContext(
+      `/project-spaces/${space.id}/settings`,
+      next,
+      location.hash,
+    )
+    if (target) navigate(target, { replace: options.replace })
+  }, [location.hash, location.search, navigate, space.id])
+
+  const openTypeConfiguration = useCallback((
+    typeId: string,
+    destination: 'fields' | 'layouts',
+  ) => {
+    const target = projectSpaceLocationWithContext(
+      `/project-spaces/${space.id}/types/${typeId}/${destination}`,
+      patchProjectSpaceSearch('', {
+        source: 'settings-work-model',
+        panel: destination === 'fields' ? 'field-catalog' : 'layout-editor',
+        typeId,
+      }),
+    )
+    if (target) navigate(target)
+  }, [navigate, space.id])
 
   useEffect(() => {
     const panel = new URLSearchParams(location.search).get('panel')
@@ -1528,78 +1572,35 @@ function ProjectSpaceSettingsPanel({
           </Card>
         ),
         'work-model': (
-          <Card
-            className="content-card"
+          <Space
+            direction="vertical"
+            size={16}
+            style={{ width: '100%' }}
             data-testid="project-space-advanced-settings"
-            title="工作模型"
           >
-            <Typography.Paragraph type="secondary">
-              {PROJECT_SPACE_ADVANCED_CONFIGURATION.find(
-                (group) => group.key === 'work-model',
-              )?.description}
-            </Typography.Paragraph>
-            <Space direction="vertical" size={10} style={{ width: '100%' }}>
-              <Space wrap>
-                <Button
-                  icon={<TagsOutlined />}
-                  onClick={() => {
-                    const target = projectSpaceConfigurationLocation({
-                      spaceId: space.id,
-                      destination: 'type-catalog',
-                    })
-                    if (target) navigate(target)
-                  }}
-                >
-                  任务模板
-                </Button>
-              </Space>
-              <Typography.Text type="secondary">
-                字段、表单与页面及发布配置都属于具体任务模板；存在多个模板时请先明确选择。
-              </Typography.Text>
-              <ProjectSpaceTypeScopedConfigurationEntries
-                spaceId={space.id}
-                actions={[
-                  {
-                    destination: 'fields',
-                    label: '字段',
-                    icon: <SettingOutlined />,
-                  },
-                  {
-                    destination: 'layouts',
-                    label: '表单与页面',
-                    icon: <LayoutOutlined />,
-                  },
-                  {
-                    destination: 'publication',
-                    label: '发布配置',
-                    icon: <CloudUploadOutlined />,
-                  },
-                ]}
-              />
-            </Space>
-          </Card>
+            <Card className="content-card" title="工作模型">
+              <Typography.Paragraph type="secondary">
+                {PROJECT_SPACE_ADVANCED_CONFIGURATION.find(
+                  (group) => group.key === 'work-model',
+                )?.description}
+              </Typography.Paragraph>
+            </Card>
+            <ProjectWorkItemTypesPanel
+              space={space}
+              selectedTypeId={selectedConfigurationTypeId}
+              autoSelectFirst={false}
+              onSelectType={selectConfigurationType}
+              onConfigureFields={(typeId) => openTypeConfiguration(typeId, 'fields')}
+              onConfigureLayouts={(typeId) => openTypeConfiguration(typeId, 'layouts')}
+            />
+          </Space>
         ),
         'flow-access': (
-          <Card className="content-card" title="流程与权限">
-            <Typography.Paragraph type="secondary">
-              {PROJECT_SPACE_ADVANCED_CONFIGURATION.find(
-                (group) => group.key === 'flow-access',
-              )?.description}
-            </Typography.Paragraph>
-            <Typography.Paragraph type="secondary">
-              流程与权限属于具体任务模板；存在多个模板时请先明确选择。
-            </Typography.Paragraph>
-            <ProjectSpaceTypeScopedConfigurationEntries
-              spaceId={space.id}
-              actions={[
-                {
-                  destination: 'flow-access',
-                  label: '进入任务模板的流程与权限配置',
-                  icon: <SafetyCertificateOutlined />,
-                },
-              ]}
-            />
-          </Card>
+          <ProjectSpaceFlowAccessSettings
+            space={space}
+            selectedTypeId={selectedConfigurationTypeId}
+            onSelectType={selectConfigurationType}
+          />
         ),
         'automation-collaboration': (
           <Space direction="vertical" size={16} style={{ width: '100%' }}>
@@ -1647,6 +1648,93 @@ function ProjectSpaceSettingsPanel({
         ),
       }}
     />
+  )
+}
+
+function ProjectSpaceFlowAccessSettings({
+  space,
+  selectedTypeId,
+  onSelectType,
+}: {
+  space: UserProjectSpace
+  selectedTypeId?: string
+  onSelectType: (
+    typeId: string,
+    options?: Readonly<{ replace?: boolean }>,
+  ) => void
+}) {
+  const typesQuery = useQuery({
+    queryKey: workItemTypeKeys.configuration(space.id, 'all'),
+    queryFn: () => listConfiguredWorkItemTypes(space.id),
+    retry: false,
+    staleTime: 5 * 60_000,
+  })
+  const types = useMemo(() => typesQuery.data?.items ?? [], [typesQuery.data])
+  const selectedType = types.find((type) => type.id === selectedTypeId)
+  const effectiveType = selectedType ?? (types.length === 1 ? types[0] : undefined)
+
+  useEffect(() => {
+    if (!effectiveType || effectiveType.id === selectedTypeId) return
+    onSelectType(effectiveType.id, { replace: true })
+  }, [effectiveType, onSelectType, selectedTypeId])
+
+  return (
+    <Space
+      direction="vertical"
+      size={16}
+      style={{ width: '100%' }}
+      data-testid="project-space-flow-access-settings"
+    >
+      <Card className="content-card" title="流程与权限">
+        <Typography.Paragraph type="secondary">
+          {PROJECT_SPACE_ADVANCED_CONFIGURATION.find(
+            (group) => group.key === 'flow-access',
+          )?.description}
+        </Typography.Paragraph>
+        <Space direction="vertical" size={6} style={{ width: '100%' }}>
+          <Typography.Text strong>当前任务模板</Typography.Text>
+          <Select
+            aria-label="当前任务模板"
+            showSearch
+            optionFilterProp="label"
+            loading={typesQuery.isLoading}
+            disabled={typesQuery.isError || types.length === 0}
+            value={effectiveType?.id}
+            placeholder="选择要配置的任务模板"
+            options={types.map((type) => ({
+              value: type.id,
+              label: `${type.name}（${type.typeKey}）`,
+            }))}
+            onChange={(typeId) => onSelectType(typeId)}
+          />
+        </Space>
+      </Card>
+      {typesQuery.isLoading ? (
+        <Card className="content-card"><Skeleton active paragraph={{ rows: 6 }} /></Card>
+      ) : null}
+      {typesQuery.isError ? (
+        <Alert
+          type="error"
+          showIcon
+          message="任务模板加载失败"
+          description="当前无法加载流程与权限配置，请重试。"
+          action={<Button size="small" onClick={() => typesQuery.refetch()}>重试</Button>}
+        />
+      ) : null}
+      {!typesQuery.isLoading && !typesQuery.isError && types.length === 0 ? (
+        <Empty description="请先在工作模型中创建任务模板" />
+      ) : null}
+      {!typesQuery.isLoading && !typesQuery.isError && types.length > 1 && !effectiveType ? (
+        <Empty description="请选择一个任务模板以查看流程、权限和发布配置" />
+      ) : null}
+      {effectiveType ? (
+        <ProjectWorkItemConfigurationDraftPanel
+          spaceId={space.id}
+          typeId={effectiveType.id}
+          readOnly={space.status !== 'active'}
+        />
+      ) : null}
+    </Space>
   )
 }
 
@@ -1723,7 +1811,7 @@ function ProjectSpaceManagementHome({
                   block
                   key={type.id}
                   onClick={() => navigate(
-                    `/project-spaces/${space.id}/types/${type.id}?panel=configuration-draft&source=management-home`,
+                    `/project-spaces/${space.id}/settings?panel=flow-access&typeId=${type.id}&source=management-home`,
                   )}
                 >
                   发布“{type.name}”的配置

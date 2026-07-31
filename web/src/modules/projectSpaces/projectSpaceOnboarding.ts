@@ -428,7 +428,24 @@ export function resolveOnboardingOwnerPath(
   if (copy.requiredAction === 'view_work_items') return projectSpacePrimaryPath(spaceId, 'work-items')
   if (copy.requiredAction === 'view_settings') {
     const candidate = `${item.stepKey} ${item.labelKey} ${copy.label}`.toLowerCase()
-    if (candidate.includes('template') || candidate.includes('scenario') || candidate.includes('模板')) {
+    if (
+      candidate.includes('flow')
+      || candidate.includes('workflow')
+      || candidate.includes('流程')
+      || candidate.includes('publish')
+      || candidate.includes('发布')
+      || candidate.includes('validat')
+      || candidate.includes('校验')
+    ) {
+      return `/project-spaces/${spaceId}/settings?panel=flow-access`
+    }
+    if (
+      candidate.includes('scenario')
+      || candidate.includes('场景')
+      || item.stepKey === 'choose_starting_point'
+      || item.stepKey === 'preview_impact'
+      || item.stepKey === 'install_scenario'
+    ) {
       return `/project-spaces/${spaceId}/settings?panel=scenario-templates`
     }
     if (candidate.includes('automation') || candidate.includes('自动化')) {

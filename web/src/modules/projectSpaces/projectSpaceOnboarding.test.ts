@@ -95,6 +95,27 @@ describe('project space onboarding capability and route gates', () => {
     )
   })
 
+  it('falls back to the inline settings owner for work-model and publication steps', () => {
+    assert.equal(
+      resolveOnboardingOwnerPath(step({
+        stepKey: 'configure_work_model',
+        labelKey: 'project.onboarding.step.configure_work_model',
+        path: '/project-spaces/another-space/types',
+      }), 'space-1'),
+      '/project-spaces/space-1/settings?panel=work-model',
+    )
+    for (const stepKey of ['configure_workflow', 'publish_configuration']) {
+      assert.equal(
+        resolveOnboardingOwnerPath(step({
+          stepKey,
+          labelKey: `project.onboarding.step.${stepKey}`,
+          path: '/project-spaces/another-space/types',
+        }), 'space-1'),
+        '/project-spaces/space-1/settings?panel=flow-access',
+      )
+    }
+  })
+
   it('does not convert route visits into business completion', () => {
     const copy = resolveOnboardingStepCopy(step({ status: 'verify_on_owner_api' }))
     assert.equal(copy.label, '找到分配给我的工作')

@@ -57,12 +57,14 @@ const VERSION_CONFLICT_MESSAGE = '数据已被其他人更新，已刷新为最�
 export function ProjectWorkItemTypesPanel({
   space,
   selectedTypeId,
+  autoSelectFirst = true,
   onSelectType,
   onConfigureFields,
   onConfigureLayouts,
 }: {
   space: UserProjectSpace
   selectedTypeId?: string
+  autoSelectFirst?: boolean
   onSelectType: (
     typeId: string,
     options?: Readonly<{ replace?: boolean }>,
@@ -94,10 +96,15 @@ export function ProjectWorkItemTypesPanel({
   const selected = detailQuery.data ?? selectedFromList
 
   useEffect(() => {
-    if (!configurationQuery.isLoading && items.length > 0 && !selectedTypeId) {
+    if (
+      autoSelectFirst
+      && !configurationQuery.isLoading
+      && items.length > 0
+      && !selectedTypeId
+    ) {
       onSelectType(items[0].id, { replace: true })
     }
-  }, [configurationQuery.isLoading, items, onSelectType, selectedTypeId])
+  }, [autoSelectFirst, configurationQuery.isLoading, items, onSelectType, selectedTypeId])
 
   const refresh = async (typeId?: string) => {
     await Promise.all([

@@ -52,6 +52,20 @@ class ProjectSpaceOnboardingServiceTests {
             .extracting(step -> step.stepKey())
             .contains("choose_starting_point", "configure_work_model", "publish_configuration")
             .doesNotContain("install_scenario");
+        assertThat(view.checklist())
+            .filteredOn(step -> "configure_work_model".equals(step.stepKey()))
+            .extracting(step -> step.path())
+            .containsExactly(
+                "/project-spaces/" + fixture.spaceId()
+                    + "/settings?panel=work-model&source=onboarding"
+            );
+        assertThat(view.checklist())
+            .filteredOn(step -> "publish_configuration".equals(step.stepKey()))
+            .extracting(step -> step.path())
+            .containsExactly(
+                "/project-spaces/" + fixture.spaceId()
+                    + "/settings?panel=flow-access&source=onboarding"
+            );
     }
 
     @Test

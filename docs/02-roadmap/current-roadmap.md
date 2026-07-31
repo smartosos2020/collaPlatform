@@ -262,3 +262,5 @@ Program revision 52 新增的 S21-M8 角色分层 UX 收敛已完成：三类任
 2026-07-31 16:30 真人试用发现概览二级 `panel` 被主导航跨 surface 保留，触发 canonical owner 将 `/work-items` 等目标立即拉回概览；M8-T02 已按 Reopened 流程修复为跨主 surface/空间只保留 `source` 与安全 hash，并补充“空间动态 → 工作项”的真实点击回归。隔离复验同时发现未配置状态流程原先返回空白面板，已改为中文可行动提示；定向合同、lint/build、共享真实页面五入口与完整真实隔离 E2E fresh 通过后，M8-T02 恢复 Done，M8 恢复 Completed。
 
 2026-07-31 18:58 真人试用发现“工作模型”的任务模板/字段与页面入口及“流程与权限”入口全部落到同一任务模板目录；M8-T07 已按 Reopened 流程修复为显式模板选择和任务模板、字段、表单与页面、发布配置、流程与权限五类有区分的落点。流程与权限使用同一配置草稿事实源并在异步加载后聚焦专属区域，不复制编辑器或业务数据；路由合同 2/2、frontend lint/build、共享动态 fixture 1/1 和独立数据库真实 E2E 1/1 fresh 通过后，M8-T07 恢复 Done，M8 恢复 Completed。
+
+2026-07-31 19:49 后续真人试用确认差异化入口仍增加无意义的按钮与任务模板弹窗；M8-T07 第三次按 Reopened 流程将任务模板目录直接放入“工作模型”，将完整配置草稿、发布、流程权限与版本内容直接放入“流程与权限”，两个设置 Tab 以可刷新 `typeId` 共享模板上下文。旧快捷入口组件、四按钮、选择模板弹窗及专用跳转合同已删除；管理首页、工作项配置提示和首次使用引导进入新的 settings 落点，从工作模型进入字段/布局时只显示对应编辑器并可返回原位，旧 `/types*` 深链继续兼容。route/onboarding 合同 20/20、backend onboarding 定向测试、frontend lint/build、扩展后的共享真实流程 1/1 与独立数据库 real-isolated checkpoint 1/1 fresh 通过后，M8-T07 恢复 Done，M8 恢复 Completed。

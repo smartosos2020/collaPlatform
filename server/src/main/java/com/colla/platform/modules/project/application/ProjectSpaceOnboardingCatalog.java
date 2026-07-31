@@ -53,25 +53,25 @@ public final class ProjectSpaceOnboardingCatalog {
         String configurationDependency = "choose_starting_point";
         if (scenario) {
             result.add(step(
-                spaceId, "preview_impact", "/management", List.of("choose_starting_point"),
+                spaceId, "preview_impact", "/settings?panel=scenario-templates&source=onboarding", List.of("choose_starting_point"),
                 "project.scenario-templates.validation", readOnly
             ));
             result.add(step(
-                spaceId, "install_scenario", "/management", List.of("preview_impact"),
+                spaceId, "install_scenario", "/settings?panel=scenario-templates&source=onboarding", List.of("preview_impact"),
                 "project.scenario-templates.installation", readOnly
             ));
             configurationDependency = "install_scenario";
         }
         result.add(step(
-            spaceId, "configure_work_model", "/types", List.of(configurationDependency),
+            spaceId, "configure_work_model", "/settings?panel=work-model&source=onboarding", List.of(configurationDependency),
             "project.work-item-types", readOnly
         ));
         result.add(step(
-            spaceId, "configure_fields_and_pages", "/types", List.of("configure_work_model"),
+            spaceId, "configure_fields_and_pages", "/settings?panel=work-model&source=onboarding", List.of("configure_work_model"),
             "project.work-item-fields-layouts", readOnly
         ));
         result.add(step(
-            spaceId, "configure_workflow", "/types", List.of("configure_fields_and_pages"),
+            spaceId, "configure_workflow", "/settings?panel=flow-access&source=onboarding", List.of("configure_fields_and_pages"),
             "project.work-item-workflow", readOnly
         ));
         result.add(step(
@@ -79,15 +79,15 @@ public final class ProjectSpaceOnboardingCatalog {
             "project.space-permissions", readOnly
         ));
         result.add(step(
-            spaceId, "publish_configuration", "/management", List.of("configure_permissions"),
+            spaceId, "publish_configuration", "/settings?panel=flow-access&source=onboarding", List.of("configure_permissions"),
             "project.configuration-publication", readOnly
         ));
         result.add(step(
-            spaceId, "configure_automation", "/management", List.of("publish_configuration"),
+            spaceId, "configure_automation", "/settings?panel=automation-collaboration&source=onboarding", List.of("publish_configuration"),
             "project.automation", readOnly
         ));
         result.add(step(
-            spaceId, "configure_metrics", "/management", List.of("publish_configuration"),
+            spaceId, "configure_metrics", "/settings?panel=metrics-governance&source=onboarding", List.of("publish_configuration"),
             "project.metrics", readOnly
         ));
         result.add(step(

@@ -2360,7 +2360,7 @@ function WorkItemCollection({ space }: { space: UserProjectSpace }) {
         open={createOpen && !createUnavailable}
         canConfigure={space.availableActions.includes('view_settings')}
         onConfigure={() => selectedType && navigate(
-          `/project-spaces/${space.id}/types/${selectedType.id}?panel=configuration-draft&source=work_items`,
+          `/project-spaces/${space.id}/settings?panel=flow-access&typeId=${selectedType.id}&source=work_items`,
         )}
         onCancel={closeCreate}
       />
