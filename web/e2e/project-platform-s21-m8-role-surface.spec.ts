@@ -4,6 +4,7 @@ import {
   type APIRequestContext,
   type Browser,
   type BrowserContext,
+  type Locator,
   type Page,
 } from '@playwright/test'
 
@@ -254,6 +255,35 @@ test.describe('PROJECT-PLATFORM-S21-M8 role-layered project space', () => {
         'project-space-task-zone-space-management',
       )).toHaveCount(0)
       await expect(memberBrowser.page.getByText(itemTitle, { exact: true })).toBeVisible()
+      const memberHome = memberBrowser.page.getByTestId('project-space-member-home')
+      await expect(memberHome).toBeVisible()
+      const workBuckets = memberBrowser.page.locator(
+        '[data-testid^="project-space-work-bucket-"]:not([data-testid$="-count"])',
+      )
+      await expect(workBuckets).toHaveCount(4)
+      const todoBucketBox = await memberBrowser.page.getByTestId(
+        'project-space-work-bucket-todo',
+      ).boundingBox()
+      const responsibleBucketBox = await memberBrowser.page.getByTestId(
+        'project-space-work-bucket-responsible',
+      ).boundingBox()
+      const participatingBucketBox = await memberBrowser.page.getByTestId(
+        'project-space-work-bucket-participating',
+      ).boundingBox()
+      const activeTypesBox = await memberBrowser.page.getByTestId(
+        'project-space-active-types',
+      ).boundingBox()
+      expect(todoBucketBox).not.toBeNull()
+      expect(responsibleBucketBox).not.toBeNull()
+      expect(participatingBucketBox).not.toBeNull()
+      expect(activeTypesBox).not.toBeNull()
+      if (!todoBucketBox || !responsibleBucketBox || !participatingBucketBox || !activeTypesBox) {
+        throw new Error('member home layout boxes are unavailable')
+      }
+      expect(Math.abs(todoBucketBox.y - responsibleBucketBox.y)).toBeLessThanOrEqual(2)
+      expect(responsibleBucketBox.x).toBeGreaterThan(todoBucketBox.x)
+      expect(participatingBucketBox.y).toBeGreaterThan(todoBucketBox.y)
+      expect(activeTypesBox.y).toBeGreaterThan(participatingBucketBox.y)
       const memberWorkEntries = memberBrowser.page.locator(
         '[data-testid^="project-space-work-entry-"]',
       )
@@ -354,9 +384,27 @@ test.describe('PROJECT-PLATFORM-S21-M8 role-layered project space', () => {
       )).toBeVisible()
 
       await ownerBrowser.page.getByTestId('project-space-overview-secondary-tabs')
-        .getByRole('tab', { name: '空间动态', exact: true })
+        .getByRole('tab', { name: '动态与边界', exact: true })
         .click()
       await expect(ownerBrowser.page).toHaveURL(/panel=activity/)
+      await expect(ownerBrowser.page.getByTestId('project-space-activity-boundary'))
+        .toContainText('空间动态')
+      await expect(ownerBrowser.page.getByTestId('project-space-activity-boundary'))
+        .toContainText('协作边界')
+      const activityCardBox = await ownerBrowser.page.getByTestId(
+        'project-space-activity-card',
+      ).boundingBox()
+      const boundaryCardBox = await ownerBrowser.page.getByTestId(
+        'project-space-boundary-card',
+      ).boundingBox()
+      expect(activityCardBox).not.toBeNull()
+      expect(boundaryCardBox).not.toBeNull()
+      if (!activityCardBox || !boundaryCardBox) {
+        throw new Error('activity and boundary layout boxes are unavailable')
+      }
+      expect(activityCardBox.width).toBeGreaterThan(boundaryCardBox.width)
+      expect(Math.abs(activityCardBox.y - boundaryCardBox.y)).toBeLessThanOrEqual(2)
+      expect(Math.abs(activityCardBox.height - boundaryCardBox.height)).toBeLessThanOrEqual(2)
       const ownerNavigation = ownerBrowser.page.getByRole('navigation', {
         name: '空间导航',
       })
@@ -388,16 +436,28 @@ test.describe('PROJECT-PLATFORM-S21-M8 role-layered project space', () => {
         name: '管理首页',
         exact: true,
       })).toHaveAttribute('aria-selected', 'true')
-      await expect(ownerBrowser.page.getByText('配置健康', { exact: true })).toBeVisible()
-      await expect(ownerBrowser.page.getByText('配置待办', { exact: true })).toBeVisible()
-      await expect(ownerBrowser.page.getByText('最近入口', { exact: true })).toBeVisible()
-      await expect(ownerBrowser.page.getByText('危险操作', { exact: true })).toBeVisible()
+      await expect(ownerBrowser.page.getByRole('tab', { name: '基本信息', exact: true })).toHaveCount(0)
+      await expect(ownerBrowser.page.getByRole('tab', { name: '启用、停用与归档', exact: true })).toHaveCount(0)
+      await expect(ownerBrowser.page.getByTestId('project-space-management-summary')).toHaveCount(0)
+      const basicInformation = ownerBrowser.page.getByTestId('project-space-basic-information')
+      await expect(basicInformation.getByLabel('空间名称', { exact: true })).toBeVisible()
+      await expect(basicInformation.getByLabel('可见性', { exact: true })).toBeVisible()
+      await expect(basicInformation.getByLabel('空间说明', { exact: true })).toBeVisible()
+      await expect(basicInformation.getByRole('button', { name: '保存设置', exact: true })).toBeVisible()
+      await expect(basicInformation.getByRole('button').filter({ hasText: /^停用$/ }))
+        .toHaveCount(ownerSpace.availableActions.includes('disable') ? 1 : 0)
+      await expect(basicInformation.getByRole('button').filter({ hasText: /^归档$/ }))
+        .toHaveCount(ownerSpace.availableActions.includes('archive') ? 1 : 0)
+      await expect(ownerBrowser.page.getByText('B. 配置健康', { exact: true })).toBeVisible()
+      await expect(ownerBrowser.page.getByText('C. 配置待办', { exact: true })).toBeVisible()
+      await expect(ownerBrowser.page.getByText('D. 最近入口', { exact: true })).toBeVisible()
+      await expect(ownerBrowser.page.getByText('危险操作', { exact: true })).toHaveCount(0)
       await expect(ownerBrowser.page.getByText(
         `发布“${currentPendingTypes[0].name}”的配置`,
         { exact: true },
       )).toBeVisible()
 
-      const openSettingsGroup = async (group: '工作模型' | '流程与权限') => {
+      const openSettingsGroup = async (group: '工作模型') => {
         await ownerBrowser.page.getByRole('tab', { name: group, exact: true }).click()
         await expect(ownerBrowser.page.getByRole('tabpanel', {
           name: group,
@@ -406,17 +466,39 @@ test.describe('PROJECT-PLATFORM-S21-M8 role-layered project space', () => {
       }
 
       await openSettingsGroup('工作模型')
+      await expect(ownerBrowser.page.locator(
+        '[data-testid="project-space-settings-secondary-tabs"] > .ant-tabs > .ant-tabs-nav',
+      ).getByRole('tab', { name: '流程与权限', exact: true })).toHaveCount(0)
       const workModelPanel = ownerBrowser.page.getByRole('tabpanel', {
         name: '工作模型',
         exact: true,
       })
       await expect(workModelPanel.getByTestId('work-item-types-panel')).toBeVisible()
       await expect(ownerBrowser.page.getByTestId('project-space-types-secondary-tabs')).toHaveCount(0)
+      await expect(workModelPanel.getByText(
+        '管理任务模板、字段、表单与页面，以及发布配置。',
+        { exact: true },
+      )).toHaveCount(0)
+      const typeListActions = workModelPanel.getByTestId('work-item-type-list-actions')
+      await expect(typeListActions.getByRole('button', { name: '复制', exact: true })).toBeDisabled()
+      await expect(typeListActions.getByRole('button', { name: '停用', exact: true })).toBeDisabled()
       const publishedTypeOption = workModelPanel
         .getByRole('listbox', { name: '选择工作项类型' })
         .getByRole('option')
         .filter({ hasText: ownerProjectType.typeKey })
       await expect(publishedTypeOption).toHaveCount(1)
+      const typeListCard = workModelPanel.locator('.work-item-type-list-card')
+      const typeListBox = await typeListCard.boundingBox()
+      expect(typeListBox?.width).toBeGreaterThanOrEqual(208)
+      expect(typeListBox?.width).toBeLessThanOrEqual(240)
+      const typeStatusFilter = typeListCard.getByRole('radiogroup', { name: '工作项类型状态筛选' })
+      await expect(typeStatusFilter).toBeVisible()
+      expect(await typeStatusFilter.locator('.ant-segmented-item-label').allTextContents()).toEqual([
+        '全',
+        '使用中',
+        '已停',
+        '已退',
+      ])
       await publishedTypeOption.click()
       await expect.poll(() => new URL(ownerBrowser.page.url()).searchParams.get('typeId'))
         .toBe(published.typeId)
@@ -425,6 +507,13 @@ test.describe('PROJECT-PLATFORM-S21-M8 role-layered project space', () => {
       expect(workModelLocation.pathname).toBe(`/project-spaces/${spaceId}/settings`)
       expect(workModelLocation.searchParams.get('panel')).toBe('work-model')
       expect(workModelLocation.searchParams.get('typeId')).toBe(published.typeId)
+      await expect(typeListActions.getByRole('button', { name: '复制', exact: true })).toBeEnabled()
+      await expect(typeListActions.getByRole('button', { name: '停用', exact: true })).toBeEnabled()
+      expect(await typeListActions.getByRole('button').allTextContents()).toEqual([
+        '新建类型',
+        '复制',
+        '停用',
+      ])
       await expect(workModelPanel.getByRole('button').filter({
         hasText: /^任务模板$/,
       })).toHaveCount(0)
@@ -441,64 +530,176 @@ test.describe('PROJECT-PLATFORM-S21-M8 role-layered project space', () => {
       await expect(ownerBrowser.page.getByRole('dialog', {
         name: /^选择任务模板/,
       })).toHaveCount(0)
-
-      const expectContextEditorRoundTrip = async (
-        actionLabel: '配置字段' | '页面布局',
-        panel: 'field-catalog' | 'layout-editor',
-        pathSuffix: 'fields' | 'layouts',
-        editorTestId: 'work-item-fields-panel' | 'work-item-layouts-panel',
-      ) => {
-        await workModelPanel.getByRole('button').filter({
-          hasText: new RegExp(`^${actionLabel}$`),
-        }).click()
-        await expect(ownerBrowser.page.getByTestId(editorTestId)).toBeVisible()
-        const editorLocation = new URL(ownerBrowser.page.url())
-        expect(editorLocation.pathname).toBe(
-          `/project-spaces/${spaceId}/types/${published.typeId}/${pathSuffix}`,
-        )
-        expect(editorLocation.searchParams.get('source')).toBe('settings-work-model')
-        expect(editorLocation.searchParams.get('panel')).toBe(panel)
-        await expect(ownerBrowser.page.getByRole('tab', {
-          name: '发布配置',
-          exact: true,
-        })).toHaveCount(0)
-        await ownerBrowser.page.getByRole('button').filter({
-          hasText: /^返回类型$/,
-        }).click()
-        await expect(ownerBrowser.page.getByRole('tab', {
-          name: '工作模型',
-          exact: true,
-        })).toHaveAttribute('aria-selected', 'true')
-        const returnedLocation = new URL(ownerBrowser.page.url())
-        expect(returnedLocation.pathname).toBe(`/project-spaces/${spaceId}/settings`)
-        expect(returnedLocation.searchParams.get('panel')).toBe('work-model')
-        expect(returnedLocation.searchParams.get('typeId')).toBe(published.typeId)
-      }
-
-      await expectContextEditorRoundTrip(
-        '配置字段', 'field-catalog', 'fields', 'work-item-fields-panel',
-      )
-      await expectContextEditorRoundTrip(
-        '页面布局', 'layout-editor', 'layouts', 'work-item-layouts-panel',
-      )
-
-      await openSettingsGroup('流程与权限')
-      const flowAccessPanel = ownerBrowser.page.getByRole('tabpanel', {
+      const typeDetailCard = workModelPanel.locator('.work-item-type-detail-card')
+      const typeInformationTab = typeDetailCard.getByRole('tab', {
+        name: '类型信息',
+        exact: true,
+      })
+      const fieldConfigurationTab = typeDetailCard.getByRole('tab', {
+        name: '配置字段',
+        exact: true,
+      })
+      const pageLayoutTab = typeDetailCard.getByRole('tab', {
+        name: '页面布局',
+        exact: true,
+      })
+      const flowAccessTab = typeDetailCard.getByRole('tab', {
         name: '流程与权限',
         exact: true,
       })
+      await expect(typeInformationTab).toHaveAttribute('aria-selected', 'true')
+      await expect(fieldConfigurationTab).toBeVisible()
+      await expect(pageLayoutTab).toBeVisible()
+      await expect(flowAccessTab).toBeVisible()
+      const settingsTabsBox = await ownerBrowser.page
+        .getByTestId('project-space-settings-secondary-tabs')
+        .boundingBox()
+      const managementHomeTabBox = await ownerBrowser.page
+        .getByRole('tab', { name: '管理首页', exact: true })
+        .boundingBox()
+      const typeDetailCardBox = await typeDetailCard.boundingBox()
+      const typeInformationTabBox = await typeInformationTab.boundingBox()
+      const fieldConfigurationTabBox = await fieldConfigurationTab.boundingBox()
+      const pageLayoutTabBox = await pageLayoutTab.boundingBox()
+      const flowAccessTabBox = await flowAccessTab.boundingBox()
+      expect(settingsTabsBox).not.toBeNull()
+      expect(managementHomeTabBox).not.toBeNull()
+      expect(typeDetailCardBox).not.toBeNull()
+      expect(typeInformationTabBox).not.toBeNull()
+      expect(fieldConfigurationTabBox).not.toBeNull()
+      expect(pageLayoutTabBox).not.toBeNull()
+      expect(flowAccessTabBox).not.toBeNull()
+      const managementTabTopOffset = (managementHomeTabBox?.y ?? 0) - (settingsTabsBox?.y ?? 0)
+      const detailTabTopOffset = (typeInformationTabBox?.y ?? 0) - (typeDetailCardBox?.y ?? 0)
+      expect(Math.abs(detailTabTopOffset - managementTabTopOffset)).toBeLessThanOrEqual(1)
+      expect(fieldConfigurationTabBox?.y).toBe(typeInformationTabBox?.y)
+      expect(pageLayoutTabBox?.y).toBe(typeInformationTabBox?.y)
+      expect(flowAccessTabBox?.y).toBe(typeInformationTabBox?.y)
+      expect(flowAccessTabBox?.x).toBeGreaterThan(pageLayoutTabBox?.x ?? 0)
+      const readTabTypography = (tab: typeof typeInformationTab) => tab.evaluate((element) => {
+        const style = getComputedStyle(element)
+        return {
+          fontFamily: style.fontFamily,
+          fontSize: style.fontSize,
+          fontStyle: style.fontStyle,
+          fontWeight: style.fontWeight,
+          letterSpacing: style.letterSpacing,
+          lineHeight: style.lineHeight,
+          textTransform: style.textTransform,
+        }
+      })
+      const managementTabTypography = await readTabTypography(
+        ownerBrowser.page.getByRole('tab', { name: '管理首页', exact: true }),
+      )
+      expect(await readTabTypography(typeInformationTab)).toEqual(managementTabTypography)
+      expect(await readTabTypography(fieldConfigurationTab)).toEqual(managementTabTypography)
+      expect(await readTabTypography(pageLayoutTab)).toEqual(managementTabTypography)
+      expect(await readTabTypography(flowAccessTab)).toEqual(managementTabTypography)
+      await expect(typeDetailCard.getByRole('button', { name: '复制', exact: true })).toHaveCount(0)
+      await expect(typeDetailCard.getByRole('button', { name: '停用', exact: true })).toHaveCount(0)
+      const typeInformationHeader = typeDetailCard.getByTestId('work-item-model-section-header')
+      await expect(typeInformationHeader.locator('.status-badge')).toHaveCount(0)
+      await expect(typeInformationHeader.locator('code')).toHaveCount(0)
+
+      const readSectionHeaderContract = (header: Locator) => header.evaluate((element) => {
+          const style = getComputedStyle(element)
+          const title = element.querySelector('h3, h4')
+          const titleStyle = title ? getComputedStyle(title) : null
+          return {
+            backgroundColor: style.backgroundColor,
+            borderTop: style.borderTop,
+            borderRadius: style.borderRadius,
+            boxShadow: style.boxShadow,
+            minHeight: style.minHeight,
+            padding: style.padding,
+            titleFontSize: titleStyle?.fontSize,
+            titleLineHeight: titleStyle?.lineHeight,
+            width: Math.round(element.getBoundingClientRect().width * 100) / 100,
+          }
+        })
+      const typeInformationHeaderContract = await readSectionHeaderContract(typeInformationHeader)
+
+      const expectWorkModelLocation = () => expect.poll(() => {
+        const current = new URL(ownerBrowser.page.url())
+        return {
+          pathname: current.pathname,
+          panel: current.searchParams.get('panel'),
+          typeId: current.searchParams.get('typeId'),
+        }
+      }).toEqual({
+        pathname: `/project-spaces/${spaceId}/settings`,
+        panel: 'work-model',
+        typeId: published.typeId,
+      })
+
+      await fieldConfigurationTab.click()
+      const fieldPanel = typeDetailCard.getByTestId('work-item-fields-panel')
+      await expect(fieldPanel).toBeVisible()
+      await expect(typeDetailCard.getByRole('button', { name: '返回类型', exact: true })).toHaveCount(0)
+      const fieldHeader = fieldPanel.locator('.work-item-field-header')
+      const fieldHeaderCopy = fieldHeader.locator('.work-item-field-header-copy')
+      await expect(fieldHeaderCopy.getByRole('heading', { name: '字段配置', exact: true })).toBeVisible()
+      await expect(fieldHeaderCopy.locator('.work-item-field-type-context')).toHaveText(
+        `${ownerProjectType.name} · ${ownerProjectType.typeKey}`,
+      )
+      const fieldFilters = fieldHeader.getByRole('group', { name: '字段目录筛选' })
+      const fieldListCard = fieldPanel.locator('.work-item-field-list-card')
+      await expect(fieldListCard.getByRole('searchbox', { name: '搜索字段名称或字段键' })).toBeVisible()
+      await expect(fieldFilters.getByRole('button').filter({ hasText: /^新建字段$/ }))
+        .toBeVisible()
+      const fieldStatusFilter = fieldListCard.getByRole('radiogroup', { name: '字段状态筛选' })
+      await expect(fieldStatusFilter).toBeVisible()
+      await expect(fieldFilters.getByRole('combobox', { name: '字段类型筛选' })).toBeVisible()
+      await expect(fieldFilters.getByRole('combobox', { name: '字段排序方式' })).toBeVisible()
+      expect(await fieldStatusFilter.locator('.ant-segmented-item-label').allTextContents()).toEqual([
+        '全',
+        '使用中',
+        '已停',
+        '已退',
+      ])
+      expect(await fieldHeader.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBeTruthy()
+      expect(await readSectionHeaderContract(
+        fieldPanel.getByTestId('work-item-model-section-header'),
+      )).toEqual(typeInformationHeaderContract)
+      await expectWorkModelLocation()
+
+      await pageLayoutTab.click()
+      const embeddedLayout = typeDetailCard.getByTestId('work-item-layouts-panel')
+      await expect(embeddedLayout).toBeVisible()
+      await expect(embeddedLayout.getByRole('button', { name: '返回类型', exact: true })).toHaveCount(0)
+      expect(await readSectionHeaderContract(
+        embeddedLayout.getByTestId('work-item-model-section-header'),
+      )).toEqual(typeInformationHeaderContract)
+      await expect(ownerBrowser.page.getByRole('tab', {
+        name: '发布配置',
+        exact: true,
+      })).toHaveCount(0)
+      await expect(ownerBrowser.page.getByRole('tab', {
+        name: '工作模型',
+        exact: true,
+      })).toHaveAttribute('aria-selected', 'true')
+      await expectWorkModelLocation()
+      await typeInformationTab.click()
+      await expect(typeInformationTab).toHaveAttribute('aria-selected', 'true')
+      await expect(publishedTypeOption).toHaveAttribute('aria-selected', 'true')
+
+      await flowAccessTab.click()
+      const flowAccessPanel = typeDetailCard.getByRole('tabpanel', {
+        name: '流程与权限',
+        exact: true,
+      })
+      await expect(ownerBrowser.page.getByTestId('project-space-flow-access-settings'))
+        .toHaveCount(0)
       const flowAccessLocation = new URL(ownerBrowser.page.url())
       expect(flowAccessLocation.pathname).toBe(`/project-spaces/${spaceId}/settings`)
-      expect(flowAccessLocation.searchParams.get('panel')).toBe('flow-access')
+      expect(flowAccessLocation.searchParams.get('panel')).toBe('work-model')
+      expect(flowAccessLocation.searchParams.get('workModelTab')).toBe('flow-access')
       expect(flowAccessLocation.searchParams.get('typeId')).toBe(published.typeId)
-      await expect(flowAccessPanel.getByRole('combobox', {
+      await expect(ownerBrowser.page.getByRole('combobox', {
         name: '当前任务模板',
         exact: true,
-      })).toBeVisible()
-      await expect(flowAccessPanel.getByText(
-        `${ownerProjectType.name}（${ownerProjectType.typeKey}）`,
-        { exact: true },
-      )).toBeVisible()
+      })).toHaveCount(0)
+      await expect(publishedTypeOption).toHaveAttribute('aria-selected', 'true')
       await expect(flowAccessPanel.getByRole('region', {
         name: '配置草稿状态',
         exact: true,
@@ -528,6 +729,10 @@ test.describe('PROJECT-PLATFORM-S21-M8 role-layered project space', () => {
 
       await ownerBrowser.page.reload()
       await expect(ownerBrowser.page.getByRole('tab', {
+        name: '工作模型',
+        exact: true,
+      })).toHaveAttribute('aria-selected', 'true')
+      await expect(typeDetailCard.getByRole('tab', {
         name: '流程与权限',
         exact: true,
       })).toHaveAttribute('aria-selected', 'true')
@@ -535,35 +740,46 @@ test.describe('PROJECT-PLATFORM-S21-M8 role-layered project space', () => {
         name: '配置草稿状态',
         exact: true,
       })).toBeVisible()
-      await expect(ownerBrowser.page.getByText(
-        `${ownerProjectType.name}（${ownerProjectType.typeKey}）`,
-        { exact: true },
-      )).toBeVisible()
+      await expect(publishedTypeOption).toHaveAttribute('aria-selected', 'true')
       const reloadedFlowAccessLocation = new URL(ownerBrowser.page.url())
       expect(reloadedFlowAccessLocation.pathname).toBe(`/project-spaces/${spaceId}/settings`)
-      expect(reloadedFlowAccessLocation.searchParams.get('panel')).toBe('flow-access')
+      expect(reloadedFlowAccessLocation.searchParams.get('panel')).toBe('work-model')
+      expect(reloadedFlowAccessLocation.searchParams.get('workModelTab')).toBe('flow-access')
       expect(reloadedFlowAccessLocation.searchParams.get('typeId')).toBe(published.typeId)
 
       await ownerBrowser.page.goto(
         `/project-spaces/${spaceId}/settings?panel=flow-access&source=m8-inline-direct`,
       )
-      const directTypeSelect = ownerBrowser.page.getByRole('combobox', {
+      await expect.poll(() => {
+        const current = new URL(ownerBrowser.page.url())
+        return {
+          panel: current.searchParams.get('panel'),
+          workModelTab: current.searchParams.get('workModelTab'),
+          typeId: current.searchParams.get('typeId'),
+        }
+      }).toEqual({
+        panel: 'work-model',
+        workModelTab: 'flow-access',
+        typeId: null,
+      })
+      await expect(ownerBrowser.page.getByRole('combobox', {
         name: '当前任务模板',
         exact: true,
-      })
-      await expect(directTypeSelect).toBeVisible()
-      await expect(directTypeSelect).toBeEnabled()
+      })).toHaveCount(0)
       await expect(ownerBrowser.page.getByRole('region', {
         name: '配置草稿状态',
         exact: true,
       })).toHaveCount(0)
-      await directTypeSelect.click()
-      await ownerBrowser.page.getByTitle(
-        `${ownerProjectType.name}（${ownerProjectType.typeKey}）`,
-        { exact: true },
-      ).click()
+      const directTypeOption = ownerBrowser.page
+        .getByRole('listbox', { name: '选择工作项类型' })
+        .getByRole('option')
+        .filter({ hasText: ownerProjectType.typeKey })
+      await expect(directTypeOption).toBeVisible()
+      await directTypeOption.click()
       await expect.poll(() => new URL(ownerBrowser.page.url()).searchParams.get('typeId'))
         .toBe(published.typeId)
+      await expect.poll(() => new URL(ownerBrowser.page.url()).searchParams.get('workModelTab'))
+        .toBe('flow-access')
       await expect(ownerBrowser.page.getByRole('region', {
         name: '配置草稿状态',
         exact: true,

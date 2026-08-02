@@ -31,7 +31,6 @@ export type ProjectSpacePersona =
 
 export type ProjectSpaceAdvancedGroup =
   | 'work-model'
-  | 'flow-access'
   | 'automation-collaboration'
   | 'metrics-governance'
   | 'scenario-templates'
@@ -152,14 +151,18 @@ export const PROJECT_SPACE_ADVANCED_CONFIGURATION = [
   {
     key: 'work-model',
     label: '工作模型',
-    description: '管理任务模板、字段、表单与页面，以及发布配置。',
-    concepts: ['work-item-types', 'fields', 'layouts', 'configuration-publication'],
-  },
-  {
-    key: 'flow-access',
-    label: '流程与权限',
-    description: '管理状态流程、审批与协作流程、关系、角色和数据权限。',
-    concepts: ['state-flow', 'node-flow', 'relations', 'roles', 'data-permissions'],
+    description: '按工作项类型管理字段、页面布局、流程、角色、数据权限与发布配置。',
+    concepts: [
+      'work-item-types',
+      'fields',
+      'layouts',
+      'state-flow',
+      'node-flow',
+      'relations',
+      'roles',
+      'data-permissions',
+      'configuration-publication',
+    ],
   },
   {
     key: 'automation-collaboration',
@@ -274,7 +277,7 @@ export const PROJECT_SPACE_SCENARIO_PATHS = [
     key: 'development',
     label: '研发',
     primarySequence: ['overview', 'work-items', 'management'],
-    advancedSequence: ['work-model', 'flow-access'],
+    advancedSequence: ['work-model'],
   },
   {
     key: 'marketing',
@@ -286,7 +289,7 @@ export const PROJECT_SPACE_SCENARIO_PATHS = [
     key: 'human-resources',
     label: 'HR',
     primarySequence: ['overview', 'work-items', 'management'],
-    advancedSequence: ['work-model', 'flow-access'],
+    advancedSequence: ['work-model'],
   },
   {
     key: 'delivery',

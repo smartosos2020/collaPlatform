@@ -62,11 +62,13 @@ export function ProjectWorkItemLayoutsPanel({
   typeId,
   onBack,
   configurationDraft,
+  embedded = false,
 }: {
   space: UserProjectSpace
   typeId: string
-  onBack: () => void
+  onBack?: () => void
   configurationDraft?: ReactNode
+  embedded?: boolean
 }) {
   const { message } = AntdApp.useApp()
   const queryClient = useQueryClient()
@@ -383,7 +385,7 @@ export function ProjectWorkItemLayoutsPanel({
 
   return (
     <section
-      className="work-item-layout-page"
+      className={`work-item-layout-page${embedded ? ' embedded' : ''}`}
       aria-label="页面布局配置"
       data-testid="work-item-layouts-panel"
       tabIndex={0}
@@ -394,9 +396,12 @@ export function ProjectWorkItemLayoutsPanel({
         if (event.key === 'Delete' && selected) { event.preventDefault(); removeSelected() }
       }}
     >
-      <header className="work-item-layout-header">
+      <header
+        className="content-card work-item-model-section-header work-item-layout-header"
+        data-testid="work-item-model-section-header"
+      >
         <div>
-          <Button type="text" icon={<ArrowLeftOutlined />} onClick={onBack}>返回类型</Button>
+          {!embedded && onBack ? <Button type="text" icon={<ArrowLeftOutlined />} onClick={onBack}>返回类型</Button> : null}
           <Typography.Title level={4}>页面布局</Typography.Title>
           <Typography.Text type="secondary">
             {workbenchQuery.data ? `${workbenchQuery.data.type.name} · ${workbenchQuery.data.type.typeKey}` : '正在读取工作项类型'}
@@ -423,6 +428,7 @@ export function ProjectWorkItemLayoutsPanel({
         canManage
         testId="project-space-layouts-secondary-tabs"
         ariaLabel="工作项布局内容导航"
+        navigationMode={embedded ? 'local' : 'route'}
         panels={{
           'layout-editor': (
             <>

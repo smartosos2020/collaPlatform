@@ -1,5 +1,5 @@
 import { Tabs } from 'antd'
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 
 import {
@@ -20,6 +20,7 @@ type ProjectSpaceSecondaryTabsProps<View extends ProjectSpaceSecondaryTabView> =
   testId: string
   ariaLabel: string
   queryParameter?: ProjectSpaceQueryKey
+  navigationMode?: 'route' | 'local'
 }
 
 export function ProjectSpaceSecondaryTabs<View extends ProjectSpaceSecondaryTabView>({
@@ -29,9 +30,11 @@ export function ProjectSpaceSecondaryTabs<View extends ProjectSpaceSecondaryTabV
   testId,
   ariaLabel,
   queryParameter = 'panel',
+  navigationMode = 'route',
 }: ProjectSpaceSecondaryTabsProps<View>) {
   const location = useLocation()
   const navigate = useNavigate()
+  const [localActiveKey, setLocalActiveKey] = useState<string>()
   const searchParams = new URLSearchParams(location.search)
   const includeKeys = Object.entries(panels)
     .filter(([, panel]) => panel !== null && panel !== undefined)
@@ -41,9 +44,13 @@ export function ProjectSpaceSecondaryTabs<View extends ProjectSpaceSecondaryTabV
   if (tabs.length === 0) return null
 
   const requestedKey = searchParams.get(queryParameter)
-  const activeKey = tabs.some((tab) => tab.key === requestedKey)
-    ? requestedKey as ProjectSpaceSecondaryTabKey<View>
-    : tabs[0].key
+  const activeKey = navigationMode === 'local'
+    ? tabs.some((tab) => tab.key === localActiveKey)
+      ? localActiveKey as ProjectSpaceSecondaryTabKey<View>
+      : tabs[0].key
+    : tabs.some((tab) => tab.key === requestedKey)
+      ? requestedKey as ProjectSpaceSecondaryTabKey<View>
+      : tabs[0].key
 
   const items = tabs.map((tab) => ({
     key: tab.key,
@@ -54,6 +61,10 @@ export function ProjectSpaceSecondaryTabs<View extends ProjectSpaceSecondaryTabV
   }))
 
   const selectTab = (key: string) => {
+    if (navigationMode === 'local') {
+      setLocalActiveKey(key)
+      return
+    }
     const next = patchProjectSpaceSearch(searchParams, { [queryParameter]: key })
     const target = projectSpaceLocationWithContext(
       location.pathname,

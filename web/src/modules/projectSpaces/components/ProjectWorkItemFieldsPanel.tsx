@@ -1,13 +1,12 @@
 import {
-  ArrowDownOutlined,
   ArrowLeftOutlined,
-  ArrowUpOutlined,
   CalendarOutlined,
   CheckSquareOutlined,
   ClockCircleOutlined,
   EditOutlined,
   FileAddOutlined,
   FileOutlined,
+  HolderOutlined,
   LinkOutlined,
   NumberOutlined,
   PaperClipOutlined,
@@ -37,10 +36,15 @@ import {
   Tooltip,
   Typography,
 } from 'antd'
-import { useEffect, useMemo, useState } from 'react'
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from 'react'
 
 import { ApiRequestError } from '../../../shared/api/httpClient'
-import { StatusBadge } from '../../../shared/components/StatusBadge'
 import {
   configureWorkItemField,
   createWorkItemField,
@@ -83,12 +87,14 @@ export function ProjectWorkItemFieldsPanel({
   selectedFieldId,
   onBack,
   onSelectField,
+  embedded = false,
 }: {
   space: UserProjectSpace
   typeId: string
   selectedFieldId?: string
-  onBack: () => void
+  onBack?: () => void
   onSelectField: (fieldId?: string) => void
+  embedded?: boolean
 }) {
   const { message, modal } = AntdApp.useApp()
   const queryClient = useQueryClient()
@@ -100,6 +106,11 @@ export function ProjectWorkItemFieldsPanel({
   const [editOpen, setEditOpen] = useState(false)
   const [configOpen, setConfigOpen] = useState(false)
   const [conflict, setConflict] = useState<string | null>(null)
+  const [draggedFieldId, setDraggedFieldId] = useState<string>()
+  const [dragTargetFieldId, setDragTargetFieldId] = useState<string>()
+  const [dragStatus, setDragStatus] = useState('')
+  const draggedFieldIdRef = useRef<string | undefined>(undefined)
+  const reorderBusyRef = useRef(false)
   const [createForm] = Form.useForm<FieldDraft>()
   const [editForm] = Form.useForm<FieldEdit>()
   const selectedCreateType = Form.useWatch('fieldType', createForm)
@@ -235,6 +246,7 @@ export function ProjectWorkItemFieldsPanel({
   const reorderMutation = useMutation({
     mutationFn: (entries: ReorderEntry[]) => reorderWorkItemFields(space.id, typeId, entries),
     onMutate: async (entries) => {
+      reorderBusyRef.current = true
       await queryClient.cancelQueries({ queryKey: configurationKey })
       const previous = queryClient.getQueryData<WorkItemFieldCollection>(configurationKey)
       if (previous) {
@@ -247,13 +259,26 @@ export function ProjectWorkItemFieldsPanel({
     },
     onError: (_error, _entries, context) => {
       if (context?.previous) queryClient.setQueryData(configurationKey, context.previous)
+      setDragStatus('字段排序保存失败，已恢复原顺序')
       message.error('字段排序保存失败，已恢复原顺序')
     },
     onSuccess: (configuration) => {
-      queryClient.setQueryData(configurationKey, configuration)
+      queryClient.setQueryData(configurationKey, {
+        ...configuration,
+        items: statusFilter
+          ? configuration.items.filter((field) => field.status === statusFilter)
+          : configuration.items,
+      })
+      for (const field of configuration.items) {
+        queryClient.setQueryData(workItemFieldKeys.detail(space.id, typeId, field.id), field)
+      }
+      setDragStatus('字段顺序已保存')
       message.success('字段顺序已保存')
     },
-    onSettled: async () => refresh(selected?.id),
+    onSettled: async () => {
+      reorderBusyRef.current = false
+      await refresh(selected?.id)
+    },
   })
 
   const openCreate = () => {
@@ -272,15 +297,93 @@ export function ProjectWorkItemFieldsPanel({
     editForm.setFieldsValue({ name: selected.name, description: selected.description })
     setEditOpen(true)
   }
-  const moveField = (field: ConfiguredWorkItemField, direction: -1 | 1) => {
-    const sameStatus = rawFields.filter((item) => item.status === field.status)
+  const fieldReorderModeEnabled = sort === 'configured'
+    && search.trim() === ''
+    && fieldType === 'all'
+
+  const commitFieldMove = (sourceId: string, targetId: string, placeAfter: boolean) => {
+    if (
+      sourceId === targetId
+      || !fieldReorderModeEnabled
+      || reorderBusyRef.current
+      || reorderMutation.isPending
+    ) return
+    const source = rawFields.find((field) => field.id === sourceId)
+    const target = rawFields.find((field) => field.id === targetId)
+    if (!source || !target || source.status !== target.status) return
+    if (!source.availableActions.includes('reorder') || !target.availableActions.includes('reorder')) return
+
+    const sameStatus = rawFields
+      .filter((field) => field.status === source.status)
+      .sort((left, right) => left.sortOrder - right.sortOrder || left.fieldKey.localeCompare(right.fieldKey) || left.id.localeCompare(right.id))
+    const reordered = sameStatus.filter((field) => field.id !== source.id)
+    const targetIndex = reordered.findIndex((field) => field.id === target.id)
+    if (targetIndex < 0) return
+    reordered.splice(targetIndex + (placeAfter ? 1 : 0), 0, source)
+
+    const currentSortOrders = sameStatus.map((field) => field.sortOrder).sort((left, right) => left - right)
+    const sortOrders = new Set(currentSortOrders).size === currentSortOrders.length
+      ? currentSortOrders
+      : sameStatus.map((_, index) => (index + 1) * 10)
+    const entries = reordered
+      .map((field, index) => ({
+        fieldId: field.id,
+        sortOrder: sortOrders[index],
+        aggregateVersion: field.aggregateVersion,
+      }))
+      .filter((entry) => rawFields.find((field) => field.id === entry.fieldId)?.sortOrder !== entry.sortOrder)
+    if (entries.length > 0) {
+      reorderBusyRef.current = true
+      setDragStatus('正在保存字段顺序')
+      reorderMutation.mutate(entries)
+    }
+  }
+
+  const clearFieldDrag = () => {
+    draggedFieldIdRef.current = undefined
+    setDraggedFieldId(undefined)
+    setDragTargetFieldId(undefined)
+  }
+
+  const cancelFieldDrag = () => {
+    if (draggedFieldIdRef.current) setDragStatus('已取消字段排序')
+    clearFieldDrag()
+  }
+
+  const resolveFieldPointerTarget = (clientX: number, clientY: number) => {
+    if (!fieldReorderModeEnabled) return undefined
+    const row = document.elementFromPoint(clientX, clientY)?.closest<HTMLElement>('[data-field-id]')
+    const target = rawFields.find((field) => field.id === row?.dataset.fieldId)
+    const source = rawFields.find((field) => field.id === draggedFieldIdRef.current)
+    if (
+      !row
+      || !source
+      || !target
+      || source.id === target.id
+      || source.status !== target.status
+      || !source.availableActions.includes('reorder')
+      || !target.availableActions.includes('reorder')
+    ) return undefined
+    return { row, source, target }
+  }
+
+  const reorderFieldWithKeyboard = (
+    event: ReactKeyboardEvent<HTMLButtonElement>,
+    field: ConfiguredWorkItemField,
+  ) => {
+    if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return
+    event.preventDefault()
+    if (!fieldReorderModeEnabled) {
+      setDragStatus('请先选择配置顺序，并清除搜索和字段类型筛选')
+      return
+    }
+    const sameStatus = rawFields
+      .filter((item) => item.status === field.status)
+      .sort((left, right) => left.sortOrder - right.sortOrder || left.fieldKey.localeCompare(right.fieldKey) || left.id.localeCompare(right.id))
     const currentIndex = sameStatus.findIndex((item) => item.id === field.id)
-    const adjacent = sameStatus[currentIndex + direction]
-    if (!adjacent) return
-    reorderMutation.mutate([
-      { fieldId: field.id, sortOrder: adjacent.sortOrder, aggregateVersion: field.aggregateVersion },
-      { fieldId: adjacent.id, sortOrder: field.sortOrder, aggregateVersion: adjacent.aggregateVersion },
-    ])
+    const direction = event.key === 'ArrowUp' ? -1 : 1
+    const target = sameStatus[currentIndex + direction]
+    if (target) commitFieldMove(field.id, target.id, direction > 0)
   }
   const confirmTransition = (action: 'disable' | 'restore' | 'retire') => {
     const labels = { disable: '停用', restore: '恢复', retire: '退役' }
@@ -297,61 +400,44 @@ export function ProjectWorkItemFieldsPanel({
 
   return (
     <section className="work-item-field-panel" data-testid="work-item-fields-panel">
-      <Card className="content-card work-item-field-header-card">
+      <header
+        className="content-card work-item-model-section-header work-item-field-header-card"
+        data-testid="work-item-model-section-header"
+      >
         <div className="work-item-field-header">
           <div className="work-item-field-header-copy">
-            <Button type="text" icon={<ArrowLeftOutlined />} onClick={onBack}>返回类型</Button>
-            <div>
-              <Typography.Title level={4}>字段配置</Typography.Title>
-              <Typography.Text type="secondary">
-                {typeQuery.data ? `${typeQuery.data.name} · ${typeQuery.data.typeKey}` : '正在读取工作项类型'}
-              </Typography.Text>
-            </div>
+            {!embedded && onBack ? <Button type="text" icon={<ArrowLeftOutlined />} onClick={onBack}>返回类型</Button> : null}
+            <Typography.Title level={4}>字段配置</Typography.Title>
+            <Typography.Text className="work-item-field-type-context" type="secondary">
+              {typeQuery.data ? `${typeQuery.data.name} · ${typeQuery.data.typeKey}` : '正在读取工作项类型'}
+            </Typography.Text>
           </div>
-          {fieldsQuery.data?.availableActions.includes('create') ? (
-            <Button type="primary" icon={<PlusOutlined />} disabled={!catalogQuery.data} onClick={openCreate}>新建字段</Button>
-          ) : null}
+          <div className="work-item-field-filters" role="group" aria-label="字段目录筛选">
+            {fieldsQuery.data?.availableActions.includes('create') ? (
+              <Button className="work-item-field-create-button" type="primary" icon={<PlusOutlined />} disabled={!catalogQuery.data} onClick={openCreate}>新建字段</Button>
+            ) : null}
+            <Select
+              aria-label="字段类型筛选"
+              value={fieldType}
+              onChange={setFieldType}
+              options={[
+                { value: 'all', label: '全部类型' },
+                ...(catalogQuery.data?.items.map((item) => ({ value: item.key, label: fieldTypeLabel(item.key) })) ?? []),
+              ]}
+            />
+            <Select
+              aria-label="字段排序方式"
+              value={sort}
+              onChange={setSort}
+              options={[
+                { value: 'configured', label: '配置顺序' },
+                { value: 'name', label: '名称' },
+                { value: 'updated', label: '最近更新' },
+              ]}
+            />
+          </div>
         </div>
-        <div className="work-item-field-filters" role="search" aria-label="筛选字段目录">
-          <Input.Search
-            allowClear
-            value={search}
-            aria-label="搜索字段名称或字段键"
-            placeholder="搜索字段名称或字段键"
-            onChange={(event) => setSearch(event.target.value)}
-          />
-          <Segmented<FieldFilterStatus>
-            aria-label="字段状态筛选"
-            value={status}
-            onChange={setStatus}
-            options={[
-              { label: '全部', value: 'all' },
-              { label: '使用中', value: 'active' },
-              { label: '已停用', value: 'disabled' },
-              { label: '已退役', value: 'retired' },
-            ]}
-          />
-          <Select
-            aria-label="字段类型筛选"
-            value={fieldType}
-            onChange={setFieldType}
-            options={[
-              { value: 'all', label: '全部类型' },
-              ...(catalogQuery.data?.items.map((item) => ({ value: item.key, label: fieldTypeLabel(item.key) })) ?? []),
-            ]}
-          />
-          <Select
-            aria-label="字段排序方式"
-            value={sort}
-            onChange={setSort}
-            options={[
-              { value: 'configured', label: '配置顺序' },
-              { value: 'name', label: '名称' },
-              { value: 'updated', label: '最近更新' },
-            ]}
-          />
-        </div>
-      </Card>
+      </header>
 
       {fieldsQuery.isError || catalogQuery.isError || typeQuery.isError ? (
         <Alert
@@ -365,6 +451,26 @@ export function ProjectWorkItemFieldsPanel({
 
       <div className="work-item-field-layout">
         <Card className="content-card work-item-field-list-card" aria-label="字段列表">
+          <Segmented<FieldFilterStatus>
+            className="work-item-field-list-status-filter"
+            aria-label="字段状态筛选"
+            value={status}
+            onChange={setStatus}
+            options={[
+              { label: '全', value: 'all' },
+              { label: '使用中', value: 'active' },
+              { label: '已停', value: 'disabled' },
+              { label: '已退', value: 'retired' },
+            ]}
+          />
+          <Input.Search
+            className="work-item-field-list-search"
+            allowClear
+            value={search}
+            aria-label="搜索字段名称或字段键"
+            placeholder="搜索字段名称或字段键"
+            onChange={(event) => setSearch(event.target.value)}
+          />
           {fieldsQuery.isLoading || catalogQuery.isLoading ? <Skeleton active paragraph={{ rows: 7 }} /> : null}
           {!fieldsQuery.isLoading && fields.length === 0 ? (
             <Empty
@@ -376,15 +482,48 @@ export function ProjectWorkItemFieldsPanel({
                 : null}
             </Empty>
           ) : null}
-          <div className="work-item-field-list" role="listbox" aria-label="选择字段">
+          <span className="visually-hidden" role="status" aria-live="polite">{dragStatus}</span>
+          <div
+            className="work-item-field-list"
+            role="listbox"
+            aria-label="选择字段"
+            onPointerCancel={cancelFieldDrag}
+            onPointerLeave={cancelFieldDrag}
+            onPointerMove={(event) => {
+              if (!draggedFieldIdRef.current) return
+              setDragTargetFieldId(resolveFieldPointerTarget(event.clientX, event.clientY)?.target.id)
+            }}
+            onPointerUp={(event) => {
+              const wasDragging = Boolean(draggedFieldIdRef.current)
+              const resolved = resolveFieldPointerTarget(event.clientX, event.clientY)
+              if (resolved) {
+                const bounds = resolved.row.getBoundingClientRect()
+                commitFieldMove(
+                  resolved.source.id,
+                  resolved.target.id,
+                  event.clientY >= bounds.top + bounds.height / 2,
+                )
+              } else if (wasDragging) {
+                setDragStatus('未调整字段顺序')
+              }
+              clearFieldDrag()
+            }}
+          >
             {fields.map((field) => {
-              const sameStatus = rawFields.filter((item) => item.status === field.status)
-              const index = sameStatus.findIndex((item) => item.id === field.id)
-              const canReorder = sort === 'configured'
-                && field.availableActions.includes('reorder')
-                && !reorderMutation.isPending
+              const canReorder = field.availableActions.includes('reorder')
+              const reorderDisabled = !fieldReorderModeEnabled
+                || reorderMutation.isPending
               return (
-                <div className={`work-item-field-list-item${field.id === selectedFieldId ? ' active' : ''}`} key={field.id}>
+                <div
+                  className={[
+                    'work-item-field-list-item',
+                    field.id === selectedFieldId ? 'active' : '',
+                    draggedFieldId === field.id ? 'dragging' : '',
+                    dragTargetFieldId === field.id ? 'drag-over' : '',
+                  ].filter(Boolean).join(' ')}
+                  data-field-id={field.id}
+                  key={field.id}
+                >
                   <button
                     type="button"
                     role="option"
@@ -392,25 +531,46 @@ export function ProjectWorkItemFieldsPanel({
                     className="work-item-field-select"
                     onClick={() => onSelectField(field.id)}
                   >
-                    <FieldGlyph type={field.fieldType} />
                     <span className="work-item-field-list-copy">
                       <strong>{field.name}</strong>
                       <small>{field.fieldKey}</small>
                     </span>
                     <span className="work-item-field-list-meta">
-                      <StatusBadge status={field.status} />
+                      <FieldStatusDot status={field.status} />
                       <small>{fieldTypeLabel(field.fieldType)}</small>
                     </span>
                   </button>
                   {canReorder ? (
-                    <Space size={0} className="work-item-field-order-actions">
-                      <Tooltip title="上移">
-                        <Button type="text" size="small" aria-label={`上移 ${field.name}`} icon={<ArrowUpOutlined />} disabled={index === 0} onClick={() => moveField(field, -1)} />
-                      </Tooltip>
-                      <Tooltip title="下移">
-                        <Button type="text" size="small" aria-label={`下移 ${field.name}`} icon={<ArrowDownOutlined />} disabled={index === sameStatus.length - 1} onClick={() => moveField(field, 1)} />
-                      </Tooltip>
-                    </Space>
+                    <Tooltip title={fieldReorderModeEnabled ? '拖拽调整顺序；聚焦后可使用上下方向键' : '选择配置顺序，并清除搜索和字段类型筛选后可调整顺序'}>
+                      <button
+                        type="button"
+                        className="work-item-field-drag-handle"
+                        aria-label={`拖拽排序 ${field.name}`}
+                        aria-keyshortcuts="ArrowUp ArrowDown"
+                        aria-disabled={reorderDisabled}
+                        onPointerDown={(event) => {
+                          event.preventDefault()
+                          event.currentTarget.focus()
+                          if (!fieldReorderModeEnabled) {
+                            setDragStatus('请先选择配置顺序，并清除搜索和字段类型筛选')
+                            return
+                          }
+                          if (
+                            !event.isPrimary
+                            || event.button !== 0
+                            || reorderBusyRef.current
+                            || reorderMutation.isPending
+                          ) return
+                          event.currentTarget.setPointerCapture(event.pointerId)
+                          draggedFieldIdRef.current = field.id
+                          setDraggedFieldId(field.id)
+                          setDragStatus(`正在调整${field.name}的顺序`)
+                        }}
+                        onKeyDown={(event) => reorderFieldWithKeyboard(event, field)}
+                      >
+                        <HolderOutlined />
+                      </button>
+                    </Tooltip>
                   ) : null}
                 </div>
               )
@@ -430,14 +590,11 @@ export function ProjectWorkItemFieldsPanel({
             <div className="work-item-field-detail">
               <div className="work-item-field-detail-header">
                 <div className="work-item-field-title-block">
-                  <FieldGlyph type={selected.fieldType} large />
                   <div>
                     <Space wrap size={7}>
                       <Typography.Title level={3}>{selected.name}</Typography.Title>
-                      <StatusBadge status={selected.status} />
                       {selected.system ? <Tag color="blue">系统字段</Tag> : <Tag>自定义字段</Tag>}
                     </Space>
-                    <Typography.Text code>{selected.fieldKey}</Typography.Text>
                   </div>
                 </div>
                 <Space wrap>
@@ -616,6 +773,19 @@ function FieldGlyph({ type, large = false }: { type: WorkItemFieldType; large?: 
     work_item_reference: <RetweetOutlined />,
   }
   return <span className={`work-item-field-glyph${large ? ' large' : ''}`} aria-hidden="true">{icons[type]}</span>
+}
+
+function FieldStatusDot({ status }: { status: WorkItemFieldStatus }) {
+  const label = status === 'active' ? '启用' : status === 'disabled' ? '停用' : '已退役'
+  return (
+    <Tooltip title={label}>
+      <span
+        className={`work-item-field-status-dot ${status}`}
+        role="img"
+        aria-label={label}
+      />
+    </Tooltip>
+  )
 }
 
 function projectFields(

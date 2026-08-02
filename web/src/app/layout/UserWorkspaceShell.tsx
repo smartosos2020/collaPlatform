@@ -1,6 +1,8 @@
 import {
   LogoutOutlined,
+  MenuFoldOutlined,
   MenuOutlined,
+  MenuUnfoldOutlined,
   SearchOutlined,
   SettingOutlined,
 } from '@ant-design/icons'
@@ -15,6 +17,10 @@ import { canAccessAdmin } from '../../modules/auth/authorization'
 import { useAuthStore } from '../../modules/auth/authStore'
 import { mobileUserNavEntries, userNavEntries } from '../navigation/userWorkspaceNav'
 import { RealtimeHealthBanner } from '../realtime/RealtimeHealthBanner'
+import {
+  normalizeUserWorkspaceSidebarState,
+  userWorkspaceSidebarStorageKey,
+} from './userWorkspaceSidebar'
 
 const { Header, Sider, Content } = Layout
 
@@ -29,6 +35,16 @@ export function UserWorkspaceShell() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [online, setOnline] = useState(() => (typeof navigator === 'undefined' ? true : navigator.onLine))
   const adminVisible = canAccessAdmin(currentUser)
+  const sidebarStorageKey = userWorkspaceSidebarStorageKey(currentUser?.id)
+  const storedSidebarState = useMemo(
+    () => readStoredSidebarState(sidebarStorageKey),
+    [sidebarStorageKey],
+  )
+  const [sidebarChoice, setSidebarChoice] = useState<{ key: string; collapsed: boolean } | null>(null)
+  const sidebarCollapsed = sidebarChoice?.key === sidebarStorageKey
+    ? sidebarChoice.collapsed
+    : storedSidebarState === 'collapsed'
+  const accountName = currentUser?.displayName || currentUser?.username || '用户'
 
   useEffect(() => {
     const handleOnline = () => setOnline(true)
@@ -91,6 +107,15 @@ export function UserWorkspaceShell() {
     setMobileNavOpen(false)
   }
 
+  const setSidebarCollapsed = (collapsed: boolean) => {
+    setSidebarChoice({ key: sidebarStorageKey, collapsed })
+    try {
+      window.localStorage.setItem(sidebarStorageKey, collapsed ? 'collapsed' : 'expanded')
+    } catch {
+      // Storage may be unavailable in private browsing; the in-memory choice still applies.
+    }
+  }
+
   const handleAccountMenuClick: MenuProps['onClick'] = ({ key }) => {
     if (key === 'logout') {
       logoutMutation.mutate()
@@ -111,21 +136,44 @@ export function UserWorkspaceShell() {
 
   return (
     <Layout className="app-shell user-workspace-shell" data-testid="user-workspace-shell">
-      <Sider width={108} className="app-sidebar user-workspace-sidebar">
-        <div className="app-brand">Colla</div>
+      <Sider
+        className="app-sidebar user-workspace-sidebar"
+        collapsed={sidebarCollapsed}
+        collapsedWidth={56}
+        data-collapsed={sidebarCollapsed}
+        data-testid="user-workspace-sidebar"
+        theme="light"
+        trigger={null}
+        width={108}
+      >
         <Dropdown
           menu={{ items: accountMenuItems, onClick: handleAccountMenuClick }}
           placement="bottomLeft"
           trigger={['click']}
         >
-          <button className="app-user-menu-trigger" data-testid="user-account-menu-trigger" type="button">
+          <button
+            aria-label={`打开${accountName}的账号菜单`}
+            className="app-user-menu-trigger"
+            data-testid="user-account-menu-trigger"
+            title={accountName}
+            type="button"
+          >
             <Avatar size={34} className="app-account-avatar">
-              {userInitial(currentUser?.displayName || currentUser?.username)}
+              {userInitial(accountName)}
             </Avatar>
-            <span>{currentUser?.displayName || currentUser?.username || '用户'}</span>
           </button>
         </Dropdown>
         <Menu mode="inline" selectedKeys={[selectedKey]} items={userNavEntries} onClick={({ key }) => goTo(key)} />
+        <Button
+          aria-label={sidebarCollapsed ? '展开侧栏' : '收起侧栏'}
+          className="app-sidebar-collapse-trigger"
+          icon={sidebarCollapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+          onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+          title={sidebarCollapsed ? '展开侧栏' : '收起侧栏'}
+          type="text"
+        >
+          {sidebarCollapsed ? null : '收起'}
+        </Button>
       </Sider>
       <Layout>
         <Header className="app-header">
@@ -192,4 +240,12 @@ export function UserWorkspaceShell() {
 
 function userInitial(value?: string) {
   return (value || 'U').trim().slice(0, 1).toUpperCase()
+}
+
+function readStoredSidebarState(key: string) {
+  try {
+    return normalizeUserWorkspaceSidebarState(window.localStorage.getItem(key))
+  } catch {
+    return normalizeUserWorkspaceSidebarState(null)
+  }
 }

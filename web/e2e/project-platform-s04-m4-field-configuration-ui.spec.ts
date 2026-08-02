@@ -102,19 +102,52 @@ test.describe('PROJECT-PLATFORM-S04-M4 field configuration UI', () => {
 
       await page.reload()
       await expect(page.getByRole('heading', { name: '摘要' })).toBeVisible()
+      const fieldListBox = await page.locator('.work-item-field-list-card').boundingBox()
+      expect(fieldListBox).not.toBeNull()
+      expect(fieldListBox?.width).toBeGreaterThanOrEqual(224)
+      expect(fieldListBox?.width).toBeLessThanOrEqual(256)
+      const summaryOption = page.getByRole('option', { name: /summary/ })
+      await expect(summaryOption.locator('.work-item-field-status-dot')).toBeVisible()
+      await expect(summaryOption.locator('.status-badge')).toHaveCount(0)
+      await expect(summaryOption.locator('.work-item-field-glyph')).toHaveCount(0)
+      const summaryRowLayout = await compactFieldRowLayout(summaryOption)
+      expect(summaryRowLayout.height).toBeLessThanOrEqual(44)
+      expect(Math.abs(summaryRowLayout.nameCenterY - summaryRowLayout.keyCenterY)).toBeLessThanOrEqual(1)
+      expect(Math.abs(summaryRowLayout.statusCenterY - summaryRowLayout.typeCenterY)).toBeLessThanOrEqual(1)
       await page.getByLabel('搜索字段名称或字段键').fill('priority')
       await expect(page.getByRole('option', { name: /priority/ })).toBeVisible()
       await expect(page.getByRole('option', { name: /summary/ })).toHaveCount(0)
+      await expect(page.getByRole('button', { name: '拖拽排序 优先级' })).toHaveAttribute('aria-disabled', 'true')
       await page.getByLabel('搜索字段名称或字段键').clear()
+      await expect(page.getByRole('button', { name: '拖拽排序 优先级' })).toHaveAttribute('aria-disabled', 'false')
 
       await page.getByRole('option', { name: /summary/ }).click()
+      const fieldDetailHeader = page.locator('.work-item-field-detail-header')
+      await expect(fieldDetailHeader.locator('.work-item-field-glyph')).toHaveCount(0)
+      await expect(fieldDetailHeader.locator('.status-badge')).toHaveCount(0)
+      await expect(fieldDetailHeader.locator('code')).toHaveCount(0)
       const originalKeys = await visibleFieldKeys(page)
       const reorderResponse = page.waitForResponse((response) =>
         response.url().endsWith(`/types/${deliveryTypeId}/fields:reorder`)
           && response.request().method() === 'PUT')
-      await page.getByRole('button', { name: '上移 摘要' }).click()
+      const summaryDragHandle = page.getByRole('button', { name: '拖拽排序 摘要' })
+      const priorityRow = page.getByRole('option', { name: /priority/ }).locator('..')
+      const sourceBox = await summaryDragHandle.boundingBox()
+      const targetBox = await priorityRow.boundingBox()
+      if (!sourceBox || !targetBox) throw new Error('字段拖拽手柄或目标行不可见')
+      await page.mouse.move(sourceBox.x + sourceBox.width / 2, sourceBox.y + sourceBox.height / 2)
+      await page.mouse.down()
+      await page.mouse.move(targetBox.x + targetBox.width / 2, targetBox.y + targetBox.height * 0.25, { steps: 6 })
+      await page.mouse.up()
       expect((await reorderResponse).ok()).toBeTruthy()
-      await expect.poll(() => visibleFieldKeys(page)).not.toEqual(originalKeys)
+      const expectedKeys = originalKeys.filter((fieldKey) => fieldKey !== 'summary')
+      expectedKeys.splice(expectedKeys.indexOf('priority'), 0, 'summary')
+      await expect.poll(() => visibleFieldKeys(page)).toEqual(expectedKeys)
+      await expect(summaryDragHandle).toBeFocused()
+      await expect(page.getByRole('button', { name: '上移 摘要' })).toHaveCount(0)
+      await expect(page.getByRole('button', { name: '下移 摘要' })).toHaveCount(0)
+      await page.reload()
+      await expect.poll(() => visibleFieldKeys(page)).toEqual(expectedKeys)
 
       await page.getByRole('button', { name: '停用' }).click()
       const disableResponse = page.waitForResponse((response) =>
@@ -258,6 +291,29 @@ async function createType(
 
 async function visibleFieldKeys(page: Page) {
   return page.getByRole('option').locator('small').allTextContents()
+}
+
+async function compactFieldRowLayout(option: import('@playwright/test').Locator) {
+  return option.evaluate((element) => {
+    const row = element.closest<HTMLElement>('.work-item-field-list-item')
+    const name = element.querySelector<HTMLElement>('.work-item-field-list-copy strong')
+    const key = element.querySelector<HTMLElement>('.work-item-field-list-copy small')
+    const status = element.querySelector<HTMLElement>('.work-item-field-status-dot')
+    const type = element.querySelector<HTMLElement>('.work-item-field-list-meta small')
+    if (!row || !name || !key || !status || !type) throw new Error('字段紧凑列表结构不完整')
+    const rowRect = row.getBoundingClientRect()
+    const nameRect = name.getBoundingClientRect()
+    const keyRect = key.getBoundingClientRect()
+    const statusRect = status.getBoundingClientRect()
+    const typeRect = type.getBoundingClientRect()
+    return {
+      height: rowRect.height,
+      nameCenterY: nameRect.top + nameRect.height / 2,
+      keyCenterY: keyRect.top + keyRect.height / 2,
+      statusCenterY: statusRect.top + statusRect.height / 2,
+      typeCenterY: typeRect.top + typeRect.height / 2,
+    }
+  })
 }
 
 async function newIdentityPage(

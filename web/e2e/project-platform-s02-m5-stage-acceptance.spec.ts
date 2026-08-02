@@ -120,8 +120,7 @@ test.describe('PROJECT-PLATFORM-S02-M5 stage acceptance', () => {
 
       // Section 5: lifecycle transitions enforce read-only states for the space administrator.
       await page.goto(`/project-spaces/${workspaceSpaceId}/settings`)
-      await page.getByTestId('project-space-settings-secondary-tabs')
-        .getByRole('tab', { name: '空间生命周期', exact: true }).click()
+      await expect(page.getByRole('tab', { name: '管理首页', exact: true })).toHaveAttribute('aria-selected', 'true')
       await page.getByRole('button', { name: '停用' }).click()
       await page.getByRole('button', { name: '确认停用' }).click()
       await expect(page.getByText('空间已停用，写入和成员变更已关闭。')).toBeVisible()

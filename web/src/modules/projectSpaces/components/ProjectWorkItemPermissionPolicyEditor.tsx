@@ -5,16 +5,14 @@ import {
   SaveOutlined,
   WarningOutlined,
 } from '@ant-design/icons'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import {
   Alert,
   App as AntdApp,
   Button,
   Card,
-  Col,
   Input,
   InputNumber,
-  Row,
   Select,
   Space,
   Tag,
@@ -26,7 +24,21 @@ import {
   saveWorkItemConfigurationDraft,
   type WorkItemConfigurationDraft,
 } from '../api/workItemConfigurationApi'
+import { listProjectSpaceMembers } from '../api/projectSpacesApi'
 import { errorMessage } from '../projectSpaceView'
+import {
+  isAvailableScopeKind,
+  PERMISSION_ACTION_DEFINITIONS,
+  PERMISSION_SCOPE_DEFINITIONS,
+  PERMISSION_SUBJECT_DEFINITIONS,
+  replacePrimarySubject,
+  scopeForKind,
+  semanticOptionLabel,
+  subjectForKind,
+  type PermissionDataScope,
+  type PermissionSemanticDefinition,
+  type PermissionSubjectSelector,
+} from './permissionPolicySemantics'
 
 type SpaceRole = {
   roleKey: string
@@ -50,8 +62,8 @@ type Policy = {
   policyKey: string
   effect: 'allow' | 'deny'
   actionKeys: string[]
-  subjectSelectors: Array<{ kind: string; key?: string | null; subjectId?: string | null }>
-  dataScope: { kind: string; fieldKey?: string | null; operator?: string | null; values?: string[] }
+  subjectSelectors: PermissionSubjectSelector[]
+  dataScope: PermissionDataScope
   fieldKeys: string[]
   nodeKeys: string[]
   relationKeys: string[]
@@ -70,19 +82,19 @@ type PermissionModel = {
   legacyMappings: unknown[]
 }
 
-const ACTIONS = [
-  'create', 'view', 'edit', 'archive', 'restore', 'delete', 'comment', 'attach',
-  'participant_manage', 'transition', 'workflow_manage', 'relate', 'accept_link',
-  'relation_manage', 'field_read', 'field_write', 'role_assign', 'policy_manage',
-  'permission_explain', 'permission_request', 'governance_inspect', 'migration_manage',
-]
-const SUBJECT_KINDS = [
-  'enterprise_role', 'space_role', 'work_item_role', 'participant_role',
-  'user', 'department', 'user_group', 'everyone',
-]
-const SCOPE_KINDS = [
-  'all', 'created_by_subject', 'participating', 'work_item_role', 'field_match', 'explicit_set',
-]
+type SnapshotField = {
+  fieldKey: string
+  name: string
+  status?: string
+  sortOrder?: number
+}
+
+type SnapshotRelation = {
+  relationKey: string
+  forwardName: string
+  reverseName?: string
+  sortOrder?: number
+}
 
 export function ProjectWorkItemPermissionPolicyEditor({
   spaceId,
@@ -101,6 +113,19 @@ export function ProjectWorkItemPermissionPolicyEditor({
   const snapshot = asObject(draft.snapshot)
   const persisted = useMemo(() => model(snapshot.permissionModel), [snapshot.permissionModel])
   const [value, setValue] = useState<PermissionModel>(persisted)
+  const fields = useMemo(() => snapshotFields(snapshot.fields), [snapshot.fields])
+  const relations = useMemo(
+    () => snapshotRelations(snapshot.relationDefinitions),
+    [snapshot.relationDefinitions],
+  )
+  const needsMemberDirectory = value.permissionPolicies.some((policy) =>
+    policy.subjectSelectors.some((selector) => selector.kind === 'user'))
+  const membersQuery = useQuery({
+    queryKey: ['project-space-permission-subject-members', spaceId],
+    queryFn: () => listProjectSpaceMembers(spaceId),
+    enabled: needsMemberDirectory,
+    staleTime: 30_000,
+  })
   const diagnostics = validate(value)
   const dirty = JSON.stringify(value) !== JSON.stringify(persisted)
   const mutation = useMutation({
@@ -146,6 +171,135 @@ export function ProjectWorkItemPermissionPolicyEditor({
       }],
     }
   })
+  const memberOptions = (membersQuery.data ?? [])
+    .filter((member) => member.effective)
+    .map((member) => ({
+      value: member.userId,
+      label: `${member.displayName || member.username} · @${member.username}`,
+    }))
+  const fieldOptions = fields.map((field) => ({
+    value: field.fieldKey,
+    label: `${field.name} · ${field.fieldKey}${field.status && field.status !== 'active' ? `（${fieldStatusName(field.status)}）` : ''}`,
+  }))
+  const relationOptions = relations.map((relation) => ({
+    value: relation.relationKey,
+    label: `${relation.forwardName}${relation.reverseName ? ` / ${relation.reverseName}` : ''} · ${relation.relationKey}`,
+  }))
+  const updateSubjectKind = (index: number, policy: Policy, kind: string) => {
+    updatePolicy(index, {
+      subjectSelectors: replacePrimarySubject(
+        policy.subjectSelectors,
+        subjectForKind(
+          kind,
+          value.spaceRoleDefinitions.map((role) => role.roleKey),
+          value.workItemRoleDefinitions.map((role) => role.roleKey),
+        ),
+      ),
+    })
+  }
+  const updateSubject = (
+    index: number,
+    policy: Policy,
+    selector: PermissionSubjectSelector,
+  ) => updatePolicy(index, {
+    subjectSelectors: replacePrimarySubject(policy.subjectSelectors, selector),
+  })
+  const renderSubjectTarget = (policy: Policy, index: number) => {
+    const selector = policy.subjectSelectors[0]
+    const locked = readOnly || policy.subjectSelectors.length > 1
+    if (!selector) {
+      return (
+        <div className="work-item-permission-static-value is-warning">
+          请先选择主体类型
+        </div>
+      )
+    }
+    if (selector.kind === 'space_role') {
+      return (
+        <Select
+          aria-label="主体角色"
+          value={selector.key ?? undefined}
+          disabled={locked}
+          showSearch
+          optionFilterProp="label"
+          placeholder="选择空间角色"
+          options={withLegacyOption(
+            value.spaceRoleDefinitions
+              .toSorted((left, right) => left.sortOrder - right.sortOrder)
+              .map((role) => ({ value: role.roleKey, label: spaceRoleLabel(role) })),
+            selector.key,
+            '既有空间角色',
+          )}
+          onChange={(key) => updateSubject(index, policy, {
+            kind: selector.kind,
+            key,
+            subjectId: null,
+          })}
+        />
+      )
+    }
+    if (selector.kind === 'work_item_role') {
+      return (
+        <Select
+          aria-label="事项身份"
+          value={selector.key ?? undefined}
+          disabled={locked}
+          showSearch
+          optionFilterProp="label"
+          placeholder="选择事项身份"
+          options={withLegacyOption(
+            value.workItemRoleDefinitions
+              .toSorted((left, right) => left.sortOrder - right.sortOrder)
+              .map((role) => ({
+                value: role.roleKey,
+                label: `${role.roleKey === 'creator' ? '工作项创建人' : role.name} · ${role.roleKey}`,
+                disabled: role.roleKey !== 'creator' && selector.key !== role.roleKey,
+              })),
+            selector.key,
+            '既有事项身份',
+          )}
+          onChange={(key) => updateSubject(index, policy, {
+            kind: selector.kind,
+            key,
+            subjectId: null,
+          })}
+        />
+      )
+    }
+    if (selector.kind === 'user') {
+      return (
+        <Select
+          aria-label="空间成员"
+          value={selector.subjectId ?? undefined}
+          disabled={locked}
+          loading={membersQuery.isFetching}
+          status={membersQuery.isError ? 'error' : undefined}
+          showSearch
+          optionFilterProp="label"
+          placeholder={membersQuery.isError ? '成员加载失败，请重试' : '选择空间成员'}
+          options={withLegacyOption(memberOptions, selector.subjectId, '既有成员')}
+          onChange={(subjectId) => updateSubject(index, policy, {
+            kind: selector.kind,
+            key: null,
+            subjectId,
+          })}
+        />
+      )
+    }
+    if (selector.kind === 'everyone') {
+      return (
+        <div className="work-item-permission-static-value">
+          所有可进入当前空间的用户
+        </div>
+      )
+    }
+    return (
+      <div className="work-item-permission-static-value is-compatibility">
+        <span>兼容既有配置，当前不可新建</span>
+        <code>{selector.key || selector.subjectId || '未设置'}</code>
+      </div>
+    )
+  }
 
   return (
     <Card
@@ -168,20 +322,22 @@ export function ProjectWorkItemPermissionPolicyEditor({
       )}
     >
       <Typography.Paragraph type="secondary">
-        策略随不可变配置版本发布。拒绝优先；字段、节点、关系限定和 data scope 只能收紧对象访问，不能反向授权。
+        按“允许或拒绝谁，对哪些工作项执行哪些操作”配置。中文名称用于操作，编码仅作为辅助标识；拒绝策略始终优先。
       </Typography.Paragraph>
       <div className="work-item-permission-role-summary" aria-label="权限角色摘要">
         <Tag color="blue">空间角色 {value.spaceRoleDefinitions.length}</Tag>
         <Tag color="purple">事项角色 {value.workItemRoleDefinitions.length}</Tag>
         <Tag color="gold">策略 {value.permissionPolicies.length}</Tag>
-        <Tag color="red">deny 优先</Tag>
+        <Tag color="red">拒绝优先</Tag>
       </div>
       <div className="work-item-permission-role-list">
         {value.spaceRoleDefinitions.map((role) => (
-          <Tag key={role.roleKey}>{role.name} · {role.roleKey}</Tag>
+          <Tag key={role.roleKey}>{spaceRoleLabel(role)}</Tag>
         ))}
         {value.workItemRoleDefinitions.map((role) => (
-          <Tag color="purple" key={role.roleKey}>{role.name} · {role.roleKey}</Tag>
+          <Tag color="purple" key={role.roleKey}>
+            {role.roleKey === 'creator' ? '工作项创建人' : role.name} · {role.roleKey}
+          </Tag>
         ))}
       </div>
       {diagnostics.length ? (
@@ -194,167 +350,339 @@ export function ProjectWorkItemPermissionPolicyEditor({
         />
       ) : null}
       <div className="work-item-permission-policy-list">
-        {value.permissionPolicies.map((policy, index) => (
-          <Card
-            size="small"
-            key={`${policy.policyKey}:${index}`}
-            title={(
-              <Space wrap>
-                <Tag color={policy.effect === 'deny' ? 'red' : 'green'}>{policy.effect}</Tag>
-                <code>{policy.policyKey}</code>
-                {policy.system ? <Tag>系统预置</Tag> : null}
-              </Space>
-            )}
-            extra={!policy.system ? (
-              <Button
-                danger
-                type="text"
-                aria-label={`删除权限策略 ${policy.policyKey}`}
-                icon={<DeleteOutlined />}
-                disabled={readOnly}
-                onClick={() => setValue((current) => ({
-                  ...current,
-                  permissionPolicies: current.permissionPolicies
-                    .filter((_, itemIndex) => itemIndex !== index)
-                    .map((item, sortOrder) => ({ ...item, sortOrder })),
-                }))}
-              />
-            ) : null}
-          >
-            <Row gutter={[12, 12]}>
-              <Col xs={24} md={8}>
-                <Field label="永久 policy key">
-                  <Input
-                    aria-label={`策略 ${index + 1} 永久 key`}
-                    value={policy.policyKey}
-                    disabled={readOnly || policy.system}
-                    onChange={(event) => updatePolicy(index, {
-                      policyKey: semanticKeys(event.target.value)[0] ?? '',
-                    })}
-                  />
-                </Field>
-              </Col>
-              <Col xs={12} md={4}>
-                <Field label="效果">
-                  <Select
-                    aria-label={`策略 ${index + 1} 效果`}
-                    value={policy.effect}
-                    disabled={readOnly}
-                    options={[{ value: 'allow', label: '允许' }, { value: 'deny', label: '拒绝' }]}
-                    onChange={(effect) => updatePolicy(index, { effect })}
-                  />
-                </Field>
-              </Col>
-              <Col xs={12} md={4}>
-                <Field label="优先级">
-                  <InputNumber
-                    min={0}
-                    max={10_000}
-                    value={policy.priority}
-                    disabled={readOnly}
-                    onChange={(priority) => updatePolicy(index, { priority: priority ?? 0 })}
-                  />
-                </Field>
-              </Col>
-              <Col xs={24} md={8}>
-                <Field label="动作">
-                  <Select
-                    mode="multiple"
-                    aria-label={`策略 ${index + 1} 动作`}
-                    value={policy.actionKeys}
-                    disabled={readOnly}
-                    options={ACTIONS.map((action) => ({ value: action, label: action }))}
-                    onChange={(actionKeys) => updatePolicy(index, { actionKeys })}
-                  />
-                </Field>
-              </Col>
-              <Col xs={12} md={6}>
-                <Field label="Subject 类型">
-                  <Select
-                    value={policy.subjectSelectors[0]?.kind}
-                    disabled={readOnly}
-                    options={SUBJECT_KINDS.map((kind) => ({ value: kind, label: kind }))}
-                    onChange={(kind) => updatePolicy(index, {
-                      subjectSelectors: [{ ...policy.subjectSelectors[0], kind }],
-                    })}
-                  />
-                </Field>
-              </Col>
-              <Col xs={12} md={6}>
-                <Field label="Subject key">
-                  <Input
-                    value={policy.subjectSelectors[0]?.key ?? ''}
-                    disabled={readOnly || policy.subjectSelectors[0]?.kind === 'everyone'}
-                    onChange={(event) => updatePolicy(index, {
-                      subjectSelectors: [{
-                        ...policy.subjectSelectors[0],
-                        key: event.target.value.trim().toLowerCase(),
-                      }],
-                    })}
-                  />
-                </Field>
-              </Col>
-              <Col xs={12} md={6}>
-                <Field label="Data scope">
-                  <Select
-                    aria-label={`策略 ${index + 1} 数据范围`}
-                    value={policy.dataScope.kind}
-                    disabled={readOnly}
-                    options={SCOPE_KINDS.map((kind) => ({ value: kind, label: kind }))}
-                    onChange={(kind) => updatePolicy(index, {
-                      dataScope: { ...policy.dataScope, kind },
-                    })}
-                  />
-                </Field>
-              </Col>
-              <Col xs={12} md={6}>
-                <Field label="Scope values（逗号分隔）">
-                  <Input
-                    value={(policy.dataScope.values ?? []).join(',')}
-                    disabled={readOnly || policy.dataScope.kind === 'all'}
-                    onChange={(event) => updatePolicy(index, {
-                      dataScope: { ...policy.dataScope, values: semanticKeys(event.target.value) },
-                    })}
-                  />
-                </Field>
-              </Col>
-              <Col xs={24} md={8}>
-                <Field label="字段限定 key">
-                  <Input
-                    value={policy.fieldKeys.join(',')}
-                    disabled={readOnly}
-                    onChange={(event) => updatePolicy(index, { fieldKeys: semanticKeys(event.target.value) })}
-                  />
-                </Field>
-              </Col>
-              <Col xs={24} md={8}>
-                <Field label="节点限定 key">
-                  <Input
-                    value={policy.nodeKeys.join(',')}
-                    disabled={readOnly}
-                    onChange={(event) => updatePolicy(index, { nodeKeys: semanticKeys(event.target.value) })}
-                  />
-                </Field>
-              </Col>
-              <Col xs={24} md={8}>
-                <Field label="关系限定 key">
-                  <Input
-                    value={policy.relationKeys.join(',')}
-                    disabled={readOnly}
-                    onChange={(event) => updatePolicy(index, { relationKeys: semanticKeys(event.target.value) })}
-                  />
-                </Field>
-              </Col>
-            </Row>
-          </Card>
-        ))}
+        {value.permissionPolicies.map((policy, index) => {
+          const selector = policy.subjectSelectors[0]
+          const subjectLocked = readOnly || policy.subjectSelectors.length > 1
+          const showFieldQualifier = policy.fieldKeys.length > 0
+            || policy.actionKeys.some((action) => action === 'field_read' || action === 'field_write')
+          const showRelationQualifier = policy.relationKeys.length > 0
+            || policy.actionKeys.some((action) => action === 'relate' || action === 'accept_link')
+          const showQualifierRow = showFieldQualifier || showRelationQualifier || policy.nodeKeys.length > 0
+          const unsupportedScope = !isAvailableScopeKind(policy.dataScope.kind)
+          return (
+            <Card
+              className="work-item-permission-policy-card"
+              data-policy-index={index + 1}
+              size="small"
+              key={`${policy.policyKey}:${index}`}
+              role="group"
+              aria-label={`权限策略 ${policy.policyKey}`}
+              title={(
+                <Space wrap>
+                  <Tag color={policy.effect === 'deny' ? 'red' : 'green'}>
+                    {policy.effect === 'deny' ? '拒绝' : '允许'}
+                  </Tag>
+                  <code>{policy.policyKey}</code>
+                  {policy.system ? <Tag>系统预置</Tag> : null}
+                </Space>
+              )}
+              extra={!policy.system ? (
+                <Button
+                  danger
+                  type="text"
+                  aria-label={`删除权限策略 ${policy.policyKey}`}
+                  icon={<DeleteOutlined />}
+                  disabled={readOnly}
+                  onClick={() => setValue((current) => ({
+                    ...current,
+                    permissionPolicies: current.permissionPolicies
+                      .filter((_, itemIndex) => itemIndex !== index)
+                      .map((item, sortOrder) => ({ ...item, sortOrder })),
+                  }))}
+                />
+              ) : null}
+            >
+              {policy.subjectSelectors.length > 1 ? (
+                <Alert
+                  className="work-item-permission-compatibility-alert"
+                  type="warning"
+                  showIcon
+                  message={`此旧策略包含 ${policy.subjectSelectors.length} 个“任一满足”的主体，已锁定主体设置以避免遗漏。`}
+                />
+              ) : null}
+              <div className="work-item-permission-policy-form">
+                <div className="work-item-permission-policy-row is-primary">
+                  <Field className="is-policy-key" label="策略编码（永久）">
+                    <Input
+                      aria-label="策略编码"
+                      value={policy.policyKey}
+                      disabled={readOnly || policy.system}
+                      onChange={(event) => updatePolicy(index, {
+                        policyKey: semanticKeys(event.target.value)[0] ?? '',
+                      })}
+                    />
+                  </Field>
+                  <Field className="is-effect" label="判定结果">
+                    <Select
+                      aria-label="判定结果"
+                      value={policy.effect}
+                      disabled={readOnly}
+                      options={[{ value: 'allow', label: '允许' }, { value: 'deny', label: '拒绝' }]}
+                      onChange={(effect) => updatePolicy(index, { effect })}
+                    />
+                  </Field>
+                  <Field className="is-priority" label="解释排序权重">
+                    <InputNumber
+                      aria-label="解释排序权重"
+                      min={0}
+                      max={10_000}
+                      value={policy.priority}
+                      disabled={readOnly}
+                      onChange={(priority) => updatePolicy(index, { priority: priority ?? 0 })}
+                    />
+                  </Field>
+                  <Field className="is-actions" label="允许或拒绝的操作">
+                    <Select
+                      mode="multiple"
+                      aria-label="操作"
+                      value={policy.actionKeys}
+                      disabled={readOnly}
+                      showSearch
+                      optionFilterProp="label"
+                      maxTagCount="responsive"
+                      options={semanticOptions(PERMISSION_ACTION_DEFINITIONS, policy.actionKeys)}
+                      onChange={(actionKeys) => updatePolicy(index, { actionKeys })}
+                    />
+                  </Field>
+                </div>
+                <div className={`work-item-permission-policy-row is-subject-scope${unsupportedScope ? '' : ' is-scope-all'}`}>
+                  <Field className="is-subject-type" label="谁（主体类型）">
+                    <Select
+                      aria-label="主体类型"
+                      value={selector?.kind}
+                      disabled={subjectLocked}
+                      showSearch
+                      optionFilterProp="label"
+                      placeholder="选择主体类型"
+                      options={semanticOptions(
+                        PERMISSION_SUBJECT_DEFINITIONS.map((definition) => ({
+                          ...definition,
+                          available: definition.available
+                            && (definition.value !== 'work_item_role'
+                              || value.workItemRoleDefinitions.some((role) => role.roleKey === 'creator')),
+                        })),
+                        selector?.kind ? [selector.kind] : [],
+                      )}
+                      onChange={(kind) => updateSubjectKind(index, policy, kind)}
+                    />
+                  </Field>
+                  <Field className="is-subject-key" label={subjectTargetLabel(selector?.kind)}>
+                    {renderSubjectTarget(policy, index)}
+                  </Field>
+                  <Field className="is-scope-type" label="哪些工作项（数据范围）">
+                    <Select
+                      aria-label="数据范围"
+                      value={policy.dataScope.kind}
+                      disabled={readOnly}
+                      showSearch
+                      optionFilterProp="label"
+                      options={semanticOptions(PERMISSION_SCOPE_DEFINITIONS, [policy.dataScope.kind])}
+                      onChange={(kind) => updatePolicy(index, { dataScope: scopeForKind(kind) })}
+                    />
+                  </Field>
+                  {unsupportedScope ? (
+                    <Field className="is-scope-values" label="既有范围参数（兼容只读）">
+                      <div className="work-item-permission-static-value is-compatibility">
+                        <span>切换到可用范围后将清除这些旧参数</span>
+                        <code>{scopeCompatibilityValue(policy.dataScope)}</code>
+                      </div>
+                    </Field>
+                  ) : null}
+                </div>
+                {showQualifierRow ? (
+                  <div className="work-item-permission-policy-row is-qualifiers">
+                    {showFieldQualifier ? (
+                      <Field className="is-field-keys" label="限定字段（空表示全部字段）">
+                        <Select
+                          mode="multiple"
+                          aria-label="限定字段"
+                          value={policy.fieldKeys}
+                          disabled={readOnly}
+                          showSearch
+                          optionFilterProp="label"
+                          maxTagCount="responsive"
+                          placeholder="全部字段"
+                          options={withLegacyOptions(fieldOptions, policy.fieldKeys, '既有字段')}
+                          onChange={(fieldKeys) => updatePolicy(index, { fieldKeys })}
+                        />
+                      </Field>
+                    ) : null}
+                    {showRelationQualifier ? (
+                      <Field className="is-relation-keys" label="限定关系（空表示全部关系）">
+                        <Select
+                          mode="multiple"
+                          aria-label="限定关系"
+                          value={policy.relationKeys}
+                          disabled={readOnly}
+                          showSearch
+                          optionFilterProp="label"
+                          maxTagCount="responsive"
+                          placeholder="全部关系"
+                          options={withLegacyOptions(relationOptions, policy.relationKeys, '既有关系')}
+                          onChange={(relationKeys) => updatePolicy(index, { relationKeys })}
+                        />
+                      </Field>
+                    ) : null}
+                    {policy.nodeKeys.length > 0 ? (
+                      <Field className="is-node-keys" label="既有节点限定（兼容）">
+                        <Select
+                          mode="multiple"
+                          aria-label="既有节点限定"
+                          value={policy.nodeKeys}
+                          disabled={readOnly}
+                          maxTagCount="responsive"
+                          options={policy.nodeKeys.map((nodeKey) => ({
+                            value: nodeKey,
+                            label: `既有节点 · ${nodeKey}`,
+                          }))}
+                          onChange={(nodeKeys) => updatePolicy(index, { nodeKeys })}
+                        />
+                      </Field>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+            </Card>
+          )
+        })}
       </div>
     </Card>
   )
 }
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  return <label className="work-item-permission-field"><span>{label}</span>{children}</label>
+function Field({
+  label,
+  children,
+  className,
+}: {
+  label: string
+  children: ReactNode
+  className?: string
+}) {
+  return (
+    <label className={`work-item-permission-field${className ? ` ${className}` : ''}`}>
+      <span>{label}</span>
+      {children}
+    </label>
+  )
+}
+
+type PermissionSelectOption = {
+  value: string
+  label: string
+  title?: string
+  disabled?: boolean
+}
+
+function semanticOptions(
+  definitions: PermissionSemanticDefinition[],
+  currentValues: string[],
+): PermissionSelectOption[] {
+  const current = new Set(currentValues)
+  const known = new Set(definitions.map((definition) => definition.value))
+  return [
+    ...definitions.map((definition) => ({
+      value: definition.value,
+      label: `${semanticOptionLabel(definition)}${definition.available ? '' : '（暂不可新建）'}`,
+      title: definition.description,
+      disabled: !definition.available && !current.has(definition.value),
+    })),
+    ...currentValues
+      .filter((item) => !known.has(item))
+      .map((item) => ({
+        value: item,
+        label: `既有兼容项 · ${item}`,
+        title: '未识别的既有编码；切换后不可重新选择',
+      })),
+  ]
+}
+
+function withLegacyOption(
+  options: PermissionSelectOption[],
+  currentValue: string | null | undefined,
+  fallbackLabel: string,
+) {
+  if (!currentValue || options.some((option) => option.value === currentValue)) return options
+  return [...options, { value: currentValue, label: `${fallbackLabel} · ${currentValue}` }]
+}
+
+function withLegacyOptions(
+  options: PermissionSelectOption[],
+  currentValues: string[],
+  fallbackLabel: string,
+) {
+  const known = new Set(options.map((option) => option.value))
+  return [
+    ...options,
+    ...currentValues
+      .filter((currentValue) => !known.has(currentValue))
+      .map((currentValue) => ({
+        value: currentValue,
+        label: `${fallbackLabel} · ${currentValue}`,
+      })),
+  ]
+}
+
+function subjectTargetLabel(kind?: string) {
+  if (kind === 'space_role') return '空间角色'
+  if (kind === 'work_item_role') return '事项身份'
+  if (kind === 'user') return '空间成员'
+  if (kind === 'everyone') return '主体范围'
+  return '既有主体参数'
+}
+
+function spaceRoleLabel(role: SpaceRole) {
+  const hierarchyLabels: Record<string, string> = {
+    guest: '访客及以上',
+    member: '成员及以上',
+    admin: '管理员及以上',
+    owner: '仅空间所有者',
+  }
+  return `${hierarchyLabels[role.roleKey] ?? role.name} · ${role.roleKey}`
+}
+
+function scopeCompatibilityValue(scope: PermissionDataScope) {
+  const values = [
+    scope.fieldKey ? `字段 ${scope.fieldKey}` : '',
+    scope.operator ? `条件 ${scope.operator}` : '',
+    ...(scope.values ?? []),
+  ].filter(Boolean)
+  return values.length > 0 ? values.join('，') : '无附加参数'
+}
+
+function snapshotFields(value: unknown): SnapshotField[] {
+  if (!Array.isArray(value)) return []
+  return value
+    .map((item) => asObject(item))
+    .filter((item) => typeof item.fieldKey === 'string')
+    .map((item) => ({
+      fieldKey: item.fieldKey as string,
+      name: typeof item.name === 'string' ? item.name : item.fieldKey as string,
+      status: typeof item.status === 'string' ? item.status : undefined,
+      sortOrder: typeof item.sortOrder === 'number' ? item.sortOrder : undefined,
+    }))
+    .toSorted((left, right) => (left.sortOrder ?? 0) - (right.sortOrder ?? 0))
+}
+
+function snapshotRelations(value: unknown): SnapshotRelation[] {
+  if (!Array.isArray(value)) return []
+  return value
+    .map((item) => asObject(item))
+    .filter((item) => typeof item.relationKey === 'string')
+    .map((item) => ({
+      relationKey: item.relationKey as string,
+      forwardName: typeof item.forwardName === 'string'
+        ? item.forwardName : item.relationKey as string,
+      reverseName: typeof item.reverseName === 'string' ? item.reverseName : undefined,
+      sortOrder: typeof item.sortOrder === 'number' ? item.sortOrder : undefined,
+    }))
+    .toSorted((left, right) => (left.sortOrder ?? 0) - (right.sortOrder ?? 0))
+}
+
+function fieldStatusName(status: string) {
+  if (status === 'disabled') return '已停用'
+  if (status === 'retired') return '已退役'
+  return status
 }
 
 function asObject(value: unknown): Record<string, unknown> {
@@ -395,7 +723,36 @@ function validate(value: PermissionModel) {
     if (keys.has(policy.policyKey)) diagnostics.push(`策略 key ${policy.policyKey} 重复`)
     keys.add(policy.policyKey)
     if (!policy.actionKeys.length) diagnostics.push(`策略 ${policy.policyKey} 至少需要一个动作`)
-    if (!policy.subjectSelectors.length) diagnostics.push(`策略 ${policy.policyKey} 至少需要一个 subject`)
+    if (!policy.subjectSelectors.length) {
+      diagnostics.push(`策略 ${policy.policyKey} 至少需要一个主体`)
+      continue
+    }
+    const selector = policy.subjectSelectors[0]
+    if (selector.kind === 'space_role'
+      && !value.spaceRoleDefinitions.some((role) => role.roleKey === selector.key)) {
+      diagnostics.push(`策略 ${policy.policyKey} 需要选择有效的空间角色`)
+    }
+    if (selector.kind === 'work_item_role'
+      && !value.workItemRoleDefinitions.some((role) => role.roleKey === selector.key)) {
+      diagnostics.push(`策略 ${policy.policyKey} 需要选择有效的事项身份`)
+    }
+    if (selector.kind === 'user' && !selector.subjectId) {
+      diagnostics.push(`策略 ${policy.policyKey} 需要选择空间成员`)
+    }
+    if (selector.kind === 'everyone' && (selector.key || selector.subjectId)) {
+      diagnostics.push(`策略 ${policy.policyKey} 的“所有用户”主体不能携带角色或用户编码`)
+    }
+    if (policy.actionKeys.includes('create')) {
+      if (policy.dataScope.kind !== 'all') {
+        diagnostics.push(`策略 ${policy.policyKey} 包含“新建工作项”时，数据范围必须为“所有工作项”`)
+      }
+      if (selector.kind === 'work_item_role' || selector.kind === 'participant_role') {
+        diagnostics.push(`策略 ${policy.policyKey} 创建前尚无事项身份，请拆分为独立策略`)
+      }
+      if (policy.fieldKeys.length || policy.nodeKeys.length || policy.relationKeys.length) {
+        diagnostics.push(`策略 ${policy.policyKey} 的“新建工作项”不能使用字段、节点或关系限定`)
+      }
+    }
   }
   return diagnostics
 }

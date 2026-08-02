@@ -46,6 +46,12 @@ test.describe('PROJECT-PLATFORM-S03-M3 work-item type UI', () => {
       await expect(page).toHaveURL(new RegExp(`/project-spaces/${spaceId}/types/[0-9a-f-]+$`))
       await createType(page, '缺陷', `${suffix}_bug`, '研发缺陷', 20)
 
+      const requirementOptionBeforeEdit = page.getByRole('option', { name: new RegExp(`${suffix}_requirement`) })
+      await expect(requirementOptionBeforeEdit.locator('.work-item-type-glyph')).toHaveCount(0)
+      const requirementRowLayout = await compactTypeRowLayout(requirementOptionBeforeEdit)
+      expect(requirementRowLayout.height).toBeLessThanOrEqual(44)
+      expect(Math.abs(requirementRowLayout.nameCenterY - requirementRowLayout.keyCenterY)).toBeLessThanOrEqual(1)
+
       await page.getByRole('option', { name: new RegExp(`${suffix}_requirement`) }).click()
       await page.getByRole('button', { name: '编辑' }).click()
       await expect(page.getByLabel('类型标识')).toBeDisabled()
@@ -75,9 +81,13 @@ test.describe('PROJECT-PLATFORM-S03-M3 work-item type UI', () => {
 
       const originalOrder = await visibleTypeKeys(page)
       const reorderResponsePromise = page.waitForResponse((response) => response.url().endsWith('/configuration/types:reorder') && response.request().method() === 'PUT')
-      await page.getByRole('button', { name: '下移 业务需求' }).click()
+      const requirementDragHandle = page.getByRole('button', { name: '拖拽排序 业务需求' })
+      await requirementDragHandle.press('ArrowDown')
       expect((await reorderResponsePromise).ok()).toBeTruthy()
       await expect.poll(() => visibleTypeKeys(page)).not.toEqual(originalOrder)
+      await expect(requirementDragHandle).toBeFocused()
+      await expect(page.getByRole('button', { name: '下移 业务需求' })).toHaveCount(0)
+      await expect(page.getByRole('button', { name: '上移 业务需求' })).toHaveCount(0)
 
       const configuration = await getJson<TypeConfiguration>(request, `${apiBaseUrl}/project-spaces/${spaceId}/configuration/types`, owner)
       const externallyTouched = configuration.items.filter((item) => item.typeKey === `${suffix}_bug` || item.typeKey === `${suffix}_requirement`)
@@ -88,7 +98,7 @@ test.describe('PROJECT-PLATFORM-S03-M3 work-item type UI', () => {
       expect(externalReorder.ok()).toBeTruthy()
       const rollbackOrder = await visibleTypeKeys(page)
       const failedReorderPromise = page.waitForResponse((response) => response.url().endsWith('/configuration/types:reorder') && response.request().method() === 'PUT')
-      await page.getByRole('button', { name: '上移 业务需求' }).click()
+      await page.getByRole('button', { name: '拖拽排序 业务需求' }).press('ArrowUp')
       expect((await failedReorderPromise).status()).toBe(409)
       await expect(page.getByText('排序保存失败，已恢复原顺序')).toBeVisible()
       await expect.poll(() => visibleTypeKeys(page)).toEqual(rollbackOrder)
@@ -216,6 +226,23 @@ function typeIdFromUrl(url: string) {
 
 function waitForTypeTransition(page: import('@playwright/test').Page, suffix: ':disable' | ':restore' | ':retire') {
   return page.waitForResponse((response) => response.url().endsWith(suffix) && response.request().method() === 'POST')
+}
+
+async function compactTypeRowLayout(option: import('@playwright/test').Locator) {
+  return option.evaluate((element) => {
+    const row = element.closest<HTMLElement>('.work-item-type-list-item')
+    const name = element.querySelector<HTMLElement>('.work-item-type-list-copy strong')
+    const key = element.querySelector<HTMLElement>('.work-item-type-list-copy small')
+    if (!row || !name || !key) throw new Error('工作项类型紧凑列表结构不完整')
+    const rowRect = row.getBoundingClientRect()
+    const nameRect = name.getBoundingClientRect()
+    const keyRect = key.getBoundingClientRect()
+    return {
+      height: rowRect.height,
+      nameCenterY: nameRect.top + nameRect.height / 2,
+      keyCenterY: keyRect.top + keyRect.height / 2,
+    }
+  })
 }
 
 type TypeConfiguration = {

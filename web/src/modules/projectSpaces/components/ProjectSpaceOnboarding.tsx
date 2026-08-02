@@ -3,7 +3,6 @@ import {
   ClockCircleOutlined,
   CompassOutlined,
   ExclamationCircleOutlined,
-  QuestionCircleOutlined,
   SafetyCertificateOutlined,
 } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -230,17 +229,6 @@ export function ProjectSpaceOnboarding({
           loading={commandMutation.isPending && onboarding?.dismissed}
         >
           {launcherLabel}
-        </Button>
-        <Button
-          type="text"
-          icon={<QuestionCircleOutlined />}
-          aria-label={`了解${contextHelp.title}`}
-          onClick={() => {
-            onExperienceHelp?.()
-            setOpenOverride(true)
-          }}
-        >
-          此页怎么用
         </Button>
       </Space>
 

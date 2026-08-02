@@ -42,8 +42,7 @@ export type ProjectSpaceSecondaryTabDefinition = Readonly<{
 export const PROJECT_SPACE_SECONDARY_TAB_CONFIG = {
   overview: [
     { key: 'member-home', label: '我的工作', order: 10, group: 'core', managerOnly: false },
-    { key: 'activity', label: '空间动态', order: 20, group: 'collaboration', managerOnly: false },
-    { key: 'collaboration-boundary', label: '协作边界', order: 30, group: 'access', managerOnly: false },
+    { key: 'activity', label: '动态与边界', order: 20, group: 'collaboration', managerOnly: false },
   ],
   'work-items': [
     { key: 'work-item-collection', label: '工作项', order: 10, group: 'core', managerOnly: false },
@@ -91,13 +90,10 @@ export const PROJECT_SPACE_SECONDARY_TAB_CONFIG = {
   ],
   settings: [
     { key: 'management-home', label: '管理首页', order: 10, group: 'configuration', managerOnly: true },
-    { key: 'general', label: '基本信息', order: 20, group: 'configuration', managerOnly: true },
     { key: 'work-model', label: '工作模型', order: 30, group: 'configuration', managerOnly: true },
-    { key: 'flow-access', label: '流程与权限', order: 40, group: 'access', managerOnly: true },
-    { key: 'automation-collaboration', label: '自动化与协同', order: 50, group: 'automation', managerOnly: true },
-    { key: 'metrics-governance', label: '度量治理', order: 60, group: 'metrics', managerOnly: true },
-    { key: 'scenario-templates', label: '场景模板', order: 70, group: 'configuration', managerOnly: true },
-    { key: 'lifecycle', label: '启用、停用与归档', order: 80, group: 'lifecycle', managerOnly: true },
+    { key: 'automation-collaboration', label: '自动化与协同', order: 40, group: 'automation', managerOnly: true },
+    { key: 'metrics-governance', label: '度量治理', order: 50, group: 'metrics', managerOnly: true },
+    { key: 'scenario-templates', label: '场景模板', order: 60, group: 'configuration', managerOnly: true },
   ],
   'automation-settings': [
     { key: 'automation-rules', label: '自动化规则', order: 10, group: 'automation', managerOnly: true },

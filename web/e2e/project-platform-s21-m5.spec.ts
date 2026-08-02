@@ -304,9 +304,11 @@ test.describe('PROJECT-PLATFORM-S21-M5 simple and role-aware project space', () 
       await page.goto(`/project-spaces/${primarySpaceId}/settings?panel=work-model`)
       await expectCurrentPrimaryView(page, '设置')
       const settingsTabs = page.getByTestId('project-space-settings-secondary-tabs')
-      for (const label of ['工作模型', '流程与权限', '自动化与协同', '度量治理', '场景模板']) {
+      for (const label of ['工作模型', '自动化与协同', '度量治理', '场景模板']) {
         await expect(settingsTabs.getByRole('tab', { name: label })).toBeVisible()
       }
+      await expect(settingsTabs.getByRole('tab', { name: '流程与权限', exact: true }))
+        .toHaveCount(0)
       await expect(page.getByTestId('project-space-advanced-settings')).toBeVisible()
 
       const memberSurface = await openSurface(browser, member, primarySpaceId)

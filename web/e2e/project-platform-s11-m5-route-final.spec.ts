@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext } from '@playwright/test'
+import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
 
 import { apiBaseUrl, bearer, installSession, loginByApi, type E2eSession } from './support/api'
 import { requireIsolatedIdentityFixture } from './support/fixtures'
@@ -135,15 +135,85 @@ test.describe('PROJECT-PLATFORM-S11 route final', () => {
 
       await installSession(page, owner)
       await page.setViewportSize({ width: 1440, height: 900 })
-      await page.goto(`/project-spaces/${spaceId}/types/${projectType.id}`)
+      await page.goto(`/project-spaces/${spaceId}/settings?panel=flow-access&typeId=${projectType.id}`)
+      await dismissProjectSpaceOnboarding(page)
+      await expect.poll(() => {
+        const current = new URL(page.url())
+        return {
+          panel: current.searchParams.get('panel'),
+          workModelTab: current.searchParams.get('workModelTab'),
+          typeId: current.searchParams.get('typeId'),
+        }
+      }).toEqual({
+        panel: 'work-model',
+        workModelTab: 'flow-access',
+        typeId: projectType.id,
+      })
+      await expect(page.getByRole('tab', { name: '工作模型', exact: true }))
+        .toHaveAttribute('aria-selected', 'true')
+      await expect(page.locator('.work-item-type-detail-card').getByRole('tab', {
+        name: '流程与权限',
+        exact: true,
+      })).toHaveAttribute('aria-selected', 'true')
+      await expect(page.getByRole('combobox', { name: '当前任务模板', exact: true }))
+        .toHaveCount(0)
       const policyEditor = page.locator('.work-item-permission-policy-editor')
       await expect(policyEditor).toBeVisible()
       await expect(policyEditor).toContainText('数据权限策略')
       await expect(policyEditor).toContainText('space_member_baseline')
-      await expect(policyEditor).toContainText('deny 优先')
+      await expect(policyEditor).toContainText('拒绝优先')
+      const baselinePolicy = policyEditor.locator('.work-item-permission-policy-card')
+        .filter({ hasText: 'space_member_baseline' })
+        .first()
+      await expect(baselinePolicy).toBeVisible()
+      await expect(baselinePolicy.locator('.is-scope-values')).toHaveCount(0)
+      await expect(baselinePolicy.locator('.is-subject-type')).toContainText('空间角色 · space_role')
+      await expect(baselinePolicy.locator('.is-subject-key')).toContainText(/· (guest|member|admin|owner)/)
+      await expect(baselinePolicy.locator('.is-subject-key').locator('.ant-select')).toHaveCount(1)
+      await expect(baselinePolicy.locator('.is-scope-type')).toContainText('所有工作项 · all')
+      await expect(baselinePolicy.locator('.is-actions')).toContainText(/查看工作项 · view/)
+      await baselinePolicy.locator('.is-subject-type .ant-select').click()
+      await page.getByText('所有可进入空间的用户 · everyone', { exact: true }).last().click()
+      await expect(baselinePolicy.locator('.is-subject-key')).toContainText('所有可进入当前空间的用户')
+      await expect(baselinePolicy.locator('.is-subject-key').locator('.ant-select')).toHaveCount(0)
+      await baselinePolicy.locator('.is-scope-type .ant-select').click()
+      await page.getByText('仅该主体创建的工作项 · created_by_subject', { exact: true }).last().click()
+      await expect(baselinePolicy.locator('.is-scope-type')).toContainText('仅该主体创建的工作项')
+      await expect(baselinePolicy.locator('.is-scope-values')).toHaveCount(0)
+      const policyLayout = await baselinePolicy.evaluate((card) => {
+        const width = (selector: string) =>
+          (card.querySelector(selector) as HTMLElement | null)?.getBoundingClientRect().width ?? 0
+        return {
+          policyKey: width('.is-policy-key'),
+          effect: width('.is-effect'),
+          priority: width('.is-priority'),
+          subjectType: width('.is-subject-type'),
+          subjectKey: width('.is-subject-key'),
+          scopeType: width('.is-scope-type'),
+          fieldKeys: width('.is-field-keys'),
+          nodeKeys: width('.is-node-keys'),
+          relationKeys: width('.is-relation-keys'),
+          overflow: card.scrollWidth - card.clientWidth,
+        }
+      })
+      expect(policyLayout.policyKey).toBeLessThanOrEqual(260)
+      expect(policyLayout.effect).toBeLessThanOrEqual(125)
+      expect(policyLayout.priority).toBeLessThanOrEqual(150)
+      expect(policyLayout.subjectType).toBeLessThanOrEqual(235)
+      expect(policyLayout.subjectKey).toBeLessThanOrEqual(255)
+      expect(policyLayout.scopeType).toBeLessThanOrEqual(295)
+      for (const qualifierWidth of [
+        policyLayout.fieldKeys,
+        policyLayout.nodeKeys,
+        policyLayout.relationKeys,
+      ]) {
+        expect(qualifierWidth).toBeLessThanOrEqual(260)
+      }
+      expect(policyLayout.overflow).toBeLessThanOrEqual(1)
 
       await installSession(page, member)
       await page.goto(`/project-spaces/${spaceId}/work-items/${item.id}`)
+      await dismissProjectSpaceOnboarding(page)
       await page.getByTestId('project-work-item-detail-secondary-tabs')
         .getByRole('tab', { name: '权限', exact: true }).click()
       const permissionPanel = page.locator('.work-item-permissions-panel')
@@ -158,6 +228,7 @@ test.describe('PROJECT-PLATFORM-S11 route final', () => {
 
       await installSession(page, guest)
       await page.goto(`/project-spaces/${spaceId}/work-items/${item.id}`)
+      await dismissProjectSpaceOnboarding(page)
       await page.getByTestId('project-work-item-detail-secondary-tabs')
         .getByRole('tab', { name: '权限', exact: true }).click()
       await expect(page.locator('.work-item-permissions-panel')).toBeVisible()
@@ -166,6 +237,7 @@ test.describe('PROJECT-PLATFORM-S11 route final', () => {
       for (const width of [1366, 820]) {
         await page.setViewportSize({ width, height: 900 })
         await page.goto(`/project-spaces/${spaceId}/work-items/${item.id}`)
+        await dismissProjectSpaceOnboarding(page)
         await page.getByTestId('project-work-item-detail-secondary-tabs')
           .getByRole('tab', { name: '权限', exact: true }).click()
         await expect(page.locator('.work-item-permissions-panel')).toBeVisible()
@@ -188,6 +260,16 @@ test.describe('PROJECT-PLATFORM-S11 route final', () => {
     }
   })
 })
+
+async function dismissProjectSpaceOnboarding(page: Page) {
+  const onboardingGuide = page.getByTestId('project-space-onboarding')
+  await onboardingGuide.waitFor({ state: 'visible', timeout: 5_000 }).catch(() => {})
+  if (!await onboardingGuide.isVisible()) return
+  const dismiss = page.getByTestId('onboarding-dismiss')
+  if (await dismiss.isEnabled()) await dismiss.click()
+  else await page.locator('.ant-drawer-close').click()
+  await expect(page.locator('.ant-drawer-mask')).toBeHidden()
+}
 
 async function validateAndPublish(
   request: APIRequestContext,

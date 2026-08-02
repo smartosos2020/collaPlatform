@@ -35,13 +35,16 @@ describe('project space query contract', () => {
     assert.equal(patched.has('savedViewId'), false)
   })
 
-  it('keeps the selected task template while switching settings panels', () => {
+  it('keeps the selected work item type while switching work-model tabs', () => {
     const patched = patchProjectSpaceSearch(
       '?panel=work-model&typeId=type-1&source=m8-inline',
-      { panel: 'flow-access' },
+      { workModelTab: 'flow-access' },
     )
 
-    assert.equal(patched.toString(), 'source=m8-inline&panel=flow-access&typeId=type-1')
+    assert.equal(
+      patched.toString(),
+      'source=m8-inline&panel=work-model&typeId=type-1&workModelTab=flow-access',
+    )
   })
 
   it('removes invalid patched values instead of retaining ambiguous input', () => {

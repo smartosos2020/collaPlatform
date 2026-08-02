@@ -49,7 +49,21 @@ test.describe('PROJECT-PLATFORM-S05-M2 layout editor', () => {
           && response.request().method() === 'PUT')
       await page.getByRole('button', { name: '使用当前字段初始化' }).click()
       expect((await initializeCreate).ok()).toBeTruthy()
-      await expect(page.getByTestId('work-item-layout-editor')).toBeVisible()
+      const layoutEditor = page.getByTestId('work-item-layout-editor')
+      await expect(layoutEditor).toBeVisible()
+      const layoutColumnRatios = await layoutEditor.evaluate((element) => {
+        const widths = [
+          '.work-item-layout-palette',
+          '.work-item-layout-canvas',
+          '.work-item-layout-properties',
+        ].map(selector => element.querySelector(selector)?.getBoundingClientRect().width ?? 0)
+        const total = widths.reduce((sum, width) => sum + width, 0)
+        return widths.map(width => width / total)
+      })
+      expect(layoutColumnRatios[0]).toBeCloseTo(0.384 / 2.43, 2)
+      expect(layoutColumnRatios[1]).toBeCloseTo(1.486 / 2.43, 2)
+      expect(layoutColumnRatios[2]).toBeCloseTo(0.56 / 2.43, 2)
+      expect(layoutColumnRatios[1]).toBeGreaterThan(layoutColumnRatios[0] + layoutColumnRatios[2])
       await page.getByTestId('project-space-layouts-secondary-tabs')
         .getByRole('tab', { name: '访问预览', exact: true }).click()
       await expect(page.getByTestId('work-item-layout-renderer')).toContainText('标题')

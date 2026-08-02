@@ -31,6 +31,23 @@ test.describe('PROJECT-PLATFORM-S02-M3 project-space UI isolation', () => {
       spaceId = (await createResponse.json() as { id: string }).id
       await expect(page).toHaveURL(new RegExp(`/project-spaces/${spaceId}$`))
       await expect(page.getByRole('heading', { name: `S02 M3 产品空间 ${suffix}` })).toBeVisible()
+      const projectSpaceHero = page.locator('.project-space-hero')
+      await expect(projectSpaceHero.locator('.project-space-hero-icon')).toHaveCount(0)
+      const projectSpaceHeroPadding = await projectSpaceHero.locator('.ant-card-body').evaluate((element) => ({
+        top: Number.parseFloat(getComputedStyle(element).paddingTop),
+        bottom: Number.parseFloat(getComputedStyle(element).paddingBottom),
+      }))
+      expect(projectSpaceHeroPadding.top).toBeLessThanOrEqual(12)
+      expect(projectSpaceHeroPadding.bottom).toBeLessThanOrEqual(12)
+      const activeSpaceRow = page.locator('.project-space-list-item.active')
+      await expect(activeSpaceRow).toBeVisible()
+      await expect(activeSpaceRow.locator('.project-space-list-icon')).toHaveCount(0)
+      await expect(activeSpaceRow.locator('.status-badge')).toHaveCount(0)
+      await expect(activeSpaceRow.locator('.project-space-status-dot')).toBeVisible()
+      const activeSpaceRowLayout = await compactRowLayout(activeSpaceRow)
+      expect(activeSpaceRowLayout.height).toBeLessThanOrEqual(46)
+      expect(Math.abs(activeSpaceRowLayout.primaryCenterY - activeSpaceRowLayout.secondaryCenterY)).toBeLessThanOrEqual(1)
+      expect(Math.abs(activeSpaceRowLayout.statusCenterY - activeSpaceRowLayout.metaCenterY)).toBeLessThanOrEqual(1)
 
       await page.getByRole('button', { name: '空间设置' }).click()
       await page.getByLabel('空间说明').fill('设置已由真实浏览器流程更新。')
@@ -109,8 +126,7 @@ test.describe('PROJECT-PLATFORM-S02-M3 project-space UI isolation', () => {
       expect(removedAccess.status()).toBe(404)
 
       await page.goto(`/project-spaces/${spaceId}/settings`)
-      await page.getByTestId('project-space-settings-secondary-tabs')
-        .getByRole('tab', { name: '空间生命周期', exact: true }).click()
+      await expect(page.getByRole('tab', { name: '管理首页', exact: true })).toHaveAttribute('aria-selected', 'true')
       await page.getByRole('button', { name: '停用' }).click()
       await page.getByRole('button', { name: '确认停用' }).click()
       await expect(page.getByText('空间已停用，写入和成员变更已关闭。')).toBeVisible()
@@ -173,4 +189,26 @@ async function getJson<T>(request: APIRequestContext, url: string, session: E2eS
   const response = await request.get(url, { headers: bearer(session) })
   expect(response.ok(), `GET ${url} failed`).toBeTruthy()
   return await response.json() as T
+}
+
+async function compactRowLayout(row: import('@playwright/test').Locator) {
+  return row.evaluate((element) => {
+    const rect = (selector: string) => {
+      const target = element.querySelector<HTMLElement>(selector)
+      if (!target) throw new Error(`missing compact-row element: ${selector}`)
+      return target.getBoundingClientRect()
+    }
+    const rowRect = element.getBoundingClientRect()
+    const primary = rect('.project-space-list-copy strong')
+    const secondary = rect('.project-space-list-copy small')
+    const status = rect('.project-space-status-dot')
+    const meta = rect('.project-space-list-meta small')
+    return {
+      height: rowRect.height,
+      primaryCenterY: primary.top + primary.height / 2,
+      secondaryCenterY: secondary.top + secondary.height / 2,
+      statusCenterY: status.top + status.height / 2,
+      metaCenterY: meta.top + meta.height / 2,
+    }
+  })
 }

@@ -40,6 +40,10 @@ describe('PROJECT_SPACE_SECONDARY_TAB_CONFIG', () => {
   })
 
   it('keeps member work items separate from the project-management owner surface', () => {
+    assert.deepEqual(
+      getProjectSpaceSecondaryTabs('overview').map((tab) => [tab.key, tab.label]),
+      [['member-home', '我的工作'], ['activity', '动态与边界']],
+    )
     const tabs = getProjectSpaceSecondaryTabs('work-items')
     assert.deepEqual(tabs.map((tab) => tab.key), ['work-item-collection'])
     assert.equal(getProjectSpaceSecondaryTabs('management')[0]?.key, 'project-detail')
@@ -76,14 +80,16 @@ describe('getProjectSpaceSecondaryTabs', () => {
       getProjectSpaceSecondaryTabs('settings', { canManage: true }).map((tab) => tab.key),
       [
         'management-home',
-        'general',
         'work-model',
-        'flow-access',
         'automation-collaboration',
         'metrics-governance',
         'scenario-templates',
-        'lifecycle',
       ],
+    )
+    assert.equal(
+      getProjectSpaceSecondaryTabs('settings', { canManage: true })
+        .some((tab) => ['基本信息', '流程与权限', '启用、停用与归档'].includes(tab.label)),
+      false,
     )
   })
 

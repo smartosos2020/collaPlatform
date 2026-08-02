@@ -21,6 +21,33 @@ describe('project space surface ownership', () => {
       panel: 'automation-collaboration',
       view: 'settings',
     })
+    assert.deepEqual(projectSpaceSurfaceOwner('activity'), {
+      panel: 'activity',
+      view: 'overview',
+    })
+    assert.deepEqual(projectSpaceSurfaceOwner('collaboration-boundary'), {
+      panel: 'activity',
+      view: 'overview',
+    })
+    assert.equal(
+      PROJECT_SPACE_SURFACE_OWNERS.some((owner) => owner.panel === 'collaboration-boundary'),
+      false,
+    )
+    assert.deepEqual(projectSpaceSurfaceOwner('general'), {
+      panel: 'management-home',
+      view: 'settings',
+    })
+    assert.deepEqual(projectSpaceSurfaceOwner('lifecycle'), {
+      panel: 'management-home',
+      view: 'settings',
+    })
+    assert.deepEqual(projectSpaceSurfaceOwner('flow-access'), {
+      panel: 'work-model',
+      view: 'settings',
+    })
+    assert.equal(PROJECT_SPACE_SURFACE_OWNERS.some((owner) => owner.panel === 'general'), false)
+    assert.equal(PROJECT_SPACE_SURFACE_OWNERS.some((owner) => owner.panel === 'lifecycle'), false)
+    assert.equal(PROJECT_SPACE_SURFACE_OWNERS.some((owner) => owner.panel === 'flow-access'), false)
   })
 
   it('moves a legacy panel to its owner while preserving allowlisted context and hash', () => {
@@ -46,7 +73,51 @@ describe('project space surface ownership', () => {
     )
   })
 
+  it('consolidates retired basic-information and lifecycle bookmarks into management home', () => {
+    for (const panel of ['general', 'lifecycle']) {
+      assert.equal(
+        canonicalProjectSpaceSurfaceLocation({
+          spaceId: 'space-1',
+          pathname: '/project-spaces/space-1/settings',
+          search: `?source=bookmark&panel=${panel}`,
+          hash: '#focus',
+        }),
+        '/project-spaces/space-1/settings?source=bookmark&panel=management-home#focus',
+      )
+    }
+  })
+
+  it('consolidates the retired flow-access panel into the nested work-model tab', () => {
+    assert.equal(
+      canonicalProjectSpaceSurfaceLocation({
+        spaceId: 'space-1',
+        pathname: '/project-spaces/space-1/settings',
+        search: '?source=bookmark&panel=flow-access&typeId=type-1',
+      }),
+      '/project-spaces/space-1/settings?source=bookmark&panel=work-model&typeId=type-1&workModelTab=flow-access',
+    )
+  })
+
+  it('consolidates the retired boundary bookmark into the combined overview tab', () => {
+    assert.equal(
+      canonicalProjectSpaceSurfaceLocation({
+        spaceId: 'space-1',
+        pathname: '/project-spaces/space-1',
+        search: '?source=bookmark&panel=collaboration-boundary',
+      }),
+      '/project-spaces/space-1?source=bookmark&panel=activity',
+    )
+  })
+
   it('is idempotent on canonical surfaces and ignores unknown panels', () => {
+    assert.equal(
+      canonicalProjectSpaceSurfaceLocation({
+        spaceId: 'space-1',
+        pathname: '/project-spaces/space-1',
+        search: '?panel=activity',
+      }),
+      null,
+    )
     assert.equal(
       canonicalProjectSpaceSurfaceLocation({
         spaceId: 'space-1',

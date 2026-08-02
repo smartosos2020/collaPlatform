@@ -5,6 +5,7 @@ import {
   BarChartOutlined,
   CalendarOutlined,
   CommentOutlined,
+  DesktopOutlined,
   DownloadOutlined,
   FileOutlined,
   HistoryOutlined,
@@ -13,6 +14,7 @@ import {
   PlusOutlined,
   ReloadOutlined,
   SaveOutlined,
+  SearchOutlined,
   TableOutlined,
   TeamOutlined,
   UnorderedListOutlined,
@@ -43,6 +45,7 @@ import {
   Upload,
 } from 'antd'
 import {
+  useDeferredValue,
   useEffect,
   useMemo,
   useState,
@@ -86,6 +89,7 @@ import {
   renderWorkItemView,
   saveWorkItemViewPreference,
   workItemViewKeys,
+  type QueryFilter,
   type QueryDefinition,
   type WorkItemColumn,
   type WorkItemViewRow,
@@ -575,6 +579,8 @@ function WorkItemCollection({ space }: { space: UserProjectSpace }) {
   const [baselineDiff, setBaselineDiff] = useState<WorkItemScheduleBaselineDiff>()
   const [densityOverride, setDensityOverride] = useState<'compact' | 'comfortable'>()
   const [columnKeysOverride, setColumnKeysOverride] = useState<string[]>()
+  const [workItemSearch, setWorkItemSearch] = useState('')
+  const deferredWorkItemSearch = useDeferredValue(workItemSearch.trim())
   const [selectedRowKeys, setSelectedRowKeys] = useState<Key[]>([])
   const [savedDefinitionOverride, setSavedDefinitionOverride] = useState<QueryDefinition>()
   const [selectedSavedViewId, setSelectedSavedViewId] = useState(
@@ -616,7 +622,34 @@ function WorkItemCollection({ space }: { space: UserProjectSpace }) {
     limit: 50,
     cursor: null,
   }), [columns, selectedTypeId])
-  const definition = savedDefinitionOverride ?? defaultDefinition
+  const selectedDefinition = savedDefinitionOverride ?? defaultDefinition
+  const definition = useMemo<QueryDefinition>(() => {
+    if (!deferredWorkItemSearch) return selectedDefinition
+    const searchFilter: QueryFilter = {
+      kind: 'or',
+      children: [
+        {
+          kind: 'predicate',
+          field: 'title',
+          operator: 'contains',
+          value: deferredWorkItemSearch,
+        },
+        {
+          kind: 'predicate',
+          field: 'displayKey',
+          operator: 'contains',
+          value: deferredWorkItemSearch,
+        },
+      ],
+    }
+    return {
+      ...selectedDefinition,
+      filter: selectedDefinition.filter
+        ? { kind: 'and', children: [selectedDefinition.filter, searchFilter] }
+        : searchFilter,
+      cursor: null,
+    }
+  }, [deferredWorkItemSearch, selectedDefinition])
   const selectedType = useMemo(
     () => visibleTypes.find((type) => type.id === selectedTypeId),
     [selectedTypeId, visibleTypes],
@@ -1361,14 +1394,39 @@ function WorkItemCollection({ space }: { space: UserProjectSpace }) {
         />
       ) : null}
       <Card
-        className="content-card"
-        title={<Space><FileOutlined />工作项</Space>}
-        extra={space.status === 'active' && creatableTypes.length > 0
-          ? <Button type="primary" icon={<PlusOutlined />} onClick={() => openCreate()}>新建工作项</Button>
-          : null}
+        className="content-card project-work-item-card"
+        title={(
+          <span className="project-work-item-card-title">
+            <FileOutlined />
+            <span>工作项</span>
+          </span>
+        )}
+        extra={(
+          <Space className="project-work-item-card-actions" wrap>
+            {space.status === 'active' && creatableTypes.length > 0 ? (
+              <Button type="primary" icon={<PlusOutlined />} onClick={() => openCreate()}>
+                新建工作项
+              </Button>
+            ) : null}
+            <Button
+              icon={<SaveOutlined />}
+              loading={savePreferenceMutation.isPending}
+              onClick={() => savePreferenceMutation.mutate()}
+            >
+              保存偏好
+            </Button>
+          </Space>
+        )}
       >
-        <div className="project-work-item-filter">
+        <div className="project-work-item-toolbar-shell">
+          <div
+            className="project-work-item-toolbar-primary"
+            role="toolbar"
+            aria-label="工作项视图工具栏"
+          >
+            <div className="project-work-item-filter-group">
           <Select
+            className="project-work-item-saved-view-select"
             aria-label="保存视图目录"
             allowClear
             showSearch
@@ -1392,8 +1450,10 @@ function WorkItemCollection({ space }: { space: UserProjectSpace }) {
                 )
               }
             }}
+            prefix={<TeamOutlined />}
           />
           <Select
+            className="project-work-item-type-select"
             aria-label="按工作项类型筛选"
             allowClear
             value={selectedTypeId}
@@ -1409,8 +1469,20 @@ function WorkItemCollection({ space }: { space: UserProjectSpace }) {
               setBoardSwimlaneOverride(undefined)
               setDraggedBoardCard(undefined)
             }}
+            prefix={<AppstoreOutlined />}
           />
-          <Segmented
+              <Input
+                className="project-work-item-search"
+                aria-label="搜索工作项"
+                allowClear
+                prefix={<SearchOutlined />}
+                placeholder="搜索工作项"
+                value={workItemSearch}
+                onChange={(event) => setWorkItemSearch(event.target.value)}
+              />
+            </div>
+            <div className="project-work-item-mode-group">
+              <Segmented
             aria-label="工作项视图模式"
             value={ganttMode
               ? 'gantt'
@@ -1437,6 +1509,8 @@ function WorkItemCollection({ space }: { space: UserProjectSpace }) {
               if (value === 'table' || value === 'list') setModeOverride(value)
             }}
           />
+            </div>
+            <div className="project-work-item-mode-options">
           {boardMode ? (
             <Select
               aria-label="看板泳道"
@@ -1557,6 +1631,8 @@ function WorkItemCollection({ space }: { space: UserProjectSpace }) {
               />
             </>
           ) : null}
+            </div>
+            <div className="project-work-item-display-group">
           <Select
             aria-label="列表密度"
             value={density}
@@ -1565,6 +1641,7 @@ function WorkItemCollection({ space }: { space: UserProjectSpace }) {
               { label: '紧凑', value: 'compact' },
             ]}
             onChange={setDensityOverride}
+            prefix={<DesktopOutlined />}
           />
           <Select
             aria-label="显示列"
@@ -1574,24 +1651,59 @@ function WorkItemCollection({ space }: { space: UserProjectSpace }) {
             options={availableColumns.map((column) => ({ label: column.label, value: column.key }))}
             onChange={(value) => setColumnKeysOverride(value.length ? value : ['title'])}
           />
-          <Button
-            icon={<SaveOutlined />}
-            loading={savePreferenceMutation.isPending}
-            onClick={() => savePreferenceMutation.mutate()}
+            </div>
+          </div>
+          <div
+            className="project-work-item-toolbar-secondary"
+            role="toolbar"
+            aria-label="工作项批量操作工具栏"
           >
-            保存偏好
-          </Button>
-          <Button
-            type="primary"
-            onClick={() => {
-              setSavedViewName(selectedSavedView?.name ?? '')
-              setSavedViewDescription(selectedSavedView?.description ?? '')
-              setSaveViewOpen(true)
-            }}
-          >
-            {selectedSavedView?.canManage ? '编辑保存视图' : '另存为视图'}
-          </Button>
-          <Typography.Text type="secondary">列表只展示当前空间内你有权访问的工作项。</Typography.Text>
+            <div className="project-work-item-view-save">
+              <Button
+                type="primary"
+                onClick={() => {
+                  setSavedViewName(selectedSavedView?.name ?? '')
+                  setSavedViewDescription(selectedSavedView?.description ?? '')
+                  setSaveViewOpen(true)
+                }}
+              >
+                {selectedSavedView?.canManage ? '编辑保存视图' : '另存为视图'}
+              </Button>
+              <Typography.Text type="secondary">
+                列表仅展示当前空间内你有权访问的工作项。
+              </Typography.Text>
+            </div>
+            <div className="project-work-item-actions">
+              <Space wrap>
+                <Button
+                  icon={<InboxOutlined />}
+                  disabled={!selectedRowKeys.length}
+                  loading={bulkMutation.isPending}
+                  onClick={() => bulkMutation.mutate('archive')}
+                >
+                  批量归档
+                </Button>
+                <Button
+                  icon={<ReloadOutlined />}
+                  disabled={!selectedRowKeys.length}
+                  loading={bulkMutation.isPending}
+                  onClick={() => bulkMutation.mutate('restore')}
+                >
+                  批量恢复
+                </Button>
+                <Button
+                  icon={<DownloadOutlined />}
+                  loading={exportMutation.isPending}
+                  onClick={() => exportMutation.mutate()}
+                >
+                  导出 CSV
+                </Button>
+                {selectedRowKeys.length ? (
+                  <Tag color="blue">已选择 {selectedRowKeys.length} 项</Tag>
+                ) : null}
+              </Space>
+            </div>
+          </div>
         </div>
         {selectedSavedView ? (
           <Alert
@@ -1630,32 +1742,6 @@ function WorkItemCollection({ space }: { space: UserProjectSpace }) {
             </Space>}
           />
         ) : null}
-        <div className="project-work-item-actions">
-          <Space wrap>
-            <Button
-              disabled={!selectedRowKeys.length}
-              loading={bulkMutation.isPending}
-              onClick={() => bulkMutation.mutate('archive')}
-            >
-              批量归档
-            </Button>
-            <Button
-              disabled={!selectedRowKeys.length}
-              loading={bulkMutation.isPending}
-              onClick={() => bulkMutation.mutate('restore')}
-            >
-              批量恢复
-            </Button>
-            <Button
-              icon={<DownloadOutlined />}
-              loading={exportMutation.isPending}
-              onClick={() => exportMutation.mutate()}
-            >
-              导出 CSV
-            </Button>
-            {selectedRowKeys.length ? <Tag color="blue">已选择 {selectedRowKeys.length} 项</Tag> : null}
-          </Space>
-        </div>
         {(ganttMode
           ? ganttQuery.isLoading
           : calendarMode
@@ -2360,7 +2446,7 @@ function WorkItemCollection({ space }: { space: UserProjectSpace }) {
         open={createOpen && !createUnavailable}
         canConfigure={space.availableActions.includes('view_settings')}
         onConfigure={() => selectedType && navigate(
-          `/project-spaces/${space.id}/settings?panel=flow-access&typeId=${selectedType.id}&source=work_items`,
+          `/project-spaces/${space.id}/settings?panel=work-model&workModelTab=flow-access&typeId=${selectedType.id}&source=work_items`,
         )}
         onCancel={closeCreate}
       />

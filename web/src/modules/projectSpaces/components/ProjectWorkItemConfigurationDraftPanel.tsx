@@ -6,7 +6,6 @@ import {
   HistoryOutlined,
   ReloadOutlined,
   RollbackOutlined,
-  SafetyCertificateOutlined,
   WarningOutlined,
 } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -242,7 +241,6 @@ export function ProjectWorkItemConfigurationDraftPanel({
   return (
     <section className={`work-item-draft-panel status-${draft.status}`} aria-label="配置草稿状态">
       <div className="work-item-draft-summary">
-        <span className="work-item-draft-icon"><SafetyCertificateOutlined /></span>
         <div className="work-item-draft-copy">
           <Space wrap size={7}>
             <Typography.Text strong>配置草稿</Typography.Text>
@@ -252,7 +250,7 @@ export function ProjectWorkItemConfigurationDraftPanel({
             {warnings.length > 0 ? <Tag color="warning" icon={<WarningOutlined />}>{warnings.length} 个提醒</Tag> : null}
           </Space>
           <Typography.Text type="secondary">
-            hash {draft.configHash.slice(0, 16)}… · schema v{draft.snapshotSchemaVersion} · 更新于 {formatTime(draft.updatedAt)}
+            schema v{draft.snapshotSchemaVersion} · 更新于 {formatTime(draft.updatedAt)}
           </Typography.Text>
         </div>
         <Space wrap className="work-item-draft-actions">

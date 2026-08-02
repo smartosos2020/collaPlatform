@@ -25,7 +25,11 @@ test.describe('PROJECT-PLATFORM-S06-M1 configuration draft', () => {
       const panel = page.getByRole('region', { name: '配置草稿状态' })
       await expect(panel).toBeVisible()
       await expect(panel).toContainText('编辑中')
-      await expect(panel).toContainText('hash ')
+      const draftSummary = panel.locator('.work-item-draft-summary')
+      await expect(draftSummary.locator('.work-item-draft-icon')).toHaveCount(0)
+      await expect(draftSummary).not.toContainText('hash ')
+      await expect(draftSummary).toContainText('schema v')
+      await expect(draftSummary).toContainText('更新于')
       await expect(panel).toContainText('missing_layout_kind')
       await expect(panel).toContainText('1 个提醒')
 

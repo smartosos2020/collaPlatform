@@ -95,7 +95,7 @@ describe('project space onboarding capability and route gates', () => {
     )
   })
 
-  it('falls back to the inline settings owner for work-model and publication steps', () => {
+  it('falls back to the inline work-model owner for model, flow and publication steps', () => {
     assert.equal(
       resolveOnboardingOwnerPath(step({
         stepKey: 'configure_work_model',
@@ -104,14 +104,18 @@ describe('project space onboarding capability and route gates', () => {
       }), 'space-1'),
       '/project-spaces/space-1/settings?panel=work-model',
     )
-    for (const stepKey of ['configure_workflow', 'publish_configuration']) {
+    for (const stepKey of [
+      'configure_workflow',
+      'configure_permissions',
+      'publish_configuration',
+    ]) {
       assert.equal(
         resolveOnboardingOwnerPath(step({
           stepKey,
           labelKey: `project.onboarding.step.${stepKey}`,
           path: '/project-spaces/another-space/types',
         }), 'space-1'),
-        '/project-spaces/space-1/settings?panel=flow-access',
+        '/project-spaces/space-1/settings?panel=work-model&workModelTab=flow-access',
       )
     }
   })

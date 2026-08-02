@@ -155,15 +155,32 @@ describe('project space content classification and terminology', () => {
     }
   })
 
-  it('freezes five unique advanced configuration groups', () => {
-    assert.equal(PROJECT_SPACE_ADVANCED_CONFIGURATION.length, 5)
+  it('freezes four unique advanced configuration groups with flow access inside work model', () => {
+    assert.equal(PROJECT_SPACE_ADVANCED_CONFIGURATION.length, 4)
     assert.equal(
       new Set(PROJECT_SPACE_ADVANCED_CONFIGURATION.map((group) => group.key)).size,
       PROJECT_SPACE_ADVANCED_CONFIGURATION.length,
     )
     assert.deepEqual(
       PROJECT_SPACE_ADVANCED_CONFIGURATION.map((group) => group.label),
-      ['工作模型', '流程与权限', '自动化与协同', '度量治理', '场景模板'],
+      ['工作模型', '自动化与协同', '度量治理', '场景模板'],
+    )
+    const workModel = PROJECT_SPACE_ADVANCED_CONFIGURATION.find(
+      (group) => group.key === 'work-model',
+    )
+    assert.deepEqual(
+      [...(workModel?.concepts ?? [])].sort(),
+      [
+        'configuration-publication',
+        'data-permissions',
+        'fields',
+        'layouts',
+        'node-flow',
+        'relations',
+        'roles',
+        'state-flow',
+        'work-item-types',
+      ].sort(),
     )
   })
 
@@ -218,6 +235,7 @@ describe('project space route and scenario contracts', () => {
     for (const scenario of PROJECT_SPACE_SCENARIO_PATHS) {
       assert.ok(scenario.primarySequence.every((key) => primaryKeys.has(key)))
       assert.ok(scenario.advancedSequence.every((key) => advancedKeys.has(key)))
+      assert.equal(new Set<string>(scenario.advancedSequence).has('flow-access'), false)
     }
   })
 

@@ -1,15 +1,30 @@
 import {
   AppstoreOutlined,
+  BarChartOutlined,
+  BuildOutlined,
+  BugOutlined,
+  CalendarOutlined,
+  CarryOutOutlined,
   EyeOutlined,
   FileDoneOutlined,
+  FileTextOutlined,
+  FlagOutlined,
+  FormOutlined,
   LockOutlined,
   InboxOutlined,
+  LineChartOutlined,
   PlusOutlined,
   ProjectOutlined,
   ReloadOutlined,
+  RightOutlined,
+  RobotOutlined,
+  RocketOutlined,
+  SafetyCertificateOutlined,
   SettingOutlined,
+  SyncOutlined,
   TagsOutlined,
   TeamOutlined,
+  UserOutlined,
 } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -26,6 +41,7 @@ import {
   Skeleton,
   Space,
   Tag,
+  Timeline,
   Typography,
 } from 'antd'
 import {
@@ -36,6 +52,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ReactNode,
 } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 
@@ -49,7 +66,6 @@ import {
   getProjectSpaceSettings,
   getProjectSpaceSurfacePreview,
   listProjectSpaces,
-  resetProjectSpaceExperiencePreference,
   saveProjectSpaceExperiencePreference,
   transitionProjectSpace,
   updateProjectSpaceSettings,
@@ -67,7 +83,6 @@ import {
 } from '../api/projectSpaceOnboardingApi'
 import {
   listActiveWorkItemTypes,
-  listConfiguredWorkItemTypes,
   workItemTypeKeys,
 } from '../api/workItemTypesApi'
 import { errorMessage, formatTime, roleLabel, statusLabel, visibilityLabel } from '../projectSpaceView'
@@ -88,10 +103,12 @@ import {
   rememberRecentProjectSpace,
 } from '../projectSpaceLocalCache'
 import {
+  isProjectSpaceWorkModelTab,
   patchProjectSpaceSearch,
   projectSpaceCrossSurfaceLocation,
   projectSpaceLocationWithContext,
   resolveCanonicalProjectSpaceLocation,
+  type ProjectSpaceWorkModelTab,
 } from '../projectSpaceRouteContract'
 import { canonicalProjectSpaceSurfaceLocation } from '../projectSpaceSurfaceContract'
 import {
@@ -473,13 +490,17 @@ export function ProjectSpacesPage() {
               key={space.id}
               onClick={() => openSpace(space.id)}
             >
-              <span className="project-space-list-icon"><ProjectOutlined /></span>
               <span className="project-space-list-copy">
                 <strong>{space.name}</strong>
                 <small>{space.spaceKey}</small>
               </span>
               <span className="project-space-list-meta">
-                <StatusBadge status={space.status} />
+                <span
+                  className={`project-space-status-dot ${space.status}`}
+                  role="img"
+                  aria-label={statusLabel(space.status)}
+                  title={statusLabel(space.status)}
+                />
                 <small>{space.memberCount} 人</small>
               </span>
             </button>
@@ -821,31 +842,6 @@ function ProjectSpaceShell({
       })
     },
   })
-  const resetPreference = useMutation({
-    mutationFn: () => resetProjectSpaceExperiencePreference(
-      space.id,
-      preference?.version ?? 0,
-    ),
-    onSuccess: (saved) => {
-      queryClient.setQueryData(
-        preferenceQueryKey,
-        saved,
-      )
-      message.success('已恢复简洁模式')
-      experienceTelemetry.record({
-        eventKind: 'mode',
-        routeKey,
-        mode: 'simple',
-        outcome: 'changed',
-      })
-    },
-    onError: async (error) => {
-      await queryClient.invalidateQueries({
-        queryKey: preferenceQueryKey,
-      })
-      message.error(errorMessage(error, '恢复默认失败，请重试'))
-    },
-  })
   const recordTaskResult = (
     outcome: ProjectSpaceExperienceEventOutcome,
     errorCode: ProjectSpaceExperienceErrorCode,
@@ -884,19 +880,17 @@ function ProjectSpaceShell({
     >
       <Card className="project-space-hero">
         <div className="project-space-hero-main">
-          <span className="project-space-hero-icon"><ProjectOutlined /></span>
           <div className="project-space-hero-copy">
             <Space wrap size={8}>
               <Typography.Title level={2}>{space.name}</Typography.Title>
-              <StatusBadge status={space.status} />
               <Tag color="purple">{roleLabel(space.currentUserRole)}</Tag>
             </Space>
-            <Typography.Text type="secondary">{space.spaceKey}</Typography.Text>
-            <Typography.Paragraph ellipsis={{ rows: 2 }}>{space.description || '暂无空间说明'}</Typography.Paragraph>
+            <Typography.Paragraph ellipsis={{ rows: 1, tooltip: space.description || '暂无空间说明' }}>
+              {space.description || '暂无空间说明'}
+            </Typography.Paragraph>
           </div>
         </div>
         <Space wrap className="project-space-hero-stats">
-          <Tag icon={<TeamOutlined />}>{space.memberCount} 位成员</Tag>
           <Tag icon={space.visibility === 'private' ? <LockOutlined /> : <EyeOutlined />}>{visibilityLabel(space.visibility)}</Tag>
           <Tag>更新于 {formatTime(space.updatedAt)}</Tag>
         </Space>
@@ -908,20 +902,11 @@ function ProjectSpaceShell({
                 { label: '简洁模式', value: 'simple' },
                 { label: '高级模式', value: 'advanced' },
               ]}
-              disabled={!online || savePreference.isPending || resetPreference.isPending}
+              disabled={!online || savePreference.isPending}
               onChange={(value) => {
                 if (online) savePreference.mutate(value as ProjectSpaceExperienceMode)
               }}
             />
-            <Button
-              type="link"
-              disabled={!online || mode === 'simple' || resetPreference.isPending}
-              onClick={() => {
-                if (online) resetPreference.mutate()
-              }}
-            >
-              恢复默认
-            </Button>
           </Space>
         ) : null}
         {canPreview ? (
@@ -1266,75 +1251,96 @@ function ProjectSpaceOverview({
       ariaLabel="成员工作区内容导航"
       panels={{
         'member-home': (
-          <Space direction="vertical" size={16} style={{ width: '100%' }}>
-            <Card
-              className="content-card project-space-member-work"
-              title="我的工作"
-              extra={personalWorkQuery.data?.truncated ? <Tag>还有更多事项</Tag> : null}
-            >
-              {personalWorkQuery.isLoading ? <Skeleton active paragraph={{ rows: 4 }} /> : null}
-              {personalWorkQuery.isError ? (
-                <Alert
-                  type="error"
-                  showIcon
-                  message="我的工作加载失败"
-                  description="没有展示未经确认的缓存内容。请检查网络后重试。"
-                  action={<Button size="small" onClick={() => personalWorkQuery.refetch()}>重试</Button>}
-                />
+          <section
+            className="project-space-overview-panel project-space-member-home"
+            data-testid="project-space-member-home"
+          >
+            <header className="project-space-overview-hero">
+              <span className="project-space-overview-hero-icon" aria-hidden="true">
+                <CalendarOutlined />
+              </span>
+              <span className="project-space-overview-hero-copy">
+                <Typography.Title level={2}>我的工作</Typography.Title>
+                <Typography.Paragraph>
+                  集中查看待办事项、负责内容与可创建的工作项
+                </Typography.Paragraph>
+              </span>
+              {personalWorkQuery.data?.truncated ? (
+                <Tag color="blue" className="project-space-overview-hero-tag">还有更多事项</Tag>
               ) : null}
-              {personalWorkQuery.data ? (
-                <div className="project-space-work-buckets">
-                  {personalWorkQuery.data.buckets.map((bucket) => {
-                    const visibleItems = visibleProjectSpacePersonalWork(bucket.items)
-                    return (
-                    <section className="project-space-work-bucket" key={bucket.bucket}>
+            </header>
+
+            {personalWorkQuery.isLoading ? <Skeleton active paragraph={{ rows: 4 }} /> : null}
+            {personalWorkQuery.isError ? (
+              <Alert
+                type="error"
+                showIcon
+                message="我的工作加载失败"
+                description="没有展示未经确认的缓存内容。请检查网络后重试。"
+                action={<Button size="small" onClick={() => personalWorkQuery.refetch()}>重试</Button>}
+              />
+            ) : null}
+            {personalWorkQuery.data ? (
+              <div className="project-space-work-buckets" data-testid="project-space-work-buckets">
+                {personalWorkQuery.data.buckets.map((bucket) => {
+                  const visibleItems = visibleProjectSpacePersonalWork(bucket.items)
+                  return (
+                    <section
+                      className={`project-space-work-bucket${visibleItems.length > 0 ? ' has-items' : ' is-empty'}`}
+                      data-testid={`project-space-work-bucket-${bucket.bucket}`}
+                      key={bucket.bucket}
+                    >
                       <div className="project-space-work-bucket-heading">
                         <strong>{personalWorkBucketLabel(bucket.bucket)}</strong>
-                        <Tag>{bucket.visibleCount}</Tag>
+                        <span
+                          className="project-space-work-bucket-count"
+                          data-testid={`project-space-work-bucket-${bucket.bucket}-count`}
+                        >
+                          {bucket.visibleCount}
+                        </span>
                       </div>
                       {visibleItems.length === 0 ? (
-                        <Typography.Text type="secondary">当前没有事项</Typography.Text>
+                        <Empty
+                          className="project-space-work-bucket-empty"
+                          image={Empty.PRESENTED_IMAGE_SIMPLE}
+                          description="当前没有事项"
+                        />
                       ) : (
-                        visibleItems.slice(0, 3).map((item) => (
-                          <button
-                            type="button"
-                            className="project-space-personal-work-item"
-                            key={`${bucket.bucket}:${item.workItemId}`}
-                            onClick={() => openDeepLink(item.deepLink)}
-                          >
-                            <span>
-                              <strong>{item.title}</strong>
-                              <small>{item.displayKey} · {item.typeName}</small>
-                            </span>
-                            <Typography.Text type="secondary">打开</Typography.Text>
-                          </button>
-                        ))
+                        <div className="project-space-personal-work-list" role="list">
+                          {visibleItems.slice(0, 3).map((item) => (
+                            <div key={`${bucket.bucket}:${item.workItemId}`} role="listitem">
+                              <button
+                                type="button"
+                                className="project-space-personal-work-item"
+                                onClick={() => openDeepLink(item.deepLink)}
+                              >
+                                <span>
+                                  <strong>{item.title}</strong>
+                                  <small>{item.displayKey} · {item.typeName}</small>
+                                </span>
+                                <Typography.Text className="project-space-personal-work-open">
+                                  打开
+                                </Typography.Text>
+                              </button>
+                            </div>
+                          ))}
+                        </div>
                       )}
                     </section>
-                    )
-                  })}
-                </div>
-              ) : null}
-              {personalWorkQuery.data
-                && personalWorkQuery.data.buckets.every((bucket) => (
-                  bucket.items.every((item) => !item.availableActions.includes('view'))
-                )) ? (
-                  <Empty
-                    image={Empty.PRESENTED_IMAGE_SIMPLE}
-                    description="当前没有需要你处理、参与或关注的事项"
-                  >
-                    {space.availableActions.includes('view_work_items') ? (
-                      <Button onClick={() => navigate(`/project-spaces/${space.id}/work-items`)}>
-                        浏览团队工作项
-                      </Button>
-                    ) : null}
-                  </Empty>
-                ) : null}
-            </Card>
+                  )
+                })}
+              </div>
+            ) : null}
 
             <Card
               className="content-card project-space-active-types"
-              title={<Space><TagsOutlined />可用工作项</Space>}
+              data-testid="project-space-active-types"
+              title={(
+                <span className="project-space-overview-card-title">
+                  <BuildOutlined />
+                  可用工作项
+                </span>
+              )}
             >
               {typesQuery.isLoading ? <Skeleton active paragraph={{ rows: 2 }} /> : null}
               {typesQuery.isError ? (
@@ -1354,7 +1360,6 @@ function ProjectSpaceOverview({
               ) : null}
               <div className="project-space-active-type-list" aria-label="可用工作项" role="list">
                 {readyTypes.map((type, index) => {
-                  const glyph = (type.icon?.trim() || type.name.slice(0, 1)).slice(0, 2)
                   const canCreate = space.status === 'active'
                     && type.availableActions.includes('create')
                   return (
@@ -1372,68 +1377,144 @@ function ProjectSpaceOverview({
                           `/project-spaces/${space.id}/work-items?typeId=${type.id}${canCreate ? '&create=1' : ''}`,
                         )}
                       >
-                        <span className="work-item-type-glyph" aria-hidden="true">{glyph}</span>
+                        <span className="project-space-active-type-icon" aria-hidden="true">
+                          {overviewWorkItemTypeIcon(type.typeKey)}
+                        </span>
                         <span className="project-space-active-type-copy">
                           <strong>{type.name}</strong>
                           <small>{canCreate ? '可创建新事项' : '查看已有事项'}</small>
                         </span>
-                        {canCreate ? <PlusOutlined aria-hidden="true" /> : <EyeOutlined aria-hidden="true" />}
+                        <span className="project-space-active-type-action" aria-hidden="true">
+                          {canCreate ? <PlusOutlined /> : <EyeOutlined />}
+                        </span>
                       </button>
                     </div>
                   )
                 })}
               </div>
             </Card>
-          </Space>
+          </section>
         ),
         activity: (
-          <Card className="content-card" title="空间动态">
-            {activitiesQuery.isLoading ? <Skeleton active paragraph={{ rows: 4 }} /> : null}
-            {activitiesQuery.isError ? (
-              <Alert
-                type="error"
-                showIcon
-                message="空间动态加载失败"
-                action={<Button size="small" onClick={() => activitiesQuery.refetch()}>重试</Button>}
-              />
-            ) : null}
-            {activitiesQuery.data?.items.length === 0 ? (
-              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="还没有与你相关的空间动态" />
-            ) : null}
-            <div className="project-space-activity-list" role="list">
-              {activitiesQuery.data?.items.map((activity) => (
-                <button
-                  type="button"
-                  className="project-space-activity-item"
-                  key={activity.sequence}
-                  role="listitem"
-                  onClick={() => openDeepLink(activity.deepLink)}
-                >
-                  <span>
-                    <strong>{activity.title}</strong>
-                    <small>{activity.displayKey} · {personalActivityLabel(activity.activityType)}</small>
+          <section
+            className="project-space-overview-panel project-space-activity-boundary"
+            data-testid="project-space-activity-boundary"
+          >
+            <header className="project-space-overview-hero">
+              <span className="project-space-overview-hero-icon" aria-hidden="true">
+                <LineChartOutlined />
+              </span>
+              <span className="project-space-overview-hero-copy">
+                <Typography.Title level={2}>动态与边界</Typography.Title>
+                <Typography.Paragraph>查看空间动态与当前协作边界</Typography.Paragraph>
+              </span>
+            </header>
+
+            <div
+              className="project-space-activity-boundary-grid"
+              data-testid="project-space-activity-boundary-grid"
+            >
+              <Card
+                className="content-card project-space-activity-card"
+                data-testid="project-space-activity-card"
+                title={(
+                  <span className="project-space-overview-card-title">
+                    <span className="project-space-overview-card-title-icon"><LineChartOutlined /></span>
+                    空间动态
                   </span>
-                  <Typography.Text type="secondary">{formatTime(activity.occurredAt)}</Typography.Text>
-                </button>
-              ))}
+                )}
+                extra={activitiesQuery.data ? (
+                  <Typography.Text className="project-space-activity-count">
+                    {activitiesQuery.data.truncated ? '已显示' : '共'} {activitiesQuery.data.items.length} 条
+                  </Typography.Text>
+                ) : null}
+              >
+                {activitiesQuery.isLoading ? <Skeleton active paragraph={{ rows: 8 }} /> : null}
+                {activitiesQuery.isError ? (
+                  <Alert
+                    type="error"
+                    showIcon
+                    message="空间动态加载失败"
+                    action={<Button size="small" onClick={() => activitiesQuery.refetch()}>重试</Button>}
+                  />
+                ) : null}
+                {activitiesQuery.data?.items.length === 0 ? (
+                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="还没有与你相关的空间动态" />
+                ) : null}
+                {activitiesQuery.data?.items.length ? (
+                  <Timeline
+                    className="project-space-activity-list"
+                    items={activitiesQuery.data.items.map((activity) => ({
+                      content: (
+                        <button
+                          type="button"
+                          className="project-space-activity-item"
+                          onClick={() => openDeepLink(activity.deepLink)}
+                        >
+                          <span>
+                            <strong>{activity.title}</strong>
+                            <small>{activity.displayKey} · {personalActivityLabel(activity.activityType)}</small>
+                          </span>
+                          <Typography.Text type="secondary">
+                            {formatTime(activity.occurredAt)}
+                          </Typography.Text>
+                        </button>
+                      ),
+                    }))}
+                  />
+                ) : null}
+              </Card>
+              <Card
+                className="content-card project-space-boundary-card"
+                data-testid="project-space-boundary-card"
+                title={(
+                  <span className="project-space-overview-card-title">
+                    <span className="project-space-overview-card-title-icon"><SafetyCertificateOutlined /></span>
+                    协作边界
+                  </span>
+                )}
+              >
+                <div className="project-space-boundary-facts">
+                  <div>
+                    <span className="project-space-boundary-fact-icon"><UserOutlined /></span>
+                    <span>当前角色</span>
+                    <strong>{roleLabel(space.currentUserRole)}</strong>
+                  </div>
+                  <div>
+                    <span className="project-space-boundary-fact-icon"><EyeOutlined /></span>
+                    <span>内容可见性</span>
+                    <strong>{visibilityLabel(space.visibility)}</strong>
+                  </div>
+                  <div>
+                    <span className="project-space-boundary-fact-icon"><LockOutlined /></span>
+                    <span>空间状态</span>
+                    <strong><StatusBadge status={space.status} /></strong>
+                  </div>
+                </div>
+                <Alert
+                  className="project-space-boundary-note"
+                  type="info"
+                  showIcon
+                  title="这里是团队成员的日常协作入口。企业治理、全局风险和审计检索只在管理后台提供。"
+                />
+              </Card>
             </div>
-          </Card>
-        ),
-        'collaboration-boundary': (
-          <Card className="content-card" title="协作边界">
-            <div className="project-space-fact-list">
-              <div><span>当前角色</span><strong>{roleLabel(space.currentUserRole)}</strong></div>
-              <div><span>内容可见性</span><strong>{visibilityLabel(space.visibility)}</strong></div>
-              <div><span>空间状态</span><strong>{statusLabel(space.status)}</strong></div>
-            </div>
-            <Typography.Paragraph type="secondary">
-              这里是团队成员的日常协作入口。企业治理、全局风险和审计检索只在管理后台提供。
-            </Typography.Paragraph>
-          </Card>
+          </section>
         ),
       }}
     />
   )
+}
+
+function overviewWorkItemTypeIcon(typeKey: string): ReactNode {
+  const normalized = typeKey.toLowerCase()
+  if (normalized.includes('requirement')) return <FileTextOutlined />
+  if (normalized.includes('task')) return <CarryOutOutlined />
+  if (normalized.includes('bug')) return <BugOutlined />
+  if (normalized.includes('iteration')) return <SyncOutlined />
+  if (normalized.includes('release') || normalized.includes('version')) return <FlagOutlined />
+  if (normalized.includes('project')) return <ProjectOutlined />
+  return <TagsOutlined />
 }
 
 function ProjectSpaceSettingsPanel({
@@ -1454,8 +1535,16 @@ function ProjectSpaceSettingsPanel({
   const location = useLocation()
   const sessionScope = useSessionScope()
   const [form] = Form.useForm<SettingsForm>()
-  const selectedConfigurationTypeId = new URLSearchParams(location.search)
-    .get('typeId') ?? undefined
+  const settingsSearch = new URLSearchParams(location.search)
+  const selectedConfigurationTypeId = settingsSearch.get('typeId') ?? undefined
+  const requestedWorkModelTab = settingsSearch.get('workModelTab')
+  const selectedWorkModelTab = isProjectSpaceWorkModelTab(requestedWorkModelTab)
+    ? requestedWorkModelTab
+    : 'type-information'
+  const [selectedConfigurationField, setSelectedConfigurationField] = useState<{
+    typeId: string
+    fieldId?: string
+  }>()
 
   const selectConfigurationType = useCallback((
     typeId: string,
@@ -1470,20 +1559,18 @@ function ProjectSpaceSettingsPanel({
     if (target) navigate(target, { replace: options.replace })
   }, [location.hash, location.search, navigate, space.id])
 
-  const openTypeConfiguration = useCallback((
-    typeId: string,
-    destination: 'fields' | 'layouts',
-  ) => {
+  const selectWorkModelTab = useCallback((tab: ProjectSpaceWorkModelTab) => {
+    const next = patchProjectSpaceSearch(location.search, {
+      panel: 'work-model',
+      workModelTab: tab,
+    })
     const target = projectSpaceLocationWithContext(
-      `/project-spaces/${space.id}/types/${typeId}/${destination}`,
-      patchProjectSpaceSearch('', {
-        source: 'settings-work-model',
-        panel: destination === 'fields' ? 'field-catalog' : 'layout-editor',
-        typeId,
-      }),
+      `/project-spaces/${space.id}/settings`,
+      next,
+      location.hash,
     )
-    if (target) navigate(target)
-  }, [navigate, space.id])
+    if (target) navigate(target, { replace: true })
+  }, [location.hash, location.search, navigate, space.id])
 
   useEffect(() => {
     const panel = new URLSearchParams(location.search).get('panel')
@@ -1546,30 +1633,37 @@ function ProjectSpaceSettingsPanel({
       ariaLabel="空间设置内容导航"
       panels={{
         'management-home': (
-          <ProjectSpaceManagementHome space={space} mode={mode} />
-        ),
-        general: (
-          <Card className="content-card" title="基本信息" loading={settingsQuery.isLoading}>
-            <Form<SettingsForm> form={form} layout="vertical" onFinish={(values) => updateMutation.mutate({ ...values, name: values.name.trim() })}>
-              <Form.Item name="name" label="空间名称" rules={[{ required: true, whitespace: true }, { max: 128 }]}><Input /></Form.Item>
-              <Form.Item name="visibility" label="可见性"><Segmented block options={[{ label: '仅成员可见', value: 'private' }, { label: '企业内可发现', value: 'workspace' }]} /></Form.Item>
-              <Form.Item name="description" label="空间说明" rules={[{ max: 2000 }]}><Input.TextArea rows={4} /></Form.Item>
-              <Button type="primary" htmlType="submit" loading={updateMutation.isPending} disabled={space.status !== 'active'}>保存设置</Button>
-            </Form>
-          </Card>
-        ),
-        lifecycle: (
-          <Card className="content-card project-space-danger-card" title="启用、停用与归档">
-            <div className="project-space-lifecycle-row">
-              <div><strong>当前状态</strong><p>{statusDescription(space.status)}</p></div>
-              <StatusBadge status={space.status} />
-            </div>
-            <Space wrap>
-              {space.availableActions.includes('restore') ? <Button icon={<ReloadOutlined />} className="project-space-restore-button" onClick={() => confirmTransition('restore')}>恢复</Button> : null}
-              {space.availableActions.includes('disable') ? <Button danger icon={<LockOutlined />} onClick={() => confirmTransition('disable')}>停用</Button> : null}
-              {space.availableActions.includes('archive') ? <Button danger icon={<InboxOutlined />} onClick={() => confirmTransition('archive')}>归档</Button> : null}
-            </Space>
-          </Card>
+          <ProjectSpaceManagementHome
+            space={space}
+            mode={mode}
+            basicInformation={(
+              <Card
+                className="content-card project-space-management-basic-card"
+                title={<span className="project-space-management-card-title">A. 基础信息 <FormOutlined /></span>}
+                loading={settingsQuery.isLoading}
+                data-testid="project-space-basic-information"
+              >
+                <Form<SettingsForm>
+                  form={form}
+                  className="project-space-management-basic-form"
+                  labelAlign="left"
+                  labelCol={{ flex: '88px' }}
+                  wrapperCol={{ flex: 1 }}
+                  onFinish={(values) => updateMutation.mutate({ ...values, name: values.name.trim() })}
+                >
+                  <Form.Item name="name" label="空间名称" rules={[{ required: true, whitespace: true }, { max: 128 }]}><Input aria-label="空间名称" /></Form.Item>
+                  <Form.Item name="visibility" label="可见性"><Segmented aria-label="可见性" block options={[{ label: '仅成员可见', value: 'private' }, { label: '企业内可发现', value: 'workspace' }]} /></Form.Item>
+                  <Form.Item name="description" label="空间说明" rules={[{ max: 2000 }]}><Input.TextArea aria-label="空间说明" rows={3} /></Form.Item>
+                  <Space wrap size={12} className="project-space-management-basic-actions">
+                    <Button type="primary" htmlType="submit" loading={updateMutation.isPending} disabled={space.status !== 'active'}>保存设置</Button>
+                    {space.availableActions.includes('restore') ? <Button htmlType="button" loading={transitionMutation.isPending} icon={<ReloadOutlined />} className="project-space-restore-button" onClick={() => confirmTransition('restore')}>恢复</Button> : null}
+                    {space.availableActions.includes('disable') ? <Button htmlType="button" loading={transitionMutation.isPending} danger icon={<LockOutlined />} onClick={() => confirmTransition('disable')}>停用</Button> : null}
+                    {space.availableActions.includes('archive') ? <Button htmlType="button" loading={transitionMutation.isPending} danger icon={<InboxOutlined />} onClick={() => confirmTransition('archive')}>归档</Button> : null}
+                  </Space>
+                </Form>
+              </Card>
+            )}
+          />
         ),
         'work-model': (
           <Space
@@ -1578,29 +1672,48 @@ function ProjectSpaceSettingsPanel({
             style={{ width: '100%' }}
             data-testid="project-space-advanced-settings"
           >
-            <Card className="content-card" title="工作模型">
-              <Typography.Paragraph type="secondary">
-                {PROJECT_SPACE_ADVANCED_CONFIGURATION.find(
-                  (group) => group.key === 'work-model',
-                )?.description}
-              </Typography.Paragraph>
-            </Card>
             <ProjectWorkItemTypesPanel
               space={space}
               selectedTypeId={selectedConfigurationTypeId}
               autoSelectFirst={false}
               onSelectType={selectConfigurationType}
-              onConfigureFields={(typeId) => openTypeConfiguration(typeId, 'fields')}
-              onConfigureLayouts={(typeId) => openTypeConfiguration(typeId, 'layouts')}
+              selectedDetailTab={selectedWorkModelTab}
+              onSelectDetailTab={selectWorkModelTab}
+              embeddedConfiguration={selectedConfigurationTypeId ? {
+                fields: (
+                  <ProjectWorkItemFieldsPanel
+                    key={`settings-fields:${selectedConfigurationTypeId}`}
+                    space={space}
+                    typeId={selectedConfigurationTypeId}
+                    selectedFieldId={selectedConfigurationField?.typeId === selectedConfigurationTypeId
+                      ? selectedConfigurationField.fieldId
+                      : undefined}
+                    embedded
+                    onSelectField={(fieldId) => setSelectedConfigurationField({
+                      typeId: selectedConfigurationTypeId,
+                      fieldId,
+                    })}
+                  />
+                ),
+                layouts: (
+                  <ProjectWorkItemLayoutsPanel
+                    key={`settings-layouts:${selectedConfigurationTypeId}`}
+                    space={space}
+                    typeId={selectedConfigurationTypeId}
+                    embedded
+                  />
+                ),
+                flowAccess: (
+                  <ProjectWorkItemConfigurationDraftPanel
+                    key={`settings-flow-access:${selectedConfigurationTypeId}`}
+                    spaceId={space.id}
+                    typeId={selectedConfigurationTypeId}
+                    readOnly={space.status !== 'active'}
+                  />
+                ),
+              } : undefined}
             />
           </Space>
-        ),
-        'flow-access': (
-          <ProjectSpaceFlowAccessSettings
-            space={space}
-            selectedTypeId={selectedConfigurationTypeId}
-            onSelectType={selectConfigurationType}
-          />
         ),
         'automation-collaboration': (
           <Space direction="vertical" size={16} style={{ width: '100%' }}>
@@ -1651,99 +1764,14 @@ function ProjectSpaceSettingsPanel({
   )
 }
 
-function ProjectSpaceFlowAccessSettings({
-  space,
-  selectedTypeId,
-  onSelectType,
-}: {
-  space: UserProjectSpace
-  selectedTypeId?: string
-  onSelectType: (
-    typeId: string,
-    options?: Readonly<{ replace?: boolean }>,
-  ) => void
-}) {
-  const typesQuery = useQuery({
-    queryKey: workItemTypeKeys.configuration(space.id, 'all'),
-    queryFn: () => listConfiguredWorkItemTypes(space.id),
-    retry: false,
-    staleTime: 5 * 60_000,
-  })
-  const types = useMemo(() => typesQuery.data?.items ?? [], [typesQuery.data])
-  const selectedType = types.find((type) => type.id === selectedTypeId)
-  const effectiveType = selectedType ?? (types.length === 1 ? types[0] : undefined)
-
-  useEffect(() => {
-    if (!effectiveType || effectiveType.id === selectedTypeId) return
-    onSelectType(effectiveType.id, { replace: true })
-  }, [effectiveType, onSelectType, selectedTypeId])
-
-  return (
-    <Space
-      direction="vertical"
-      size={16}
-      style={{ width: '100%' }}
-      data-testid="project-space-flow-access-settings"
-    >
-      <Card className="content-card" title="流程与权限">
-        <Typography.Paragraph type="secondary">
-          {PROJECT_SPACE_ADVANCED_CONFIGURATION.find(
-            (group) => group.key === 'flow-access',
-          )?.description}
-        </Typography.Paragraph>
-        <Space direction="vertical" size={6} style={{ width: '100%' }}>
-          <Typography.Text strong>当前任务模板</Typography.Text>
-          <Select
-            aria-label="当前任务模板"
-            showSearch
-            optionFilterProp="label"
-            loading={typesQuery.isLoading}
-            disabled={typesQuery.isError || types.length === 0}
-            value={effectiveType?.id}
-            placeholder="选择要配置的任务模板"
-            options={types.map((type) => ({
-              value: type.id,
-              label: `${type.name}（${type.typeKey}）`,
-            }))}
-            onChange={(typeId) => onSelectType(typeId)}
-          />
-        </Space>
-      </Card>
-      {typesQuery.isLoading ? (
-        <Card className="content-card"><Skeleton active paragraph={{ rows: 6 }} /></Card>
-      ) : null}
-      {typesQuery.isError ? (
-        <Alert
-          type="error"
-          showIcon
-          message="任务模板加载失败"
-          description="当前无法加载流程与权限配置，请重试。"
-          action={<Button size="small" onClick={() => typesQuery.refetch()}>重试</Button>}
-        />
-      ) : null}
-      {!typesQuery.isLoading && !typesQuery.isError && types.length === 0 ? (
-        <Empty description="请先在工作模型中创建任务模板" />
-      ) : null}
-      {!typesQuery.isLoading && !typesQuery.isError && types.length > 1 && !effectiveType ? (
-        <Empty description="请选择一个任务模板以查看流程、权限和发布配置" />
-      ) : null}
-      {effectiveType ? (
-        <ProjectWorkItemConfigurationDraftPanel
-          spaceId={space.id}
-          typeId={effectiveType.id}
-          readOnly={space.status !== 'active'}
-        />
-      ) : null}
-    </Space>
-  )
-}
-
 function ProjectSpaceManagementHome({
   space,
   mode,
+  basicInformation,
 }: {
   space: UserProjectSpace
   mode: ProjectSpaceExperienceMode
+  basicInformation: ReactNode
 }) {
   const navigate = useNavigate()
   const sessionScope = useSessionScope()
@@ -1766,9 +1794,24 @@ function ProjectSpaceManagementHome({
   const openSettingsPanel = (panel: string) => navigate(
     `/project-spaces/${space.id}/settings?panel=${panel}&source=management-home`,
   )
+  const openBasicInformation = () => {
+    document.querySelector('[data-testid="project-space-basic-information"]')
+      ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+  const recentEntries = [
+    { key: 'general', label: '基本信息' },
+    ...recentPanels.map((panel) => ({
+      key: panel,
+      label: PROJECT_SPACE_SETTINGS_PANEL_LABELS[panel],
+    })),
+    { key: 'work-model', label: '工作模型' },
+    { key: 'scenario-templates', label: '场景模板' },
+  ].filter((entry, index, entries) => (
+    Boolean(entry.label) && entries.findIndex((candidate) => candidate.key === entry.key) === index
+  )).slice(0, 4)
 
   return (
-    <Space direction="vertical" size={16} style={{ width: '100%' }}>
+    <div className="project-space-management-home" data-testid="project-space-management-home">
       <Alert
         type="info"
         showIcon
@@ -1784,8 +1827,9 @@ function ProjectSpaceManagementHome({
           action={<Button size="small" onClick={() => openSettingsPanel('work-model')}>开始预检</Button>}
         />
       ) : null}
-      <div className="project-space-management-home-grid">
-        <Card title="配置健康" loading={typesQuery.isLoading}>
+      <div className="project-space-management-dashboard-grid">
+        {basicInformation}
+        <Card title="B. 配置健康" loading={typesQuery.isLoading}>
           {typesQuery.isError ? (
             <Alert
               type="error"
@@ -1794,14 +1838,14 @@ function ProjectSpaceManagementHome({
               action={<Button size="small" onClick={() => typesQuery.refetch()}>重试</Button>}
             />
           ) : (
-            <div className="project-space-fact-list">
-              <div><span>可用任务模板</span><strong>{readyTypes.length}</strong></div>
-              <div><span>待发布配置</span><strong>{pendingTypes.length}</strong></div>
-              <div><span>空间成员</span><strong>{space.memberCount}</strong></div>
+            <div className="project-space-management-health-list">
+              <div><FileDoneOutlined /><span>可用任务模板</span><strong>{readyTypes.length}</strong></div>
+              <div><RocketOutlined /><span>待发布配置</span><strong>{pendingTypes.length}</strong></div>
+              <div><TeamOutlined /><span>空间成员</span><strong>{space.memberCount}</strong></div>
             </div>
           )}
         </Card>
-        <Card title="配置待办">
+        <Card title="C. 配置待办">
           {pendingTypes.length === 0 ? (
             <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="没有待发布的任务模板" />
           ) : (
@@ -1810,8 +1854,9 @@ function ProjectSpaceManagementHome({
                 <Button
                   block
                   key={type.id}
+                  icon={<RocketOutlined />}
                   onClick={() => navigate(
-                    `/project-spaces/${space.id}/settings?panel=flow-access&typeId=${type.id}&source=management-home`,
+                    `/project-spaces/${space.id}/settings?panel=work-model&workModelTab=flow-access&typeId=${type.id}&source=management-home`,
                   )}
                 >
                   发布“{type.name}”的配置
@@ -1820,32 +1865,26 @@ function ProjectSpaceManagementHome({
             </Space>
           )}
         </Card>
-        <Card title="最近入口">
-          {recentPanels.length === 0 ? (
-            <Typography.Text type="secondary">使用配置后，最近入口会显示在这里。</Typography.Text>
-          ) : (
-            <Space wrap>
-              {recentPanels.map((panel) => (
-                <Button key={panel} onClick={() => openSettingsPanel(panel)}>
-                  {PROJECT_SPACE_SETTINGS_PANEL_LABELS[panel]}
-                </Button>
-              ))}
-            </Space>
-          )}
-        </Card>
-        <Card title="危险操作">
-          <Typography.Paragraph>
-            当前状态：<strong>{statusLabel(space.status)}</strong>
-          </Typography.Paragraph>
-          <Typography.Paragraph type="secondary">
-            停用与归档会影响所有成员，操作前请确认交接与数据保留安排。
-          </Typography.Paragraph>
-          <Button danger onClick={() => openSettingsPanel('lifecycle')}>
-            查看启用、停用与归档
-          </Button>
+        <Card title="D. 最近入口">
+          <div className="project-space-management-recent-grid">
+            {recentEntries.map((entry) => (
+              <button
+                type="button"
+                key={entry.key}
+                onClick={() => entry.key === 'general'
+                  ? openBasicInformation()
+                  : openSettingsPanel(entry.key)}
+              >
+                <span className="project-space-management-recent-icon">
+                  {managementPanelIcon(entry.key)}
+                </span>
+                <strong>{entry.label}</strong>
+              </button>
+            ))}
+          </div>
         </Card>
       </div>
-      <Card title="全部管理入口">
+      <Card title="F. 全部管理入口">
         <div className="project-space-management-entry-grid">
           {PROJECT_SPACE_ADVANCED_CONFIGURATION.map((group) => (
             <button
@@ -1853,18 +1892,37 @@ function ProjectSpaceManagementHome({
               key={group.key}
               onClick={() => openSettingsPanel(group.key)}
             >
-              <strong>{group.label}</strong>
-              <span>{group.description}</span>
+              <span className={`project-space-management-entry-icon is-${group.key}`}>
+                {managementPanelIcon(group.key)}
+              </span>
+              <span className="project-space-management-entry-copy">
+                <strong>{group.label}</strong>
+                <span>{group.description}</span>
+              </span>
+              <RightOutlined className="project-space-management-entry-arrow" />
             </button>
           ))}
           <button type="button" onClick={() => navigate(`/project-spaces/${space.id}/members`)}>
-            <strong>成员与邀请</strong>
-            <span>调整成员角色、邀请状态与空间协作边界。</span>
+            <span className="project-space-management-entry-icon is-members"><TeamOutlined /></span>
+            <span className="project-space-management-entry-copy">
+              <strong>成员与邀请</strong>
+              <span>调整成员角色、邀请状态与空间协作边界。</span>
+            </span>
+            <RightOutlined className="project-space-management-entry-arrow" />
           </button>
         </div>
       </Card>
-    </Space>
+    </div>
   )
+}
+
+function managementPanelIcon(panel: string): ReactNode {
+  if (panel === 'general') return <FormOutlined />
+  if (panel === 'work-model') return <AppstoreOutlined />
+  if (panel === 'automation-collaboration') return <RobotOutlined />
+  if (panel === 'metrics-governance') return <BarChartOutlined />
+  if (panel === 'scenario-templates') return <ProjectOutlined />
+  return <SettingOutlined />
 }
 
 function ProjectSpaceLoadError({ error, onBack }: { error: Error; onBack: () => void }) {
@@ -1894,13 +1952,10 @@ function sortRecentSpaces(
 }
 
 const PROJECT_SPACE_SETTINGS_PANEL_LABELS: Readonly<Record<string, string>> = {
-  general: '基本信息',
   'work-model': '工作模型',
-  'flow-access': '流程与权限',
   'automation-collaboration': '自动化与协同',
   'metrics-governance': '度量治理',
   'scenario-templates': '场景模板',
-  lifecycle: '启用、停用与归档',
 }
 
 function projectSpaceSettingsRecentKey(scope: string, spaceId: string) {
@@ -1988,12 +2043,6 @@ function createStartingModeImpact(
     { label: '创建时', value: '保留平台基础任务模板' },
     { label: '后续动作', value: '按依赖配置并明确发布' },
   ]
-}
-
-function statusDescription(status: string) {
-  if (status === 'disabled') return '空间保留数据，但成员不能继续写入或调整成员。'
-  if (status === 'archived') return '空间作为历史记录只读保留，可由 owner 或管理员恢复。'
-  return '空间正常运行，成员可以按角色参与协作。'
 }
 
 function defaultProjectSpacePath(space: UserProjectSpace) {

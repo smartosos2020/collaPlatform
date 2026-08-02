@@ -21,7 +21,6 @@ export type ProjectSpaceSurfaceOwner = Readonly<{
 export const PROJECT_SPACE_SURFACE_OWNERS = [
   { panel: 'member-home', view: 'overview' },
   { panel: 'activity', view: 'overview' },
-  { panel: 'collaboration-boundary', view: 'overview' },
   { panel: 'work-item-collection', view: 'work-items' },
   { panel: 'project-detail', view: 'management' },
   { panel: 'project-plan', view: 'management' },
@@ -39,13 +38,10 @@ export const PROJECT_SPACE_SURFACE_OWNERS = [
   { panel: 'member-list', view: 'members' },
   { panel: 'invitations', view: 'members' },
   { panel: 'management-home', view: 'settings' },
-  { panel: 'general', view: 'settings' },
   { panel: 'work-model', view: 'settings' },
-  { panel: 'flow-access', view: 'settings' },
   { panel: 'automation-collaboration', view: 'settings' },
   { panel: 'metrics-governance', view: 'settings' },
   { panel: 'scenario-templates', view: 'settings' },
-  { panel: 'lifecycle', view: 'settings' },
 ] as const satisfies readonly ProjectSpaceSurfaceOwner[]
 
 const OWNER_BY_PANEL = new Map<string, ProjectSpaceSurfaceOwner>(
@@ -54,6 +50,10 @@ const OWNER_BY_PANEL = new Map<string, ProjectSpaceSurfaceOwner>(
 
 const LEGACY_PANEL_COMPATIBILITY = new Map<string, string>([
   ['active-types', 'member-home'],
+  ['collaboration-boundary', 'activity'],
+  ['general', 'management-home'],
+  ['lifecycle', 'management-home'],
+  ['flow-access', 'work-model'],
   ['cross-space-grants', 'automation-collaboration'],
   ['automation-rules', 'automation-collaboration'],
   ['automation-execution', 'automation-collaboration'],
@@ -91,6 +91,9 @@ export function canonicalProjectSpaceSurfaceLocation(input: Readonly<{
   const nextSearch = patchProjectSpaceSearch(search, {
     panel: owner.panel,
     source: search.get('source') ?? 'surface-compat',
+    workModelTab: requestedPanel === 'flow-access'
+      ? 'flow-access'
+      : undefined,
     automationPanel: owner.panel === 'automation-collaboration'
       ? requestedPanel
       : undefined,

@@ -5,9 +5,19 @@ export const PROJECT_SPACE_QUERY_KEYS = [
   'metricConfig',
   'automationPanel',
   'typeId',
+  'workModelTab',
   'create',
   'savedViewId',
 ] as const
+
+export const PROJECT_SPACE_WORK_MODEL_TABS = [
+  'type-information',
+  'field-configuration',
+  'page-layout',
+  'flow-access',
+] as const
+
+export type ProjectSpaceWorkModelTab = (typeof PROJECT_SPACE_WORK_MODEL_TABS)[number]
 
 export type ProjectSpaceQueryKey = (typeof PROJECT_SPACE_QUERY_KEYS)[number]
 export type ProjectSpaceQueryPatch = Partial<
@@ -175,8 +185,13 @@ export function isProjectSpaceQueryKey(value: string): value is ProjectSpaceQuer
   return PROJECT_SPACE_QUERY_KEY_SET.has(value)
 }
 
+export function isProjectSpaceWorkModelTab(value: string | null): value is ProjectSpaceWorkModelTab {
+  return PROJECT_SPACE_WORK_MODEL_TABS.some((tab) => tab === value)
+}
+
 function validProjectSpaceQueryValue(key: ProjectSpaceQueryKey, value: string): boolean {
   if (key === 'create') return value === '1'
+  if (key === 'workModelTab') return isProjectSpaceWorkModelTab(value)
   return TOKEN_VALUE.test(value)
 }
 

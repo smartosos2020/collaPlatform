@@ -437,7 +437,7 @@ export function resolveOnboardingOwnerPath(
       || candidate.includes('validat')
       || candidate.includes('校验')
     ) {
-      return `/project-spaces/${spaceId}/settings?panel=flow-access`
+      return `/project-spaces/${spaceId}/settings?panel=work-model&workModelTab=flow-access`
     }
     if (
       candidate.includes('scenario')
