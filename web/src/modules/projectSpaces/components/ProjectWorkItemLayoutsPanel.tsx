@@ -1297,8 +1297,11 @@ function node(
 }
 
 function fieldNode(field: ConfiguredWorkItemField, parentId: string, sortOrder: number): WorkItemLayoutNode {
+  const id = crypto.randomUUID()
+  const suffix = id.replaceAll('-', '').slice(0, 10)
+  const baseKey = `field_${field.fieldKey}`.slice(0, 64 - suffix.length - 1)
   return {
-    ...node(crypto.randomUUID(), parentId, `field_${field.fieldKey}`, 'field', sortOrder, { title: field.name }),
+    ...node(id, parentId, `${baseKey}_${suffix}`, 'field', sortOrder, { title: field.name }),
     fieldId: field.id,
     fieldKey: field.fieldKey,
   }
