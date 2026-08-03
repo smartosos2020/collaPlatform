@@ -1,6 +1,6 @@
 import { Alert, DatePicker, Input, InputNumber, Select, Switch, Tag, Typography } from 'antd'
 import dayjs from 'dayjs'
-import type { ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 
 import { safeExternalHref } from '../../../shared/url/safeUrl'
 import type {
@@ -354,11 +354,17 @@ function LayoutPreviewNode({
     )
   }
   const title = String(node.config.title ?? node.nodeKey)
+  const columns = layoutContainerColumns(node.config.columns)
   return (
     <EditorNodeFrame node={node} label={`${previewNodeLabel(node.nodeType)} · ${title}`} editor={editor}>
       <section className={`work-item-layout-preview-group is-${node.nodeType}`} aria-labelledby={`group-${node.id}`}>
         <Typography.Title id={`group-${node.id}`} level={5}>{title}</Typography.Title>
-        <div className="work-item-layout-preview-children">
+        <div
+          className="work-item-layout-preview-children"
+          style={node.nodeType === 'section' || node.nodeType === 'tab'
+            ? { '--work-item-layout-columns': columns } as CSSProperties
+            : undefined}
+        >
           {nested.map((child) => (
             <LayoutPreviewNode
               key={child.id}
@@ -429,6 +435,11 @@ function EditorNodeFrame({
 
 function previewNodeLabel(type: WorkItemLayoutNode['nodeType']) {
   return ({ section: '区块', tab: '标签页', column: '分栏', field: '字段', relation: '关系控件', summary: '摘要' } as const)[type]
+}
+
+function layoutContainerColumns(value: unknown) {
+  const columns = Number(value)
+  return Number.isInteger(columns) && columns >= 1 && columns <= 4 ? columns : 2
 }
 
 function ReadOnlyValue({ field, value }: { field: RenderableField; value: unknown }) {

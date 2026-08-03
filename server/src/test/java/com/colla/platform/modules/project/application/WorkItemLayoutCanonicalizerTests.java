@@ -50,6 +50,52 @@ class WorkItemLayoutCanonicalizerTests {
     }
 
     @Test
+    void containerColumnsDefaultToTwoAndAcceptAtMostFour() {
+        UUID sectionId = UUID.randomUUID();
+        UUID tabId = UUID.randomUUID();
+        LayoutNode section = node(sectionId, null, "main", "section", null, null, 0);
+        LayoutNode tab = new LayoutNode(
+            tabId,
+            null,
+            "details_tab",
+            "tab",
+            null,
+            null,
+            1,
+            objectMapper.createObjectNode().put("columns", 4),
+            objectMapper.createObjectNode().put("schemaVersion", 1)
+        );
+
+        var result = canonicalizer.canonicalize("detail", List.of(section, tab), List.of());
+
+        assertEquals(2, result.nodes().getFirst().config().path("columns").asInt());
+        assertEquals(4, result.nodes().getLast().config().path("columns").asInt());
+    }
+
+    @Test
+    void containerColumnsOutsideOneToFourAreRejected() {
+        UUID sectionId = UUID.randomUUID();
+        LayoutNode section = new LayoutNode(
+            sectionId,
+            null,
+            "main",
+            "section",
+            null,
+            null,
+            0,
+            objectMapper.createObjectNode().put("columns", 5),
+            objectMapper.createObjectNode().put("schemaVersion", 1)
+        );
+
+        WorkItemLayoutException failure = assertThrows(
+            WorkItemLayoutException.class,
+            () -> canonicalizer.canonicalize("detail", List.of(section), List.of())
+        );
+
+        assertEquals("INVALID_LAYOUT_NODE_CONFIG", failure.code());
+    }
+
+    @Test
     void invalidGraphsAndDuplicateFieldReferencesFailClosed() {
         UUID fieldId = UUID.randomUUID();
         UUID missingParent = UUID.randomUUID();

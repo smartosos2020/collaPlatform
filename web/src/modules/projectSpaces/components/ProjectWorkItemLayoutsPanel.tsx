@@ -891,6 +891,7 @@ function NodeProperties({
   const [relationKey, setRelationKey] = useState(String(selected.config.relationKey ?? 'related'))
   const [relationMode, setRelationMode] = useState(String(selected.config.mode ?? 'list'))
   const [relationMaxItems, setRelationMaxItems] = useState(Number(selected.config.maxItems ?? 50))
+  const [columns, setColumns] = useState(layoutContainerColumns(selected.config.columns))
   const initialCondition = parseConditionDrafts(selected.visibilityCondition.expression)
   const [conditionJoin, setConditionJoin] = useState<'all' | 'any'>(initialCondition.join)
   const [conditionNegated, setConditionNegated] = useState(initialCondition.negated)
@@ -940,7 +941,11 @@ function NodeProperties({
         listFallback: true,
         keyboardNavigation: true,
       }
-      : { ...selected.config, title: title.trim() || nodeLabel(selected.nodeType) }
+      : {
+        ...selected.config,
+        title: title.trim() || nodeLabel(selected.nodeType),
+        ...(selected.nodeType === 'section' || selected.nodeType === 'tab' ? { columns } : {}),
+      }
     onSave({ ...selected, config, visibilityCondition })
   }
 
@@ -949,6 +954,16 @@ function NodeProperties({
       <label>节点类型<Input value={nodeLabel(selected.nodeType)} disabled /></label>
       <label>永久键<Input value={selected.nodeKey} disabled /></label>
       <label>显示名称<Input value={title} maxLength={128} onChange={(event) => setTitle(event.target.value)} /></label>
+      {selected.nodeType === 'section' || selected.nodeType === 'tab' ? (
+        <label>
+          列数
+          <Select
+            value={columns}
+            options={[1, 2, 3, 4].map((value) => ({ value, label: `${value} 列` }))}
+            onChange={setColumns}
+          />
+        </label>
+      ) : null}
       {selected.nodeType === 'relation' ? (
         <>
           <label>
@@ -1316,6 +1331,11 @@ function nodeLabel(type: WorkItemLayoutNodeType) {
 
 function nodeTitle(item: WorkItemLayoutNode) {
   return String(item.config.title ?? item.fieldKey ?? item.nodeKey)
+}
+
+function layoutContainerColumns(value: unknown) {
+  const columns = Number(value)
+  return Number.isInteger(columns) && columns >= 1 && columns <= 4 ? columns : 2
 }
 
 function typedConditionValue(fieldType: string, operator: string | undefined, value: string): unknown {

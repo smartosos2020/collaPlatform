@@ -14,6 +14,8 @@ public final class WorkItemLayoutModels {
     public static final int MAX_NODES = 120;
     public static final int MAX_POLICIES = 120;
     public static final int MAX_DEPTH = 4;
+    public static final int MIN_LAYOUT_COLUMNS = 1;
+    public static final int MAX_LAYOUT_COLUMNS = 4;
     public static final int MAX_COLUMNS_PER_PARENT = 4;
     private static final Pattern STABLE_KEY = Pattern.compile("[a-z][a-z0-9_]*");
 

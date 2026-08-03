@@ -2,8 +2,10 @@ package com.colla.platform.modules.project.application;
 
 import static com.colla.platform.modules.project.domain.WorkItemLayoutModels.MAX_COLUMNS_PER_PARENT;
 import static com.colla.platform.modules.project.domain.WorkItemLayoutModels.MAX_DEPTH;
+import static com.colla.platform.modules.project.domain.WorkItemLayoutModels.MAX_LAYOUT_COLUMNS;
 import static com.colla.platform.modules.project.domain.WorkItemLayoutModels.MAX_NODES;
 import static com.colla.platform.modules.project.domain.WorkItemLayoutModels.MAX_POLICIES;
+import static com.colla.platform.modules.project.domain.WorkItemLayoutModels.MIN_LAYOUT_COLUMNS;
 import static com.colla.platform.modules.project.domain.WorkItemLayoutModels.RELATION_CONTROL_SCHEMA_VERSION;
 import static com.colla.platform.modules.project.domain.WorkItemLayoutModels.failure;
 import static com.colla.platform.modules.project.domain.WorkItemLayoutModels.stableKey;
@@ -100,9 +102,11 @@ public class WorkItemLayoutCanonicalizer {
             if (value.sortOrder() < 0) {
                 throw failure("INVALID_LAYOUT_NODE", "Layout node sort order must be non-negative");
             }
-            JsonNode config = type == NodeType.relation
-                ? relationConfig(layoutKind, value.config())
-                : object(value.config(), "INVALID_LAYOUT_NODE", "Layout node config");
+            JsonNode config = switch (type) {
+                case relation -> relationConfig(layoutKind, value.config());
+                case section, tab -> containerConfig(value.config());
+                default -> object(value.config(), "INVALID_LAYOUT_NODE", "Layout node config");
+            };
             JsonNode condition = conditionDsl.canonicalize(value.visibilityCondition());
             UUID fieldId = value.fieldId();
             String fieldKey = value.fieldKey() == null
@@ -311,6 +315,24 @@ public class WorkItemLayoutCanonicalizer {
         config.put("collapsedByDefault", config.path("collapsedByDefault").asBoolean(false));
         config.put("listFallback", config.path("listFallback").asBoolean(true));
         config.put("keyboardNavigation", config.path("keyboardNavigation").asBoolean(true));
+        return canonicalizer.sort(config);
+    }
+
+    private JsonNode containerConfig(JsonNode requested) {
+        ObjectNode config = (ObjectNode) object(
+            requested, "INVALID_LAYOUT_NODE", "Layout container config"
+        );
+        JsonNode requestedColumns = config.get("columns");
+        int columns = requestedColumns == null ? 2 : requestedColumns.asInt(-1);
+        if (requestedColumns != null && (!requestedColumns.isInt()
+            || columns < MIN_LAYOUT_COLUMNS || columns > MAX_LAYOUT_COLUMNS)) {
+            throw failure(
+                "INVALID_LAYOUT_NODE_CONFIG",
+                "Layout container columns must be between " + MIN_LAYOUT_COLUMNS
+                    + " and " + MAX_LAYOUT_COLUMNS
+            );
+        }
+        config.put("columns", columns);
         return canonicalizer.sort(config);
     }
 

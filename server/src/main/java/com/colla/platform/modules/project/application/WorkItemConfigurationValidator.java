@@ -4,8 +4,10 @@ import static com.colla.platform.modules.project.domain.WorkItemConfigurationMod
 import static com.colla.platform.modules.project.domain.WorkItemConfigurationModels.MAX_OPTIONS;
 import static com.colla.platform.modules.project.domain.WorkItemConfigurationModels.failure;
 import static com.colla.platform.modules.project.domain.WorkItemLayoutModels.MAX_DEPTH;
+import static com.colla.platform.modules.project.domain.WorkItemLayoutModels.MAX_LAYOUT_COLUMNS;
 import static com.colla.platform.modules.project.domain.WorkItemLayoutModels.MAX_NODES;
 import static com.colla.platform.modules.project.domain.WorkItemLayoutModels.MAX_POLICIES;
+import static com.colla.platform.modules.project.domain.WorkItemLayoutModels.MIN_LAYOUT_COLUMNS;
 
 import com.colla.platform.modules.project.domain.WorkItemConfigurationModels.ConfigurationDiagnostic;
 import com.colla.platform.modules.project.domain.WorkItemConfigurationModels.DiagnosticSeverity;
@@ -283,6 +285,12 @@ public class WorkItemConfigurationValidator {
                     diagnostics
                 );
             }
+            if ("section".equals(node.path("nodeType").asText())
+                || "tab".equals(node.path("nodeType").asText())) {
+                validateLayoutContainer(
+                    node.path("config"), nodePath + ".config", diagnostics
+                );
+            }
             validateConditionReferences(
                 node.path("visibilityCondition"),
                 nodePath + ".visibilityCondition",
@@ -323,6 +331,28 @@ public class WorkItemConfigurationValidator {
                 error(diagnostics, "inactive_policy_field", policyPath + ".fieldKey", "Policy must reference an active field");
             }
             validateConditionReferences(policy.path("policy"), policyPath + ".policy", fieldKeys, diagnostics);
+        }
+    }
+
+    private void validateLayoutContainer(
+        JsonNode config,
+        String path,
+        List<ConfigurationDiagnostic> diagnostics
+    ) {
+        if (!config.isObject()) {
+            error(diagnostics, "invalid_layout_container_config", path, "Layout container config must be an object");
+            return;
+        }
+        JsonNode columns = config.get("columns");
+        if (columns != null && (!columns.isInt()
+            || columns.asInt() < MIN_LAYOUT_COLUMNS || columns.asInt() > MAX_LAYOUT_COLUMNS)) {
+            error(
+                diagnostics,
+                "invalid_layout_container_columns",
+                path + ".columns",
+                "Layout container columns must be between " + MIN_LAYOUT_COLUMNS
+                    + " and " + MAX_LAYOUT_COLUMNS
+            );
         }
     }
 
