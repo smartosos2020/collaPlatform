@@ -30,7 +30,7 @@ describe('project space surface ownership', () => {
       view: 'overview',
     })
     assert.equal(
-      PROJECT_SPACE_SURFACE_OWNERS.some((owner) => owner.panel === 'collaboration-boundary'),
+      PROJECT_SPACE_SURFACE_OWNERS.some((owner) => String(owner.panel) === 'collaboration-boundary'),
       false,
     )
     assert.deepEqual(projectSpaceSurfaceOwner('general'), {
@@ -45,9 +45,9 @@ describe('project space surface ownership', () => {
       panel: 'work-model',
       view: 'settings',
     })
-    assert.equal(PROJECT_SPACE_SURFACE_OWNERS.some((owner) => owner.panel === 'general'), false)
-    assert.equal(PROJECT_SPACE_SURFACE_OWNERS.some((owner) => owner.panel === 'lifecycle'), false)
-    assert.equal(PROJECT_SPACE_SURFACE_OWNERS.some((owner) => owner.panel === 'flow-access'), false)
+    assert.equal(PROJECT_SPACE_SURFACE_OWNERS.some((owner) => String(owner.panel) === 'general'), false)
+    assert.equal(PROJECT_SPACE_SURFACE_OWNERS.some((owner) => String(owner.panel) === 'lifecycle'), false)
+    assert.equal(PROJECT_SPACE_SURFACE_OWNERS.some((owner) => String(owner.panel) === 'flow-access'), false)
   })
 
   it('moves a legacy panel to its owner while preserving allowlisted context and hash', () => {

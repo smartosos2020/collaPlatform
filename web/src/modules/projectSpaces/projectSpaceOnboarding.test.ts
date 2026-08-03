@@ -11,7 +11,7 @@ import {
   resolveOnboardingStepCopy,
   startingPointCommand,
   type ProjectSpaceOnboardingChecklistItem,
-} from './projectSpaceOnboarding'
+} from './projectSpaceOnboarding.ts'
 
 const step = (overrides: Partial<ProjectSpaceOnboardingChecklistItem> = {}): ProjectSpaceOnboardingChecklistItem => ({
   stepKey: 'member.find-work',

@@ -4,6 +4,7 @@ import type { MessagePage, MessageSummary } from '../api/messengerApi'
 
 export const MESSAGE_RECONCILIATION_PAGE_LIMIT = 100
 export const MESSAGE_RECONCILIATION_MAX_PAGES = 20
+export const MESSAGE_RECONCILIATION_CACHE_LIMIT = 500
 
 export const MESSAGE_RECONCILIATION_TRIGGERS = [
   'initial-connect',
@@ -108,7 +109,10 @@ export function mergeMessagePages(
   for (const item of current?.items ?? []) byId.set(item.id, item)
   for (const item of incoming) byId.set(item.id, item)
   return {
-    items: [...byId.values()].sort((left, right) => right.messageSeq - left.messageSeq),
+    // API 页按新到旧排列；只裁掉最旧的一侧，实时到达的新消息永不丢失。
+    items: [...byId.values()]
+      .sort((left, right) => right.messageSeq - left.messageSeq)
+      .slice(0, MESSAGE_RECONCILIATION_CACHE_LIMIT),
     nextCursor: current?.nextCursor ?? null,
   }
 }

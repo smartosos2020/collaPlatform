@@ -9,6 +9,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   App as AntdApp,
+  Alert,
   Button,
   Card,
   Descriptions,
@@ -236,6 +237,7 @@ export function ApprovalsPage() {
         detail={detail}
           open={Boolean(selectedInstanceId)}
         loading={detailQuery.isLoading}
+        isError={detailQuery.isError}
         canApprove={Boolean(pendingTask)}
         canWithdraw={Boolean(isApplicant && detail?.instance.status === 'pending')}
         onClose={() => {
@@ -251,10 +253,12 @@ export function ApprovalsPage() {
         okText="提交"
         cancelText="取消"
         confirmLoading={startMutation.isPending}
+        destroyOnHidden
         onCancel={() => setStartOpen(false)}
         onOk={() => startForm.submit()}
       >
         <Form
+          key={selectedForm?.id ?? 'none'}
           form={startForm}
           layout="vertical"
           initialValues={{ formId: selectedForm?.id }}
@@ -322,6 +326,7 @@ function ApprovalDetailDrawer({
   detail,
   open,
   loading,
+  isError,
   canApprove,
   canWithdraw,
   onClose,
@@ -330,6 +335,7 @@ function ApprovalDetailDrawer({
   detail?: Awaited<ReturnType<typeof getApprovalInstance>>
   open: boolean
   loading: boolean
+  isError: boolean
   canApprove: boolean
   canWithdraw: boolean
   onClose: () => void
@@ -338,6 +344,15 @@ function ApprovalDetailDrawer({
   const instance = detail?.instance
   return (
     <Drawer title={instance?.title ?? '审批详情'} open={open} onClose={onClose} size="large" loading={loading}>
+      {isError ? (
+        <Alert
+          type="error"
+          showIcon
+          title="审批详情加载失败"
+          description="该审批可能不存在或暂时不可用，请返回列表后重试。"
+          action={<Button size="small" onClick={onClose}>返回列表</Button>}
+        />
+      ) : null}
       {detail ? (
         <Space orientation="vertical" size={16} className="approval-detail-stack">
           <Space wrap>

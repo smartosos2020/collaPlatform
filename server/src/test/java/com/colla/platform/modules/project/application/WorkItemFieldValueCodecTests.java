@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.colla.platform.modules.project.domain.WorkItemFieldModels.WorkItemFieldException;
+import com.colla.platform.modules.project.domain.WorkItemModels.WorkItemRuntimeException;
 import com.colla.platform.modules.project.runtime.PublishedSnapshotAdapter.RuntimeConfiguration;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -97,6 +98,27 @@ class WorkItemFieldValueCodecTests {
 
         assertUnsupported(interval, "{\"duration\":\"P1D\"}");
         assertUnsupported(computed, "{\"score\":42}");
+    }
+
+    @Test
+    void honorsPublishedTextLimitsWithoutBreakingLegacySnapshots() throws Exception {
+        ObjectNode limited = field("limited", "text");
+        ((ObjectNode) limited.path("config").path("typeConfig")).put("maxLength", 3);
+        ObjectNode legacy = field("legacy", "text");
+        ((ObjectNode) legacy.path("config")).putObject("typeConfig");
+
+        assertThatThrownBy(() -> codec.canonicalize(
+            configuration(List.of(limited)),
+            objectMapper.readTree("{\"limited\":\"four\"}")
+        )).isInstanceOf(WorkItemRuntimeException.class)
+            .extracting(exception -> ((WorkItemRuntimeException) exception).code())
+            .isEqualTo("INVALID_FIELD_VALUE");
+
+        String legacyValue = "x".repeat(3000);
+        assertThat(codec.canonicalize(
+            configuration(List.of(legacy)),
+            objectMapper.createObjectNode().put("legacy", legacyValue)
+        ).values().path("legacy").asText()).isEqualTo(legacyValue);
     }
 
     private void assertUnsupported(RuntimeConfiguration configuration, String input) {

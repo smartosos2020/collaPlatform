@@ -69,6 +69,14 @@ import {
 import type { UserProjectSpace } from '../api/projectSpacesApi'
 import { workItemConfigurationDraftKeys } from '../api/workItemConfigurationApi'
 import { errorMessage, formatTime } from '../projectSpaceView'
+import {
+  applyFieldControlPreset,
+  availableFieldControlPresets,
+  fieldControlLabel,
+  fieldControlPreset,
+  type WorkItemFieldControlPreset,
+  type WorkItemFieldControlPresetKey,
+} from '../workItemFieldControls'
 import { WorkItemFieldConfigDrawer } from './WorkItemFieldConfigDrawer'
 
 type FieldFilterStatus = 'all' | WorkItemFieldStatus
@@ -77,7 +85,7 @@ type FieldDraft = {
   fieldKey: string
   name: string
   description: string
-  fieldType: WorkItemFieldType
+  controlPreset: WorkItemFieldControlPresetKey
 }
 type FieldEdit = Pick<FieldDraft, 'name' | 'description'>
 
@@ -113,7 +121,7 @@ export function ProjectWorkItemFieldsPanel({
   const reorderBusyRef = useRef(false)
   const [createForm] = Form.useForm<FieldDraft>()
   const [editForm] = Form.useForm<FieldEdit>()
-  const selectedCreateType = Form.useWatch('fieldType', createForm)
+  const selectedCreatePresetKey = Form.useWatch('controlPreset', createForm)
   const statusFilter = status === 'all' ? undefined : status
 
   const typeQuery = useQuery({
@@ -151,7 +159,9 @@ export function ProjectWorkItemFieldsPanel({
   const selectedFromList = rawFields.find((field) => field.id === selectedFieldId)
   const selected = detailQuery.data ?? selectedFromList
   const descriptor = catalogQuery.data?.items.find((item) => item.key === selected?.fieldType)
-  const createDescriptor = catalogQuery.data?.items.find((item) => item.key === selectedCreateType)
+  const createPreset = fieldControlPreset(selectedCreatePresetKey)
+  const createDescriptor = catalogQuery.data?.items.find((item) => item.key === createPreset?.fieldType)
+  const createPresets = availableFieldControlPresets(catalogQuery.data?.items.map((item) => item.key) ?? [])
 
   useEffect(() => {
     if (!fieldsQuery.isLoading && fields.length > 0 && !selectedFieldId) {
@@ -177,14 +187,15 @@ export function ProjectWorkItemFieldsPanel({
 
   const createMutation = useMutation({
     mutationFn: (values: FieldDraft) => {
-      const type = catalogQuery.data?.items.find((item) => item.key === values.fieldType)
-      if (!type) throw new Error('字段类型目录尚未加载')
+      const control = fieldControlPreset(values.controlPreset)
+      const type = catalogQuery.data?.items.find((item) => item.key === control?.fieldType)
+      if (!type || !control) throw new Error('字段类型目录尚未加载')
       return createWorkItemField(space.id, typeId, {
         fieldKey: values.fieldKey.trim(),
         name: values.name.trim(),
         description: values.description?.trim() || '',
-        fieldType: values.fieldType,
-        config: type.defaultConfig,
+        fieldType: control.fieldType,
+        config: applyFieldControlPreset(type.defaultConfig, control),
         sortOrder: nextSortOrder(rawFields),
       })
     },
@@ -282,12 +293,12 @@ export function ProjectWorkItemFieldsPanel({
   })
 
   const openCreate = () => {
-    const first = catalogQuery.data?.items[0]
+    const first = createPresets[0]
     createForm.setFieldsValue({
       fieldKey: '',
       name: '',
       description: '',
-      fieldType: first?.key ?? 'text',
+      controlPreset: first?.key ?? 'single_line',
     })
     setCreateOpen(true)
   }
@@ -537,7 +548,7 @@ export function ProjectWorkItemFieldsPanel({
                     </span>
                     <span className="work-item-field-list-meta">
                       <FieldStatusDot status={field.status} />
-                      <small>{fieldTypeLabel(field.fieldType)}</small>
+                      <small>{fieldControlLabel(field.fieldType, field.config.typeConfig)}</small>
                     </span>
                   </button>
                   {canReorder ? (
@@ -612,7 +623,7 @@ export function ProjectWorkItemFieldsPanel({
                 <Alert showIcon type="info" message="系统字段受保护" description="系统字段可参与排序和生命周期管理，但不能修改定义或类型配置。" />
               ) : null}
               <div className="work-item-field-facts">
-                <div><span>字段类型</span><strong>{fieldTypeLabel(selected.fieldType)}</strong></div>
+                <div><span>字段类型</span><strong>{fieldControlLabel(selected.fieldType, selected.config.typeConfig)}</strong></div>
                 <div><span>存储语义</span><strong>{descriptor?.storageKind ?? '-'}</strong></div>
                 <div><span>排序</span><strong>{selected.sortOrder}</strong></div>
                 <div><span>聚合版本</span><strong>{selected.aggregateVersion}</strong></div>
@@ -637,15 +648,15 @@ export function ProjectWorkItemFieldsPanel({
         destroyOnHidden
       >
         <Form<FieldDraft> form={createForm} layout="vertical" onFinish={(values) => createMutation.mutate(values)}>
-          <Form.Item name="fieldType" label="字段类型" rules={[{ required: true }]}>
-            <FieldTypePicker descriptors={catalogQuery.data?.items ?? []} />
+          <Form.Item name="controlPreset" label="控件类型" rules={[{ required: true }]}>
+            <FieldControlPicker presets={createPresets} descriptors={catalogQuery.data?.items ?? []} />
           </Form.Item>
           {createDescriptor ? (
             <Alert
               className="work-item-field-create-capability"
               type="info"
               showIcon
-              message={`${fieldTypeLabel(createDescriptor.key)} · ${createDescriptor.storageKind}`}
+              message={`${createPreset?.label ?? fieldTypeLabel(createDescriptor.key)} · ${createDescriptor.storageKind}`}
               description={`筛选 ${yesNo(createDescriptor.filterable)}，排序 ${yesNo(createDescriptor.sortable)}，索引能力 ${createDescriptor.indexCapability}`}
             />
           ) : null}
@@ -702,30 +713,44 @@ export function ProjectWorkItemFieldsPanel({
   )
 }
 
-function FieldTypePicker({
+function FieldControlPicker({
   value,
   onChange,
+  presets,
   descriptors,
 }: {
-  value?: WorkItemFieldType
-  onChange?: (value: WorkItemFieldType) => void
+  value?: WorkItemFieldControlPresetKey
+  onChange?: (value: WorkItemFieldControlPresetKey) => void
+  presets: WorkItemFieldControlPreset[]
   descriptors: WorkItemFieldTypeDescriptor[]
 }) {
+  const render = (items: WorkItemFieldControlPreset[]) => items.map((control) => {
+    const descriptor = descriptors.find((item) => item.key === control.fieldType)
+    return (
+      <button
+        key={control.key}
+        type="button"
+        role="radio"
+        aria-checked={value === control.key}
+        className={`work-item-field-type-option${value === control.key ? ' active' : ''}`}
+        onClick={() => onChange?.(control.key)}
+      >
+        <FieldGlyph type={control.fieldType} />
+        <span>
+          <strong>{control.label}</strong>
+          <small>{control.description}{descriptor ? ` · ${descriptor.storageKind}` : ''}</small>
+        </span>
+      </button>
+    )
+  })
+  const common = presets.filter((item) => item.common)
+  const more = presets.filter((item) => !item.common)
   return (
     <div className="work-item-field-type-picker" role="radiogroup" aria-label="字段类型">
-      {descriptors.map((descriptor) => (
-        <button
-          key={descriptor.key}
-          type="button"
-          role="radio"
-          aria-checked={value === descriptor.key}
-          className={`work-item-field-type-option${value === descriptor.key ? ' active' : ''}`}
-          onClick={() => onChange?.(descriptor.key)}
-        >
-          <FieldGlyph type={descriptor.key} />
-          <span><strong>{fieldTypeLabel(descriptor.key)}</strong><small>{descriptor.storageKind}</small></span>
-        </button>
-      ))}
+      <Typography.Text className="work-item-field-type-group-label">常用控件</Typography.Text>
+      {render(common)}
+      {more.length ? <Typography.Text className="work-item-field-type-group-label">更多控件</Typography.Text> : null}
+      {render(more)}
     </div>
   )
 }

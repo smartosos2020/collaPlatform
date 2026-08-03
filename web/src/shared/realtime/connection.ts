@@ -1,3 +1,8 @@
+/**
+ * 服务端当前没有应用层心跳，因此这里实现客户端兜底：
+ * 入站帧活性看门狗定期检查 lastFrameAt，前台在线且长时间无任何入站帧时
+ * 主动断开并走统一重连流程，避免半开连接（half-open socket）假死。
+ */
 import {
   parseRealtimeFrame,
   type KnownRealtimeType,
@@ -31,6 +36,9 @@ export type RealtimeSocket = {
 export type RealtimeScheduler = {
   setTimeout: (callback: () => void, delayMs: number) => unknown
   clearTimeout: (timer: unknown) => void
+  /** 可选：提供后启用入站帧活性看门狗；缺省时看门狗自动停用。 */
+  setInterval?: (callback: () => void, intervalMs: number) => unknown
+  clearInterval?: (timer: unknown) => void
 }
 
 export type RealtimeOnlineSource = {
@@ -81,6 +89,16 @@ export type RealtimeConnectionOptions = {
   reconnectBaseMs?: number
   reconnectMaxMs?: number
   reconnectJitterMs?: number
+  /** 连续重连失败达到该次数后停止自动重连并进入 degraded。 */
+  maxConsecutiveFailures?: number
+  /** 入站帧活性看门狗的检查周期。 */
+  livenessCheckIntervalMs?: number
+  /** 前台在线状态下超过该时长无任何入站帧即视为半开连接。 */
+  livenessStaleMs?: number
+  /** 自动重连耗尽（连续失败达到上限）时通知一次。 */
+  onReconnectExhausted?: () => void
+  /** 时钟源（毫秒），用于活性看门狗；默认 Date.now。 */
+  now?: () => number
   parseFrame?: (raw: unknown, context: RealtimeConnectionContext) => RealtimeFrameParseResult
   sequencer?: RealtimeSequencer
 }
@@ -99,6 +117,11 @@ export class RealtimeConnection {
   private readonly reconnectBaseMs: number
   private readonly reconnectMaxMs: number
   private readonly reconnectJitterMs: number
+  private readonly maxConsecutiveFailures: number
+  private readonly livenessCheckIntervalMs: number
+  private readonly livenessStaleMs: number
+  private readonly onReconnectExhausted: (() => void) | null
+  private readonly now: () => number
   private readonly frameParser: NonNullable<RealtimeConnectionOptions['parseFrame']>
   private readonly sequencer: RealtimeSequencer
   private readonly statusListeners = new Set<StatusListener>()
@@ -111,13 +134,17 @@ export class RealtimeConnection {
   private socket: RealtimeSocket | null = null
   private reconnectTimer: unknown = null
   private readyTimer: unknown = null
+  private livenessTimer: unknown = null
   private unsubscribeOnline: (() => void) | null = null
   private status: RealtimeConnectionStatus = 'stopped'
   private generation = 0
   private reconnectAttempt = 0
+  private consecutiveFailures = 0
+  private reconnectExhausted = false
   private hasEverReady = false
   private socketReady = false
   private started = false
+  private lastFrameAt: number | null = null
   private instanceId: string | null = null
   private acceptedEvents = 0
   private duplicateEvents = 0
@@ -140,6 +167,11 @@ export class RealtimeConnection {
     this.reconnectBaseMs = positiveNumber(options.reconnectBaseMs, 1_000)
     this.reconnectMaxMs = positiveNumber(options.reconnectMaxMs, 15_000)
     this.reconnectJitterMs = nonNegativeNumber(options.reconnectJitterMs, 300)
+    this.maxConsecutiveFailures = positiveNumber(options.maxConsecutiveFailures, 8)
+    this.livenessCheckIntervalMs = positiveNumber(options.livenessCheckIntervalMs, 30_000)
+    this.livenessStaleMs = positiveNumber(options.livenessStaleMs, 5 * 60_000)
+    this.onReconnectExhausted = options.onReconnectExhausted ?? null
+    this.now = options.now ?? (() => Date.now())
     this.frameParser = options.parseFrame ?? ((raw, context) => parseRealtimeFrame(raw, {
       expectedWorkspaceId: context.workspaceId,
       expectedUserId: context.userId,
@@ -184,6 +216,8 @@ export class RealtimeConnection {
       this.sequencer.reset()
       this.calibrationKeys.clear()
       this.hasEverReady = false
+      this.consecutiveFailures = 0
+      this.reconnectExhausted = false
       this.resetDiagnostics()
     }
     this.context = context
@@ -210,6 +244,8 @@ export class RealtimeConnection {
       return
     }
     this.reconnectAttempt = 0
+    this.consecutiveFailures = 0
+    this.reconnectExhausted = false
     this.clearReconnectTimer()
     this.invalidateSocket()
     if (this.onlineSource.isOnline()) {
@@ -260,13 +296,14 @@ export class RealtimeConnection {
       return
     }
     this.clearReconnectTimer()
+    this.startLivenessWatchdog()
     const generation = ++this.generation
     this.setStatus(this.hasEverReady || this.reconnectAttempt > 0 ? 'reconnecting' : 'connecting')
     let socket: RealtimeSocket
     try {
       socket = this.socketFactory(withAccessToken(this.context.url, this.context.accessToken))
     } catch {
-      this.scheduleReconnect()
+      this.registerFailureAndScheduleReconnect()
       return
     }
     this.socket = socket
@@ -298,12 +335,13 @@ export class RealtimeConnection {
       } else if (!this.onlineSource.isOnline()) {
         this.setStatus('degraded')
       } else {
-        this.scheduleReconnect()
+        this.registerFailureAndScheduleReconnect()
       }
     }
   }
 
   private handleMessage(raw: unknown) {
+    this.markInboundFrame()
     if (!this.context) return
     const parsed = this.frameParser(raw, this.context)
     if (parsed.kind === 'control') {
@@ -313,6 +351,8 @@ export class RealtimeConnection {
       const calibrationReason: RealtimeCalibrationReason = this.hasEverReady ? 'reconnected' : 'initial-ready'
       this.hasEverReady = true
       this.reconnectAttempt = 0
+      this.consecutiveFailures = 0
+      this.reconnectExhausted = false
       this.setStatus('ready')
       this.emitCalibration(
         { reason: calibrationReason, type: null },
@@ -399,10 +439,23 @@ export class RealtimeConnection {
     detachSocket(socket)
     safeClose(socket)
     if (this.started && this.onlineSource.isOnline()) {
-      this.scheduleReconnect()
+      this.registerFailureAndScheduleReconnect()
     } else if (this.started) {
       this.setStatus('degraded')
     }
+  }
+
+  private registerFailureAndScheduleReconnect() {
+    this.consecutiveFailures += 1
+    if (this.consecutiveFailures >= this.maxConsecutiveFailures) {
+      this.setStatus('degraded')
+      if (!this.reconnectExhausted) {
+        this.reconnectExhausted = true
+        this.onReconnectExhausted?.()
+      }
+      return
+    }
+    this.scheduleReconnect()
   }
 
   private scheduleReconnect() {
@@ -410,6 +463,7 @@ export class RealtimeConnection {
       return
     }
     this.reconnectAttempt += 1
+    this.lastFrameAt = this.now()
     this.setStatus('reconnecting')
     const exponent = Math.max(0, this.reconnectAttempt - 1)
     const base = Math.min(this.reconnectMaxMs, this.reconnectBaseMs * 2 ** exponent)
@@ -420,11 +474,49 @@ export class RealtimeConnection {
     }, base + jitter)
   }
 
+  private markInboundFrame() {
+    this.lastFrameAt = this.now()
+  }
+
+  private startLivenessWatchdog() {
+    this.stopLivenessWatchdog()
+    if (!this.scheduler.setInterval || !this.scheduler.clearInterval) return
+    this.livenessTimer = this.scheduler.setInterval(
+      () => this.checkInboundLiveness(),
+      this.livenessCheckIntervalMs,
+    )
+  }
+
+  private stopLivenessWatchdog() {
+    if (this.livenessTimer !== null) {
+      this.scheduler.clearInterval?.(this.livenessTimer)
+      this.livenessTimer = null
+    }
+  }
+
+  private checkInboundLiveness() {
+    if (!this.started || this.status !== 'ready' || !this.socket || !this.socketReady) return
+    if (!this.onlineSource.isOnline()) return
+    if (!this.isPageVisible()) return
+    const lastFrameAt = this.lastFrameAt
+    if (lastFrameAt === null || this.now() - lastFrameAt < this.livenessStaleMs) return
+    // 前台在线却长时间无任何入站帧：按半开连接处理，断开并走统一重连流程。
+    const socket = this.socket
+    if (socket) {
+      this.failSocket(socket)
+    }
+  }
+
+  private isPageVisible() {
+    return typeof document === 'undefined' || document.visibilityState === 'visible'
+  }
+
   private stopConnection(clearContext: boolean) {
     this.started = false
     this.generation += 1
     this.clearReconnectTimer()
     this.clearReadyTimer()
+    this.stopLivenessWatchdog()
     this.unsubscribeOnline?.()
     this.unsubscribeOnline = null
     this.invalidateSocket()
@@ -432,6 +524,8 @@ export class RealtimeConnection {
       this.context = null
       this.contextKey = null
       this.reconnectAttempt = 0
+      this.consecutiveFailures = 0
+      this.reconnectExhausted = false
       this.sequencer.reset()
       this.calibrationKeys.clear()
       this.hasEverReady = false

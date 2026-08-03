@@ -14,6 +14,7 @@ import type { ColumnsType } from 'antd/es/table'
 import { useMemo, useRef, useState } from 'react'
 
 import { EntityAvatar } from '../../../shared/components/EntityAvatar'
+import { errorMessage } from '../../../shared/api/errorMessage'
 import { SoftBadge } from '../../../shared/components/SoftBadge'
 import { StatusBadge } from '../../../shared/components/StatusBadge'
 import { TableEmptyState } from '../../../shared/components/TableEmptyState'
@@ -108,11 +109,13 @@ export function AdminUsersPage() {
   const disableMutation = useMutation({
     mutationFn: disableMember,
     onSuccess: refreshMembers,
+    onError: (error) => message.error(errorMessage(error, '成员停用失败，请重试')),
   })
 
   const enableMutation = useMutation({
     mutationFn: enableMember,
     onSuccess: refreshMembers,
+    onError: (error) => message.error(errorMessage(error, '成员启用失败，请重试')),
   })
 
   const offboardingMutation = useMutation({
@@ -147,11 +150,12 @@ export function AdminUsersPage() {
         contentType: file.type || 'application/octet-stream',
         sizeBytes: file.size,
       })
-      await fetch(upload.uploadUrl, {
+      const response = await fetch(upload.uploadUrl, {
         method: 'PUT',
         headers: upload.headers,
         body: file,
       })
+      if (!response.ok) throw new Error(`头像上传失败（状态码 ${response.status}）`)
       const completed = await completeUpload({ fileId: upload.uploadId })
       await updateMemberAvatar(userId, completed.id)
       return completed.id

@@ -1,4 +1,10 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? (import.meta.env.PROD ? '/api' : 'http://localhost:8080/api')
+import { API_BASE_URL } from './apiBaseUrl'
+import { ApiRequestError } from './apiError'
+import { refreshSessionSingleFlight } from '../auth/sessionRefresh'
+import { useAuthStore } from '../../modules/auth/authStore'
+
+export { ApiRequestError } from './apiError'
+
 const API_REQUEST_TIMEOUT_MS = 5_000
 
 export type RequestOptions = {
@@ -12,7 +18,7 @@ export async function apiGet<T>(path: string): Promise<T> {
 }
 
 export async function apiGetText(path: string): Promise<string> {
-  const accessToken = localStorage.getItem('colla.accessToken')
+  const accessToken = useAuthStore.getState().accessToken
   const headers = new Headers({
     Accept: 'text/plain, text/csv, */*',
     'X-Colla-Client': 'web',
@@ -62,15 +68,42 @@ async function apiRequest<T>(
   const attempts = shouldRetry(method, options) ? 3 : 1
   const requestId = options.requestId ?? (isWriteMethod(method) ? createRequestId() : undefined)
   let lastError: unknown
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
+  let sessionRefreshed = false
+  let attempt = 0
+  while (attempt < attempts) {
     try {
       return await sendRequest<T>(method, path, body, options, attempt, requestId)
     } catch (error) {
       lastError = error
-      if (attempt >= attempts - 1 || !isRetryableError(error)) {
+      // 401 时先尝试单飞刷新会话，成功后用新 token 重放本次请求（不消耗重试次数）。
+      // /auth/* 自身（登录/登出）的 401 属于凭证问题，不触发刷新。
+      if (
+        error instanceof ApiRequestError
+        && error.status === 401
+        && options.auth !== false
+        && !path.startsWith('/auth/')
+        && !sessionRefreshed
+      ) {
+        sessionRefreshed = true
+        let refreshedToken: string | null
+        try {
+          refreshedToken = await refreshSessionSingleFlight()
+        } catch (refreshError) {
+          // 刷新服务不可用或网络中断时保留本地登录态，并把瞬时错误交给 UI 重试。
+          throw refreshError instanceof Error ? refreshError : new Error('会话刷新暂不可用')
+        }
+        if (refreshedToken) {
+          continue
+        }
+        // 刷新失败：会话确实失效，清空本地登录态，由路由守卫引导重新登录。
+        useAuthStore.getState().clearAuth()
         throw error
       }
-      await wait(250 * 2 ** attempt)
+      attempt += 1
+      if (attempt >= attempts || !isRetryableError(error)) {
+        throw error
+      }
+      await wait(250 * 2 ** (attempt - 1))
     }
   }
   throw lastError instanceof Error ? lastError : new Error('API request failed')
@@ -84,7 +117,7 @@ async function sendRequest<T>(
   attempt: number,
   requestId?: string,
 ): Promise<T> {
-  const accessToken = localStorage.getItem('colla.accessToken')
+  const accessToken = useAuthStore.getState().accessToken
   const headers = new Headers({
     Accept: 'application/json',
     'X-Colla-Client': 'web',
@@ -135,17 +168,6 @@ async function sendRequest<T>(
 
   const text = await response.text()
   return text ? (JSON.parse(text) as T) : (undefined as T)
-}
-
-export class ApiRequestError extends Error {
-  readonly status: number
-  readonly code?: string
-
-  constructor(status: number, message?: string, code?: string) {
-    super(message ? `${message} (${status})` : `API request failed: ${status}`)
-    this.status = status
-    this.code = code
-  }
 }
 
 async function readApiError(response: Response): Promise<{ message: string; code?: string }> {

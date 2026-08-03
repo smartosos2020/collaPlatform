@@ -15,8 +15,8 @@ import {
   projectSpacePreviewAccess,
   projectSpacePrimaryPath,
   resolveProjectSpaceRouteContext,
-} from './projectSpaceInformationArchitecture'
-import { PROJECT_SPACE_SECONDARY_TAB_CONFIG } from './projectSpaceSecondaryTabs'
+} from './projectSpaceInformationArchitecture.ts'
+import { PROJECT_SPACE_SECONDARY_TAB_CONFIG } from './projectSpaceSecondaryTabs.ts'
 
 describe('project space primary information architecture', () => {
   it('freezes exactly five ordered business-language entries', () => {

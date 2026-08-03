@@ -2,6 +2,7 @@ import { Alert, DatePicker, Input, InputNumber, Select, Switch, Tag, Typography 
 import dayjs from 'dayjs'
 import type { ReactNode } from 'react'
 
+import { safeExternalHref } from '../../../shared/url/safeUrl'
 import type {
   ConfiguredWorkItemField,
   WorkItemFieldOption,
@@ -22,6 +23,13 @@ type RenderableField = Pick<
 
 export type WorkItemLayoutValues = Record<string, unknown>
 
+export type WorkItemLayoutEditorOptions = {
+  selectedNodeId?: string
+  onSelectNode: (node: WorkItemLayoutNode) => void
+  onDragNode?: (node: WorkItemLayoutNode) => void
+  onDropNode?: (node: WorkItemLayoutNode) => void
+}
+
 type ControlContext = {
   field: RenderableField
   id: string
@@ -34,36 +42,58 @@ type ControlRenderer = (context: ControlContext) => ReactNode
 
 const controls: Partial<Record<WorkItemFieldType, ControlRenderer>> = {
   text: ({ field, id, value, disabled, onChange }) => {
-    const rich = field.config.typeConfig?.presentation === 'rich_text'
-    return rich ? (
+    const presentation = String(field.config.typeConfig?.presentation ?? 'single_line')
+    const maxLength = Number(field.config.typeConfig?.maxLength ?? 2000)
+    if (presentation === 'rich_text' || presentation === 'multiline') return (
       <Input.TextArea
         id={id}
         value={stringValue(value)}
         disabled={disabled}
-        autoSize={{ minRows: 3, maxRows: 8 }}
+        maxLength={maxLength}
+        autoSize={{ minRows: presentation === 'rich_text' ? 6 : 3, maxRows: presentation === 'rich_text' ? 14 : 8 }}
         placeholder={`请输入${field.name}`}
         onChange={(event) => onChange(event.target.value)}
       />
-    ) : (
+    )
+    return (
       <Input
         id={id}
+        type={presentation === 'email' ? 'email' : presentation === 'phone' ? 'tel' : 'text'}
         value={stringValue(value)}
         disabled={disabled}
+        maxLength={maxLength}
         placeholder={`请输入${field.name}`}
         onChange={(event) => onChange(event.target.value)}
       />
     )
   },
-  number: ({ field, id, value, disabled, onChange }) => (
-    <InputNumber
-      id={id}
-      value={typeof value === 'number' ? value : null}
-      disabled={disabled}
-      style={{ width: '100%' }}
-      placeholder={`请输入${field.name}`}
-      onChange={onChange}
-    />
-  ),
+  number: ({ field, id, value, disabled, onChange }) => {
+    const presentation = String(field.config.typeConfig?.presentation ?? 'number')
+    const precision = Number(field.config.typeConfig?.precision ?? 0)
+    const ratingMax = Number(field.config.typeConfig?.ratingMax ?? 5)
+    const durationUnit = durationUnitLabel(String(field.config.typeConfig?.durationUnit ?? 'hours'))
+    return (
+      <InputNumber
+        id={id}
+        value={typeof value === 'number' ? value : null}
+        disabled={disabled}
+        min={presentation === 'rating' ? 1 : undefined}
+        max={presentation === 'rating' ? ratingMax : undefined}
+        precision={precision}
+        prefix={presentation === 'currency' ? currencySymbol(String(field.config.typeConfig?.currencyCode ?? 'CNY')) : undefined}
+        suffix={presentation === 'percentage'
+          ? '%'
+          : presentation === 'duration'
+            ? durationUnit
+            : presentation === 'rating'
+              ? `/ ${ratingMax}`
+              : undefined}
+        style={{ width: '100%' }}
+        placeholder={`请输入${field.name}`}
+        onChange={onChange}
+      />
+    )
+  },
   boolean: ({ field, id, value, disabled, onChange }) => (
     <Switch
       id={id}
@@ -160,6 +190,7 @@ export function WorkItemLayoutRenderer({
   onValuesChange,
   presentation = 'edit',
   disclosure = 'detailed',
+  editor,
 }: {
   layout: { layoutKind: string; nodes: WorkItemLayoutNode[] }
   fields: Array<ConfiguredWorkItemField | WorkItemLayoutProjectionField>
@@ -168,6 +199,7 @@ export function WorkItemLayoutRenderer({
   onValuesChange?: (values: WorkItemLayoutValues) => void
   presentation?: 'edit' | 'read'
   disclosure?: 'detailed' | 'minimal'
+  editor?: WorkItemLayoutEditorOptions
 }) {
   const fieldById = new Map(fields.map((field) => [field.id, field as RenderableField]))
   const children = childMap(layout.nodes)
@@ -188,7 +220,7 @@ export function WorkItemLayoutRenderer({
 
   return (
     <div
-      className="work-item-layout-preview"
+      className={`work-item-layout-preview${editor ? ' work-item-layout-editor-preview' : ''}`}
       aria-label={`${layout.layoutKind} 布局预览`}
       aria-live="polite"
     >
@@ -202,6 +234,7 @@ export function WorkItemLayoutRenderer({
           values={values}
           presentation={presentation}
           disclosure={disclosure}
+          editor={editor}
           onValueChange={update}
         />
       ))}
@@ -217,6 +250,7 @@ function LayoutPreviewNode({
   values,
   presentation,
   disclosure,
+  editor,
   onValueChange,
 }: {
   node: WorkItemLayoutNode
@@ -226,6 +260,7 @@ function LayoutPreviewNode({
   values: WorkItemLayoutValues
   presentation: 'edit' | 'read'
   disclosure: 'detailed' | 'minimal'
+  editor?: WorkItemLayoutEditorOptions
   onValueChange: (fieldKey: string, value: unknown) => void
 }) {
   const nested = children.get(node.id) ?? []
@@ -233,13 +268,15 @@ function LayoutPreviewNode({
     const field = node.fieldId ? fieldById.get(node.fieldId) : undefined
     if (!field) {
       return (
-        <Alert
-          type="warning"
-          showIcon
-          message={disclosure === 'minimal'
-            ? '部分内容暂不可用'
-            : `字段 ${node.fieldKey ?? node.nodeKey} 不可用，请在布局配置中重新绑定`}
-        />
+        <EditorNodeFrame node={node} label={`字段 · ${node.fieldKey ?? node.nodeKey}`} editor={editor}>
+          <Alert
+            type="warning"
+            showIcon
+            message={disclosure === 'minimal'
+              ? '部分内容暂不可用'
+              : `字段 ${node.fieldKey ?? node.nodeKey} 不可用，请在布局配置中重新绑定`}
+          />
+        </EditorNodeFrame>
       )
     }
     const projection = accessProjection[field.fieldKey] ?? {
@@ -251,80 +288,147 @@ function LayoutPreviewNode({
     const renderer = controls[field.fieldType]
     if (!renderer) {
       return (
-        <Alert
-          type="warning"
-          showIcon
-          message={disclosure === 'minimal'
-            ? '部分内容暂不可用'
-            : `控件 ${field.fieldType} 尚未映射，请检查字段类型版本`}
-        />
+        <EditorNodeFrame node={node} label={`字段 · ${field.name}`} editor={editor}>
+          <Alert
+            type="warning"
+            showIcon
+            message={disclosure === 'minimal'
+              ? '部分内容暂不可用'
+              : `控件 ${field.fieldType} 尚未映射，请检查字段类型版本`}
+          />
+        </EditorNodeFrame>
       )
     }
     const controlId = `work-item-${layoutSafeId(node.id)}`
     const disabled = presentation === 'read' || projection.mode === 'read'
     return (
-      <div className="work-item-layout-preview-field">
-        <label htmlFor={controlId}>
-          <span>{field.name}</span>
-          {projection.required ? <Tag color="purple">必填</Tag> : null}
-          {disabled ? <Tag>只读</Tag> : null}
-        </label>
-        {field.description ? <Typography.Text type="secondary">{field.description}</Typography.Text> : null}
-        {presentation === 'read' ? (
-          <ReadOnlyValue field={field} value={values[field.fieldKey]} />
-        ) : (
-          <fieldset disabled={disabled} title={projection.reasonCode}>
-            {renderer({
-              field,
-              id: controlId,
-              value: values[field.fieldKey],
-              disabled,
-              onChange: (value) => onValueChange(field.fieldKey, value),
-            })}
-          </fieldset>
-        )}
-      </div>
+      <EditorNodeFrame node={node} label={`字段 · ${field.name}`} editor={editor}>
+        <div className="work-item-layout-preview-field">
+          <label htmlFor={controlId}>
+            <span>{field.name}</span>
+            {projection.required ? <Tag color="purple">必填</Tag> : null}
+            {disabled ? <Tag>只读</Tag> : null}
+          </label>
+          {field.description ? <Typography.Text type="secondary">{field.description}</Typography.Text> : null}
+          {presentation === 'read' ? (
+            <ReadOnlyValue field={field} value={values[field.fieldKey]} />
+          ) : (
+            <fieldset disabled={disabled} title={projection.reasonCode}>
+              {renderer({
+                field,
+                id: controlId,
+                value: values[field.fieldKey],
+                disabled,
+                onChange: (value) => onValueChange(field.fieldKey, value),
+              })}
+            </fieldset>
+          )}
+        </div>
+      </EditorNodeFrame>
     )
   }
   if (node.nodeType === 'summary') {
     return (
-      <div className="work-item-layout-preview-summary">
-        <Typography.Text type="secondary">摘要区域将在工作项实例中展示</Typography.Text>
-      </div>
+      <EditorNodeFrame node={node} label="摘要" editor={editor}>
+        <div className="work-item-layout-preview-summary">
+          <Typography.Text type="secondary">摘要区域将在工作项实例中展示</Typography.Text>
+        </div>
+      </EditorNodeFrame>
     )
   }
   if (node.nodeType === 'relation') {
     return (
-      <div className="work-item-layout-preview-summary" data-relation-key={String(node.config.relationKey ?? '')}>
-        <Typography.Text strong>{String(node.config.title ?? node.nodeKey)}</Typography.Text>
-        <br />
-        <Typography.Text type="secondary">
-          {String(node.config.mode ?? 'list')} · {String(node.config.relationKey ?? '')}
-        </Typography.Text>
-      </div>
+      <EditorNodeFrame
+        node={node}
+        label={`关系控件 · ${String(node.config.title ?? node.nodeKey)}`}
+        editor={editor}
+      >
+        <div className="work-item-layout-preview-summary" data-relation-key={String(node.config.relationKey ?? '')}>
+          <Typography.Text strong>{String(node.config.title ?? node.nodeKey)}</Typography.Text>
+          <br />
+          <Typography.Text type="secondary">
+            {String(node.config.mode ?? 'list')} · {String(node.config.relationKey ?? '')}
+          </Typography.Text>
+        </div>
+      </EditorNodeFrame>
     )
   }
   const title = String(node.config.title ?? node.nodeKey)
   return (
-    <section className={`work-item-layout-preview-group is-${node.nodeType}`} aria-labelledby={`group-${node.id}`}>
-      <Typography.Title id={`group-${node.id}`} level={5}>{title}</Typography.Title>
-      <div className="work-item-layout-preview-children">
-        {nested.map((child) => (
-          <LayoutPreviewNode
-            key={child.id}
-            node={child}
-            children={children}
-            fieldById={fieldById}
-            accessProjection={accessProjection}
-            values={values}
-            presentation={presentation}
-            disclosure={disclosure}
-            onValueChange={onValueChange}
-          />
-        ))}
-      </div>
-    </section>
+    <EditorNodeFrame node={node} label={`${previewNodeLabel(node.nodeType)} · ${title}`} editor={editor}>
+      <section className={`work-item-layout-preview-group is-${node.nodeType}`} aria-labelledby={`group-${node.id}`}>
+        <Typography.Title id={`group-${node.id}`} level={5}>{title}</Typography.Title>
+        <div className="work-item-layout-preview-children">
+          {nested.map((child) => (
+            <LayoutPreviewNode
+              key={child.id}
+              node={child}
+              children={children}
+              fieldById={fieldById}
+              accessProjection={accessProjection}
+              values={values}
+              presentation={presentation}
+              disclosure={disclosure}
+              editor={editor}
+              onValueChange={onValueChange}
+            />
+          ))}
+        </div>
+      </section>
+    </EditorNodeFrame>
   )
+}
+
+function EditorNodeFrame({
+  node,
+  label,
+  editor,
+  children,
+}: {
+  node: WorkItemLayoutNode
+  label: string
+  editor?: WorkItemLayoutEditorOptions
+  children: ReactNode
+}) {
+  if (!editor) return children
+  const selected = editor.selectedNodeId === node.id
+  return (
+    <div
+      className={`work-item-layout-editor-node is-${node.nodeType}${selected ? ' active' : ''}`}
+      role="group"
+      tabIndex={0}
+      draggable
+      aria-label={`选择${label}`}
+      data-selected={selected || undefined}
+      onClick={(event) => {
+        event.stopPropagation()
+        editor.onSelectNode(node)
+      }}
+      onKeyDown={(event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return
+        event.preventDefault()
+        event.stopPropagation()
+        editor.onSelectNode(node)
+      }}
+      onDragStart={(event) => {
+        event.stopPropagation()
+        editor.onDragNode?.(node)
+      }}
+      onDragOver={(event) => event.preventDefault()}
+      onDrop={(event) => {
+        event.preventDefault()
+        event.stopPropagation()
+        editor.onDropNode?.(node)
+      }}
+    >
+      <span className="work-item-layout-editor-node-label">{label}</span>
+      {children}
+    </div>
+  )
+}
+
+function previewNodeLabel(type: WorkItemLayoutNode['nodeType']) {
+  return ({ section: '区块', tab: '标签页', column: '分栏', field: '字段', relation: '关系控件', summary: '摘要' } as const)[type]
 }
 
 function ReadOnlyValue({ field, value }: { field: RenderableField; value: unknown }) {
@@ -334,12 +438,19 @@ function ReadOnlyValue({ field, value }: { field: RenderableField; value: unknow
   if (field.fieldType === 'boolean') {
     return <Tag color={value ? 'green' : 'default'}>{value ? '是' : '否'}</Tag>
   }
+  if (field.fieldType === 'number' && typeof value === 'number') {
+    return <Typography.Text>{formatNumberValue(field, value)}</Typography.Text>
+  }
   if (field.fieldType === 'single_select' && typeof value === 'string') {
     const option = field.options?.find((item) => item.optionKey === value)
     return <Tag color={option?.color}>{option?.name ?? value}</Tag>
   }
   if (field.fieldType === 'url' && typeof value === 'string') {
-    return <Typography.Link href={value} target="_blank" rel="noreferrer">{value}</Typography.Link>
+    const href = safeExternalHref(value)
+    if (!href) {
+      return <Typography.Text>{value}</Typography.Text>
+    }
+    return <Typography.Link href={href} target="_blank" rel="noreferrer">{value}</Typography.Link>
   }
   if (['date', 'datetime'].includes(field.fieldType) && typeof value === 'string') {
     const parsed = dayjs(value)
@@ -391,6 +502,27 @@ function displayItem(value: unknown) {
     return typeof label === 'string' ? label : '对象'
   }
   return String(value)
+}
+
+function formatNumberValue(field: RenderableField, value: number) {
+  const presentation = String(field.config.typeConfig?.presentation ?? 'number')
+  const precision = Number(field.config.typeConfig?.precision ?? 0)
+  if (presentation === 'currency') {
+    const currency = String(field.config.typeConfig?.currencyCode ?? 'CNY')
+    return new Intl.NumberFormat('zh-CN', { style: 'currency', currency, maximumFractionDigits: precision }).format(value)
+  }
+  if (presentation === 'percentage') return `${value.toFixed(precision)}%`
+  if (presentation === 'duration') return `${value.toFixed(precision)} ${durationUnitLabel(String(field.config.typeConfig?.durationUnit ?? 'hours'))}`
+  if (presentation === 'rating') return `${value} / ${Number(field.config.typeConfig?.ratingMax ?? 5)}`
+  return value.toFixed(precision)
+}
+
+function currencySymbol(code: string) {
+  return ({ CNY: '¥', USD: '$', EUR: '€', GBP: '£', JPY: '¥' } as Record<string, string>)[code] ?? code
+}
+
+function durationUnitLabel(unit: string) {
+  return ({ minutes: '分钟', hours: '小时', days: '天' } as Record<string, string>)[unit] ?? unit
 }
 
 function layoutSafeId(value: string) {

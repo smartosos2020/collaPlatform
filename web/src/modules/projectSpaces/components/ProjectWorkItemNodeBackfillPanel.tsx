@@ -1,6 +1,6 @@
 import { CheckCircleOutlined, ReloadOutlined, RetweetOutlined } from '@ant-design/icons'
 import { useMutation } from '@tanstack/react-query'
-import { Alert, App as AntdApp, Button, Card, Input, Space, Tag, Typography } from 'antd'
+import { Alert, App as AntdApp, Button, Input, Space, Tag, Typography } from 'antd'
 import { useState } from 'react'
 
 import {
@@ -11,6 +11,7 @@ import {
 } from '../api/workItemNodeWorkflowApi'
 import type { ConfigurationVersion } from '../api/workItemConfigurationApi'
 import { errorMessage } from '../projectSpaceView'
+import { CollapsibleWorkItemCard } from './CollapsibleWorkItemCard'
 
 export function ProjectWorkItemNodeBackfillPanel({
   spaceId,
@@ -50,7 +51,8 @@ export function ProjectWorkItemNodeBackfillPanel({
     onError: (error) => message.error(errorMessage(error, '验证失败')),
   })
   return (
-    <Card
+    <CollapsibleWorkItemCard
+      collapseLabel="存量节点流初始化"
       className="node-flow-backfill-panel"
       title={<Space><RetweetOutlined />存量节点流初始化<Tag>显式 manifest</Tag></Space>}
     >
@@ -101,6 +103,6 @@ export function ProjectWorkItemNodeBackfillPanel({
             : '尚未执行独立验证'}
         />
       ) : null}
-    </Card>
+    </CollapsibleWorkItemCard>
   )
 }

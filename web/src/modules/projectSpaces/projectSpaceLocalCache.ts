@@ -42,15 +42,45 @@ type CacheRead<T> =
 const CACHE_SCHEMA_VERSION = 2
 const RECENT_TTL_MS = 30 * 24 * 60 * 60 * 1_000
 const MAX_RECENT_SPACES = 8
+const MAX_PINNED_SPACES = 50
 const MAX_STORAGE_VALUE_LENGTH = 128 * 1024
 const SAFE_ID = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/
 
 export function projectSpaceCacheKey(
   scope: ProjectSpaceCacheScope,
-  kind: 'recent' | ProjectSpaceDraftKind,
+  kind: 'recent' | 'pinned' | ProjectSpaceDraftKind,
 ): string {
   const space = scope.spaceId ? `.${encodeScope(scope.spaceId)}` : ''
   return `colla.project-space-ui.v2.${encodeScope(scope.workspaceId)}.${encodeScope(scope.userId)}${space}.${kind}`
+}
+
+export function readPinnedProjectSpaceIds(
+  storage: ProjectSpaceStorage,
+  scope: Omit<ProjectSpaceCacheScope, 'spaceId'>,
+  accessibleSpaceIds: readonly string[],
+  now = Date.now(),
+): string[] {
+  const accessible = new Set(accessibleSpaceIds.filter(isSafeId))
+  const result = readCache(storage, projectSpaceCacheKey(scope, 'pinned'), isRecentIds, now)
+  return result.state === 'ok'
+    ? result.value.filter((id) => accessible.has(id)).slice(0, MAX_PINNED_SPACES)
+    : []
+}
+
+export function setProjectSpacePinned(
+  storage: ProjectSpaceStorage,
+  scope: Omit<ProjectSpaceCacheScope, 'spaceId'>,
+  spaceId: string,
+  pinned: boolean,
+  accessibleSpaceIds: readonly string[],
+  now = Date.now(),
+): boolean {
+  if (!isSafeId(spaceId) || !accessibleSpaceIds.includes(spaceId)) return false
+  const current = readPinnedProjectSpaceIds(storage, scope, accessibleSpaceIds, now)
+  const next = pinned
+    ? [spaceId, ...current.filter((id) => id !== spaceId)].slice(0, MAX_PINNED_SPACES)
+    : current.filter((id) => id !== spaceId)
+  return writeCache(storage, projectSpaceCacheKey(scope, 'pinned'), next, now, null)
 }
 
 export function readRecentProjectSpaceIds(

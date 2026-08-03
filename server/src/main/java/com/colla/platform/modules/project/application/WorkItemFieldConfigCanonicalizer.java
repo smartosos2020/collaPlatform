@@ -142,6 +142,8 @@ public class WorkItemFieldConfigCanonicalizer {
             "Field type configuration must be an object"
         );
         return switch (fieldType) {
+            case "text" -> normalizeTextConfig(candidate);
+            case "number" -> normalizeNumberConfig(candidate);
             case "user" -> normalizeUserConfig(candidate);
             case "date" -> normalizeDateConfig(candidate);
             case "datetime" -> normalizeDatetimeConfig(candidate);
@@ -157,6 +159,67 @@ public class WorkItemFieldConfigCanonicalizer {
                 );
                 yield objectMapper.createObjectNode();
             }
+        };
+    }
+
+    private JsonNode normalizeTextConfig(JsonNode value) {
+        String code = "INVALID_COMPLEX_FIELD_CONFIGURATION";
+        rejectUnknown(value, Set.of("presentation", "maxLength"), code,
+            "Unknown text field configuration property");
+        String presentation = value.path("presentation").asText("single_line").toLowerCase(Locale.ROOT);
+        if (!Set.of("single_line", "multiline", "rich_text", "email", "phone").contains(presentation)) {
+            throw failure(code, "Text presentation is not supported");
+        }
+        int maxLength = value.path("maxLength").asInt(defaultTextMaxLength(presentation));
+        if (maxLength < 1 || maxLength > 100000) {
+            throw failure(code, "Text maxLength must be between 1 and 100000");
+        }
+        ObjectNode result = objectMapper.createObjectNode();
+        result.put("presentation", presentation);
+        result.put("maxLength", maxLength);
+        return result;
+    }
+
+    private JsonNode normalizeNumberConfig(JsonNode value) {
+        String code = "INVALID_COMPLEX_FIELD_CONFIGURATION";
+        rejectUnknown(value, Set.of("presentation", "currencyCode", "precision", "durationUnit", "ratingMax"), code,
+            "Unknown number field configuration property");
+        String presentation = value.path("presentation").asText("number").toLowerCase(Locale.ROOT);
+        if (!Set.of("number", "currency", "percentage", "duration", "rating").contains(presentation)) {
+            throw failure(code, "Number presentation is not supported");
+        }
+        String currencyCode = value.path("currencyCode").asText("CNY").trim().toUpperCase(Locale.ROOT);
+        if (!currencyCode.matches("[A-Z]{3}")) {
+            throw failure(code, "currencyCode must be a three-letter ISO code");
+        }
+        int precision = value.path("precision").asInt(0);
+        if (precision < 0 || precision > 8) {
+            throw failure(code, "Number precision must be between 0 and 8");
+        }
+        String durationUnit = value.path("durationUnit").asText("hours").toLowerCase(Locale.ROOT);
+        if (!Set.of("minutes", "hours", "days").contains(durationUnit)) {
+            throw failure(code, "Duration unit is not supported");
+        }
+        int ratingMax = value.path("ratingMax").asInt(5);
+        if (ratingMax < 3 || ratingMax > 10) {
+            throw failure(code, "ratingMax must be between 3 and 10");
+        }
+        ObjectNode result = objectMapper.createObjectNode();
+        result.put("presentation", presentation);
+        result.put("currencyCode", currencyCode);
+        result.put("precision", precision);
+        result.put("durationUnit", durationUnit);
+        result.put("ratingMax", ratingMax);
+        return result;
+    }
+
+    private int defaultTextMaxLength(String presentation) {
+        return switch (presentation) {
+            case "rich_text" -> 100000;
+            case "multiline" -> 10000;
+            case "email" -> 320;
+            case "phone" -> 64;
+            default -> 2000;
         };
     }
 

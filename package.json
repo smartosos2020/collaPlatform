@@ -63,6 +63,7 @@
     "web:dev": "pnpm --dir web dev",
     "web:build": "pnpm --dir web build",
     "web:lint": "pnpm --dir web lint",
+    "web:test": "pnpm --dir web test",
     "collaboration:dev": "pnpm --dir collaboration dev",
     "collaboration:start": "pnpm --dir collaboration start",
     "collaboration:test": "pnpm --dir collaboration test",

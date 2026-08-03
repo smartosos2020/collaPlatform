@@ -26,6 +26,7 @@ import {
 } from '../api/workItemConfigurationApi'
 import { listProjectSpaceMembers } from '../api/projectSpacesApi'
 import { errorMessage } from '../projectSpaceView'
+import { CollapsibleWorkItemCard } from './CollapsibleWorkItemCard'
 import {
   isAvailableScopeKind,
   PERMISSION_ACTION_DEFINITIONS,
@@ -302,7 +303,8 @@ export function ProjectWorkItemPermissionPolicyEditor({
   }
 
   return (
-    <Card
+    <CollapsibleWorkItemCard
+      collapseLabel="数据权限策略"
       className="content-card work-item-permission-policy-editor"
       title={<Space><SafetyCertificateOutlined />数据权限策略</Space>}
       extra={(
@@ -546,7 +548,7 @@ export function ProjectWorkItemPermissionPolicyEditor({
           )
         })}
       </div>
-    </Card>
+    </CollapsibleWorkItemCard>
   )
 }
 

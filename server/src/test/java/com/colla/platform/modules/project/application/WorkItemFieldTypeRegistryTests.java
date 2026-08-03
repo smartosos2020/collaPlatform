@@ -29,6 +29,13 @@ class WorkItemFieldTypeRegistryTests {
         assertFalse(text.configSchema().path("additionalProperties").asBoolean());
         assertEquals(List.of("length", "regex", "format", "allowed_values"), text.validationRuleKinds());
         assertFalse(text.supportsOptions());
+        assertEquals("single_line", text.defaultConfig().at("/typeConfig/presentation").asText());
+        assertTrue(text.typeConfigSchema().path("properties").has("presentation"));
+
+        var number = registry.require("number");
+        assertEquals("number", number.defaultConfig().at("/typeConfig/presentation").asText());
+        assertEquals("CNY", number.defaultConfig().at("/typeConfig/currencyCode").asText());
+        assertTrue(number.typeConfigSchema().path("properties").has("ratingMax"));
 
         var select = registry.require("single_select");
         assertTrue(select.supportsOptions());

@@ -13,6 +13,7 @@ import type { ColumnsType } from 'antd/es/table'
 import { useMemo, useState } from 'react'
 
 import { EntityAvatar } from '../../../shared/components/EntityAvatar'
+import { errorMessage } from '../../../shared/api/errorMessage'
 import { SoftBadge } from '../../../shared/components/SoftBadge'
 import { StatusBadge } from '../../../shared/components/StatusBadge'
 import { listMembers } from '../api/adminUsersApi'
@@ -105,6 +106,7 @@ export function AdminUserGroupsPage() {
       groupForm.resetFields()
       await refreshGroups()
     },
+    onError: (error) => message.error(errorMessage(error, '用户组保存失败，请重试')),
   })
 
   const disableMutation = useMutation({
@@ -113,6 +115,7 @@ export function AdminUserGroupsPage() {
       message.success('用户组已停用')
       await refreshGroups()
     },
+    onError: (error) => message.error(errorMessage(error, '用户组停用失败，请重试')),
   })
 
   const enableMutation = useMutation({
@@ -121,9 +124,7 @@ export function AdminUserGroupsPage() {
       message.success('用户组已启用')
       await refreshGroups()
     },
-    onError: (error) => {
-      message.error(error instanceof Error ? error.message : '用户组启用失败')
-    },
+    onError: (error) => message.error(errorMessage(error, '用户组启用失败，请重试')),
   })
 
   const deleteMutation = useMutation({
@@ -132,6 +133,7 @@ export function AdminUserGroupsPage() {
       message.success('用户组已删除')
       await refreshGroups()
     },
+    onError: (error) => message.error(errorMessage(error, '用户组删除失败，请重试')),
   })
 
   const addMemberMutation = useMutation({
@@ -142,6 +144,7 @@ export function AdminUserGroupsPage() {
       memberForm.resetFields()
       await refreshGroups()
     },
+    onError: (error) => message.error(errorMessage(error, '成员主体添加失败，请重试')),
   })
 
   const removeMemberMutation = useMutation({
@@ -150,6 +153,7 @@ export function AdminUserGroupsPage() {
       message.success('成员主体已移除')
       await refreshGroups()
     },
+    onError: (error) => message.error(errorMessage(error, '成员主体移除失败，请重试')),
   })
 
   const memberColumns: ColumnsType<UserGroupMember> = [
@@ -467,7 +471,7 @@ export function AdminUserGroupsPage() {
       okText: '删除',
       okButtonProps: { danger: true },
       cancelText: '取消',
-      onOk: () => deleteMutation.mutateAsync(group.id),
+      onOk: () => deleteMutation.mutateAsync(group.id).catch(() => undefined),
     })
   }
 }

@@ -1,10 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
-import { Spin } from 'antd'
+import { Button, Result, Spin } from 'antd'
 import { useEffect, type ReactNode } from 'react'
 import { Navigate, useLocation } from 'react-router-dom'
 
 import { getCurrentUser } from '../api/authApi'
 import { useAuthStore } from '../authStore'
+import { isSessionExpiredError } from '../sessionError'
 
 export function RequireAuth({ children }: { children: ReactNode }) {
   const location = useLocation()
@@ -26,11 +27,13 @@ export function RequireAuth({ children }: { children: ReactNode }) {
     }
   }, [meQuery.data, setCurrentUser])
 
+  // 只有明确的会话失效（401/403）才清登录态；网络抖动/5xx 不得登出用户。
+  // 注：httpClient 在 401 时会先尝试单飞刷新，走到这里说明刷新也失败了。
   useEffect(() => {
-    if (meQuery.isError) {
+    if (meQuery.isError && isSessionExpiredError(meQuery.error)) {
       clearAuth()
     }
-  }, [clearAuth, meQuery.isError])
+  }, [clearAuth, meQuery.error, meQuery.isError])
 
   if (!accessToken) {
     return <Navigate to="/login" state={{ from: location }} replace />
@@ -45,7 +48,23 @@ export function RequireAuth({ children }: { children: ReactNode }) {
   }
 
   if (meQuery.isError) {
-    return <Navigate to="/login" state={{ from: location }} replace />
+    if (isSessionExpiredError(meQuery.error)) {
+      return <Navigate to="/login" state={{ from: location }} replace />
+    }
+    return (
+      <main className="auth-loading">
+        <Result
+          status="warning"
+          title="暂时无法验证登录状态"
+          subTitle="网络或服务异常，你的登录信息已保留，请稍后重试。"
+          extra={(
+            <Button type="primary" onClick={() => void meQuery.refetch()}>
+              重试
+            </Button>
+          )}
+        />
+      </main>
+    )
   }
 
   return children

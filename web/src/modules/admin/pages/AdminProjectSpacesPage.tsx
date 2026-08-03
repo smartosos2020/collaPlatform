@@ -98,7 +98,7 @@ export function AdminProjectSpacesPage() {
       content: action === 'restore' ? '恢复后空间成员可继续协作。' : '此操作会影响全部空间成员，并写入企业审计日志。',
       okText: `确认${labels[action]}`,
       okButtonProps: action === 'restore' ? {} : { danger: true },
-      onOk: () => transitionMutation.mutateAsync({ id: space.id, action }),
+      onOk: () => transitionMutation.mutateAsync({ id: space.id, action }).catch(() => undefined),
     })
   }
 
@@ -131,6 +131,9 @@ export function AdminProjectSpacesPage() {
             options={[{ value: 'private', label: '仅成员可见' }, { value: 'workspace', label: '企业内可发现' }]}
           />
         </div>
+        {spaces.length === 100 ? (
+          <Alert type="warning" showIcon title="结果可能已截断" description="仅显示前 100 条，请使用搜索或筛选缩小范围。" />
+        ) : null}
         <div className="admin-project-spaces-list" role="list">
           {spacesQuery.isLoading ? <Skeleton active paragraph={{ rows: 5 }} /> : null}
           {!spacesQuery.isLoading && visibleSpaces.length === 0 ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无符合条件的空间" /> : null}

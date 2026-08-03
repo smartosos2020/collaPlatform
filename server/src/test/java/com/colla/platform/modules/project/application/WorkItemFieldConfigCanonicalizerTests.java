@@ -118,7 +118,26 @@ class WorkItemFieldConfigCanonicalizerTests {
             """.formatted(firstId))).config().path("defaultValue").size());
         assertEquals(0, canonicalizer.canonicalize("work_item_reference", objectMapper.readTree("""
             {"schemaVersion":1,"required":false,"defaultValue":[],"validationRules":[]}
-            """)).config().path("defaultValue").size());
+        """)).config().path("defaultValue").size());
+    }
+
+    @Test
+    void canonicalizesCommonTextAndNumberControlPresentations() throws Exception {
+        var richText = canonicalizer.canonicalize("text", objectMapper.readTree("""
+            {"schemaVersion":1,"required":false,"defaultValue":null,"validationRules":[],
+             "typeConfig":{"presentation":"rich_text","maxLength":100000}}
+            """));
+        assertEquals("rich_text", richText.config().at("/typeConfig/presentation").asText());
+        assertEquals(100000, richText.config().at("/typeConfig/maxLength").asInt());
+
+        var currency = canonicalizer.canonicalize("number", objectMapper.readTree("""
+            {"schemaVersion":1,"required":false,"defaultValue":12.5,"validationRules":[],
+             "typeConfig":{"presentation":"currency","currencyCode":"cny","precision":2,
+              "durationUnit":"hours","ratingMax":5}}
+            """));
+        assertEquals("currency", currency.config().at("/typeConfig/presentation").asText());
+        assertEquals("CNY", currency.config().at("/typeConfig/currencyCode").asText());
+        assertEquals(2, currency.config().at("/typeConfig/precision").asInt());
     }
 
     @Test

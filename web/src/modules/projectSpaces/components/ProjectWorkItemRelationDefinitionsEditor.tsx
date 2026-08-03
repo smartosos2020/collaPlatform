@@ -28,6 +28,7 @@ import {
   type WorkItemConfigurationDraft,
 } from '../api/workItemConfigurationApi'
 import { errorMessage } from '../projectSpaceView'
+import { CollapsibleWorkItemCard } from './CollapsibleWorkItemCard'
 
 type RelationDefinition = {
   relationKey: string
@@ -107,7 +108,8 @@ export function ProjectWorkItemRelationDefinitionsEditor({
     }, current.length),
   ])
   return (
-    <Card
+    <CollapsibleWorkItemCard
+      collapseLabel="关系定义"
       className="content-card work-item-relation-definition-editor"
       title={<Space><BranchesOutlined />关系定义</Space>}
       extra={(
@@ -257,7 +259,7 @@ export function ProjectWorkItemRelationDefinitionsEditor({
           </Card>
         ))}
       </div>
-    </Card>
+    </CollapsibleWorkItemCard>
   )
 }
 

@@ -79,7 +79,7 @@ public class WorkItemFieldValueCodec {
 
     private JsonNode normalize(String type, JsonNode value, JsonNode field) {
         return switch (type) {
-            case "text" -> text(value, "Field value must be text");
+            case "text" -> text(value, "Field value must be text", field);
             case "number" -> number(value);
             case "boolean" -> bool(value);
             case "single_select" -> option(value, field);
@@ -100,6 +100,17 @@ public class WorkItemFieldValueCodec {
             throw failure("INVALID_FIELD_VALUE", message);
         }
         return TextNode.valueOf(value.textValue());
+    }
+
+    private JsonNode text(JsonNode value, String message, JsonNode field) {
+        JsonNode normalized = text(value, message);
+        // Legacy published snapshots may not carry the presentation-era limit yet.
+        // Keep them readable while newly canonicalized fields always publish an explicit limit.
+        int maximum = field.path("config").path("typeConfig").path("maxLength").asInt(100000);
+        if (normalized.asText().codePointCount(0, normalized.asText().length()) > maximum) {
+            throw failure("INVALID_FIELD_VALUE", "Text value exceeds the published maximum length");
+        }
+        return normalized;
     }
 
     private JsonNode number(JsonNode value) {

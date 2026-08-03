@@ -1,4 +1,5 @@
 import {
+  ApartmentOutlined,
   DeleteOutlined,
   MinusOutlined,
   PlusOutlined,
@@ -11,7 +12,6 @@ import {
   Alert,
   App as AntdApp,
   Button,
-  Card,
   Collapse,
   Empty,
   Input,
@@ -28,6 +28,7 @@ import {
   type WorkItemConfigurationDraft,
 } from '../api/workItemConfigurationApi'
 import { errorMessage } from '../projectSpaceView'
+import { CollapsibleWorkItemCard } from './CollapsibleWorkItemCard'
 
 type JsonRecord = Record<string, unknown>
 type Stage = { stageKey: string; label: string; description: string; sortOrder: number }
@@ -176,20 +177,22 @@ export function ProjectWorkItemNodeFlowDesigner({
   }
 
   return (
-    <Card
+    <CollapsibleWorkItemCard
+      collapseLabel="节点流设计器"
       className="node-flow-designer"
       data-testid="work-item-node-flow-designer"
       title={(
-        <Space wrap>
-          <Typography.Text strong>节点流设计器</Typography.Text>
+        <Space>
+          <ApartmentOutlined />
+          <span>节点流设计器</span>
+        </Space>
+      )}
+      extra={(
+        <Space wrap size={[6, 6]}>
           <Tag color="blue">{flow.stages.length} 阶段</Tag>
           <Tag color="cyan">{flow.nodes.length} 节点</Tag>
           <Tag>{flow.edges.length} 连线</Tag>
           {dirty ? <Tag color="warning">未保存</Tag> : <Tag color="success">已同步</Tag>}
-        </Space>
-      )}
-      extra={(
-        <Space>
           <Button aria-label="缩小画布" icon={<ZoomOutOutlined />} onClick={() => setZoom(Math.max(75, zoom - 25))} />
           <Typography.Text>{zoom}%</Typography.Text>
           <Button aria-label="放大画布" icon={<ZoomInOutlined />} onClick={() => setZoom(Math.min(125, zoom + 25))} />
@@ -327,18 +330,11 @@ export function ProjectWorkItemNodeFlowDesigner({
               key: 'policy',
               label: '表单、指派、产物、时限',
               children: (
-                <Input.TextArea
-                  rows={9}
-                  aria-label="节点配置 JSON"
-                  disabled={readOnly}
-                  value={JSON.stringify(selectedNode.configuration, null, 2)}
-                  onChange={(event) => {
-                    try {
-                      updateNode({ configuration: JSON.parse(event.target.value) as JsonRecord })
-                    } catch {
-                      // Preserve the last valid server-bound configuration.
-                    }
-                  }}
+                <NodeConfigurationEditor
+                  key={`${selectedNode.nodeKey}:${JSON.stringify(selectedNode.configuration)}`}
+                  configuration={selectedNode.configuration}
+                  readOnly={readOnly}
+                  onApply={(configuration) => updateNode({ configuration })}
                 />
               ),
             },
@@ -376,7 +372,51 @@ export function ProjectWorkItemNodeFlowDesigner({
           ]}
         />
       ) : null}
-    </Card>
+    </CollapsibleWorkItemCard>
+  )
+}
+
+function NodeConfigurationEditor({
+  configuration,
+  readOnly,
+  onApply,
+}: {
+  configuration: JsonRecord
+  readOnly: boolean
+  onApply: (configuration: JsonRecord) => void
+}) {
+  const [draft, setDraft] = useState(() => JSON.stringify(configuration, null, 2))
+  const [error, setError] = useState(false)
+
+  const apply = () => {
+    try {
+      const parsed = JSON.parse(draft) as unknown
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw new Error('configuration must be an object')
+      }
+      setError(false)
+      onApply(parsed as JsonRecord)
+    } catch {
+      setError(true)
+    }
+  }
+
+  return (
+    <div>
+      <Input.TextArea
+        rows={9}
+        aria-label="节点配置 JSON"
+        disabled={readOnly}
+        value={draft}
+        status={error ? 'error' : undefined}
+        onChange={(event) => {
+          setDraft(event.target.value)
+          if (error) setError(false)
+        }}
+        onBlur={apply}
+      />
+      {error ? <Typography.Text type="danger">JSON 格式不正确，配置必须是 JSON 对象</Typography.Text> : null}
+    </div>
   )
 }
 

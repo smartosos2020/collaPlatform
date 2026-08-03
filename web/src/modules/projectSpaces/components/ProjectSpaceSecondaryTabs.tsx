@@ -60,6 +60,18 @@ export function ProjectSpaceSecondaryTabs<View extends ProjectSpaceSecondaryTabV
       : null,
   }))
 
+  if (items.length === 1) {
+    return (
+      <section
+        className="project-space-secondary-tabs project-space-secondary-tabs-single"
+        data-testid={testId}
+        aria-label={ariaLabel}
+      >
+        {items[0].children}
+      </section>
+    )
+  }
+
   const selectTab = (key: string) => {
     if (navigationMode === 'local') {
       setLocalActiveKey(key)

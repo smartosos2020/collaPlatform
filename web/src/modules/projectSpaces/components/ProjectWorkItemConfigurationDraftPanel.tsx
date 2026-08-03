@@ -4,6 +4,7 @@ import {
   CloseCircleOutlined,
   DeleteOutlined,
   HistoryOutlined,
+  QuestionCircleOutlined,
   ReloadOutlined,
   RollbackOutlined,
   WarningOutlined,
@@ -11,7 +12,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Alert, App as AntdApp, Button, Divider, List, Skeleton, Space, Tag, Tooltip, Typography } from 'antd'
 import { useEffect, useRef, useState } from 'react'
-import { useLocation } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 
 import {
   abandonWorkItemConfigurationDraft,
@@ -24,6 +25,7 @@ import {
   validateWorkItemConfigurationDraft,
   workItemConfigurationDraftKeys,
   workItemConfigurationVersionKeys,
+  type ConfigurationDiagnostic,
   type ConfigurationVersion,
   type WorkItemConfigurationDraft,
 } from '../api/workItemConfigurationApi'
@@ -54,6 +56,7 @@ export function ProjectWorkItemConfigurationDraftPanel({
   const { message, modal } = AntdApp.useApp()
   const queryClient = useQueryClient()
   const location = useLocation()
+  const navigate = useNavigate()
   const flowAccessRef = useRef<HTMLElement>(null)
   const [dirtyStateFlowDraftId, setDirtyStateFlowDraftId] = useState<string | null>(null)
   const queryKey = workItemConfigurationDraftKeys.detail(spaceId, typeId)
@@ -220,6 +223,20 @@ export function ProjectWorkItemConfigurationDraftPanel({
   const breaking = draftDiffQuery.data?.breaking ?? false
   const showNodeFlowEditor = hasNodeFlow(draft.snapshot) && !stateFlowDirty
 
+  const openDiagnostic = (diagnostic: ConfigurationDiagnostic) => {
+    const presentation = configurationDiagnosticPresentation(diagnostic, draft.snapshot)
+    const searchParams = new URLSearchParams(location.search)
+    searchParams.set('panel', 'work-model')
+    searchParams.set('workModelTab', presentation.tab)
+    if (presentation.layoutKind) searchParams.set('layoutKind', presentation.layoutKind)
+    else searchParams.delete('layoutKind')
+    navigate({
+      pathname: location.pathname,
+      search: `?${searchParams.toString()}`,
+      hash: '',
+    }, { replace: true })
+  }
+
   const confirmPublish = () => {
     const confirmationRequired = breaking || migrationConfirmationRequired
     modal.confirm({
@@ -240,18 +257,27 @@ export function ProjectWorkItemConfigurationDraftPanel({
 
   return (
     <section className={`work-item-draft-panel status-${draft.status}`} aria-label="配置草稿状态">
-      <div className="work-item-draft-summary">
-        <div className="work-item-draft-copy">
-          <Space wrap size={7}>
-            <Typography.Text strong>配置草稿</Typography.Text>
+      <header
+        className="content-card work-item-model-section-header work-item-flow-access-heading"
+        data-testid="work-item-model-section-header"
+      >
+        <div className="work-item-flow-access-heading-main">
+          <Typography.Title id="work-item-flow-access-heading" level={4}>流程与权限</Typography.Title>
+          <Tooltip title="配置数据权限、关系、状态流程及审批与协作流程。变更写入当前任务模板草稿，发布前不会影响成员运行时。">
+            <Button
+              type="text"
+              size="small"
+              className="work-item-flow-access-help"
+              aria-label="查看流程与权限说明"
+              icon={<QuestionCircleOutlined />}
+            />
+          </Tooltip>
+          <Space wrap size={7} className="work-item-draft-meta">
             <DraftStatusTag status={draft.status} />
             <Tag>v{draft.aggregateVersion}</Tag>
             {errors.length > 0 ? <Tag color="error" icon={<CloseCircleOutlined />}>{errors.length} 个阻断项</Tag> : null}
             {warnings.length > 0 ? <Tag color="warning" icon={<WarningOutlined />}>{warnings.length} 个提醒</Tag> : null}
           </Space>
-          <Typography.Text type="secondary">
-            schema v{draft.snapshotSchemaVersion} · 更新于 {formatTime(draft.updatedAt)}
-          </Typography.Text>
         </div>
         <Space wrap className="work-item-draft-actions">
           <Button
@@ -289,22 +315,32 @@ export function ProjectWorkItemConfigurationDraftPanel({
             放弃草稿
           </Button>
         </Space>
-      </div>
+      </header>
       {draft.diagnostics.length > 0 ? (
-        <div className="work-item-draft-diagnostics" aria-label="配置诊断">
-          {draft.diagnostics.map((diagnostic) => (
-            <Tooltip title={diagnostic.message} key={`${diagnostic.code}:${diagnostic.keyPath}`}>
-              <Tag color={diagnostic.severity === 'error' ? 'error' : 'warning'}>
-                {diagnostic.keyPath} · {diagnostic.code}
-              </Tag>
-            </Tooltip>
-          ))}
-        </div>
-      ) : (
-        <Typography.Text className="work-item-draft-clean" type="secondary">
-          当前快照没有诊断项
-        </Typography.Text>
-      )}
+        <section className="content-card work-item-draft-diagnostics" aria-label="配置诊断">
+          {draft.diagnostics.map((diagnostic) => {
+            const presentation = configurationDiagnosticPresentation(diagnostic, draft.snapshot)
+            return (
+              <Tooltip
+                title={`${presentation.description} 点击后将打开“${presentation.location}”。`}
+                key={`${diagnostic.code}:${diagnostic.keyPath}`}
+              >
+                <Button
+                  size="small"
+                  danger={diagnostic.severity === 'error'}
+                  className="work-item-diagnostic-link"
+                  data-diagnostic-code={diagnostic.code}
+                  icon={diagnostic.severity === 'error' ? <CloseCircleOutlined /> : <WarningOutlined />}
+                  onClick={() => openDiagnostic(diagnostic)}
+                >
+                  {presentation.label}
+                  <span className="work-item-diagnostic-action">定位处理</span>
+                </Button>
+              </Tooltip>
+            )
+          })}
+        </section>
+      ) : null}
       {publicationBlocked ? (
         <Alert
           className="work-item-publication-block"
@@ -330,14 +366,13 @@ export function ProjectWorkItemConfigurationDraftPanel({
         tabIndex={-1}
         aria-labelledby="work-item-flow-access-heading"
       >
-        <div className="work-item-flow-access-heading">
-          <Typography.Title id="work-item-flow-access-heading" level={4}>
-            流程与权限
-          </Typography.Title>
-          <Typography.Paragraph type="secondary">
-            配置数据权限、关系、状态流程及审批与协作流程。变更写入当前任务模板草稿，发布前不会影响成员运行时。
-          </Typography.Paragraph>
-        </div>
+        <ProjectWorkItemConfigurationTemplatePanel
+          spaceId={spaceId}
+          typeId={typeId}
+          readOnly={readOnly || stateFlowDirty}
+          draft={draft}
+          currentVersion={currentVersion}
+        />
         <ProjectWorkItemPermissionPolicyEditor
           key={`permissions:${draft.id}:${draft.aggregateVersion}`}
           spaceId={spaceId}
@@ -391,13 +426,6 @@ export function ProjectWorkItemConfigurationDraftPanel({
           </>
         )}
       </section>
-      <ProjectWorkItemConfigurationTemplatePanel
-        spaceId={spaceId}
-        typeId={typeId}
-        readOnly={readOnly || stateFlowDirty}
-        draft={draft}
-        currentVersion={currentVersion}
-      />
       <Divider className="work-item-version-divider" />
       <div className="work-item-version-heading">
         <Space>
@@ -505,6 +533,93 @@ export function ProjectWorkItemConfigurationDraftPanel({
       />
     </section>
   )
+}
+
+type DiagnosticTarget = {
+  tab: 'type-information' | 'field-configuration' | 'page-layout' | 'flow-access'
+  location: string
+  layoutKind?: 'create' | 'detail'
+}
+
+type DiagnosticPresentation = DiagnosticTarget & {
+  label: string
+  description: string
+}
+
+function configurationDiagnosticPresentation(
+  diagnostic: ConfigurationDiagnostic,
+  snapshot: unknown,
+): DiagnosticPresentation {
+  const target = diagnosticTarget(diagnostic.keyPath)
+  if (diagnostic.code === 'missing_layout_kind') {
+    const missingKinds = missingLayoutKinds(snapshot)
+    const missingLabel = missingKinds.length === 2
+      ? '新建页和详情页'
+      : missingKinds[0] === 'create' ? '新建页' : '详情页'
+    return {
+      ...target,
+      label: `页面布局未完整：缺少${missingLabel}`,
+      description: `请补充${missingLabel}布局，确保创建和查看工作项时都有可用页面。`,
+      layoutKind: missingKinds[0] ?? 'detail',
+    }
+  }
+
+  const labels: Record<string, string> = {
+    missing_type_definition: '工作项类型信息不完整',
+    invalid_fields: '字段配置格式有误',
+    field_budget_exceeded: '配置字段数量超过上限',
+    duplicate_or_missing_field_key: '字段编码缺失或重复',
+    invalid_field_config: '字段参数配置有误',
+    invalid_field_options: '字段选项配置有误',
+    option_budget_exceeded: '字段选项数量超过上限',
+    invalid_layouts: '页面布局配置格式有误',
+    duplicate_or_invalid_layout_kind: '页面布局类型重复或无效',
+    invalid_layout_nodes: '页面布局节点格式有误',
+    layout_node_budget_exceeded: '页面布局节点数量超过上限',
+    duplicate_or_missing_node_key: '布局节点编码缺失或重复',
+    unknown_layout_field: '布局引用了不存在的字段',
+    inactive_layout_field: '布局引用了已停用字段',
+    missing_layout_parent: '布局节点缺少上级容器',
+    layout_cycle: '页面布局存在循环嵌套',
+    layout_depth_exceeded: '页面布局嵌套层级过深',
+    invalid_access_policies: '字段权限策略格式有误',
+    access_policy_budget_exceeded: '字段权限策略数量超过上限',
+    duplicate_or_missing_policy_key: '权限策略编码缺失或重复',
+    inactive_policy_field: '权限策略引用了已停用字段',
+    unknown_condition_field: '显示条件引用了不存在的字段',
+    cross_workspace_reference: '配置不能引用其他工作区',
+    cross_space_reference: '配置不能引用其他项目空间',
+  }
+  const label = labels[diagnostic.code] ?? `${target.location}存在需要处理的配置`
+  return {
+    ...target,
+    label,
+    description: `${label}。请前往对应配置位置检查并修正。`,
+  }
+}
+
+function diagnosticTarget(keyPath: string): DiagnosticTarget {
+  if (keyPath.startsWith('$.typeDefinition')) {
+    return { tab: 'type-information', location: '类型信息' }
+  }
+  if (keyPath.startsWith('$.fields')) {
+    return { tab: 'field-configuration', location: '配置字段' }
+  }
+  if (keyPath.startsWith('$.layouts')) {
+    return { tab: 'page-layout', location: '页面布局' }
+  }
+  return { tab: 'flow-access', location: '流程与权限' }
+}
+
+function missingLayoutKinds(snapshot: unknown): Array<'create' | 'detail'> {
+  if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) return ['create', 'detail']
+  const layouts = (snapshot as Record<string, unknown>).layouts
+  if (!Array.isArray(layouts)) return ['create', 'detail']
+  const configured = new Set(layouts.map((layout) => {
+    if (!layout || typeof layout !== 'object' || Array.isArray(layout)) return undefined
+    return (layout as Record<string, unknown>).layoutKind
+  }))
+  return (['create', 'detail'] as const).filter((kind) => !configured.has(kind))
 }
 
 function hasNodeFlow(snapshot: unknown) {

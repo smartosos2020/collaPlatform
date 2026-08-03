@@ -401,6 +401,11 @@ export function KnowledgeContentEditorCore({
   const collaborationDocument = fullEditorLoaded ? collaboration?.document : undefined
   const collaborationProvider = fullEditorLoaded ? collaboration?.provider : undefined
   const collaborationLocalUser = collaboration?.localUser
+  const collaborationReady = !collaborationProvider || collaboration?.synced === true
+  const editorCanEdit = canEdit
+    && fullEditorLoaded
+    && collaborationReady
+    && (!collaborationProvider || collaboration?.canEdit === true)
 
   useEffect(() => {
     onDocumentChangeRef.current = onDocumentChange
@@ -568,7 +573,7 @@ export function KnowledgeContentEditorCore({
     {
       extensions,
       content: collaborationProvider ? undefined : renderedDocument,
-      editable: canEdit && fullEditorLoaded && (!collaborationProvider || collaboration?.canEdit),
+      editable: editorCanEdit,
       immediatelyRender: false,
       editorProps: {
         attributes: {
@@ -689,7 +694,7 @@ export function KnowledgeContentEditorCore({
     // Keep the editor instance stable while parent state mirrors each keystroke.
     // Incoming content is synchronized by the effect below so changing it here
     // would recreate ProseMirror and drop the current DOM focus.
-    [collaborationProvider, extensions, fullEditorLoaded, syncDocumentFromEditor],
+    [collaborationProvider, editorCanEdit, extensions, fullEditorLoaded, syncDocumentFromEditor],
   )
 
   useEffect(() => {
@@ -697,8 +702,8 @@ export function KnowledgeContentEditorCore({
       return
     }
     editorRef.current = editor
-    editor.setEditable(canEdit && fullEditorLoaded && (!collaborationProvider || Boolean(collaboration?.canEdit)))
-  }, [canEdit, collaboration?.canEdit, collaborationProvider, editor, fullEditorLoaded])
+    editor.setEditable(editorCanEdit)
+  }, [editor, editorCanEdit])
 
   useEffect(() => {
     if (!editor || collaborationProvider) {
@@ -789,7 +794,7 @@ export function KnowledgeContentEditorCore({
         <div className="doc-editor-title-group">
           <Input
             className="doc-title-input"
-            disabled={!canEdit || !fullEditorLoaded || Boolean(collaboration?.provider && !collaboration.canEdit)}
+            disabled={!editorCanEdit}
             aria-label="知识内容标题"
             value={title}
             placeholder="Untitled"

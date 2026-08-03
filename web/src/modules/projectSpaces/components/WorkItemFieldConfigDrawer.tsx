@@ -388,6 +388,68 @@ function TypeSpecificEditor({
   return (
     <section className="work-item-field-form-section" aria-labelledby="field-type-config">
       <Typography.Title level={5} id="field-type-config">类型专属配置</Typography.Title>
+      {field.fieldType === 'text' ? (
+        <>
+          <Form.Item name={['typeConfig', 'presentation']} label="文本控件" rules={[{ required: true }]}>
+            <Select options={[
+              { value: 'single_line', label: '单行文本' },
+              { value: 'multiline', label: '多行文本' },
+              { value: 'rich_text', label: '富文本' },
+              { value: 'email', label: '邮箱' },
+              { value: 'phone', label: '电话' },
+            ]} />
+          </Form.Item>
+          <Form.Item name={['typeConfig', 'maxLength']} label="最大字符数" rules={[{ required: true }]}>
+            <InputNumber min={1} max={100000} className="work-item-field-full-input" />
+          </Form.Item>
+        </>
+      ) : null}
+      {field.fieldType === 'number' ? (
+        <>
+          <Form.Item name={['typeConfig', 'presentation']} label="数字控件" rules={[{ required: true }]}>
+            <Select options={[
+              { value: 'number', label: '数字' },
+              { value: 'currency', label: '金额' },
+              { value: 'percentage', label: '百分比' },
+              { value: 'duration', label: '时长' },
+              { value: 'rating', label: '评分' },
+            ]} />
+          </Form.Item>
+          <Form.Item noStyle shouldUpdate={(previous, current) => (
+            previous.typeConfig?.presentation !== current.typeConfig?.presentation
+          )}>
+            {({ getFieldValue }) => {
+              const presentation = getFieldValue(['typeConfig', 'presentation'])
+              return (
+                <>
+                  {presentation === 'currency' ? (
+                    <Form.Item name={['typeConfig', 'currencyCode']} label="币种" rules={[{ required: true }]}>
+                      <Select options={['CNY', 'USD', 'EUR', 'GBP', 'JPY'].map((value) => ({ value }))} />
+                    </Form.Item>
+                  ) : null}
+                  {presentation === 'duration' ? (
+                    <Form.Item name={['typeConfig', 'durationUnit']} label="时长单位" rules={[{ required: true }]}>
+                      <Select options={[
+                        { value: 'minutes', label: '分钟' },
+                        { value: 'hours', label: '小时' },
+                        { value: 'days', label: '天' },
+                      ]} />
+                    </Form.Item>
+                  ) : null}
+                  {presentation === 'rating' ? (
+                    <Form.Item name={['typeConfig', 'ratingMax']} label="评分上限" rules={[{ required: true }]}>
+                      <InputNumber min={3} max={10} />
+                    </Form.Item>
+                  ) : null}
+                </>
+              )
+            }}
+          </Form.Item>
+          <Form.Item name={['typeConfig', 'precision']} label="小数位" rules={[{ required: true }]}>
+            <InputNumber min={0} max={8} />
+          </Form.Item>
+        </>
+      ) : null}
       {field.fieldType === 'user' ? (
         <>
           <Form.Item name={['typeConfig', 'allowedSubjectTypes']} label="允许主体" rules={[{ required: true }]}>
@@ -493,6 +555,17 @@ function normalizeDefaultValue(fieldType: ConfiguredWorkItemField['fieldType'], 
 
 function normalizeTypeConfig(fieldType: ConfiguredWorkItemField['fieldType'], value: Record<string, unknown>) {
   const result = { ...value }
+  if (fieldType === 'text') {
+    result.presentation = value.presentation ?? 'single_line'
+    result.maxLength = value.maxLength ?? 2000
+  }
+  if (fieldType === 'number') {
+    result.presentation = value.presentation ?? 'number'
+    result.currencyCode = value.currencyCode ?? 'CNY'
+    result.precision = value.precision ?? 0
+    result.durationUnit = value.durationUnit ?? 'hours'
+    result.ratingMax = value.ratingMax ?? 5
+  }
   if (fieldType === 'user') {
     result.selectionScope = parseSubjectScope(value.selectionScope)
   }
@@ -523,6 +596,17 @@ function typeConfigToForm(
   value: Record<string, unknown>,
 ) {
   const result = { ...value }
+  if (fieldType === 'text') {
+    result.presentation = value.presentation ?? 'single_line'
+    result.maxLength = value.maxLength ?? 2000
+  }
+  if (fieldType === 'number') {
+    result.presentation = value.presentation ?? 'number'
+    result.currencyCode = value.currencyCode ?? 'CNY'
+    result.precision = value.precision ?? 0
+    result.durationUnit = value.durationUnit ?? 'hours'
+    result.ratingMax = value.ratingMax ?? 5
+  }
   if (fieldType === 'user') {
     result.selectionScope = Array.isArray(value.selectionScope)
       ? value.selectionScope

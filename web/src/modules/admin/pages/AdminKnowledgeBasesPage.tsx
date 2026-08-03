@@ -16,6 +16,7 @@ import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { EntityAvatar } from '../../../shared/components/EntityAvatar'
+import { errorMessage } from '../../../shared/api/errorMessage'
 import { StatusBadge } from '../../../shared/components/StatusBadge'
 import { TableEmptyState } from '../../../shared/components/TableEmptyState'
 import {
@@ -67,6 +68,7 @@ export function AdminKnowledgeBasesPage() {
       message.success('知识库已停用')
       await refresh()
     },
+    onError: (error) => message.error(errorMessage(error, '知识库停用失败，请重试')),
   })
   const restoreMutation = useMutation({
     mutationFn: restoreAdminKnowledgeBase,
@@ -74,6 +76,7 @@ export function AdminKnowledgeBasesPage() {
       message.success('知识库已启用')
       await refresh()
     },
+    onError: (error) => message.error(errorMessage(error, '知识库启用失败，请重试')),
   })
   const archiveMutation = useMutation({
     mutationFn: archiveAdminKnowledgeBase,
@@ -81,6 +84,7 @@ export function AdminKnowledgeBasesPage() {
       message.success('知识库已归档')
       await refresh()
     },
+    onError: (error) => message.error(errorMessage(error, '知识库归档失败，请重试')),
   })
   const bulkReviewMutation = useMutation({
     mutationFn: (itemIds: string[]) =>
@@ -94,6 +98,20 @@ export function AdminKnowledgeBasesPage() {
       setSelectedRiskIds([])
       await refresh()
     },
+    onError: (error) => message.error(errorMessage(error, '批量请求复核失败，请重试')),
+  })
+  const exportMutation = useMutation({
+    mutationFn: exportAdminKnowledgeBaseGovernance,
+    onSuccess: (csv, spaceId) => {
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `knowledge-base-governance-${spaceId}.csv`
+      link.click()
+      URL.revokeObjectURL(url)
+    },
+    onError: (error) => message.error(errorMessage(error, '治理报告导出失败，请重试')),
   })
 
   const risks = useMemo(() => governanceQuery.data?.risks ?? [], [governanceQuery.data?.risks])
@@ -226,7 +244,7 @@ export function AdminKnowledgeBasesPage() {
                     onClick={() => modal.confirm({
                       title: '停用知识库',
                       content: `确认停用 ${selectedSpace.name}？用户侧将不可继续写入。`,
-                      onOk: () => disableMutation.mutate(selectedSpace.id),
+                      onOk: () => disableMutation.mutateAsync(selectedSpace.id).catch(() => undefined),
                     })}
                   >
                     停用
@@ -242,7 +260,7 @@ export function AdminKnowledgeBasesPage() {
                   onClick={() => modal.confirm({
                     title: '归档知识库',
                     content: `确认归档 ${selectedSpace.name}？`,
-                    onOk: () => archiveMutation.mutate(selectedSpace.id),
+                    onOk: () => archiveMutation.mutateAsync(selectedSpace.id).catch(() => undefined),
                   })}
                 >
                   归档
@@ -253,7 +271,7 @@ export function AdminKnowledgeBasesPage() {
                 <Button icon={<AuditOutlined />} onClick={() => navigate(`/admin/audit-logs?targetType=knowledge_base&targetId=${selectedSpace.id}`)}>
                   审计
                 </Button>
-                <Button icon={<DownloadOutlined />} onClick={() => exportGovernance(selectedSpace.id)}>
+                <Button icon={<DownloadOutlined />} loading={exportMutation.isPending} onClick={() => exportMutation.mutate(selectedSpace.id)}>
                   导出治理
                 </Button>
               </Space>
@@ -290,7 +308,7 @@ export function AdminKnowledgeBasesPage() {
                     content: `将对 ${selectedRiskDocuments.length} 个内容节点发起复核，并写入审计记录。`,
                     okText: '确认执行',
                     cancelText: '取消',
-                    onOk: () => bulkReviewMutation.mutateAsync(selectedRiskDocuments),
+                    onOk: () => bulkReviewMutation.mutateAsync(selectedRiskDocuments).catch(() => undefined),
                   })}
                 >
                   请求复核选中内容
@@ -351,16 +369,6 @@ export function AdminKnowledgeBasesPage() {
     </Space>
   )
 
-  async function exportGovernance(spaceId: string) {
-    const csv = await exportAdminKnowledgeBaseGovernance(spaceId)
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `knowledge-base-governance-${spaceId}.csv`
-    link.click()
-    URL.revokeObjectURL(url)
-  }
 }
 
 function severityColor(severity: string) {

@@ -19,6 +19,7 @@ import {
   Button,
   Card,
   Empty,
+  Form,
   Input,
   InputNumber,
   Modal,
@@ -31,11 +32,13 @@ import {
   Typography,
 } from 'antd'
 import { useMemo, useState, type ReactNode } from 'react'
+import { useLocation } from 'react-router-dom'
 
 import { ApiRequestError } from '../../../shared/api/httpClient'
 import type { UserProjectSpace } from '../api/projectSpacesApi'
 import { workItemConfigurationDraftKeys } from '../api/workItemConfigurationApi'
 import {
+  createWorkItemField,
   type ConfiguredWorkItemField,
 } from '../api/workItemFieldsApi'
 import {
@@ -54,8 +57,20 @@ import {
   type WorkItemLayoutNodeCommand,
   type WorkItemLayoutNodeType,
 } from '../api/workItemLayoutsApi'
+import {
+  applyFieldControlPreset,
+  availableFieldControlPresets,
+  fieldControlLabel,
+  fieldControlPreset,
+  type WorkItemFieldControlPresetKey,
+} from '../workItemFieldControls'
 import { ProjectSpaceSecondaryTabs } from './ProjectSpaceSecondaryTabs'
 import { WorkItemLayoutRenderer } from './WorkItemLayoutRenderer'
+
+type QuickFieldControlDraft = {
+  fieldKey: string
+  name: string
+}
 
 export function ProjectWorkItemLayoutsPanel({
   space,
@@ -72,7 +87,11 @@ export function ProjectWorkItemLayoutsPanel({
 }) {
   const { message } = AntdApp.useApp()
   const queryClient = useQueryClient()
-  const [kind, setKind] = useState<WorkItemLayoutKind>('create')
+  const location = useLocation()
+  const requestedKind = new URLSearchParams(location.search).get('layoutKind')
+  const [kind, setKind] = useState<WorkItemLayoutKind>(
+    requestedKind === 'detail' ? 'detail' : 'create',
+  )
   const [selectedId, setSelectedId] = useState<string>()
   const [pendingCommand, setPendingCommand] = useState<WorkItemLayoutNodeCommand>()
   const [draggedId, setDraggedId] = useState<string>()
@@ -87,6 +106,8 @@ export function ProjectWorkItemLayoutsPanel({
   const [previewTypeStatus, setPreviewTypeStatus] = useState<'active' | 'disabled' | 'retired'>('active')
   const [previewFieldStatus, setPreviewFieldStatus] = useState<'active' | 'disabled' | 'retired'>('active')
   const [previewValues, setPreviewValues] = useState('{}')
+  const [quickControlKey, setQuickControlKey] = useState<WorkItemFieldControlPresetKey>()
+  const [quickControlForm] = Form.useForm<QuickFieldControlDraft>()
   const workbenchQuery = useQuery({
     queryKey: workItemLayoutKeys.workbench(space.id, typeId),
     queryFn: () => getWorkItemLayoutWorkbench(space.id, typeId),
@@ -100,6 +121,32 @@ export function ProjectWorkItemLayoutsPanel({
   const fieldTypes = useMemo(
     () => workbenchQuery.data?.fieldTypes.items ?? [],
     [workbenchQuery.data?.fieldTypes.items],
+  )
+  const activeFields = useMemo(
+    () => fields.filter((field) => field.status === 'active'),
+    [fields],
+  )
+  const controlPresets = useMemo(
+    () => availableFieldControlPresets(fieldTypes.map((item) => item.key)),
+    [fieldTypes],
+  )
+  const commonControlPresets = useMemo(
+    () => controlPresets.filter((item) => item.common),
+    [controlPresets],
+  )
+  const moreControlPresets = useMemo(
+    () => controlPresets.filter((item) => !item.common),
+    [controlPresets],
+  )
+  const quickControl = fieldControlPreset(quickControlKey)
+  const canCreateField = workbenchQuery.data?.fields.availableActions.includes('create') ?? false
+  const editorAccessProjection = useMemo(
+    () => Object.fromEntries(fields.map((field) => [field.fieldKey, {
+      mode: 'write' as const,
+      required: false,
+      reasonCode: 'layout_editor',
+    }])),
+    [fields],
   )
   const selectedLayout = workbenchQuery.data?.layouts[kind]
   const layout = selectedLayout?.configuration
@@ -209,7 +256,7 @@ export function ProjectWorkItemLayoutsPanel({
     const sectionId = crypto.randomUUID()
     const nodes: WorkItemLayoutNode[] = [
       node(sectionId, null, `${kind}_main`, 'section', 0, { title: kind === 'create' ? '新建工作项' : '工作项详情' }),
-      ...fields.map((field, index) => fieldNode(field, sectionId, index)),
+      ...activeFields.map((field, index) => fieldNode(field, sectionId, index)),
     ]
     saveMutation.mutate({ nodes, policies: [], aggregateVersion: 0 })
   }
@@ -243,18 +290,57 @@ export function ProjectWorkItemLayoutsPanel({
   }
 
   const addField = (field: ConfiguredWorkItemField) => {
-    if (!layout || layout.nodes.some((item) => item.fieldId === field.id)) return
+    if (!layout || layout.nodes.some((item) => item.fieldId === field.id)) return false
     const parent = selected && ['section', 'tab', 'column'].includes(selected.nodeType)
       ? selected
       : layout.nodes.find((item) => item.nodeType === 'section' && item.parentId === null)
     if (!parent) {
       message.warning('请先添加一个区块')
-      return
+      return false
     }
     const newNode = fieldNode(field, parent.id, siblings(layout.nodes, parent.id).length)
     runCommand({ operation: 'add', parentId: parent.id, targetSortOrder: newNode.sortOrder, node: newNode })
     setSelectedId(newNode.id)
+    return true
   }
+
+  const openQuickControl = (controlKey: WorkItemFieldControlPresetKey) => {
+    if (!canCreateField) {
+      message.warning('当前没有新建字段权限')
+      return
+    }
+    const control = fieldControlPreset(controlKey)
+    if (!control) return
+    quickControlForm.setFieldsValue({
+      fieldKey: nextAvailableFieldKey(control.key, fields),
+      name: control.label,
+    })
+    setQuickControlKey(controlKey)
+  }
+
+  const quickControlMutation = useMutation({
+    mutationFn: (values: QuickFieldControlDraft) => {
+      const control = fieldControlPreset(quickControlKey)
+      const descriptor = fieldTypes.find((item) => item.key === control?.fieldType)
+      if (!control || !descriptor) throw new Error('字段控件目录尚未加载')
+      return createWorkItemField(space.id, typeId, {
+        fieldKey: values.fieldKey.trim(),
+        name: values.name.trim(),
+        description: `${control.label}控件`,
+        fieldType: control.fieldType,
+        config: applyFieldControlPreset(descriptor.defaultConfig, control),
+        sortOrder: nextFieldSortOrder(fields),
+      })
+    },
+    onSuccess: async (field) => {
+      setQuickControlKey(undefined)
+      quickControlForm.resetFields()
+      await refresh()
+      const added = addField(field)
+      message.success(added ? '字段控件已创建，正在加入布局' : '字段控件已创建')
+    },
+    onError: (error) => message.error(layoutError(error, '创建字段控件失败')),
+  })
 
   const moveSelected = (delta: number) => {
     if (!layout || !selected) return
@@ -518,31 +604,63 @@ export function ProjectWorkItemLayoutsPanel({
                   </Button>
                 ))}
               </div>
-              <Typography.Text type="secondary">字段</Typography.Text>
+              <Typography.Text type="secondary">常用字段控件</Typography.Text>
               <div className="work-item-layout-field-palette">
-                {fields.map((field) => {
-                  const used = layout.nodes.some((item) => item.fieldId === field.id)
-                  return (
-                    <Button key={field.id} disabled={used} onClick={() => addField(field)}>
-                      {field.name}<small>{field.fieldType}</small>
-                    </Button>
-                  )
-                })}
+                {commonControlPresets.map((control) => (
+                  <Button
+                    key={`control-${control.key}`}
+                    disabled={!canCreateField}
+                    onClick={() => openQuickControl(control.key)}
+                  >
+                    {control.label}<small>新建字段</small>
+                  </Button>
+                ))}
               </div>
+              {moreControlPresets.length ? <Typography.Text type="secondary">更多字段控件</Typography.Text> : null}
+              {moreControlPresets.length ? (
+                <div className="work-item-layout-field-palette">
+                  {moreControlPresets.map((control) => (
+                    <Button
+                      key={`control-${control.key}`}
+                      disabled={!canCreateField}
+                      onClick={() => openQuickControl(control.key)}
+                    >
+                      {control.label}<small>新建字段</small>
+                    </Button>
+                  ))}
+                </div>
+              ) : null}
+              {activeFields.length ? <Typography.Text type="secondary">已配置字段</Typography.Text> : null}
+              {activeFields.length ? (
+                <div className="work-item-layout-field-palette">
+                  {activeFields.map((field) => {
+                    const used = layout.nodes.some((item) => item.fieldId === field.id)
+                    return (
+                      <Button key={field.id} disabled={used} onClick={() => addField(field)}>
+                        {field.name}<small>{fieldControlLabel(field.fieldType, field.config.typeConfig)}</small>
+                      </Button>
+                    )
+                  })}
+                </div>
+              ) : null}
             </Card>
 
             <Card
               className="work-item-layout-canvas"
-              title={<Space><BranchesOutlined />布局结构</Space>}
-              extra={<Tag>{layout.nodes.length} 个节点</Tag>}
+              title={<Space><BranchesOutlined />页面效果</Space>}
+              extra={<Tag>所见即所得 · {layout.nodes.length} 个控件</Tag>}
             >
               {layout.nodes.length === 0 ? <Empty description="请从左侧添加区块或标签页" /> : (
-                <LayoutTree
-                  nodes={layout.nodes}
-                  selectedId={effectiveSelectedId}
-                  onSelect={setSelectedId}
-                  onDrag={setDraggedId}
-                  onDrop={dropOn}
+                <WorkItemLayoutRenderer
+                  layout={layout}
+                  fields={fields}
+                  accessProjection={editorAccessProjection}
+                  editor={{
+                    selectedNodeId: effectiveSelectedId,
+                    onSelectNode: (node) => setSelectedId(node.id),
+                    onDragNode: (node) => setDraggedId(node.id),
+                    onDropNode: dropOn,
+                  }}
                 />
               )}
             </Card>
@@ -716,55 +834,44 @@ export function ProjectWorkItemLayoutsPanel({
           'configuration-draft': configurationDraft,
         }}
       />
+      <Modal
+        title={`添加${quickControl?.label ?? ''}控件`}
+        open={Boolean(quickControl)}
+        okText="创建并添加"
+        cancelText="取消"
+        confirmLoading={quickControlMutation.isPending}
+        onCancel={() => setQuickControlKey(undefined)}
+        onOk={() => quickControlForm.submit()}
+        destroyOnHidden
+      >
+        <Alert
+          type="info"
+          showIcon
+          message="控件必须绑定字段"
+          description="创建后会加入当前选中的区块；页面尚无区块时，字段会先保存到“已配置字段”。"
+        />
+        <Form<QuickFieldControlDraft>
+          form={quickControlForm}
+          layout="vertical"
+          onFinish={(values) => quickControlMutation.mutate(values)}
+        >
+          <Form.Item
+            name="fieldKey"
+            label="字段键"
+            rules={[
+              { required: true, whitespace: true },
+              { pattern: /^[a-z][a-z0-9_]*$/, message: '以小写字母开头，仅支持小写字母、数字和下划线' },
+            ]}
+          >
+            <Input maxLength={64} />
+          </Form.Item>
+          <Form.Item name="name" label="显示名称" rules={[{ required: true, whitespace: true }, { max: 128 }]}>
+            <Input maxLength={128} />
+          </Form.Item>
+        </Form>
+      </Modal>
     </section>
   )
-}
-
-function LayoutTree({
-  nodes,
-  selectedId,
-  onSelect,
-  onDrag,
-  onDrop,
-}: {
-  nodes: WorkItemLayoutNode[]
-  selectedId?: string
-  onSelect: (id: string) => void
-  onDrag: (id: string) => void
-  onDrop: (node: WorkItemLayoutNode) => void
-}) {
-  const children = useMemo(() => {
-    const result = new Map<string | null, WorkItemLayoutNode[]>()
-    nodes.forEach((item) => {
-      const values = result.get(item.parentId) ?? []
-      values.push(item)
-      result.set(item.parentId, values)
-    })
-    result.forEach((values) => values.sort((left, right) => left.sortOrder - right.sortOrder))
-    return result
-  }, [nodes])
-  const render = (parentId: string | null, depth = 0): React.ReactNode => (
-    children.get(parentId)?.map((item) => (
-      <div key={item.id} className="work-item-layout-tree-branch">
-        <button
-          type="button"
-          draggable
-          className={`work-item-layout-tree-node${item.id === selectedId ? ' active' : ''}`}
-          style={{ paddingLeft: 12 + depth * 18 }}
-          onClick={() => onSelect(item.id)}
-          onDragStart={() => onDrag(item.id)}
-          onDragOver={(event) => event.preventDefault()}
-          onDrop={(event) => { event.preventDefault(); onDrop(item) }}
-        >
-          <span>{nodeLabel(item.nodeType)}</span>
-          <strong>{nodeTitle(item)}</strong>
-          <small>{item.nodeKey}</small>
-        </button>
-        {render(item.id, depth + 1)}
-      </div>
-    )) ?? null
-  )
-  return <div className="work-item-layout-tree">{render(null)}</div>
 }
 
 function NodeProperties({
@@ -1367,6 +1474,21 @@ function roleLabel(role: WorkItemFieldAccessRole) {
     non_member: '非成员',
     enterprise_admin: '企业管理员',
   } as const)[role]
+}
+
+function nextAvailableFieldKey(
+  base: WorkItemFieldControlPresetKey,
+  fields: ConfiguredWorkItemField[],
+) {
+  const used = new Set(fields.map((field) => field.fieldKey))
+  if (!used.has(base)) return base
+  let index = 2
+  while (used.has(`${base}_${index}`)) index += 1
+  return `${base}_${index}`
+}
+
+function nextFieldSortOrder(fields: ConfiguredWorkItemField[]) {
+  return fields.reduce((maximum, field) => Math.max(maximum, field.sortOrder), 0) + 10
 }
 
 function isEditableTarget(target: EventTarget | null) {

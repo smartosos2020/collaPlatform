@@ -88,6 +88,9 @@ jobs:
       - name: Frontend lint
         run: pnpm web:lint
 
+      - name: Frontend unit tests
+        run: pnpm web:test
+
       - name: Frontend build
         run: pnpm web:build
 

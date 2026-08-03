@@ -7,12 +7,13 @@ import {
   SettingOutlined,
 } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Alert, App as AntdApp, Card, Descriptions, Empty, Space, Statistic, Table, Tag, Typography } from 'antd'
+import { Alert, App as AntdApp, Button, Card, Descriptions, Empty, Space, Statistic, Table, Tag, Typography } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 
 import { listDevices, revokeDevice, type DeviceSummary } from '../../devices/api/devicesApi'
 import { listNotificationPreferences, type NotificationPreference } from '../../notifications/api/notificationsApi'
 import { getAdminSystemSettings, type AdminSystemSettings } from '../api/systemSettingsApi'
+import { errorMessage } from '../../../shared/api/errorMessage'
 
 export function AdminSystemSettingsPage() {
   const settingsQuery = useQuery({ queryKey: ['admin', 'system-settings'], queryFn: getAdminSystemSettings })
@@ -51,6 +52,7 @@ export function AdminSecurityPage() {
       message.success('登录设备已撤销')
       await queryClient.invalidateQueries({ queryKey: ['admin', 'security', 'devices'] })
     },
+    onError: (error) => message.error(errorMessage(error, '登录设备撤销失败，请重试')),
   })
 
   const deviceColumns: ColumnsType<DeviceSummary> = [
@@ -62,7 +64,7 @@ export function AdminSecurityPage() {
     { title: '类型', dataIndex: 'deviceType', render: (value: string) => <Tag>{value}</Tag> },
     { title: '状态', render: (_, device) => device.current ? <Tag color="blue">当前设备</Tag> : device.revokedAt ? <Tag>已撤销</Tag> : <Tag color="green">可用</Tag> },
     { title: '最近活跃', dataIndex: 'lastActiveAt', render: (value?: string | null) => value ? new Date(value).toLocaleString() : '-' },
-    { title: '操作', render: (_, device) => !device.current && !device.revokedAt ? <a role="button" tabIndex={0} onClick={() => revokeMutation.mutate(device.id)} onKeyDown={(event) => { if (event.key === 'Enter') revokeMutation.mutate(device.id) }}>撤销</a> : <Typography.Text type="secondary">—</Typography.Text> },
+    { title: '操作', render: (_, device) => !device.current && !device.revokedAt ? <Button type="link" size="small" loading={revokeMutation.isPending && revokeMutation.variables === device.id} onClick={() => revokeMutation.mutate(device.id)}>撤销</Button> : <Typography.Text type="secondary">—</Typography.Text> },
   ]
 
   return (
@@ -95,7 +97,7 @@ function WorkspaceDetails({ settings }: { settings: AdminSystemSettings }) {
 
 function PolicyDetails({ settings }: { settings: AdminSystemSettings }) {
   const policy = settings.securityPolicy
-  return <Descriptions column={{ xs: 1, sm: 2 }} size="small"><Descriptions.Item label="密码长度">至少 {policy.passwordMinLength} 位</Descriptions.Item><Descriptions.Item label="密码复杂度">{policy.passwordRequireLetter ? '需要字母' : '无需字母'} · {policy.passwordRequireDigit ? '需要数字' : '无需数字'}</Descriptions.Item><Descriptions.Item label="访问令牌">{policy.accessTokenTtlMinutes} 分钟</Descriptions.Item><Descriptions.Item label="刷新令牌">{policy.refreshTokenTtlDays} 天</Descriptions.Item><Descriptions.Item label="权限与安全通知"><Tag color="green">必要送达</Tag></Descriptions.Item><Descriptions.Item label="系统通知"><Tag color="green">必要送达</Tag></Descriptions.Item></Descriptions>
+  return <Descriptions column={{ xs: 1, sm: 2 }} size="small"><Descriptions.Item label="密码长度">至少 {policy.passwordMinLength} 位</Descriptions.Item><Descriptions.Item label="密码复杂度">{policy.passwordRequireLetter ? '需要字母' : '无需字母'} · {policy.passwordRequireDigit ? '需要数字' : '无需数字'}</Descriptions.Item><Descriptions.Item label="访问令牌">{policy.accessTokenTtlMinutes} 分钟</Descriptions.Item><Descriptions.Item label="刷新令牌">{policy.refreshTokenTtlDays} 天</Descriptions.Item><Descriptions.Item label="权限与安全通知"><Tag color={policy.requiredSecurityNotifications ? 'green' : 'default'}>{policy.requiredSecurityNotifications ? '必要送达' : '可选'}</Tag></Descriptions.Item><Descriptions.Item label="系统通知"><Tag color={policy.requiredSystemNotifications ? 'green' : 'default'}>{policy.requiredSystemNotifications ? '必要送达' : '可选'}</Tag></Descriptions.Item></Descriptions>
 }
 
 function RuntimeDetails({ settings }: { settings: AdminSystemSettings }) {

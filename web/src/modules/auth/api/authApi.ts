@@ -1,4 +1,5 @@
 import { apiGet, apiPatch, apiPost } from '../../../shared/api/httpClient'
+import { readLocalStorage, writeLocalStorage } from '../../../shared/storage/localStorage'
 import type { CurrentUser } from '../authStore'
 
 export type LoginRequest = {
@@ -49,11 +50,11 @@ export async function logout(refreshToken: string | null): Promise<void> {
 
 function getDeviceFingerprint(): string {
   const key = 'colla.deviceFingerprint'
-  const existing = localStorage.getItem(key)
+  const existing = readLocalStorage(key)
   if (existing) {
     return existing
   }
-  const value = crypto.randomUUID()
-  localStorage.setItem(key, value)
+  const value = globalThis.crypto?.randomUUID?.() ?? `web-${Date.now()}-${Math.random().toString(36).slice(2)}`
+  writeLocalStorage(key, value)
   return value
 }

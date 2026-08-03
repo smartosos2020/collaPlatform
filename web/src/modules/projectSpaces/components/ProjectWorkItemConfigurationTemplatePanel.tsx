@@ -213,71 +213,69 @@ export function ProjectWorkItemConfigurationTemplatePanel({
           ) : null}
           {upgradeAvailable ? <Tag color="warning">有可用升级</Tag> : null}
         </Space>
-        <Button
-          size="small"
-          icon={<PlusOutlined />}
-          disabled={readOnly || !currentVersion?.completeSnapshot}
-          onClick={() => setCreateOpen(true)}
-        >
-          保存为模板
-        </Button>
+        {catalogQuery.isError ? (
+          <Alert type="error" showIcon message="模板目录加载失败" />
+        ) : (
+          <div className="work-item-template-controls">
+            <Select
+              aria-label="选择配置模板"
+              loading={catalogQuery.isLoading}
+              value={selectedTemplate?.id}
+              onChange={setSelectedTemplateId}
+              options={activeTemplates.map((template) => ({
+                value: template.id,
+                label: `${template.name} · v${template.currentVersion.versionNumber}`,
+              }))}
+              placeholder="选择平台或工作区模板"
+            />
+            <Button
+              icon={<AppstoreAddOutlined />}
+              disabled={readOnly || !selectedTemplate}
+              loading={installMutation.isPending}
+              onClick={() => selectedTemplate && modal.confirm({
+                title: `安装模板「${selectedTemplate.name}」？`,
+                content: '模板快照会复制到当前配置草稿；之后本地编辑不会反向修改模板。',
+                okText: '安装到草稿',
+                cancelText: '取消',
+                onOk: () => installMutation.mutateAsync(selectedTemplate),
+              })}
+            >
+              安装
+            </Button>
+            <Button
+              icon={<SyncOutlined />}
+              disabled={readOnly || !upgradeAvailable}
+              loading={previewMutation.isPending}
+              onClick={() => previewMutation.mutate()}
+            >
+              预览升级
+            </Button>
+            <Button
+              danger
+              icon={<DisconnectOutlined />}
+              disabled={readOnly || !attached}
+              loading={detachMutation.isPending}
+              onClick={() => modal.confirm({
+                title: '解除模板关联？',
+                content: '本地草稿、配置版本和最后一次来源摘要都会保留，后续不再提示上游升级。',
+                okText: '解除关联',
+                okButtonProps: { danger: true },
+                cancelText: '取消',
+                onOk: () => detachMutation.mutateAsync(),
+              })}
+            >
+              解绑
+            </Button>
+            <Button
+              icon={<PlusOutlined />}
+              disabled={readOnly || !currentVersion?.completeSnapshot}
+              onClick={() => setCreateOpen(true)}
+            >
+              保存为模板
+            </Button>
+          </div>
+        )}
       </div>
-
-      {catalogQuery.isError ? (
-        <Alert type="error" showIcon message="模板目录加载失败" />
-      ) : (
-        <div className="work-item-template-controls">
-          <Select
-            aria-label="选择配置模板"
-            loading={catalogQuery.isLoading}
-            value={selectedTemplate?.id}
-            onChange={setSelectedTemplateId}
-            options={activeTemplates.map((template) => ({
-              value: template.id,
-              label: `${template.name} · v${template.currentVersion.versionNumber}`,
-            }))}
-            placeholder="选择平台或工作区模板"
-          />
-          <Button
-            icon={<AppstoreAddOutlined />}
-            disabled={readOnly || !selectedTemplate}
-            loading={installMutation.isPending}
-            onClick={() => selectedTemplate && modal.confirm({
-              title: `安装模板「${selectedTemplate.name}」？`,
-              content: '模板快照会复制到当前配置草稿；之后本地编辑不会反向修改模板。',
-              okText: '安装到草稿',
-              cancelText: '取消',
-              onOk: () => installMutation.mutateAsync(selectedTemplate),
-            })}
-          >
-            安装
-          </Button>
-          <Button
-            icon={<SyncOutlined />}
-            disabled={readOnly || !upgradeAvailable}
-            loading={previewMutation.isPending}
-            onClick={() => previewMutation.mutate()}
-          >
-            预览升级
-          </Button>
-          <Button
-            danger
-            icon={<DisconnectOutlined />}
-            disabled={readOnly || !attached}
-            loading={detachMutation.isPending}
-            onClick={() => modal.confirm({
-              title: '解除模板关联？',
-              content: '本地草稿、配置版本和最后一次来源摘要都会保留，后续不再提示上游升级。',
-              okText: '解除关联',
-              okButtonProps: { danger: true },
-              cancelText: '取消',
-              onOk: () => detachMutation.mutateAsync(),
-            })}
-          >
-            解绑
-          </Button>
-        </div>
-      )}
 
       {attached && installedTemplate ? (
         <Typography.Text type="secondary">

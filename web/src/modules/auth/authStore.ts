@@ -1,5 +1,7 @@
 import { create } from 'zustand'
 
+import { readLocalStorage, removeLocalStorage, writeLocalStorage } from '../../shared/storage/localStorage'
+
 const ACCESS_TOKEN_KEY = 'colla.accessToken'
 const REFRESH_TOKEN_KEY = 'colla.refreshToken'
 
@@ -33,13 +35,13 @@ type AuthState = {
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
-  accessToken: localStorage.getItem(ACCESS_TOKEN_KEY),
-  refreshToken: localStorage.getItem(REFRESH_TOKEN_KEY),
+  accessToken: readLocalStorage(ACCESS_TOKEN_KEY),
+  refreshToken: readLocalStorage(REFRESH_TOKEN_KEY),
   currentUser: null,
   contextVersion: 0,
   setTokens: (accessToken, refreshToken) => {
-    localStorage.setItem(ACCESS_TOKEN_KEY, accessToken)
-    localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken)
+    writeLocalStorage(ACCESS_TOKEN_KEY, accessToken)
+    writeLocalStorage(REFRESH_TOKEN_KEY, refreshToken)
     set((state) => ({
       accessToken,
       refreshToken,
@@ -49,8 +51,8 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
   setCurrentUser: (currentUser) => set({ currentUser }),
   syncFromStorage: () => {
-    const accessToken = localStorage.getItem(ACCESS_TOKEN_KEY)
-    const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY)
+    const accessToken = readLocalStorage(ACCESS_TOKEN_KEY)
+    const refreshToken = readLocalStorage(REFRESH_TOKEN_KEY)
     set((state) => {
       if (state.accessToken === accessToken && state.refreshToken === refreshToken) {
         return state
@@ -68,8 +70,8 @@ export const useAuthStore = create<AuthState>((set) => ({
     contextVersion: state.contextVersion + 1,
   })),
   clearAuth: () => {
-    localStorage.removeItem(ACCESS_TOKEN_KEY)
-    localStorage.removeItem(REFRESH_TOKEN_KEY)
+    removeLocalStorage(ACCESS_TOKEN_KEY)
+    removeLocalStorage(REFRESH_TOKEN_KEY)
     set((state) => ({
       accessToken: null,
       refreshToken: null,

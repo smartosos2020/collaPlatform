@@ -137,6 +137,9 @@ export function AdminAuditLogsPage() {
       </Form>
 
       {auditLogsQuery.isError || exportMutation.isError ? <Alert type="error" showIcon message="审计操作失败" description="请检查筛选条件或管理权限后重试。" /> : null}
+      {(auditLogsQuery.data?.length ?? 0) === (filters.limit ?? 100) ? (
+        <Alert type="warning" showIcon title="审计结果可能已截断" description={`当前仅载入前 ${filters.limit ?? 100} 条，请缩小筛选范围或使用导出。`} />
+      ) : null}
       <Alert type="info" showIcon message="敏感字段最小展示" description="页面不展示 IP、User-Agent 或完整元数据；导出文件同样只包含审计定位必需字段。" />
 
       <Table

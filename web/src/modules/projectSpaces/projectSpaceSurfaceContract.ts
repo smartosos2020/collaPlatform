@@ -2,12 +2,12 @@ import {
   projectSpacePrimaryPath,
   resolveProjectSpaceRouteContext,
   type ProjectSpacePrimaryView,
-} from './projectSpaceInformationArchitecture'
+} from './projectSpaceInformationArchitecture.ts'
 import {
   patchProjectSpaceSearch,
   projectSpaceLocationWithContext,
   sanitizeProjectSpaceSearch,
-} from './projectSpaceRouteContract'
+} from './projectSpaceRouteContract.ts'
 
 export type ProjectSpaceSurfaceOwner = Readonly<{
   panel: string

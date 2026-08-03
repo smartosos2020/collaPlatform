@@ -13,8 +13,13 @@ export function RealtimeHealthBanner() {
   const { status, retry } = useRealtimeStatus()
   const [visibleStatus, setVisibleStatus] = useState<RealtimeConnectionStatus | 'recovered' | null>(null)
   const degradationWasVisibleRef = useRef(false)
+  const recoveryTimerRef = useRef<number | null>(null)
 
   useEffect(() => {
+    if (recoveryTimerRef.current !== null) {
+      window.clearTimeout(recoveryTimerRef.current)
+      recoveryTimerRef.current = null
+    }
     const delay = status === 'degraded' || status === 'reconnecting'
       ? DEGRADED_VISIBILITY_DELAY_MS
       : status === 'connecting'
@@ -25,7 +30,10 @@ export function RealtimeHealthBanner() {
         if (degradationWasVisibleRef.current) {
           degradationWasVisibleRef.current = false
           setVisibleStatus('recovered')
-          window.setTimeout(() => setVisibleStatus(null), RECOVERY_VISIBILITY_MS)
+          recoveryTimerRef.current = window.setTimeout(() => {
+            recoveryTimerRef.current = null
+            setVisibleStatus(null)
+          }, RECOVERY_VISIBILITY_MS)
         } else {
           setVisibleStatus(null)
         }
@@ -40,6 +48,10 @@ export function RealtimeHealthBanner() {
     }, delay)
     return () => {
       window.clearTimeout(timer)
+      if (recoveryTimerRef.current !== null) {
+        window.clearTimeout(recoveryTimerRef.current)
+        recoveryTimerRef.current = null
+      }
     }
   }, [status])
 

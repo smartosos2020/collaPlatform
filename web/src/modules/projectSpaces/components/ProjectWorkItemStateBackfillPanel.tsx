@@ -1,6 +1,6 @@
 import { DatabaseOutlined, ReloadOutlined, SafetyCertificateOutlined } from '@ant-design/icons'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { Alert, App as AntdApp, Button, Card, Input, Select, Space, Tag, Typography } from 'antd'
+import { Alert, App as AntdApp, Button, Input, Select, Space, Tag, Typography } from 'antd'
 import { useMemo, useState } from 'react'
 
 import { listWorkItems, workItemKeys } from '../api/workItemsApi'
@@ -13,6 +13,7 @@ import {
   type WorkItemStateBackfillVerification,
 } from '../api/workItemWorkflowApi'
 import { errorMessage } from '../projectSpaceView'
+import { CollapsibleWorkItemCard } from './CollapsibleWorkItemCard'
 
 type JsonRecord = Record<string, unknown>
 
@@ -91,7 +92,8 @@ export function ProjectWorkItemStateBackfillPanel({
 
   if (!currentVersion || !initialStateKey) return null
   return (
-    <Card
+    <CollapsibleWorkItemCard
+      collapseLabel="存量实例状态初始化"
       className="work-item-state-backfill-panel"
       data-testid="work-item-state-backfill-panel"
       title={<Space><DatabaseOutlined /><span>存量实例状态初始化</span></Space>}
@@ -169,6 +171,6 @@ export function ProjectWorkItemStateBackfillPanel({
           ) : null}
         </div>
       ) : null}
-    </Card>
+    </CollapsibleWorkItemCard>
   )
 }

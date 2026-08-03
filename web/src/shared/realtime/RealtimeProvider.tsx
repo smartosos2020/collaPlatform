@@ -5,6 +5,7 @@ import {
   type ReactNode,
 } from 'react'
 
+import { refreshSessionSingleFlight } from '../auth/sessionRefresh'
 import {
   RealtimeConnection,
   type RealtimeConnectionStatus,
@@ -40,18 +41,44 @@ export function RealtimeProvider({
   random,
   readyTimeoutMs,
 }: RealtimeProviderProps) {
+  const [reconnectExhaustedCount, setReconnectExhaustedCount] = useState(0)
   const [connection] = useState(() => new RealtimeConnection({
     socketFactory,
     scheduler,
     onlineSource,
     random,
     readyTimeoutMs,
+    onReconnectExhausted: () => {
+      setReconnectExhaustedCount((current) => current + 1)
+    },
   }))
   const [status, setStatus] = useState<RealtimeConnectionStatus>(connection.getStatus())
   const [diagnostics, setDiagnostics] = useState<RealtimeDiagnosticsSnapshot>(connection.getDiagnostics())
 
   useEffect(() => connection.subscribeStatus(setStatus), [connection])
   useEffect(() => connection.subscribeDiagnostics(setDiagnostics), [connection])
+
+  // 自动重连耗尽（多见于 WS 握手 401，浏览器侧只表现为 1006）时：
+  // 先单飞刷新会话；成功会写回 authStore，accessToken 变化触发下方 start 以新身份重连；
+  // 失败则保持 degraded，交给用户手动重试或路由守卫接管。
+  useEffect(() => {
+    if (reconnectExhaustedCount === 0 || !accessToken) {
+      return
+    }
+    let cancelled = false
+    void refreshSessionSingleFlight()
+      .then(() => {
+        if (cancelled) return
+        // 成功刷新会更新 accessToken，并由下方 effect 以新凭据重启连接；
+        // refresh token 被拒绝时保持 degraded，不得重置失败计数进入新的循环。
+      })
+      .catch(() => {
+        // 网络或刷新服务异常同样保持 degraded，等待用户手动重试。
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [accessToken, connection, reconnectExhaustedCount])
 
   useEffect(() => {
     if (!accessToken || !workspaceId || !userId) {
@@ -111,6 +138,8 @@ function defaultWebSocketUrl() {
 const browserScheduler: RealtimeScheduler = {
   setTimeout: (callback, delayMs) => window.setTimeout(callback, delayMs),
   clearTimeout: (timer) => window.clearTimeout(timer as number),
+  setInterval: (callback, intervalMs) => window.setInterval(callback, intervalMs),
+  clearInterval: (timer) => window.clearInterval(timer as number),
 }
 
 const browserOnlineSource: RealtimeOnlineSource = {

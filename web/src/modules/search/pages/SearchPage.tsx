@@ -114,7 +114,6 @@ export function SearchPage() {
           value={searchFilters.objectTypes}
           options={[
             { value: 'work_item', label: '工作项' },
-            { value: 'work_item', label: '工作项' },
             { value: 'knowledge_content', label: '知识内容' },
             { value: 'base', label: 'Base' },
             { value: 'base_table', label: '数据表' },
@@ -184,6 +183,7 @@ export function SearchPage() {
           onChange={(value) => updateFilter('knowledgeStatus', value)}
         />
         <Input
+          key={searchFilters.tags?.join(',') ?? ''}
           allowClear
           aria-label="按标签筛选"
           placeholder="标签，多个用逗号分隔"
@@ -228,7 +228,7 @@ export function SearchPage() {
                       {item.permissionExplanation ? <Alert type="info" showIcon message={item.permissionExplanation} /> : null}
                     </div>
                     {item.accessState === 'available' && (item.webPath || item.deepLink) ? (
-                      <Button type="link" aria-label={`打开${objectTypeText[item.objectType] ?? '对象'} ${resultTitle(item)}`} onClick={() => navigate(resolveNavigationPath(item) ?? item.webPath ?? '/')}>
+                      <Button type="link" aria-label={`打开${objectTypeText[item.objectType] ?? '对象'} ${resultTitle(item)}`} onClick={() => navigate(resolveNavigationPath(item) ?? '/')}>
                         {item.objectType === 'knowledge_content' ? '打开知识内容' : '打开'}
                       </Button>
                     ) : null}

@@ -3,7 +3,6 @@ import {
   BarChartOutlined,
   BuildOutlined,
   BugOutlined,
-  CalendarOutlined,
   CarryOutOutlined,
   EyeOutlined,
   FileDoneOutlined,
@@ -15,6 +14,8 @@ import {
   LineChartOutlined,
   PlusOutlined,
   ProjectOutlined,
+  PushpinFilled,
+  PushpinOutlined,
   ReloadOutlined,
   RightOutlined,
   RobotOutlined,
@@ -99,8 +100,8 @@ import {
   visibleProjectSpaceWorkItemTypes,
 } from '../projectSpaceMemberContent'
 import {
-  readRecentProjectSpaceIds,
-  rememberRecentProjectSpace,
+  readPinnedProjectSpaceIds,
+  setProjectSpacePinned,
 } from '../projectSpaceLocalCache'
 import {
   isProjectSpaceWorkModelTab,
@@ -220,7 +221,7 @@ export function ProjectSpacesPage() {
   const { spaceId, typeId, fieldId, workItemId } = useParams()
   const [createOpen, setCreateOpen] = useState(false)
   const [search, setSearch] = useState('')
-  const [recentIds, setRecentIds] = useState<string[]>([])
+  const [pinnedIds, setPinnedIds] = useState<string[]>([])
   const [createForm] = Form.useForm<CreateSpaceForm>()
   const startingMode = Form.useWatch('startingMode', createForm) ?? 'blank'
   const selectedScenario = Form.useWatch('scenarioKey', createForm)
@@ -237,9 +238,9 @@ export function ProjectSpacesPage() {
     () => spacesQuery.isError ? [] : spacesQuery.data ?? [],
     [spacesQuery.data, spacesQuery.isError],
   )
-  const currentSpace = spaceQuery.data
-    && !spaceQuery.isError
-    && !spaceQuery.isFetching
+  // Keep rendering the last loaded space during background refetches so the
+  // shell (and all panel local state) is not unmounted on every invalidate.
+  const currentSpace = spaceQuery.data && !spaceQuery.isError
     ? spaceQuery.data
     : undefined
   const canonicalSurfaceLocation = currentSpace
@@ -251,7 +252,7 @@ export function ProjectSpacesPage() {
       })
     : null
   const view = resolveProjectSpaceRouteContext(location.pathname).renderView
-  const recentScope = sessionScope
+  const spaceListScope = sessionScope
   const accessibleSpaceIds = useMemo(
     () => spaces.map((space) => space.id),
     [spaces],
@@ -260,12 +261,12 @@ export function ProjectSpacesPage() {
     let active = true
     queueMicrotask(() => {
       if (!active) return
-      setRecentIds(
-        !recentScope || !spacesQuery.isSuccess
+      setPinnedIds(
+        !spaceListScope || !spacesQuery.isSuccess
           ? []
-          : readRecentProjectSpaceIds(
+          : readPinnedProjectSpaceIds(
               localStorage,
-              recentScope,
+              spaceListScope,
               accessibleSpaceIds,
             ),
       )
@@ -273,7 +274,7 @@ export function ProjectSpacesPage() {
     return () => {
       active = false
     }
-  }, [accessibleSpaceIds, recentScope, spacesQuery.isSuccess])
+  }, [accessibleSpaceIds, spaceListScope, spacesQuery.isSuccess])
 
   useEffect(() => {
     if (!spaceId && spaces.length > 0) {
@@ -296,50 +297,23 @@ export function ProjectSpacesPage() {
     }
   }, [canonicalSurfaceLocation, navigate])
 
-  useEffect(() => {
-    if (
-      !spaceId
-      || !currentSpace
-      || !recentScope
-      || !spacesQuery.isSuccess
-      || !accessibleSpaceIds.includes(spaceId)
-    ) return
-    const remembered = rememberRecentProjectSpace(
-      localStorage,
-      recentScope,
-      spaceId,
-      accessibleSpaceIds,
-    )
-    if (remembered) {
-      queueMicrotask(() => {
-        setRecentIds(readRecentProjectSpaceIds(
-          localStorage,
-          recentScope,
-          accessibleSpaceIds,
-        ))
-      })
-    }
-  }, [
-    accessibleSpaceIds,
-    currentSpace,
-    recentScope,
-    spaceId,
-    spacesQuery.isSuccess,
-  ])
-
   const filteredSpaces = useMemo(() => {
     const keyword = search.trim().toLowerCase()
     if (!keyword) return spaces
     return spaces.filter((space) => `${space.name} ${space.spaceKey}`.toLowerCase().includes(keyword))
   }, [search, spaces])
-  const recentSpaces = useMemo(
-    () => sortRecentSpaces(
-      filteredSpaces,
-      spaceId
-        ? [spaceId, ...recentIds.filter((id) => id !== spaceId)]
-        : recentIds,
-    ),
-    [filteredSpaces, recentIds, spaceId],
+  const pinnedSpaces = useMemo(() => {
+    const spacesById = new Map(filteredSpaces.map((space) => [space.id, space]))
+    return pinnedIds
+      .map((id) => spacesById.get(id))
+      .filter((space): space is UserProjectSpace => Boolean(space))
+  }, [filteredSpaces, pinnedIds])
+  const unpinnedSpaces = useMemo(
+    () => {
+      const pinned = new Set(pinnedIds)
+      return filteredSpaces.filter((space) => !pinned.has(space.id))
+    },
+    [filteredSpaces, pinnedIds],
   )
 
   const createMutation = useMutation({
@@ -364,11 +338,11 @@ export function ProjectSpacesPage() {
       } catch {
         message.warning('空间已创建，但起步引导暂未保存；可在空间内重新选择。')
       }
-      if (values.startingMode === 'clone' && values.referenceSpaceId && recentScope) {
+      if (values.startingMode === 'clone' && values.referenceSpaceId && spaceListScope) {
         const reference = spaces.find((candidate) => candidate.id === values.referenceSpaceId)
         rememberProjectSpaceCloneReference(
           sessionStorage,
-          `${recentScope.workspaceId}:${recentScope.userId}`,
+          `${spaceListScope.workspaceId}:${spaceListScope.userId}`,
           space.id,
           reference?.name ?? '参考空间',
         )
@@ -397,6 +371,66 @@ export function ProjectSpacesPage() {
       ) ?? targetPath,
     )
   }
+  const togglePinnedSpace = (id: string) => {
+    if (!spaceListScope) {
+      message.warning('当前会话尚未就绪，暂时无法保存置顶状态')
+      return
+    }
+    const nextPinned = !pinnedIds.includes(id)
+    const saved = setProjectSpacePinned(
+      localStorage,
+      spaceListScope,
+      id,
+      nextPinned,
+      accessibleSpaceIds,
+    )
+    if (!saved) {
+      message.error('置顶状态保存失败')
+      return
+    }
+    setPinnedIds(readPinnedProjectSpaceIds(
+      localStorage,
+      spaceListScope,
+      accessibleSpaceIds,
+    ))
+  }
+  const renderSpaceListItem = (space: UserProjectSpace, pinned: boolean) => (
+    <div
+      role="listitem"
+      className={`project-space-list-item${space.id === spaceId ? ' active' : ''}`}
+      key={space.id}
+    >
+      <button
+        type="button"
+        className="project-space-list-select"
+        aria-current={space.id === spaceId ? 'page' : undefined}
+        onClick={() => openSpace(space.id)}
+      >
+        <span className="project-space-list-copy">
+          <strong>{space.name}</strong>
+          <small>{space.spaceKey}</small>
+        </span>
+        <span className="project-space-list-meta">
+          <span
+            className={`project-space-status-dot ${space.status}`}
+            role="img"
+            aria-label={statusLabel(space.status)}
+            title={statusLabel(space.status)}
+          />
+          <small>{space.memberCount} 人</small>
+        </span>
+      </button>
+      <Button
+        type="text"
+        size="small"
+        className={`project-space-pin-button${pinned ? ' active' : ''}`}
+        icon={pinned ? <PushpinFilled /> : <PushpinOutlined />}
+        aria-label={`${pinned ? '取消置顶' : '置顶'} ${space.name}`}
+        title={pinned ? '取消置顶' : '置顶'}
+        onClick={() => togglePinnedSpace(space.id)}
+      />
+    </div>
+  )
   const navigateProjectSpacePath = useCallback((
     targetPath: string,
     options: Readonly<{ replace?: boolean }> = {},
@@ -465,9 +499,11 @@ export function ProjectSpacesPage() {
     <div className="project-space-workspace" data-testid="project-spaces-page">
       <aside className="project-space-sidebar" aria-label="项目空间列表">
         <div className="project-space-sidebar-heading">
-          <div>
+          <div className="project-space-sidebar-title">
             <Typography.Title level={4}>项目空间</Typography.Title>
-            <Typography.Text type="secondary">{spaces.length} 个可访问空间</Typography.Text>
+            <Typography.Text type="secondary">
+              <strong className="project-space-count-value">{spaces.length}</strong> 个空间
+            </Typography.Text>
           </div>
           <Button type="primary" icon={<PlusOutlined />} aria-label="新建项目空间" onClick={() => setCreateOpen(true)} />
         </div>
@@ -478,33 +514,27 @@ export function ProjectSpacesPage() {
           aria-label="搜索项目空间"
           onChange={(event) => setSearch(event.target.value)}
         />
-        <div className="project-space-list-label">最近空间</div>
-        <div className="project-space-list" role="list">
+        <div className="project-space-list">
           {spacesQuery.isLoading ? <Skeleton active paragraph={{ rows: 4 }} /> : null}
-          {!spacesQuery.isLoading && recentSpaces.length === 0 ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无项目空间" /> : null}
-          {recentSpaces.map((space) => (
-            <button
-              type="button"
-              role="listitem"
-              className={`project-space-list-item${space.id === spaceId ? ' active' : ''}`}
-              key={space.id}
-              onClick={() => openSpace(space.id)}
-            >
-              <span className="project-space-list-copy">
-                <strong>{space.name}</strong>
-                <small>{space.spaceKey}</small>
-              </span>
-              <span className="project-space-list-meta">
-                <span
-                  className={`project-space-status-dot ${space.status}`}
-                  role="img"
-                  aria-label={statusLabel(space.status)}
-                  title={statusLabel(space.status)}
-                />
-                <small>{space.memberCount} 人</small>
-              </span>
-            </button>
-          ))}
+          {!spacesQuery.isLoading && filteredSpaces.length === 0 ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无项目空间" /> : null}
+          {!spacesQuery.isLoading && filteredSpaces.length > 0 ? (
+            <>
+              <section className="project-space-list-section" aria-labelledby="pinned-spaces-label">
+                <div className="project-space-list-label" id="pinned-spaces-label">置顶</div>
+                <div className="project-space-list-group" role="list">
+                  {pinnedSpaces.length > 0
+                    ? pinnedSpaces.map((space) => renderSpaceListItem(space, true))
+                    : <div className="project-space-list-empty">暂无置顶空间</div>}
+                </div>
+              </section>
+              <section className="project-space-list-section" aria-labelledby="all-spaces-label">
+                <div className="project-space-list-label" id="all-spaces-label">全部空间</div>
+                <div className="project-space-list-group" role="list">
+                  {unpinnedSpaces.map((space) => renderSpaceListItem(space, false))}
+                </div>
+              </section>
+            </>
+          ) : null}
         </div>
       </aside>
 
@@ -1255,16 +1285,11 @@ function ProjectSpaceOverview({
             className="project-space-overview-panel project-space-member-home"
             data-testid="project-space-member-home"
           >
-            <header className="project-space-overview-hero">
-              <span className="project-space-overview-hero-icon" aria-hidden="true">
-                <CalendarOutlined />
-              </span>
-              <span className="project-space-overview-hero-copy">
-                <Typography.Title level={2}>我的工作</Typography.Title>
-                <Typography.Paragraph>
-                  集中查看待办事项、负责内容与可创建的工作项
-                </Typography.Paragraph>
-              </span>
+            <header className="project-space-overview-heading">
+              <Typography.Title level={4}>我的工作</Typography.Title>
+              <Typography.Text type="secondary">
+                集中查看待办事项、负责内容与可创建的工作项
+              </Typography.Text>
               {personalWorkQuery.data?.truncated ? (
                 <Tag color="blue" className="project-space-overview-hero-tag">还有更多事项</Tag>
               ) : null}
@@ -1400,14 +1425,9 @@ function ProjectSpaceOverview({
             className="project-space-overview-panel project-space-activity-boundary"
             data-testid="project-space-activity-boundary"
           >
-            <header className="project-space-overview-hero">
-              <span className="project-space-overview-hero-icon" aria-hidden="true">
-                <LineChartOutlined />
-              </span>
-              <span className="project-space-overview-hero-copy">
-                <Typography.Title level={2}>动态与边界</Typography.Title>
-                <Typography.Paragraph>查看空间动态与当前协作边界</Typography.Paragraph>
-              </span>
+            <header className="project-space-overview-heading">
+              <Typography.Title level={4}>动态与边界</Typography.Title>
+              <Typography.Text type="secondary">查看空间动态与当前协作边界</Typography.Text>
             </header>
 
             <div
@@ -1538,6 +1558,7 @@ function ProjectSpaceSettingsPanel({
   const settingsSearch = new URLSearchParams(location.search)
   const selectedConfigurationTypeId = settingsSearch.get('typeId') ?? undefined
   const requestedWorkModelTab = settingsSearch.get('workModelTab')
+  const requestedLayoutKind = settingsSearch.get('layoutKind')
   const selectedWorkModelTab = isProjectSpaceWorkModelTab(requestedWorkModelTab)
     ? requestedWorkModelTab
     : 'type-information'
@@ -1697,7 +1718,7 @@ function ProjectSpaceSettingsPanel({
                 ),
                 layouts: (
                   <ProjectWorkItemLayoutsPanel
-                    key={`settings-layouts:${selectedConfigurationTypeId}`}
+                    key={`settings-layouts:${selectedConfigurationTypeId}:${requestedLayoutKind ?? 'default'}`}
                     space={space}
                     typeId={selectedConfigurationTypeId}
                     embedded
@@ -1936,19 +1957,6 @@ function ProjectSpaceLoadError({ error, onBack }: { error: Error; onBack: () => 
       </Empty>
     </Card>
   )
-}
-
-function sortRecentSpaces(
-  spaces: UserProjectSpace[],
-  recentIds: readonly string[],
-) {
-  const recentOrder = new Map(recentIds.map((id, index) => [id, index]))
-  return [...spaces].sort((left, right) => {
-    const leftIndex = recentOrder.get(left.id) ?? Number.MAX_SAFE_INTEGER
-    const rightIndex = recentOrder.get(right.id) ?? Number.MAX_SAFE_INTEGER
-    if (leftIndex !== rightIndex) return leftIndex - rightIndex
-    return new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime()
-  })
 }
 
 const PROJECT_SPACE_SETTINGS_PANEL_LABELS: Readonly<Record<string, string>> = {

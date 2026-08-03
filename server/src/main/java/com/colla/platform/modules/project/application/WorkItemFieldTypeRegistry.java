@@ -143,6 +143,20 @@ public class WorkItemFieldTypeRegistry {
         ObjectNode properties = schema.putObject("properties");
         ArrayNode required = schema.putArray("required");
         switch (key) {
+            case "text" -> {
+                properties.putObject("presentation").put("type", "string").putArray("enum")
+                    .add("single_line").add("multiline").add("rich_text").add("email").add("phone");
+                properties.putObject("maxLength").put("type", "integer").put("minimum", 1).put("maximum", 100000);
+            }
+            case "number" -> {
+                properties.putObject("presentation").put("type", "string").putArray("enum")
+                    .add("number").add("currency").add("percentage").add("duration").add("rating");
+                properties.putObject("currencyCode").put("type", "string").put("minLength", 3).put("maxLength", 3);
+                properties.putObject("precision").put("type", "integer").put("minimum", 0).put("maximum", 8);
+                properties.putObject("durationUnit").put("type", "string").putArray("enum")
+                    .add("minutes").add("hours").add("days");
+                properties.putObject("ratingMax").put("type", "integer").put("minimum", 3).put("maximum", 10);
+            }
             case "user" -> {
                 properties.putObject("allowedSubjectTypes").put("type", "array").put("uniqueItems", true);
                 properties.putObject("selectionScope").put("type", "array").put("maxItems", 100);
@@ -196,6 +210,17 @@ public class WorkItemFieldTypeRegistry {
     private JsonNode defaultTypeConfig(ObjectMapper objectMapper, String key) {
         ObjectNode config = objectMapper.createObjectNode();
         switch (key) {
+            case "text" -> {
+                config.put("presentation", "single_line");
+                config.put("maxLength", 2000);
+            }
+            case "number" -> {
+                config.put("presentation", "number");
+                config.put("currencyCode", "CNY");
+                config.put("precision", 0);
+                config.put("durationUnit", "hours");
+                config.put("ratingMax", 5);
+            }
             case "user" -> {
                 config.putArray("allowedSubjectTypes").add("member").add("department").add("user_group");
                 config.putArray("selectionScope");

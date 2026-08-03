@@ -5,11 +5,13 @@ import {
   LEGACY_PROJECT_SPACE_RECENT_KEY,
   hasRecoverableLegacyDraft,
   projectSpaceCacheKey,
+  readPinnedProjectSpaceIds,
   readProjectSpaceDraft,
   readRecentProjectSpaceIds,
   recoverLegacyProjectSpaceDraft,
   rememberRecentProjectSpace,
   removeProjectSpaceDraft,
+  setProjectSpacePinned,
   writeProjectSpaceDraft,
   type ProjectSpaceStorage,
 } from './projectSpaceLocalCache.ts'
@@ -121,6 +123,28 @@ describe('project space recent cache', () => {
       ),
       [],
     )
+  })
+})
+
+describe('project space pinned cache', () => {
+  it('pins explicitly, keeps the newest pin first, and unpins without affecting access order', () => {
+    const storage = new MemoryStorage()
+    const accessible = ['space-1', 'space-2', 'space-3']
+
+    assert.equal(setProjectSpacePinned(storage, userA, 'space-1', true, accessible, 1_000), true)
+    assert.equal(setProjectSpacePinned(storage, userA, 'space-2', true, accessible, 2_000), true)
+    assert.deepEqual(readPinnedProjectSpaceIds(storage, userA, accessible, 3_000), ['space-2', 'space-1'])
+
+    assert.equal(setProjectSpacePinned(storage, userA, 'space-2', false, accessible, 4_000), true)
+    assert.deepEqual(readPinnedProjectSpaceIds(storage, userA, accessible, 5_000), ['space-1'])
+  })
+
+  it('isolates pinned spaces by user and drops spaces that are no longer accessible', () => {
+    const storage = new MemoryStorage()
+    assert.equal(setProjectSpacePinned(storage, userA, 'space-1', true, ['space-1'], 1_000), true)
+
+    assert.deepEqual(readPinnedProjectSpaceIds(storage, userB, ['space-1'], 2_000), [])
+    assert.deepEqual(readPinnedProjectSpaceIds(storage, userA, [], 2_000), [])
   })
 })
 

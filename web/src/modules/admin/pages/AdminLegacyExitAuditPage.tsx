@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Alert,
   Button,
@@ -12,7 +12,7 @@ import {
   Table,
   Tag,
   Typography,
-  message,
+  App as AntdApp,
 } from 'antd'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
@@ -24,6 +24,7 @@ import {
   type LegacySurface,
   type RemovalDecision,
 } from '../api/legacyExitAuditApi'
+import { errorMessage } from '../../../shared/api/errorMessage'
 
 const totalCards = [
   ['legacyProjects', '旧项目'],
@@ -35,7 +36,9 @@ const totalCards = [
 ] as const
 
 export function AdminLegacyExitAuditPage() {
+  const { message } = AntdApp.useApp()
   const queryClient = useQueryClient()
+  const decisionRequestIdsRef = useRef(new Map<string, string>())
   const [online, setOnline] = useState(() => navigator.onLine)
   const snapshotsQuery = useQuery({
     queryKey: ['admin', 'legacy-exit-audit', 'snapshots'],
@@ -63,6 +66,7 @@ export function AdminLegacyExitAuditPage() {
       await refresh()
       message.success('迁移审计快照已生成')
     },
+    onError: (error) => message.error(errorMessage(error, '迁移审计快照生成失败，请重试')),
   })
   const decisionMutation = useMutation({
     mutationFn: (input: {
@@ -71,15 +75,23 @@ export function AdminLegacyExitAuditPage() {
       reason: string
     }) => {
       if (!latest) throw new Error('Legacy audit snapshot is required')
+      const requestKey = `${latest.id}:${input.surfaceKey}:${input.decision}`
+      let requestId = decisionRequestIdsRef.current.get(requestKey)
+      if (!requestId) {
+        requestId = `legacy-decision-${crypto.randomUUID()}`
+        decisionRequestIdsRef.current.set(requestKey, requestId)
+      }
       return decideLegacySurface(latest.id, {
         ...input,
-        requestId: `legacy-decision-${crypto.randomUUID()}`,
+        requestId,
       })
     },
-    onSuccess: async () => {
+    onSuccess: async (_, input) => {
+      if (latest) decisionRequestIdsRef.current.delete(`${latest.id}:${input.surfaceKey}:${input.decision}`)
       await refresh()
       message.success('删除决定已追加')
     },
+    onError: (error) => message.error(errorMessage(error, '删除决定提交失败，请重试')),
   })
   const exportMutation = useMutation({
     mutationFn: async () => {
@@ -92,6 +104,7 @@ export function AdminLegacyExitAuditPage() {
       link.click()
       URL.revokeObjectURL(url)
     },
+    onError: (error) => message.error(errorMessage(error, '迁移审计证据导出失败，请重试')),
   })
   const latestDecision = useMemo(() => {
     const values = new Map<string, RemovalDecision>()
@@ -114,7 +127,7 @@ export function AdminLegacyExitAuditPage() {
 
   return (
     <div className="admin-page admin-legacy-exit-audit-page" data-testid="legacy-exit-audit-page">
-      {!online ? <Alert type="warning" showIcon message="离线状态下不能生成快照或追加删除决定。" /> : null}
+      {!online ? <Alert type="warning" showIcon title="离线状态下不能生成快照或追加删除决定。" /> : null}
       <Space className="admin-legacy-audit-actions" wrap>
         <Button
           type="primary"
@@ -141,7 +154,7 @@ export function AdminLegacyExitAuditPage() {
             className="admin-legacy-audit-status"
             type={latest.status === 'ready' ? 'success' : 'error'}
             showIcon
-            message={latest.status === 'ready' ? '审计无阻断' : '存在删除阻断'}
+            title={latest.status === 'ready' ? '审计无阻断' : '存在删除阻断'}
             description={`inventory ${latest.inventoryVersion} · ${latest.findings.length} 项 finding`}
           />
           <Row gutter={[12, 12]}>
@@ -181,9 +194,9 @@ export function AdminLegacyExitAuditPage() {
                   width: 270,
                   render: (_, value) => (
                     <Space wrap>
-                      <Button size="small" disabled={!online} onClick={() => decide(value, 'remove')}>M2 删除</Button>
-                      <Button size="small" disabled={!online} onClick={() => decide(value, 'retain_history')}>保留历史</Button>
-                      <Button size="small" danger disabled={!online} onClick={() => decide(value, 'blocked')}>阻断</Button>
+                      <Button size="small" loading={decisionMutation.isPending} disabled={!online || decisionMutation.isPending} onClick={() => decide(value, 'remove')}>M2 删除</Button>
+                      <Button size="small" loading={decisionMutation.isPending} disabled={!online || decisionMutation.isPending} onClick={() => decide(value, 'retain_history')}>保留历史</Button>
+                      <Button size="small" danger loading={decisionMutation.isPending} disabled={!online || decisionMutation.isPending} onClick={() => decide(value, 'blocked')}>阻断</Button>
                     </Space>
                   ),
                 },

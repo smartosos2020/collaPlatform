@@ -8,7 +8,7 @@ import {
   UserOutlined,
 } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Alert, Avatar, Button, Card, Col, Descriptions, Divider, Form, Input, Row, Space, Switch, Tag, Typography, Upload } from 'antd'
+import { Alert, App as AntdApp, Avatar, Button, Card, Col, Descriptions, Divider, Form, Input, Row, Space, Switch, Tag, Typography, Upload } from 'antd'
 import { useEffect, useMemo, useState } from 'react'
 
 import { changePassword, updateProfile } from '../api/authApi'
@@ -39,6 +39,7 @@ const defaultWorkPreferences = {
 }
 
 export function UserSettingsPage() {
+  const { message } = AntdApp.useApp()
   const queryClient = useQueryClient()
   const currentUser = useAuthStore((state) => state.currentUser)
   const setCurrentUser = useAuthStore((state) => state.setCurrentUser)
@@ -85,7 +86,10 @@ export function UserSettingsPage() {
         contentType: file.type || 'image/png',
         sizeBytes: file.size,
       })
-      await fetch(upload.uploadUrl, { method: 'PUT', headers: upload.headers, body: file })
+      const response = await fetch(upload.uploadUrl, { method: 'PUT', headers: upload.headers, body: file })
+      if (!response.ok) {
+        throw new Error(`头像上传失败（状态码 ${response.status}）`)
+      }
       return completeUpload({ fileId: upload.uploadId })
     },
     onSuccess: async (file) => {
@@ -98,6 +102,7 @@ export function UserSettingsPage() {
       queryClient.setQueryData(['auth', 'me'], updated)
       await queryClient.invalidateQueries({ queryKey: ['files', file.id, 'download-url'] })
     },
+    onError: (error) => message.error(error instanceof Error ? error.message : '头像更新失败，请重试'),
   })
   const preferenceMutation = useMutation({
     mutationFn: ({ sourceType, enabled }: { sourceType: string; enabled: boolean }) => updateNotificationPreference(sourceType, enabled),
@@ -110,11 +115,15 @@ export function UserSettingsPage() {
   const saveWorkPreference = <K extends keyof typeof defaultWorkPreferences>(key: K, value: (typeof defaultWorkPreferences)[K]) => {
     const next = { ...workPreferences, [key]: value }
     setWorkPreferences(next)
-    localStorage.setItem(WORK_PREFERENCES_KEY, JSON.stringify(next))
+    try {
+      localStorage.setItem(WORK_PREFERENCES_KEY, JSON.stringify(next))
+    } catch {
+      message.warning('偏好已在当前页面生效，但浏览器未能持久保存')
+    }
   }
 
   if (!currentUser) {
-    return <Alert type="warning" showIcon message="个人资料暂不可用" description="请重新加载页面后再试。" />
+    return <Alert type="warning" showIcon title="个人资料暂不可用" description="请重新加载页面后再试。" />
   }
 
   return (
@@ -138,6 +147,14 @@ export function UserSettingsPage() {
                   accept="image/png,image/jpeg,image/webp"
                   showUploadList={false}
                   beforeUpload={(file) => {
+                    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+                      message.error('仅支持 PNG、JPEG 或 WebP 图片')
+                      return Upload.LIST_IGNORE
+                    }
+                    if (file.size > 5 * 1024 * 1024) {
+                      message.error('头像大小不能超过 5MB')
+                      return Upload.LIST_IGNORE
+                    }
                     avatarMutation.mutate(file)
                     return false
                   }}
@@ -158,7 +175,7 @@ export function UserSettingsPage() {
                 保存资料
               </Button>
               {profileMutation.isSuccess ? <Tag color="green" className="user-settings-save-state">已保存</Tag> : null}
-              {profileMutation.isError ? <Alert type="error" showIcon message="资料保存失败" description="请检查网络后重试。" className="user-settings-inline-alert" /> : null}
+              {profileMutation.isError ? <Alert type="error" showIcon title="资料保存失败" description="请检查网络后重试。" className="user-settings-inline-alert" /> : null}
             </Form>
           </Card>
         </Col>
@@ -177,7 +194,7 @@ export function UserSettingsPage() {
       </Row>
 
       <Card title={<Space><SettingOutlined />通知偏好</Space>}>
-        {preferencesQuery.isError ? <Alert type="error" showIcon message="通知偏好加载失败" description="保留默认通知设置，稍后可重试。" /> : null}
+        {preferencesQuery.isError ? <Alert type="error" showIcon title="通知偏好加载失败" description="保留默认通知设置，稍后可重试。" /> : null}
         <Space orientation="vertical" className="user-settings-preferences" size={12}>
           {notificationPreferences.map((preference) => (
             <div className="user-settings-preference-row" key={preference.sourceType}>
@@ -225,7 +242,7 @@ export function UserSettingsPage() {
           </Row>
           <Button htmlType="submit" loading={passwordMutation.isPending}>更新密码</Button>
           {passwordMutation.isSuccess ? <Tag color="green" className="user-settings-save-state">密码已更新</Tag> : null}
-          {passwordMutation.isError ? <Alert type="error" showIcon message="密码更新失败" description="当前密码不正确或新密码不符合要求。" className="user-settings-inline-alert" /> : null}
+          {passwordMutation.isError ? <Alert type="error" showIcon title="密码更新失败" description="当前密码不正确或新密码不符合要求。" className="user-settings-inline-alert" /> : null}
         </Form>
       </Card>
     </div>

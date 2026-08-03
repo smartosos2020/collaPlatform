@@ -16,6 +16,7 @@ import type { ColumnsType } from 'antd/es/table'
 import { useMemo, useState } from 'react'
 
 import { EntityAvatar } from '../../../shared/components/EntityAvatar'
+import { errorMessage } from '../../../shared/api/errorMessage'
 import { SoftBadge } from '../../../shared/components/SoftBadge'
 import { StatusBadge } from '../../../shared/components/StatusBadge'
 import { TableEmptyState } from '../../../shared/components/TableEmptyState'
@@ -117,6 +118,7 @@ export function AdminDepartmentsPage() {
       departmentForm.resetFields()
       await refreshOrganization()
     },
+    onError: (error) => message.error(errorMessage(error, '部门保存失败，请重试')),
   })
 
   const moveMutation = useMutation({
@@ -128,6 +130,7 @@ export function AdminDepartmentsPage() {
       moveForm.resetFields()
       await refreshOrganization()
     },
+    onError: (error) => message.error(errorMessage(error, '部门移动失败，请重试')),
   })
 
   const disableMutation = useMutation({
@@ -136,6 +139,7 @@ export function AdminDepartmentsPage() {
       message.success('部门已停用')
       await refreshOrganization()
     },
+    onError: (error) => message.error(errorMessage(error, '部门停用失败，请重试')),
   })
 
   const enableMutation = useMutation({
@@ -144,9 +148,7 @@ export function AdminDepartmentsPage() {
       message.success('部门已启用')
       await refreshOrganization()
     },
-    onError: (error) => {
-      message.error(error instanceof Error ? error.message : '部门启用失败')
-    },
+    onError: (error) => message.error(errorMessage(error, '部门启用失败，请重试')),
   })
 
   const deleteMutation = useMutation({
@@ -155,6 +157,7 @@ export function AdminDepartmentsPage() {
       message.success('部门已删除')
       await refreshOrganization()
     },
+    onError: (error) => message.error(errorMessage(error, '部门删除失败，请重试')),
   })
 
   const assignmentMutation = useMutation({
@@ -179,6 +182,7 @@ export function AdminDepartmentsPage() {
       assignmentForm.resetFields()
       await refreshOrganization()
     },
+    onError: (error) => message.error(errorMessage(error, '成员或负责人添加失败，请重试')),
   })
 
   const removeMemberMutation = useMutation({
@@ -188,6 +192,7 @@ export function AdminDepartmentsPage() {
       message.success('成员已移除')
       await refreshOrganization()
     },
+    onError: (error) => message.error(errorMessage(error, '成员移除失败，请重试')),
   })
 
   const removeManagerMutation = useMutation({
@@ -197,6 +202,7 @@ export function AdminDepartmentsPage() {
       message.success('负责人已移除')
       await refreshOrganization()
     },
+    onError: (error) => message.error(errorMessage(error, '负责人移除失败，请重试')),
   })
 
   const treeData = useMemo(() => buildTreeData(treeQuery.data ?? []), [treeQuery.data])
@@ -561,7 +567,7 @@ export function AdminDepartmentsPage() {
       okText: '删除',
       okButtonProps: { danger: true },
       cancelText: '取消',
-      onOk: () => deleteMutation.mutateAsync(department.id),
+      onOk: () => deleteMutation.mutateAsync(department.id).catch(() => undefined),
     })
   }
 }

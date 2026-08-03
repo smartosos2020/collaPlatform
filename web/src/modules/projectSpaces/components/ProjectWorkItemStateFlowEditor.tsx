@@ -11,7 +11,6 @@ import {
   Alert,
   App as AntdApp,
   Button,
-  Card,
   Collapse,
   Empty,
   Input,
@@ -29,6 +28,7 @@ import {
   type WorkItemConfigurationDraft,
 } from '../api/workItemConfigurationApi'
 import { errorMessage } from '../projectSpaceView'
+import { CollapsibleWorkItemCard } from './CollapsibleWorkItemCard'
 
 type JsonRecord = Record<string, unknown>
 type StateDefinition = {
@@ -156,7 +156,8 @@ export function ProjectWorkItemStateFlowEditor({
   }
 
   return (
-    <Card
+    <CollapsibleWorkItemCard
+      collapseLabel="轻量状态流配置"
       className="work-item-state-flow-editor"
       data-testid="work-item-state-flow-editor"
       title={<Space><ForkOutlined /><span>轻量状态流配置</span>{dirty ? <Tag color="warning">未保存</Tag> : null}</Space>}
@@ -392,7 +393,7 @@ export function ProjectWorkItemStateFlowEditor({
           },
         ]}
       />
-    </Card>
+    </CollapsibleWorkItemCard>
   )
 }
 

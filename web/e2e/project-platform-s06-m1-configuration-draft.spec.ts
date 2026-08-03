@@ -30,7 +30,7 @@ test.describe('PROJECT-PLATFORM-S06-M1 configuration draft', () => {
       await expect(draftSummary).not.toContainText('hash ')
       await expect(draftSummary).toContainText('schema v')
       await expect(draftSummary).toContainText('更新于')
-      await expect(panel).toContainText('missing_layout_kind')
+      await expect(panel).toContainText('页面布局未完整')
       await expect(panel).toContainText('1 个提醒')
 
       const validateResponse = page.waitForResponse((response) =>

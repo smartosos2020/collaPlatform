@@ -195,6 +195,7 @@ export function AdminRolesPage() {
   const revokeMutation = useMutation({
     mutationFn: revokeRoleAssignment,
     onSuccess: refreshRoles,
+    onError: (error) => message.error(error instanceof Error ? error.message : '角色分配撤销失败，请重试'),
   })
 
   const assignmentColumns: ColumnsType<RoleAssignmentSummary> = [
@@ -304,7 +305,7 @@ export function AdminRolesPage() {
       okText: '撤销',
       okButtonProps: { danger: true },
       cancelText: '取消',
-      onOk: () => revokeMutation.mutateAsync(assignment.id),
+      onOk: () => revokeMutation.mutateAsync(assignment.id).catch(() => undefined),
     })
   }
 

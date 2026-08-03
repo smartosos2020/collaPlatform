@@ -8,6 +8,7 @@ import { listMembers } from '../../admin/api/adminUsersApi'
 import { flattenDepartmentTree, listDepartmentTree } from '../../admin/api/departmentsApi'
 import { listRoles } from '../../admin/api/rolesApi'
 import { listUserGroups } from '../../admin/api/userGroupsApi'
+import { errorMessage } from '../../../shared/api/errorMessage'
 import {
   approveResourcePermissionRequest,
   breakResourcePermissionInheritance,
@@ -105,6 +106,7 @@ export function ResourcePermissionsModal({ open, resourceType, resourceId, resou
       setConfirmHighRisk(false)
       await refresh()
     },
+    onError: (error) => message.error(errorMessage(error, '操作失败，请重试')),
   })
 
   const revokeMutation = useMutation({
@@ -114,6 +116,7 @@ export function ResourcePermissionsModal({ open, resourceType, resourceId, resou
       message.success('权限已撤销')
       await refresh()
     },
+    onError: (error) => message.error(errorMessage(error, '操作失败，请重试')),
   })
 
   const approveRequestMutation = useMutation({
@@ -122,6 +125,7 @@ export function ResourcePermissionsModal({ open, resourceType, resourceId, resou
       message.success('访问申请已通过')
       await refresh()
     },
+    onError: (error) => message.error(errorMessage(error, '操作失败，请重试')),
   })
 
   const rejectRequestMutation = useMutation({
@@ -130,6 +134,7 @@ export function ResourcePermissionsModal({ open, resourceType, resourceId, resou
       message.success('访问申请已拒绝')
       await refresh()
     },
+    onError: (error) => message.error(errorMessage(error, '操作失败，请重试')),
   })
 
   const breakInheritanceMutation = useMutation({
@@ -138,6 +143,7 @@ export function ResourcePermissionsModal({ open, resourceType, resourceId, resou
       message.success('已断开继承权限')
       await refresh()
     },
+    onError: (error) => message.error(errorMessage(error, '操作失败，请重试')),
   })
 
   const restoreInheritanceMutation = useMutation({
@@ -146,6 +152,7 @@ export function ResourcePermissionsModal({ open, resourceType, resourceId, resou
       message.success('已恢复继承权限')
       await refresh()
     },
+    onError: (error) => message.error(errorMessage(error, '操作失败，请重试')),
   })
 
   const columns: ColumnsType<ResourcePermissionEntry> = [
@@ -251,7 +258,7 @@ export function ResourcePermissionsModal({ open, resourceType, resourceId, resou
       okText: '撤销',
       okButtonProps: { danger: true },
       cancelText: '取消',
-      onOk: () => revokeMutation.mutateAsync({ permissionId: record.id, confirm: highRiskRevoke }),
+      onOk: () => revokeMutation.mutateAsync({ permissionId: record.id, confirm: highRiskRevoke }).catch(() => undefined),
     })
   }
 
@@ -315,7 +322,13 @@ export function ResourcePermissionsModal({ open, resourceType, resourceId, resou
               ]}
             />
           </Form.Item>
-          <Button type="primary" icon={<SafetyCertificateOutlined />} htmlType="submit" loading={grantMutation.isPending}>
+          <Button
+            type="primary"
+            icon={<SafetyCertificateOutlined />}
+            htmlType="submit"
+            disabled={highRisk && !confirmHighRisk}
+            loading={grantMutation.isPending}
+          >
             保存授权
           </Button>
         </Form>
@@ -363,7 +376,7 @@ export function ResourcePermissionsModal({ open, resourceType, resourceId, resou
       okText: '断开',
       okButtonProps: { danger: true },
       cancelText: '取消',
-      onOk: () => breakInheritanceMutation.mutateAsync(),
+      onOk: () => breakInheritanceMutation.mutateAsync().catch(() => undefined),
     })
   }
 }

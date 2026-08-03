@@ -10,7 +10,7 @@ import {
   SafetyCertificateOutlined,
 } from '@ant-design/icons'
 import { useQuery } from '@tanstack/react-query'
-import { Button, Card, Segmented, Space, Statistic, Tag, Typography } from 'antd'
+import { Alert, Button, Card, Segmented, Space, Statistic, Tag, Typography } from 'antd'
 import { useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 
@@ -39,6 +39,20 @@ export function AdminApplicationGovernancePage() {
     const key = String(value)
     setSelectedKey(key)
     setSearchParams({ module: key })
+  }
+
+  if (governanceQuery.isError) {
+    return (
+      <Space orientation="vertical" size={16} className="page-stack admin-org-page">
+        <Alert
+          type="error"
+          showIcon
+          title="应用治理数据加载失败"
+          description="请检查服务连接后重试。"
+          action={<Button size="small" onClick={() => void governanceQuery.refetch()}>重试</Button>}
+        />
+      </Space>
+    )
   }
 
   if (!governanceQuery.isLoading && modules.length === 0) {

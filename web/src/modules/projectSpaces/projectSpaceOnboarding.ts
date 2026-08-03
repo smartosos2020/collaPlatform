@@ -3,7 +3,7 @@ import {
   PROJECT_SPACE_SCENARIO_PATHS,
   projectSpacePrimaryPath,
   resolveProjectSpaceRouteContext,
-} from './projectSpaceInformationArchitecture'
+} from './projectSpaceInformationArchitecture.ts'
 
 export const PROJECT_SPACE_ONBOARDING_FLOW_VERSION = 's21-m6-v1' as const
 
@@ -424,6 +424,9 @@ export function resolveOnboardingOwnerPath(
   const expandedPath = item.path?.replaceAll('{spaceId}', encodeURIComponent(spaceId)) ?? null
   if (safeOnboardingPath(expandedPath, spaceId)) return expandedPath
   const copy = resolveOnboardingStepCopy(item)
+  if (['configure_workflow', 'configure_permissions', 'publish_configuration'].includes(item.stepKey)) {
+    return `/project-spaces/${spaceId}/settings?panel=work-model&workModelTab=flow-access`
+  }
   if (copy.requiredAction === 'view_members') return projectSpacePrimaryPath(spaceId, 'members')
   if (copy.requiredAction === 'view_work_items') return projectSpacePrimaryPath(spaceId, 'work-items')
   if (copy.requiredAction === 'view_settings') {

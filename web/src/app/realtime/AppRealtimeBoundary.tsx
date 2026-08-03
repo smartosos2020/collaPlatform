@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, type ReactNode } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 
 import { AUTH_STORAGE_KEYS, useAuthStore } from '../../modules/auth/authStore'
+import { readLocalStorage } from '../../shared/storage/localStorage'
 import {
   listMessages,
   type MessagePage,
@@ -67,7 +68,7 @@ export function AppRealtimeBoundary({ children }: { children: ReactNode }) {
   const accessToken = useAuthStore((state) => state.accessToken)
   const currentUser = useAuthStore((state) => state.currentUser)
   const contextVersion = useAuthStore((state) => state.contextVersion)
-  const deviceFingerprint = localStorage.getItem(AUTH_STORAGE_KEYS.deviceFingerprint) ?? ''
+  const deviceFingerprint = readLocalStorage(AUTH_STORAGE_KEYS.deviceFingerprint) ?? ''
   const contextKey = [
     contextVersion,
     currentUser?.workspaceId ?? '',

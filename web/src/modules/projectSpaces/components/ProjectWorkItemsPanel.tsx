@@ -271,6 +271,20 @@ function ProjectWorkItemSecondaryTabs({
     }
   })
 
+  if (items.length === 1) {
+    return (
+      <section
+        className="project-space-secondary-tabs project-space-secondary-tabs-single"
+        data-testid={surface === 'management'
+          ? 'project-space-management-tabs'
+          : 'project-work-items-secondary-tabs'}
+        aria-label={surface === 'management' ? '项目管理内容' : '工作项内容'}
+      >
+        {items[0].children}
+      </section>
+    )
+  }
+
   return (
     <Tabs
       activeKey={activePanel}
@@ -1393,31 +1407,27 @@ function WorkItemCollection({ space }: { space: UserProjectSpace }) {
           action={<Button size="small" onClick={closeCreate}>返回工作项</Button>}
         />
       ) : null}
-      <Card
-        className="content-card project-work-item-card"
-        title={(
-          <span className="project-work-item-card-title">
-            <FileOutlined />
-            <span>工作项</span>
-          </span>
-        )}
-        extra={(
-          <Space className="project-work-item-card-actions" wrap>
-            {space.status === 'active' && creatableTypes.length > 0 ? (
-              <Button type="primary" icon={<PlusOutlined />} onClick={() => openCreate()}>
-                新建工作项
-              </Button>
-            ) : null}
-            <Button
-              icon={<SaveOutlined />}
-              loading={savePreferenceMutation.isPending}
-              onClick={() => savePreferenceMutation.mutate()}
-            >
-              保存偏好
+      <header className="project-space-overview-heading project-work-item-heading">
+        <Typography.Title level={4}>工作项</Typography.Title>
+        <Typography.Text type="secondary">
+          集中查看、筛选并管理当前空间内你有权访问的工作项
+        </Typography.Text>
+        <Space className="project-work-item-card-actions" wrap>
+          {space.status === 'active' && creatableTypes.length > 0 ? (
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => openCreate()}>
+              新建工作项
             </Button>
-          </Space>
-        )}
-      >
+          ) : null}
+          <Button
+            icon={<SaveOutlined />}
+            loading={savePreferenceMutation.isPending}
+            onClick={() => savePreferenceMutation.mutate()}
+          >
+            保存偏好
+          </Button>
+        </Space>
+      </header>
+      <Card className="content-card project-work-item-card project-work-item-content-card">
         <div className="project-work-item-toolbar-shell">
           <div
             className="project-work-item-toolbar-primary"
@@ -1769,6 +1779,9 @@ function WorkItemCollection({ space }: { space: UserProjectSpace }) {
               ? <Button type="primary" onClick={() => openCreate()}>创建第一条工作项</Button>
               : null}
           </Empty>
+        ) : null}
+        {!treeMode && !boardMode && !calendarMode && !ganttMode && itemsQuery.data?.nextCursor ? (
+          <Alert type="warning" showIcon message="结果已分页" description={`当前仅显示前 ${definition.limit} 条工作项，请使用搜索或筛选缩小范围。`} />
         ) : null}
         {!treeMode && !boardMode && !calendarMode && !ganttMode && itemsQuery.data?.rows.length && mode === 'table' ? (
           <Table
@@ -2609,6 +2622,7 @@ function WorkItemDetail({ space, workItemId }: { space: UserProjectSpace; workIt
   const queryClient = useQueryClient()
   const online = useOnlineStatus()
   const [draft, setDraft] = useState<{
+    workItemId: string
     version: number
     title: string
     values: WorkItemLayoutValues
@@ -2668,15 +2682,17 @@ function WorkItemDetail({ space, workItemId }: { space: UserProjectSpace; workIt
       </Card>
     )
   }
-  const activeDraft = draft?.version === item.version ? draft : null
+  const activeDraft = draft?.workItemId === item.id && draft.version === item.version ? draft : null
   const title = activeDraft?.title ?? item.title
   const values = activeDraft?.values ?? item.fieldValues
   const setTitle = (next: string) => setDraft({
+    workItemId: item.id,
     version: item.version,
     title: next,
     values,
   })
   const setValues = (next: WorkItemLayoutValues) => setDraft({
+    workItemId: item.id,
     version: item.version,
     title,
     values: next,

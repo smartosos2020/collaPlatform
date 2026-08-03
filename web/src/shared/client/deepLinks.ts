@@ -1,3 +1,5 @@
+import { safeHref, safeInternalPath } from '../url/safeUrl.ts'
+
 export type NavigationTarget = {
   webPath?: string | null
   mobileFallbackPath?: string | null
@@ -16,16 +18,21 @@ const deepLinkWebPrefixes: Record<string, (objectId: string) => string> = {
 
 export function resolveNavigationPath(target: NavigationTarget) {
   if (target.webPath) {
-    return normalizeKnowledgeContentPath(target.webPath)
+    return safeInternalPath(target.webPath)
   }
   if (target.mobileFallbackPath) {
-    return target.mobileFallbackPath
+    return safeInternalPath(target.mobileFallbackPath)
   }
   return target.deepLink ? webPathFromDeepLink(target.deepLink) : null
 }
 
-export function normalizeKnowledgeContentPath(path: string) {
-  return path
+/**
+ * 校验来自服务端的跳转地址：站内路径或白名单外链（http/https/mailto/tel）
+ * 原样返回，其余（javascript:/data: 伪协议、协议相对地址等）返回 null。
+ * 调用方拿到 null 时不得再把它放进 href / navigate。
+ */
+export function normalizeKnowledgeContentPath(path: string): string | null {
+  return safeHref(path)
 }
 
 export function webPathFromDeepLink(deepLink: string) {

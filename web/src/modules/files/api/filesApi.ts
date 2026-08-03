@@ -77,6 +77,7 @@ function uploadToSignedUrl(
   return new Promise<void>((resolve, reject) => {
     const request = new XMLHttpRequest()
     request.open('PUT', url)
+    request.timeout = 60_000
     Object.entries(headers).forEach(([name, value]) => request.setRequestHeader(name, value))
     request.upload.addEventListener('progress', (event) => {
       if (event.lengthComputable) {
@@ -87,11 +88,12 @@ function uploadToSignedUrl(
       if (request.status >= 200 && request.status < 300) {
         resolve()
       } else {
-        reject(new Error(`File upload failed with status ${request.status}`))
+        reject(new Error(`文件上传失败（状态码 ${request.status}）`))
       }
     })
-    request.addEventListener('error', () => reject(new Error('File upload failed because the network is unavailable')))
-    request.addEventListener('abort', () => reject(new Error('File upload was cancelled')))
+    request.addEventListener('error', () => reject(new Error('文件上传失败，请检查网络连接')))
+    request.addEventListener('timeout', () => reject(new Error('文件上传超时，请重试')))
+    request.addEventListener('abort', () => reject(new Error('文件上传已取消')))
     request.send(file)
   })
 }

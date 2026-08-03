@@ -35,6 +35,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import { listDirectoryMembers } from '../../../shared/api/directoryApi'
+import { safeExternalHref } from '../../../shared/url/safeUrl'
 import { ObjectSummaryCard } from '../../platform/components/InternalLinkCard'
 import { ResourcePermissionsModal } from '../../permissions/components/ResourcePermissionsModal'
 import {
@@ -140,6 +141,7 @@ export function BasesPage() {
   const [saveViewOpen, setSaveViewOpen] = useState(false)
   const [importCsvOpen, setImportCsvOpen] = useState(false)
   const [filterState, setFilterState] = useState<FilterSortState>({ filters: [], sorts: [] })
+  const [recordPage, setRecordPage] = useState(1)
   const [visibleFieldIds, setVisibleFieldIds] = useState<string[] | null>(null)
   const [viewMode, setViewMode] = useState<BaseViewMode>('grid')
   const [kanbanFieldId, setKanbanFieldId] = useState<string | null>(null)
@@ -167,13 +169,13 @@ export function BasesPage() {
     enabled: Boolean(activeBaseId && activeTableId),
   })
   const recordsQuery = useQuery({
-    queryKey: ['bases', activeBaseId, 'tables', activeTableId, 'records', filterState],
+    queryKey: ['bases', activeBaseId, 'tables', activeTableId, 'records', filterState, recordPage],
     queryFn: () =>
       queryRecords(activeBaseId || '', activeTableId || '', {
         filters: filterState.filters,
         sorts: filterState.sorts,
         limit: 50,
-        offset: 0,
+        offset: (recordPage - 1) * 50,
       }),
     enabled: Boolean(activeBaseId && activeTableId),
   })
@@ -408,10 +410,12 @@ export function BasesPage() {
         ? [{ fieldId: values.filterFieldId, operator: values.operator ?? 'eq', value: values.filterValue }]
         : []
     const sorts = values.sortFieldId ? [{ fieldId: values.sortFieldId, direction: values.direction ?? 'asc' }] : []
+    setRecordPage(1)
     setFilterState({ filters, sorts })
   }
 
   const applyView = (view: BaseView) => {
+    setRecordPage(1)
     setFilterState({ filters: view.filters, sorts: view.sorts })
     setVisibleFieldIds(view.visibleFieldIds.length > 0 ? view.visibleFieldIds : null)
     filterForm.setFieldsValue({
@@ -459,6 +463,7 @@ export function BasesPage() {
               onClick={() => {
                 setSelectedBaseId(base.id)
                 setSelectedTableId(null)
+                setRecordPage(1)
                 navigate(`/bases/${base.id}`)
               }}
             >
@@ -506,6 +511,7 @@ export function BasesPage() {
                   type="button"
                   onClick={() => {
                     setSelectedTableId(table.id)
+                    setRecordPage(1)
                     navigate(`/bases/${activeBaseId}/tables/${table.id}`)
                   }}
                 >
@@ -556,7 +562,13 @@ export function BasesPage() {
                     columns={tableColumns}
                     dataSource={rows}
                     loading={recordsQuery.isLoading}
-                    pagination={false}
+                    pagination={{
+                      current: recordPage,
+                      pageSize: 50,
+                      total: recordsQuery.data?.total ?? 0,
+                      showSizeChanger: false,
+                      onChange: setRecordPage,
+                    }}
                     rowClassName={(record) => (record.id === recordId ? 'base-record-row-active' : '')}
                     scroll={{ x: Math.max(720, visibleFields.length * 180 + 260), y: 520 }}
                     onRow={(record) => ({
@@ -729,6 +741,7 @@ export function BasesPage() {
                 </Button>
                 <Button
                   onClick={() => {
+                    setRecordPage(1)
                     setFilterState({ filters: [], sorts: [] })
                     filterForm.resetFields()
                   }}
@@ -1171,8 +1184,12 @@ function CellValue({
     return <Tag>{String(value).slice(0, 8)}</Tag>
   }
   if (field.fieldType === 'url') {
+    const href = safeExternalHref(value)
+    if (!href) {
+      return <span>{String(value)}</span>
+    }
     return (
-      <a href={String(value)} target="_blank" rel="noreferrer">
+      <a href={href} target="_blank" rel="noreferrer">
         {String(value)}
       </a>
     )

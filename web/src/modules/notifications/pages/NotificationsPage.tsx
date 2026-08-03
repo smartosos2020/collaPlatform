@@ -138,6 +138,9 @@ export function NotificationsPage() {
       />
 
       {notificationsQuery.isError ? <Alert type="error" showIcon message="通知暂时无法加载" description="请检查网络连接后重试。" /> : null}
+      {notifications.length === notificationFilters.limit ? (
+        <Alert type="warning" showIcon title="通知结果可能已截断" description="当前仅显示最近 100 条，请使用筛选缩小范围。" />
+      ) : null}
 
       <Card
         title={<Space>个人动态<Badge count={activitiesQuery.data?.unreadCount ?? 0} /></Space>}

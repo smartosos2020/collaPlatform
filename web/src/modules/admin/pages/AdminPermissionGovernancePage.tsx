@@ -62,7 +62,7 @@ export function AdminPermissionGovernancePage() {
           content: `${result.reason} 风险规则：${result.ruleCode}`,
           okText: '确认修复',
           cancelText: '取消',
-          onOk: () => remediationMutation.mutateAsync({ riskId: result.riskId, confirm: true }),
+          onOk: () => remediationMutation.mutateAsync({ riskId: result.riskId, confirm: true }).catch(() => undefined),
         })
         return
       }

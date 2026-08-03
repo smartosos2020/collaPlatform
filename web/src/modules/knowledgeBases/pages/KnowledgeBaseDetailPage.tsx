@@ -37,6 +37,7 @@ import { PlatformObjectPicker } from '../../platform/components/PlatformObjectPi
 import { getFileDownloadUrl } from '../../files/api/filesApi'
 import { getBase, getTable, queryRecords, type BaseField, type BaseRecord } from '../../bases/api/basesApi'
 import { ApiRequestError } from '../../../shared/api/httpClient'
+import { safeExternalHref } from '../../../shared/url/safeUrl'
 import {
   createKnowledgeBaseItem,
   createKnowledgeBaseBaseEntry,
@@ -143,6 +144,17 @@ export function KnowledgeBaseDetailPage() {
   const normalizeKnowledgePath = useCallback((path: string) => {
     return path
   }, [])
+  const openExternalUrl = useCallback(
+    (url: string) => {
+      const href = safeExternalHref(url)
+      if (!href) {
+        message.warning('链接地址不安全，已取消打开')
+        return
+      }
+      window.open(href, '_blank', 'noopener,noreferrer')
+    },
+    [message],
+  )
 
   const spacesQuery = useQuery({ queryKey: ['knowledge-bases', false], queryFn: () => listKnowledgeBases() })
   const spaceQuery = useQuery({
@@ -370,7 +382,7 @@ export function KnowledgeBaseDetailPage() {
         }
         if (document.targetObjectType === 'file' && document.targetObjectId) {
           void getFileDownloadUrl(document.targetObjectId)
-            .then((response) => window.open(response.downloadUrl, '_blank', 'noopener,noreferrer'))
+            .then((response) => openExternalUrl(response.downloadUrl))
             .catch(() => message.error('文件打开失败'))
           return
         }
@@ -382,12 +394,12 @@ export function KnowledgeBaseDetailPage() {
         return
       }
       if (document.contentType === 'external_link' && document.targetRoute) {
-        window.open(document.targetRoute, '_blank', 'noopener,noreferrer')
+        openExternalUrl(document.targetRoute)
         return
       }
       navigate(directoryPath(itemId), { replace: options?.replace })
     },
-    [contentPath, directoryPath, items, message, navigate, normalizeKnowledgePath],
+    [contentPath, directoryPath, items, message, navigate, normalizeKnowledgePath, openExternalUrl],
   )
 
   const setManagementView = useCallback(
@@ -450,7 +462,7 @@ export function KnowledgeBaseDetailPage() {
         navigate(contentPath(detail.item.id))
       } else if (detail.item.contentType === 'object_ref' && detail.item.targetObjectType === 'file' && detail.item.targetObjectId) {
         void getFileDownloadUrl(detail.item.targetObjectId)
-          .then((response) => window.open(response.downloadUrl, '_blank', 'noopener,noreferrer'))
+          .then((response) => openExternalUrl(response.downloadUrl))
           .catch(() => message.error('文件打开失败'))
       } else if (detail.item.contentType === 'object_ref' && detail.item.targetObjectType !== 'base' && detail.item.targetRoute) {
         navigate(normalizeKnowledgePath(detail.item.targetRoute))
@@ -599,7 +611,11 @@ export function KnowledgeBaseDetailPage() {
     const next = keys.map(String)
     setExpandedKeysBySpace((current) => ({ ...current, [spaceId]: next }))
     if (spaceId) {
-      localStorage.setItem(expandedStorageKey(spaceId), JSON.stringify(next))
+      try {
+        localStorage.setItem(expandedStorageKey(spaceId), JSON.stringify(next))
+      } catch {
+        // 隐私模式或存储配额满时写入会抛错，忽略即可，内存态已更新
+      }
     }
   }
 

@@ -63,6 +63,7 @@ export function ObjectSummaryCard({ summary, onOpen }: { summary: PlatformObject
   const canOpen = summary.accessState === 'available' && Boolean(summary.webPath || summary.objectId)
   const knowledgePath = metadataText(summary.metadata.knowledgePath)
   const knowledgeBaseName = metadataText(summary.metadata.knowledgeBaseName)
+  const backReferenceHref = normalizeKnowledgeContentPath(metadataText(summary.metadata.backReferencePath))
   const displayTitle = summary.objectType === 'knowledge_content' && knowledgePath ? knowledgePath : summary.title || '未命名对象'
   const displaySubtitle = summary.objectType === 'knowledge_content' && knowledgePath ? summary.title : summary.subtitle
   const handleOpen = () => {
@@ -92,7 +93,7 @@ export function ObjectSummaryCard({ summary, onOpen }: { summary: PlatformObject
           </Space>
         </Space>
         <Space size={4}>
-          {metadataText(summary.metadata.backReferencePath) ? <Button size="small" href={normalizeKnowledgeContentPath(metadataText(summary.metadata.backReferencePath))}>回看引用</Button> : null}
+          {backReferenceHref ? <Button size="small" href={backReferenceHref}>回看引用</Button> : null}
           {canOpen ? (
             <Button size="small" aria-label={`打开${objectTypeText[summary.objectType] ?? '对象'} ${displayTitle}`} loading={openMutation.isPending} onClick={handleOpen}>
               {summary.objectType === 'knowledge_content' ? '打开知识内容' : '打开'}

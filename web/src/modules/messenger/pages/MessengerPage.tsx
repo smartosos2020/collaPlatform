@@ -95,6 +95,7 @@ type ChatMessage = MessageSummary & {
 
 const QUICK_REACTIONS = ['👍', '❤️', '😂', '🎉', '😮', '🙏']
 const COMPOSER_EMOJIS = ['😀', '😄', '😂', '😊', '👍', '❤️', '🎉', '🔥', '🙏', '💡', '✅', '🚀']
+const MESSAGE_RENDER_LIMIT = 200
 
 export function MessengerPage() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -123,6 +124,8 @@ export function MessengerPage() {
   const messageRefs = useRef<Record<string, HTMLElement | null>>({})
   const autoReadMessageIdRef = useRef<string | null>(null)
   const focusedMessageIdRef = useRef<string | null>(null)
+  const highlightTimerRef = useRef<number | null>(null)
+  const focusTimerRef = useRef<number | null>(null)
   const queryClient = useQueryClient()
   const currentUser = useAuthStore((state) => state.currentUser)
   const { status: realtimeStatus } = useRealtimeStatus()
@@ -383,6 +386,10 @@ export function MessengerPage() {
       (left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime(),
     )
   }, [localMessages, messagesQuery.data?.items, selectedConversationId])
+  const displayedMessages = useMemo(
+    () => messages.slice(-MESSAGE_RENDER_LIMIT),
+    [messages],
+  )
   const selectedConversation = conversationQuery.data
   const selectedMemberIds = useMemo(
     () => new Set((selectedConversation?.members ?? []).map((member) => member.userId)),
@@ -442,7 +449,16 @@ export function MessengerPage() {
   const focusMessage = useCallback((messageId: string) => {
     messageRefs.current[messageId]?.scrollIntoView({ behavior: 'smooth', block: 'center' })
     setHighlightedMessageId(messageId)
-    window.setTimeout(() => setHighlightedMessageId(null), 1600)
+    if (highlightTimerRef.current !== null) window.clearTimeout(highlightTimerRef.current)
+    highlightTimerRef.current = window.setTimeout(() => {
+      highlightTimerRef.current = null
+      setHighlightedMessageId(null)
+    }, 1600)
+  }, [])
+
+  useEffect(() => () => {
+    if (highlightTimerRef.current !== null) window.clearTimeout(highlightTimerRef.current)
+    if (focusTimerRef.current !== null) window.clearTimeout(focusTimerRef.current)
   }, [])
 
   useEffect(() => {
@@ -458,18 +474,28 @@ export function MessengerPage() {
       return
     }
     focusedMessageIdRef.current = selectedMessageId
-    window.setTimeout(() => focusMessage(selectedMessageId), 80)
+    if (focusTimerRef.current !== null) window.clearTimeout(focusTimerRef.current)
+    focusTimerRef.current = window.setTimeout(() => {
+      focusTimerRef.current = null
+      focusMessage(selectedMessageId)
+    }, 80)
+    return () => {
+      if (focusTimerRef.current !== null) {
+        window.clearTimeout(focusTimerRef.current)
+        focusTimerRef.current = null
+      }
+    }
   }, [focusMessage, messages, selectedMessageId])
 
   useEffect(() => {
-    if (!selectedConversationId || messages.length === 0 || readMutation.isPending) {
+    if (!selectedConversationId || displayedMessages.length === 0 || readMutation.isPending) {
       return undefined
     }
     const root = messageListRef.current
     if (!root) {
       return undefined
     }
-    const readableMessages = messages.filter((item) => item.senderId !== currentUser?.id && !item.deliveryStatus)
+    const readableMessages = displayedMessages.filter((item) => item.senderId !== currentUser?.id && !item.deliveryStatus)
     if (readableMessages.length === 0) {
       return undefined
     }
@@ -477,7 +503,17 @@ export function MessengerPage() {
       (entries) => {
         const visibleMessageIds = new Set(
           entries
-            .filter((entry) => entry.isIntersecting && entry.intersectionRatio >= 0.98)
+            .filter((entry) => {
+              if (!entry.isIntersecting) return false
+              const rootBounds = entry.rootBounds
+              const targetHeight = entry.boundingClientRect.height
+              const rootHeight = rootBounds?.height ?? root.clientHeight
+              if (targetHeight <= rootHeight) return entry.intersectionRatio >= 0.98
+              // 超过视口高度的长消息不可能达到 98%；其顶部进入可读区域即视为已读。
+              if (!rootBounds) return false
+              return entry.boundingClientRect.top >= rootBounds.top
+                && entry.boundingClientRect.top <= rootBounds.bottom
+            })
             .map((entry) => (entry.target as HTMLElement).dataset.messageId)
             .filter(Boolean),
         )
@@ -488,7 +524,7 @@ export function MessengerPage() {
         autoReadMessageIdRef.current = latestVisibleMessage.id
         readMutation.mutate(latestVisibleMessage.id)
       },
-      { root, threshold: [0.98, 1] },
+      { root, rootMargin: '0px 0px -35% 0px', threshold: [0, 0.98, 1] },
     )
 
     for (const item of readableMessages) {
@@ -498,7 +534,7 @@ export function MessengerPage() {
       }
     }
     return () => observer.disconnect()
-  }, [currentUser?.id, messages, readMutation, selectedConversationId])
+  }, [currentUser?.id, displayedMessages, readMutation, selectedConversationId])
 
   const submitMessage = () => {
     if (!draft.trim() || !selectedConversationId) {
@@ -707,9 +743,15 @@ export function MessengerPage() {
               {messages.length === 0 ? (
                 <Empty description="还没有消息" />
               ) : (
-                messages.map((item, index) => (
+                <>
+                {messages.length > MESSAGE_RENDER_LIMIT ? (
+                  <Typography.Text type="secondary" className="im-message-limit-note">
+                    仅显示最近 {MESSAGE_RENDER_LIMIT} 条消息
+                  </Typography.Text>
+                ) : null}
+                {displayedMessages.map((item, index) => (
                   <div key={item.id} className="im-message-row">
-                    {isFirstMessageOfDay(messages[index - 1], item) ? (
+                    {isFirstMessageOfDay(displayedMessages[index - 1], item) ? (
                       <div className="im-message-date-separator">{formatMessageDate(item.createdAt)}</div>
                     ) : null}
                     <MessageBubble
@@ -747,7 +789,8 @@ export function MessengerPage() {
                       reactionPending={reactionMutation.isPending}
                     />
                   </div>
-                ))
+                ))}
+                </>
               )}
             </section>
 

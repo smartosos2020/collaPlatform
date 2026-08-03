@@ -6,7 +6,7 @@ import {
   SearchOutlined,
   SettingOutlined,
 } from '@ant-design/icons'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Alert, Avatar, Button, Drawer, Dropdown, Input, Layout, Menu, Space, Typography } from 'antd'
 import type { MenuProps } from 'antd'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
@@ -15,6 +15,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { logout } from '../../modules/auth/api/authApi'
 import { canAccessAdmin } from '../../modules/auth/authorization'
 import { useAuthStore } from '../../modules/auth/authStore'
+import { getFileDownloadUrl } from '../../modules/files/api/filesApi'
 import { mobileUserNavEntries, userNavEntries } from '../navigation/userWorkspaceNav'
 import { RealtimeHealthBanner } from '../realtime/RealtimeHealthBanner'
 import {
@@ -45,6 +46,13 @@ export function UserWorkspaceShell() {
     ? sidebarChoice.collapsed
     : storedSidebarState === 'collapsed'
   const accountName = currentUser?.displayName || currentUser?.username || '用户'
+  const avatarQuery = useQuery({
+    queryKey: ['files', currentUser?.avatarFileId, 'download-url'],
+    queryFn: () => getFileDownloadUrl(currentUser?.avatarFileId as string),
+    enabled: Boolean(currentUser?.avatarFileId),
+    retry: false,
+  })
+  const avatarUrl = avatarQuery.data?.downloadUrl
 
   useEffect(() => {
     const handleOnline = () => setOnline(true)
@@ -73,7 +81,7 @@ export function UserWorkspaceShell() {
         disabled: true,
         label: (
           <div className="app-account-menu-card">
-            <Avatar size={44} className="app-account-avatar">
+            <Avatar size={44} className="app-account-avatar" src={avatarUrl} alt={accountName}>
               {userInitial(currentUser?.displayName || currentUser?.username)}
             </Avatar>
             <span>
@@ -94,7 +102,7 @@ export function UserWorkspaceShell() {
       items.push({ type: 'divider' }, { key: 'admin', icon: <SettingOutlined />, label: '管理后台' })
     }
     return items
-  }, [adminVisible, currentUser])
+  }, [accountName, adminVisible, avatarUrl, currentUser])
 
   const selectedKey =
     userNavEntries.find((item) => {
@@ -158,7 +166,7 @@ export function UserWorkspaceShell() {
             title={accountName}
             type="button"
           >
-            <Avatar size={34} className="app-account-avatar">
+            <Avatar size={34} className="app-account-avatar" src={avatarUrl} alt={accountName}>
               {userInitial(accountName)}
             </Avatar>
           </button>
