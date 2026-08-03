@@ -230,6 +230,10 @@ export function ProjectWorkItemConfigurationDraftPanel({
     searchParams.set('workModelTab', presentation.tab)
     if (presentation.layoutKind) searchParams.set('layoutKind', presentation.layoutKind)
     else searchParams.delete('layoutKind')
+    if (presentation.layoutNodeKey) searchParams.set('layoutNodeKey', presentation.layoutNodeKey)
+    else searchParams.delete('layoutNodeKey')
+    if (presentation.layoutFieldKey) searchParams.set('layoutFieldKey', presentation.layoutFieldKey)
+    else searchParams.delete('layoutFieldKey')
     navigate({
       pathname: location.pathname,
       search: `?${searchParams.toString()}`,
@@ -539,6 +543,8 @@ type DiagnosticTarget = {
   tab: 'type-information' | 'field-configuration' | 'page-layout' | 'flow-access'
   location: string
   layoutKind?: 'create' | 'detail'
+  layoutNodeKey?: string
+  layoutFieldKey?: string
 }
 
 type DiagnosticPresentation = DiagnosticTarget & {
@@ -561,6 +567,23 @@ function configurationDiagnosticPresentation(
       label: `页面布局未完整：缺少${missingLabel}`,
       description: `请补充${missingLabel}布局，确保创建和查看工作项时都有可用页面。`,
       layoutKind: missingKinds[0] ?? 'detail',
+    }
+  }
+
+  if (diagnostic.code === 'inactive_layout_field' || diagnostic.code === 'unknown_layout_field') {
+    const context = layoutDiagnosticContext(snapshot, diagnostic.keyPath)
+    const fieldLabel = context.fieldName && context.layoutFieldKey
+      ? `${context.fieldName}（${context.layoutFieldKey}）`
+      : context.layoutFieldKey
+    return {
+      ...target,
+      ...context,
+      label: diagnostic.code === 'inactive_layout_field'
+        ? '布局引用了已停用字段'
+        : '布局引用了不存在的字段',
+      description: fieldLabel
+        ? `布局引用了${diagnostic.code === 'inactive_layout_field' ? '已停用' : '不存在的'}字段“${fieldLabel}”，请在页面布局中移除或替换。`
+        : `${diagnostic.code === 'inactive_layout_field' ? '布局引用了已停用字段' : '布局引用了不存在的字段'}，请在页面布局中移除或替换。`,
     }
   }
 
@@ -596,6 +619,42 @@ function configurationDiagnosticPresentation(
     label,
     description: `${label}。请前往对应配置位置检查并修正。`,
   }
+}
+
+type LayoutDiagnosticContext = Pick<DiagnosticTarget, 'layoutKind' | 'layoutNodeKey' | 'layoutFieldKey'> & {
+  fieldName?: string
+}
+
+function layoutDiagnosticContext(snapshot: unknown, keyPath: string): LayoutDiagnosticContext {
+  const match = /^\$\.layouts\[(\d+)\]\.nodes\[(\d+)\]/.exec(keyPath)
+  if (!match || !snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) return {}
+
+  const root = snapshot as Record<string, unknown>
+  const layouts = root.layouts
+  if (!Array.isArray(layouts)) return {}
+  const layout = layouts[Number(match[1])]
+  if (!layout || typeof layout !== 'object' || Array.isArray(layout)) return {}
+  const layoutRecord = layout as Record<string, unknown>
+  const nodes = layoutRecord.nodes
+  if (!Array.isArray(nodes)) return {}
+  const node = nodes[Number(match[2])]
+  if (!node || typeof node !== 'object' || Array.isArray(node)) return {}
+  const nodeRecord = node as Record<string, unknown>
+  const fieldKey = typeof nodeRecord.fieldKey === 'string' ? nodeRecord.fieldKey : undefined
+  const nodeKey = typeof nodeRecord.nodeKey === 'string' ? nodeRecord.nodeKey : undefined
+  const layoutKind = layoutRecord.layoutKind === 'create' || layoutRecord.layoutKind === 'detail'
+    ? layoutRecord.layoutKind
+    : undefined
+  const fields = root.fields
+  const field = Array.isArray(fields)
+    ? fields.find((item) => item && typeof item === 'object' && !Array.isArray(item)
+      && (item as Record<string, unknown>).fieldKey === fieldKey)
+    : undefined
+  const fieldName = field && typeof field === 'object' && !Array.isArray(field)
+    && typeof (field as Record<string, unknown>).name === 'string'
+    ? (field as Record<string, unknown>).name as string
+    : undefined
+  return { layoutKind, layoutNodeKey: nodeKey, layoutFieldKey: fieldKey, fieldName }
 }
 
 function diagnosticTarget(keyPath: string): DiagnosticTarget {

@@ -151,8 +151,17 @@ export function ProjectWorkItemLayoutsPanel({
   const selectedLayout = workbenchQuery.data?.layouts[kind]
   const layout = selectedLayout?.configuration
   const runtimeProjection = selectedLayout?.runtimeProjection
-  const effectiveSelectedId = layout?.nodes.some((item) => item.id === selectedId)
-    ? selectedId
+  const requestedNodeKey = new URLSearchParams(location.search).get('layoutNodeKey')
+  const requestedFieldKey = new URLSearchParams(location.search).get('layoutFieldKey')
+  const diagnosticTargetId = requestedKind === kind
+    ? layout?.nodes.find((node) => (
+      (requestedNodeKey && node.nodeKey === requestedNodeKey)
+      || (requestedFieldKey && node.fieldKey === requestedFieldKey)
+    ))?.id
+    : undefined
+  const requestedSelectedId = selectedId ?? diagnosticTargetId
+  const effectiveSelectedId = layout?.nodes.some((item) => item.id === requestedSelectedId)
+    ? requestedSelectedId
     : layout?.nodes[0]?.id
   const selected = layout?.nodes.find((node) => node.id === effectiveSelectedId)
   const layoutFields = useMemo(() => {
