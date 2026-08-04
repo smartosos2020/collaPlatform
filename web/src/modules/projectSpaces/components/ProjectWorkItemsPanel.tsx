@@ -156,7 +156,11 @@ import type {
   WorkItemFieldAccessProjection,
   WorkItemLayoutNode,
 } from '../api/workItemLayoutsApi'
-import { WorkItemLayoutRenderer, type WorkItemLayoutValues } from './WorkItemLayoutRenderer'
+import {
+  WorkItemLayoutRenderer,
+  type WorkItemLayoutValues,
+  type WorkItemSubjectOption,
+} from './WorkItemLayoutRenderer'
 import { WorkItemNodeWorkflowPanel } from './WorkItemNodeWorkflowPanel'
 import { WorkItemRelationsPanel } from './WorkItemRelationsPanel'
 import { WorkItemPermissionsPanel } from './WorkItemPermissionsPanel'
@@ -2608,7 +2612,7 @@ function CreateWorkItemModal({
               />
             </Form.Item>
           </Form>
-          <RuntimeLayout runtime={runtime} values={values} onValuesChange={setValues} />
+          <RuntimeLayout spaceId={space.id} runtime={runtime} values={values} onValuesChange={setValues} />
         </div>
       ) : null}
     </Modal>
@@ -2770,6 +2774,7 @@ function WorkItemDetail({ space, workItemId }: { space: UserProjectSpace; workIt
               </Form.Item>
             </Form>
             <RuntimeLayout
+              spaceId={space.id}
               runtime={item.runtime}
               values={values}
               presentation={writable ? 'edit' : 'read'}
@@ -3085,17 +3090,36 @@ function WorkItemCollaboration({
 }
 
 function RuntimeLayout({
+  spaceId,
   runtime,
   values,
   onValuesChange,
   presentation = 'edit',
 }: {
+  spaceId: string
   runtime: WorkItemRuntime
   values: WorkItemLayoutValues
   onValuesChange: (values: WorkItemLayoutValues) => void
   presentation?: 'edit' | 'read'
 }) {
   const projection = useMemo(() => normalizeRuntime(runtime), [runtime])
+  const hasUserField = projection.fields.some((field) => field.fieldType === 'user')
+  const membersQuery = useQuery({
+    queryKey: ['project-spaces', spaceId, 'members'],
+    queryFn: () => listProjectSpaceMembers(spaceId),
+    enabled: hasUserField,
+    staleTime: 60_000,
+  })
+  const subjectOptions = useMemo<WorkItemSubjectOption[]>(
+    () => (membersQuery.data ?? [])
+      .filter((member) => member.effective && member.userStatus === 'active')
+      .map((member) => ({
+        value: member.userId,
+        label: `${member.displayName} · ${member.username}`,
+        subjectType: 'member',
+      })),
+    [membersQuery.data],
+  )
   return (
     <WorkItemLayoutRenderer
       layout={projection.layout}
@@ -3103,6 +3127,8 @@ function RuntimeLayout({
       accessProjection={runtime.accessProjection as Record<string, WorkItemFieldAccessProjection>}
       values={values}
       presentation={presentation}
+      subjectOptions={subjectOptions}
+      subjectLoading={membersQuery.isLoading || membersQuery.isFetching}
       onValuesChange={onValuesChange}
     />
   )

@@ -23,6 +23,12 @@ type RenderableField = Pick<
 
 export type WorkItemLayoutValues = Record<string, unknown>
 
+export type WorkItemSubjectOption = {
+  value: string
+  label: string
+  subjectType: 'member' | 'department' | 'user_group'
+}
+
 export type WorkItemLayoutEditorOptions = {
   selectedNodeId?: string
   onSelectNode: (node: WorkItemLayoutNode) => void
@@ -35,6 +41,8 @@ type ControlContext = {
   id: string
   value: unknown
   disabled: boolean
+  subjectOptions: WorkItemSubjectOption[]
+  subjectLoading: boolean
   onChange: (value: unknown) => void
 }
 
@@ -156,15 +164,20 @@ const controls: Partial<Record<WorkItemFieldType, ControlRenderer>> = {
       onChange={(event) => onChange(event.target.value)}
     />
   ),
-  user: ({ field, id, value, disabled, onChange }) => (
+  user: ({ field, id, value, disabled, subjectOptions, subjectLoading, onChange }) => (
     <Select
       id={id}
       aria-label={field.name}
       mode="multiple"
       value={Array.isArray(value) ? value : []}
       disabled={disabled}
+      showSearch
+      loading={subjectLoading}
+      optionFilterProp="label"
+      options={userOptions(field, subjectOptions)}
+      maxCount={userMaxSelections(field)}
       placeholder="选择成员、部门或用户组"
-      notFoundContent="身份目录将在工作项运行时连接"
+      notFoundContent={subjectLoading ? '正在加载成员目录' : '没有匹配的成员'}
       onChange={onChange}
     />
   ),
@@ -190,6 +203,8 @@ export function WorkItemLayoutRenderer({
   onValuesChange,
   presentation = 'edit',
   disclosure = 'detailed',
+  subjectOptions = [],
+  subjectLoading = false,
   editor,
 }: {
   layout: { layoutKind: string; nodes: WorkItemLayoutNode[] }
@@ -199,6 +214,8 @@ export function WorkItemLayoutRenderer({
   onValuesChange?: (values: WorkItemLayoutValues) => void
   presentation?: 'edit' | 'read'
   disclosure?: 'detailed' | 'minimal'
+  subjectOptions?: WorkItemSubjectOption[]
+  subjectLoading?: boolean
   editor?: WorkItemLayoutEditorOptions
 }) {
   const fieldById = new Map(fields.map((field) => [field.id, field as RenderableField]))
@@ -234,6 +251,8 @@ export function WorkItemLayoutRenderer({
           values={values}
           presentation={presentation}
           disclosure={disclosure}
+          subjectOptions={subjectOptions}
+          subjectLoading={subjectLoading}
           editor={editor}
           onValueChange={update}
         />
@@ -250,6 +269,8 @@ function LayoutPreviewNode({
   values,
   presentation,
   disclosure,
+  subjectOptions,
+  subjectLoading,
   editor,
   onValueChange,
 }: {
@@ -260,6 +281,8 @@ function LayoutPreviewNode({
   values: WorkItemLayoutValues
   presentation: 'edit' | 'read'
   disclosure: 'detailed' | 'minimal'
+  subjectOptions: WorkItemSubjectOption[]
+  subjectLoading: boolean
   editor?: WorkItemLayoutEditorOptions
   onValueChange: (fieldKey: string, value: unknown) => void
 }) {
@@ -319,6 +342,8 @@ function LayoutPreviewNode({
                 id: controlId,
                 value: values[field.fieldKey],
                 disabled,
+                subjectOptions,
+                subjectLoading,
                 onChange: (value) => onValueChange(field.fieldKey, value),
               })}
             </fieldset>
@@ -375,6 +400,8 @@ function LayoutPreviewNode({
               values={values}
               presentation={presentation}
               disclosure={disclosure}
+              subjectOptions={subjectOptions}
+              subjectLoading={subjectLoading}
               editor={editor}
               onValueChange={onValueChange}
             />
@@ -494,6 +521,32 @@ function selectOptions(field: RenderableField) {
   return (field.options ?? [])
     .filter((option) => option.status === 'active')
     .map((option) => ({ label: option.name, value: option.optionKey }))
+}
+
+function userOptions(field: RenderableField, options: WorkItemSubjectOption[]) {
+  const typeConfig = field.config.typeConfig ?? {}
+  const allowedSubjectTypes = Array.isArray(typeConfig.allowedSubjectTypes)
+    ? typeConfig.allowedSubjectTypes.map(String)
+    : ['member']
+  const selectionScope = Array.isArray(typeConfig.selectionScope)
+    ? typeConfig.selectionScope.filter(isSubjectScopeEntry)
+    : []
+  return options
+    .filter((option) => allowedSubjectTypes.includes(option.subjectType))
+    .filter((option) => selectionScope.length === 0 || selectionScope.some((scope) => (
+      scope.subjectType === option.subjectType && scope.subjectId === option.value
+    )))
+}
+
+function userMaxSelections(field: RenderableField) {
+  const maxSelections = Number(field.config.typeConfig?.maxSelections)
+  return Number.isInteger(maxSelections) && maxSelections > 0 ? maxSelections : undefined
+}
+
+function isSubjectScopeEntry(value: unknown): value is { subjectType: string; subjectId: string } {
+  if (!value || typeof value !== 'object') return false
+  const entry = value as Record<string, unknown>
+  return typeof entry.subjectType === 'string' && typeof entry.subjectId === 'string'
 }
 
 function stringValue(value: unknown) {
