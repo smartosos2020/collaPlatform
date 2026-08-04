@@ -4,6 +4,7 @@ import {
   MinusOutlined,
   PlusOutlined,
   SaveOutlined,
+  UndoOutlined,
   ZoomInOutlined,
   ZoomOutOutlined,
 } from '@ant-design/icons'
@@ -72,12 +73,14 @@ export function ProjectWorkItemNodeFlowDesigner({
   readOnly,
   draft,
   onDraftSaved,
+  onDirtyChange,
 }: {
   spaceId: string
   typeId: string
   readOnly: boolean
   draft: WorkItemConfigurationDraft
   onDraftSaved: (draft: WorkItemConfigurationDraft) => void
+  onDirtyChange?: (dirty: boolean) => void
 }) {
   const { message } = AntdApp.useApp()
   const snapshot = useMemo(() => asObject(draft.snapshot), [draft.snapshot])
@@ -91,6 +94,7 @@ export function ProjectWorkItemNodeFlowDesigner({
   const mutate = (update: (current: NodeFlow) => NodeFlow) => {
     setFlow((current) => update(current))
     setDirty(true)
+    onDirtyChange?.(true)
   }
   const saveMutation = useMutation({
     mutationFn: () => saveWorkItemConfigurationDraft(
@@ -106,11 +110,19 @@ export function ProjectWorkItemNodeFlowDesigner({
     ),
     onSuccess: (saved) => {
       setDirty(false)
+      onDirtyChange?.(false)
       onDraftSaved(saved)
       message.success('节点流草稿已保存')
     },
     onError: (error) => message.error(errorMessage(error, '节点流草稿保存失败')),
   })
+  const discardChanges = () => {
+    const restored = normalizeFlow(snapshot.nodeFlow)
+    setFlow(restored)
+    setSelected(restored.nodes[0]?.nodeKey ?? '')
+    setDirty(false)
+    onDirtyChange?.(false)
+  }
 
   const addStage = () => {
     const index = flow.stages.length + 1
@@ -196,6 +208,13 @@ export function ProjectWorkItemNodeFlowDesigner({
           <Button aria-label="缩小画布" icon={<ZoomOutOutlined />} onClick={() => setZoom(Math.max(75, zoom - 25))} />
           <Typography.Text>{zoom}%</Typography.Text>
           <Button aria-label="放大画布" icon={<ZoomInOutlined />} onClick={() => setZoom(Math.min(125, zoom + 25))} />
+          <Button
+            icon={<UndoOutlined />}
+            disabled={readOnly || !dirty || saveMutation.isPending}
+            onClick={discardChanges}
+          >
+            放弃修改
+          </Button>
           <Button
             type="primary"
             icon={<SaveOutlined />}

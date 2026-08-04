@@ -1,4 +1,5 @@
 import {
+  ApartmentOutlined,
   CheckCircleOutlined,
   CloudUploadOutlined,
   CloseCircleOutlined,
@@ -10,7 +11,7 @@ import {
   WarningOutlined,
 } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Alert, App as AntdApp, Button, Divider, List, Skeleton, Space, Tag, Tooltip, Typography } from 'antd'
+import { Alert, App as AntdApp, Button, Divider, List, Segmented, Skeleton, Space, Tag, Tooltip, Typography } from 'antd'
 import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 
@@ -22,6 +23,7 @@ import {
   listWorkItemConfigurationVersions,
   prepareWorkItemConfigurationRollback,
   publishWorkItemConfigurationDraft,
+  saveWorkItemConfigurationDraft,
   validateWorkItemConfigurationDraft,
   workItemConfigurationDraftKeys,
   workItemConfigurationVersionKeys,
@@ -36,6 +38,11 @@ import {
   isWorkItemConfigurationCompatibilityReady,
   requiresWorkItemConfigurationCompatibility,
 } from '../workItemConfigurationPublication'
+import {
+  getWorkItemWorkflowMode,
+  switchWorkItemWorkflowMode,
+  type WorkItemWorkflowMode,
+} from '../workItemWorkflowMode'
 import { ProjectWorkItemConfigurationTemplatePanel } from './ProjectWorkItemConfigurationTemplatePanel'
 import { ProjectWorkItemNodeBackfillPanel } from './ProjectWorkItemNodeBackfillPanel'
 import { ProjectWorkItemNodeFlowDesigner } from './ProjectWorkItemNodeFlowDesigner'
@@ -58,7 +65,7 @@ export function ProjectWorkItemConfigurationDraftPanel({
   const location = useLocation()
   const navigate = useNavigate()
   const flowAccessRef = useRef<HTMLElement>(null)
-  const [dirtyStateFlowDraftId, setDirtyStateFlowDraftId] = useState<string | null>(null)
+  const [dirtyWorkflowDraftId, setDirtyWorkflowDraftId] = useState<string | null>(null)
   const queryKey = workItemConfigurationDraftKeys.detail(spaceId, typeId)
   const draftQuery = useQuery({
     queryKey,
@@ -123,6 +130,27 @@ export function ProjectWorkItemConfigurationDraftPanel({
     onError: (error) => {
       void draftQuery.refetch()
       message.error(errorMessage(error, '配置校验失败'))
+    },
+  })
+  const workflowModeMutation = useMutation({
+    mutationFn: (mode: WorkItemWorkflowMode) => {
+      const currentDraft = draftQuery.data
+      if (!currentDraft) throw new Error('配置草稿尚未加载')
+      return saveWorkItemConfigurationDraft(
+        spaceId,
+        typeId,
+        switchWorkItemWorkflowMode(currentDraft.snapshot, mode),
+        currentDraft.aggregateVersion,
+      )
+    },
+    onSuccess: (saved, mode) => {
+      updateCachedDraft(saved)
+      setDirtyWorkflowDraftId(null)
+      message.success(mode === 'state' ? '已切换为轻量状态流' : '已切换为审批协作节点流')
+    },
+    onError: (error) => {
+      void draftQuery.refetch()
+      message.error(errorMessage(error, '切换流程模式失败'))
     },
   })
   const abandonMutation = useMutation({
@@ -200,11 +228,12 @@ export function ProjectWorkItemConfigurationDraftPanel({
   const draft = draftQuery.data
   if (!draft) return null
 
-  const stateFlowDirty = dirtyStateFlowDraftId === draft.id
+  const workflowDirty = dirtyWorkflowDraftId === draft.id
+  const workflowMode = getWorkItemWorkflowMode(draft.snapshot)
   const errors = draft.diagnostics.filter((item) => item.severity === 'error')
   const warnings = draft.diagnostics.filter((item) => item.severity === 'warning')
-  const canValidate = !readOnly && !stateFlowDirty && draft.availableActions.includes('validate')
-  const canAbandon = !readOnly && !stateFlowDirty && draft.availableActions.includes('abandon')
+  const canValidate = !readOnly && !workflowDirty && draft.availableActions.includes('validate')
+  const canAbandon = !readOnly && !workflowDirty && draft.availableActions.includes('abandon')
   const compatibilityImpact = compatibilityQuery.data?.overallImpact
   const publicationBlocked = compatibilityImpact === 'blocked'
   const migrationConfirmationRequired = compatibilityImpact === 'migration_required'
@@ -216,12 +245,28 @@ export function ProjectWorkItemConfigurationDraftPanel({
     },
   )
   const canPublish = !readOnly
-    && !stateFlowDirty
+    && !workflowDirty
     && draft.status === 'valid'
     && compatibilityReady
     && !publicationBlocked
   const breaking = draftDiffQuery.data?.breaking ?? false
-  const showNodeFlowEditor = hasNodeFlow(draft.snapshot) && !stateFlowDirty
+
+  const confirmWorkflowModeChange = (mode: WorkItemWorkflowMode) => {
+    if (mode === workflowMode || workflowModeMutation.isPending) return
+    modal.confirm({
+      title: mode === 'state' ? '切换为轻量状态流？' : '切换为审批协作节点流？',
+      content: (
+        <div className="work-item-workflow-mode-confirmation">
+          <p>两种流程不能同时生效。切换会在当前草稿中移除原流程定义，并生成一套可编辑的默认流程。</p>
+          <p>已发布版本与正在运行的工作项不会立即改变；只有重新校验并发布后，新版本才会生效。</p>
+        </div>
+      ),
+      okText: '确认切换',
+      okButtonProps: { danger: true },
+      cancelText: '取消',
+      onOk: () => workflowModeMutation.mutateAsync(mode),
+    })
+  }
 
   const openDiagnostic = (diagnostic: ConfigurationDiagnostic) => {
     const presentation = configurationDiagnosticPresentation(diagnostic, draft.snapshot)
@@ -354,13 +399,13 @@ export function ProjectWorkItemConfigurationDraftPanel({
           description="前端和服务端都不会提供普通绕过入口；请保留旧绑定或另行完成受控恢复方案。"
         />
       ) : null}
-      {stateFlowDirty ? (
+      {workflowDirty ? (
         <Alert
           className="work-item-publication-block"
           type="warning"
           showIcon
-          message="状态流有未保存修改"
-          description="请先保存或放弃状态流的本地修改；在此之前，校验、发布、放弃草稿、模板操作和其他配置编辑均保持禁用，避免发布旧快照。"
+          message="流程配置有未保存修改"
+          description="请先保存或放弃当前流程的本地修改；在此之前，模式切换、校验、发布、放弃草稿、模板操作和其他配置编辑均保持禁用，避免发布旧快照。"
         />
       ) : null}
       <section
@@ -370,10 +415,33 @@ export function ProjectWorkItemConfigurationDraftPanel({
         tabIndex={-1}
         aria-labelledby="work-item-flow-access-heading"
       >
+        <div className="work-item-workflow-mode-selector" aria-label="流程模式">
+          <div className="work-item-workflow-mode-copy">
+            <Space size={6}>
+              <ApartmentOutlined />
+              <Typography.Text strong>流程模式</Typography.Text>
+              <Tag color={workflowMode === 'state' ? 'blue' : 'purple'}>
+                {workflowMode === 'state' ? '状态驱动' : '节点驱动'}
+              </Tag>
+            </Space>
+            <Typography.Text type="secondary">
+              轻量状态流适合常规状态流转；审批协作节点流适合多人处理、分支与会签。两者只能启用一种。
+            </Typography.Text>
+          </div>
+          <Segmented<WorkItemWorkflowMode>
+            value={workflowMode}
+            options={[
+              { label: '轻量状态流', value: 'state' },
+              { label: '审批协作节点流', value: 'node' },
+            ]}
+            disabled={readOnly || workflowDirty || draft.status === 'abandoned' || workflowModeMutation.isPending}
+            onChange={confirmWorkflowModeChange}
+          />
+        </div>
         <ProjectWorkItemConfigurationTemplatePanel
           spaceId={spaceId}
           typeId={typeId}
-          readOnly={readOnly || stateFlowDirty}
+          readOnly={readOnly || workflowDirty}
           draft={draft}
           currentVersion={currentVersion}
         />
@@ -381,7 +449,7 @@ export function ProjectWorkItemConfigurationDraftPanel({
           key={`permissions:${draft.id}:${draft.aggregateVersion}`}
           spaceId={spaceId}
           typeId={typeId}
-          readOnly={readOnly || stateFlowDirty || draft.status === 'abandoned'}
+          readOnly={readOnly || workflowDirty || draft.status === 'abandoned'}
           draft={draft}
           onDraftSaved={updateCachedDraft}
         />
@@ -389,19 +457,20 @@ export function ProjectWorkItemConfigurationDraftPanel({
           key={`relations:${draft.id}:${draft.aggregateVersion}`}
           spaceId={spaceId}
           typeId={typeId}
-          readOnly={readOnly || stateFlowDirty || draft.status === 'abandoned'}
+          readOnly={readOnly || workflowDirty || draft.status === 'abandoned'}
           draft={draft}
           onDraftSaved={updateCachedDraft}
         />
-        {showNodeFlowEditor ? (
+        {workflowMode === 'node' ? (
           <>
             <ProjectWorkItemNodeFlowDesigner
               key={`${draft.id}:${draft.aggregateVersion}`}
               spaceId={spaceId}
               typeId={typeId}
-              readOnly={readOnly || stateFlowDirty || draft.status === 'abandoned'}
+              readOnly={readOnly || draft.status === 'abandoned'}
               draft={draft}
               onDraftSaved={updateCachedDraft}
+              onDirtyChange={(dirty) => setDirtyWorkflowDraftId(dirty ? draft.id : null)}
             />
             <ProjectWorkItemNodeBackfillPanel
               spaceId={spaceId}
@@ -419,7 +488,7 @@ export function ProjectWorkItemConfigurationDraftPanel({
               readOnly={readOnly || draft.status === 'abandoned'}
               draft={draft}
               onDraftSaved={updateCachedDraft}
-              onDirtyChange={(dirty) => setDirtyStateFlowDraftId(dirty ? draft.id : null)}
+              onDirtyChange={(dirty) => setDirtyWorkflowDraftId(dirty ? draft.id : null)}
             />
             <ProjectWorkItemStateBackfillPanel
               spaceId={spaceId}
@@ -502,7 +571,7 @@ export function ProjectWorkItemConfigurationDraftPanel({
                 icon={<RollbackOutlined />}
                 disabled={
                   readOnly
-                  || stateFlowDirty
+                  || workflowDirty
                   || !version.completeSnapshot
                   || version.status === 'published'
                   || rollbackMutation.isPending
@@ -679,15 +748,6 @@ function missingLayoutKinds(snapshot: unknown): Array<'create' | 'detail'> {
     return (layout as Record<string, unknown>).layoutKind
   }))
   return (['create', 'detail'] as const).filter((kind) => !configured.has(kind))
-}
-
-function hasNodeFlow(snapshot: unknown) {
-  return Boolean(
-    snapshot
-    && typeof snapshot === 'object'
-    && !Array.isArray(snapshot)
-    && (snapshot as Record<string, unknown>).nodeFlow,
-  )
 }
 
 function DraftStatusTag({ status }: { status: WorkItemConfigurationDraft['status'] }) {

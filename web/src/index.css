@@ -7296,6 +7296,38 @@ body {
   outline-offset: 4px;
 }
 
+.work-item-workflow-mode-selector {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--ui-card-border);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.work-item-workflow-mode-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.work-item-workflow-mode-copy > .ant-typography-secondary {
+  font-size: 12px;
+}
+
+.work-item-workflow-mode-confirmation p {
+  margin: 0 0 8px;
+}
+
+.work-item-workflow-mode-confirmation p:last-child {
+  margin-bottom: 0;
+}
+
 .work-item-flow-access-heading {
   align-items: center;
   justify-content: space-between;
