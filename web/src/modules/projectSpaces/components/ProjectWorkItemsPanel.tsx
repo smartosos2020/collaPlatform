@@ -2520,6 +2520,14 @@ function CreateWorkItemModal({
       ? defaultValues(runtime)
       : {}
   const setValues = (next: WorkItemLayoutValues) => setDraftValues({ runtimeKey, values: next })
+  const titleFieldAvailable = runtime ? runtimeHasActiveTitleField(runtime) : false
+  const titleFieldInLayout = runtime ? runtimeLayoutHasField(runtime, 'title') : false
+  const layoutValues = titleFieldAvailable ? { ...values, title } : values
+  const setLayoutValues = (next: WorkItemLayoutValues) => {
+    if (titleFieldInLayout && typeof next.title === 'string') setTitle(next.title)
+    setValues(next)
+  }
+  const missingRequiredFields = runtime ? requiredFieldNames(runtime, layoutValues) : []
   const canSubmit = Boolean(
     online
     && typeId
@@ -2527,6 +2535,7 @@ function CreateWorkItemModal({
     && type.availableActions.includes('create')
     && runtime
     && title.trim()
+    && missingRequiredFields.length === 0
     && !formQuery.isError
     && !formQuery.isFetching,
   )
@@ -2541,7 +2550,7 @@ function CreateWorkItemModal({
       return createWorkItem(space.id, {
         typeId,
         title: title.trim(),
-        fieldValues: values,
+        fieldValues: layoutValues,
       })
     },
     onSuccess: async (item) => {
@@ -2549,7 +2558,13 @@ function CreateWorkItemModal({
       message.success('工作项已创建')
       navigate(`/project-spaces/${space.id}/work-items/${item.id}`)
     },
-    onError: (error) => message.error(errorMessage(error, '创建失败，输入已保留')),
+    onError: (error) => {
+      const requiredMissing = error instanceof ApiRequestError
+        && error.code?.toLowerCase() === 'required_field_missing'
+      message.error(requiredMissing
+        ? '仍有必填字段未填写，请检查表单中的“必填”标记。'
+        : errorMessage(error, '创建失败，输入已保留'))
+    },
   })
   return (
     <Modal
@@ -2595,24 +2610,39 @@ function CreateWorkItemModal({
       ) : null}
       {runtime ? (
         <div className="project-work-item-form">
-          <Form layout="vertical">
-            <Form.Item label="标题" htmlFor="work-item-create-title" required>
-              <Input
-                id="work-item-create-title"
-                autoFocus
-                maxLength={500}
-                value={title}
-                placeholder="输入工作项标题"
-                onChange={(event) => setTitle(event.target.value)}
-                onPressEnter={(event) => {
-                  if (!event.nativeEvent.isComposing && canSubmit && !mutation.isPending) {
-                    mutation.mutate()
-                  }
-                }}
-              />
-            </Form.Item>
-          </Form>
-          <RuntimeLayout spaceId={space.id} runtime={runtime} values={values} onValuesChange={setValues} />
+          {!titleFieldInLayout ? (
+            <Form layout="vertical">
+              <Form.Item label="标题" htmlFor="work-item-create-title" required>
+                <Input
+                  id="work-item-create-title"
+                  autoFocus
+                  maxLength={500}
+                  value={title}
+                  placeholder="输入工作项标题"
+                  onChange={(event) => setTitle(event.target.value)}
+                  onPressEnter={(event) => {
+                    if (!event.nativeEvent.isComposing && canSubmit && !mutation.isPending) {
+                      mutation.mutate()
+                    }
+                  }}
+                />
+              </Form.Item>
+            </Form>
+          ) : null}
+          {missingRequiredFields.length > 0 ? (
+            <Alert
+              type="info"
+              showIcon
+              message="请填写必填字段"
+              description={missingRequiredFields.join('、')}
+            />
+          ) : null}
+          <RuntimeLayout
+            spaceId={space.id}
+            runtime={runtime}
+            values={layoutValues}
+            onValuesChange={setLayoutValues}
+          />
         </div>
       ) : null}
     </Modal>
@@ -2653,7 +2683,7 @@ function WorkItemDetail({ space, workItemId }: { space: UserProjectSpace; workIt
       }
       return updateWorkItem(space.id, workItemId, {
         title: title.trim(),
-        fieldValues: values,
+        fieldValues: layoutValues,
         expectedVersion: item.version,
       })
     },
@@ -2689,16 +2719,20 @@ function WorkItemDetail({ space, workItemId }: { space: UserProjectSpace; workIt
   const activeDraft = draft?.workItemId === item.id && draft.version === item.version ? draft : null
   const title = activeDraft?.title ?? item.title
   const values = activeDraft?.values ?? item.fieldValues
+  const titleFieldAvailable = runtimeHasActiveTitleField(item.runtime)
+  const titleFieldInLayout = runtimeLayoutHasField(item.runtime, 'title')
+  const layoutValues = titleFieldAvailable ? { ...values, title } : values
+  const missingRequiredFields = requiredFieldNames(item.runtime, layoutValues)
   const setTitle = (next: string) => setDraft({
     workItemId: item.id,
     version: item.version,
     title: next,
     values,
   })
-  const setValues = (next: WorkItemLayoutValues) => setDraft({
+  const setLayoutValues = (next: WorkItemLayoutValues) => setDraft({
     workItemId: item.id,
     version: item.version,
-    title,
+    title: titleFieldInLayout && typeof next.title === 'string' ? next.title : title,
     values: next,
   })
   const writable = item.availableActions.includes('edit')
@@ -2733,7 +2767,17 @@ function WorkItemDetail({ space, workItemId }: { space: UserProjectSpace; workIt
             )}
             extra={(
               <Space wrap>
-                {writable ? <Button type="primary" icon={<SaveOutlined />} disabled={!online} loading={saveMutation.isPending} onClick={() => saveMutation.mutate()}>保存</Button> : null}
+                {writable ? (
+                  <Button
+                    type="primary"
+                    icon={<SaveOutlined />}
+                    disabled={!online || missingRequiredFields.length > 0}
+                    loading={saveMutation.isPending}
+                    onClick={() => saveMutation.mutate()}
+                  >
+                    保存
+                  </Button>
+                ) : null}
                 {item.availableActions.includes('archive') ? (
                   <Button
                     danger
@@ -2762,23 +2806,33 @@ function WorkItemDetail({ space, workItemId }: { space: UserProjectSpace; workIt
                 )
               }}
             />
-            <Form layout="vertical">
-              <Form.Item label="标题" htmlFor="work-item-detail-title" required>
-                <Input
-                  id="work-item-detail-title"
-                  maxLength={500}
-                  disabled={!writable}
-                  value={title}
-                  onChange={(event) => setTitle(event.target.value)}
-                />
-              </Form.Item>
-            </Form>
+            {!titleFieldInLayout ? (
+              <Form layout="vertical">
+                <Form.Item label="标题" htmlFor="work-item-detail-title" required>
+                  <Input
+                    id="work-item-detail-title"
+                    maxLength={500}
+                    disabled={!writable}
+                    value={title}
+                    onChange={(event) => setTitle(event.target.value)}
+                  />
+                </Form.Item>
+              </Form>
+            ) : null}
+            {missingRequiredFields.length > 0 ? (
+              <Alert
+                type="info"
+                showIcon
+                message="请填写必填字段"
+                description={missingRequiredFields.join('、')}
+              />
+            ) : null}
             <RuntimeLayout
               spaceId={space.id}
               runtime={item.runtime}
-              values={values}
+              values={layoutValues}
               presentation={writable ? 'edit' : 'read'}
-              onValuesChange={setValues}
+              onValuesChange={setLayoutValues}
             />
           </Card>
         )
@@ -2788,7 +2842,7 @@ function WorkItemDetail({ space, workItemId }: { space: UserProjectSpace; workIt
           <WorkItemWorkflowPanel
             space={space}
             item={item}
-            fieldPatch={values}
+            fieldPatch={layoutValues}
             online={online}
             refreshItem={refresh}
           />
@@ -3191,6 +3245,40 @@ function defaultValues(runtime: WorkItemRuntime) {
     const config = field.config as Record<string, unknown> | undefined
     return config?.defaultValue == null ? [] : [[String(field.fieldKey), config.defaultValue]]
   }))
+}
+
+function runtimeHasActiveTitleField(runtime: WorkItemRuntime) {
+  return runtime.snapshot.fields.some((field) => (
+    field.fieldKey === 'title'
+    && field.status === 'active'
+    && runtime.accessProjection.title?.mode !== 'hidden'
+  ))
+}
+
+function runtimeLayoutHasField(runtime: WorkItemRuntime, fieldKey: string) {
+  const layout = runtime.snapshot.layouts.find((candidate) => candidate.layoutKind === runtime.layoutKind)
+  const nodes = Array.isArray(layout?.nodes) ? layout.nodes as Array<Record<string, unknown>> : []
+  if (nodes.length === 0) return runtime.snapshot.fields.some((field) => field.fieldKey === fieldKey)
+  return nodes.some((node) => node.nodeType === 'field' && node.fieldKey === fieldKey)
+}
+
+function requiredFieldNames(runtime: WorkItemRuntime, values: WorkItemLayoutValues) {
+  return runtime.snapshot.fields.flatMap((field) => {
+    const fieldKey = String(field.fieldKey ?? '')
+    const access = runtime.accessProjection[fieldKey]
+    const config = field.config as Record<string, unknown> | undefined
+    const required = config?.required === true || access?.required === true
+    if (field.status !== 'active' || access?.mode !== 'write' || !required) return []
+    return missingWorkItemValue(values[fieldKey]) ? [String(field.name ?? fieldKey)] : []
+  })
+}
+
+function missingWorkItemValue(value: unknown) {
+  if (value == null) return true
+  if (typeof value === 'string') return value.trim() === ''
+  if (Array.isArray(value)) return value.length === 0
+  if (typeof value === 'object') return Object.keys(value).length === 0
+  return false
 }
 
 function formatBytes(value: number) {

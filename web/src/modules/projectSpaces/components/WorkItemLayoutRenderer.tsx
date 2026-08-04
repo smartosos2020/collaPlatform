@@ -333,6 +333,7 @@ function LayoutPreviewNode({
     }
     const controlId = `work-item-${layoutSafeId(node.id)}`
     const disabled = presentation === 'read' || projection.mode === 'read'
+    const required = projection.required || field.config.required === true
     const labelPosition = layoutFieldLabelPosition(node.config.labelPosition)
     const controlWidth = layoutFieldControlWidth(node.config.controlWidth)
     const showDescription = Boolean(field.description)
@@ -346,7 +347,7 @@ function LayoutPreviewNode({
           <div className="work-item-layout-preview-field-copy">
             <label htmlFor={controlId}>
               <span>{field.name}</span>
-              {projection.required ? <Tag color="purple">必填</Tag> : null}
+              {required ? <Tag color="purple">必填</Tag> : null}
               {disabled ? <Tag>只读</Tag> : null}
             </label>
             {showDescription ? <Typography.Text type="secondary">{field.description}</Typography.Text> : null}

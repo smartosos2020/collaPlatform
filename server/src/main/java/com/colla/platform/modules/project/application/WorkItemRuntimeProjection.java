@@ -128,7 +128,17 @@ public class WorkItemRuntimeProjection {
                 hiddenFields.add(fieldKey);
                 continue;
             }
-            access.set(fieldKey, objectMapper.valueToTree(decision));
+            boolean required = "write".equals(decision.mode())
+                && (decision.required() || field.path("config").path("required").asBoolean(false));
+            access.set(fieldKey, objectMapper.valueToTree(
+                new WorkItemFieldAccessPolicyEvaluator.FieldAccessDecision(
+                    decision.mode(),
+                    required,
+                    decision.reasonCode(),
+                    decision.matchedRuleKeys(),
+                    decision.explanation()
+                )
+            ));
         }
         result.set("snapshot", visibleSnapshot(configuration.snapshot(), hiddenFields));
         return result;
@@ -224,13 +234,19 @@ public class WorkItemRuntimeProjection {
                 || decision.required();
             if (required && "write".equals(decision.mode())
                 && (!values.has(key) || values.get(key).isNull() || blank(values.get(key)))) {
-                throw failure("REQUIRED_FIELD_MISSING", "Required work item field is missing");
+                String name = field.path("name").asText(key);
+                throw failure(
+                    "REQUIRED_FIELD_MISSING",
+                    "Required work item field is missing: " + name
+                );
             }
         }
     }
 
     private boolean blank(JsonNode value) {
-        return value.isTextual() && value.asText().isBlank();
+        return (value.isTextual() && value.asText().isBlank())
+            || (value.isArray() && value.isEmpty())
+            || (value.isObject() && value.isEmpty());
     }
 
     private String mode(
