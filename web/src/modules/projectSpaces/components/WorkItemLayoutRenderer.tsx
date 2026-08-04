@@ -13,6 +13,7 @@ import type {
   WorkItemLayoutNode,
   WorkItemLayoutProjectionField,
 } from '../api/workItemLayoutsApi'
+import { fieldControlLabel } from '../workItemFieldControls'
 
 type RenderableField = Pick<
   ConfiguredWorkItemField,
@@ -118,6 +119,9 @@ const controls: Partial<Record<WorkItemFieldType, ControlRenderer>> = {
       value={typeof value === 'string' ? value : undefined}
       disabled={disabled}
       allowClear
+      showSearch
+      optionFilterProp="label"
+      style={{ width: '100%' }}
       options={selectOptions(field)}
       onChange={onChange}
     />
@@ -129,6 +133,9 @@ const controls: Partial<Record<WorkItemFieldType, ControlRenderer>> = {
       mode="multiple"
       value={Array.isArray(value) ? value : []}
       disabled={disabled}
+      showSearch
+      optionFilterProp="label"
+      style={{ width: '100%' }}
       options={selectOptions(field)}
       onChange={onChange}
     />
@@ -176,6 +183,7 @@ const controls: Partial<Record<WorkItemFieldType, ControlRenderer>> = {
       optionFilterProp="label"
       options={userOptions(field, subjectOptions)}
       maxCount={userMaxSelections(field)}
+      style={{ width: '100%' }}
       placeholder="选择成员、部门或用户组"
       notFoundContent={subjectLoading ? '正在加载成员目录' : '没有匹配的成员'}
       onChange={onChange}
@@ -190,6 +198,7 @@ const controls: Partial<Record<WorkItemFieldType, ControlRenderer>> = {
       aria-label={field.name}
       mode="multiple"
       disabled
+      style={{ width: '100%' }}
       placeholder="工作项引用将在实例能力启用后连接"
     />
   ),
@@ -324,30 +333,41 @@ function LayoutPreviewNode({
     }
     const controlId = `work-item-${layoutSafeId(node.id)}`
     const disabled = presentation === 'read' || projection.mode === 'read'
+    const labelPosition = layoutFieldLabelPosition(node.config.labelPosition)
+    const controlWidth = layoutFieldControlWidth(node.config.controlWidth)
+    const showDescription = Boolean(field.description)
+      && (Boolean(editor) || !isGeneratedControlDescription(field))
     return (
       <EditorNodeFrame node={node} label={`字段 · ${field.name}`} editor={editor}>
-        <div className="work-item-layout-preview-field">
-          <label htmlFor={controlId}>
-            <span>{field.name}</span>
-            {projection.required ? <Tag color="purple">必填</Tag> : null}
-            {disabled ? <Tag>只读</Tag> : null}
-          </label>
-          {field.description ? <Typography.Text type="secondary">{field.description}</Typography.Text> : null}
-          {presentation === 'read' ? (
-            <ReadOnlyValue field={field} value={values[field.fieldKey]} />
-          ) : (
-            <fieldset disabled={disabled} title={projection.reasonCode}>
-              {renderer({
-                field,
-                id: controlId,
-                value: values[field.fieldKey],
-                disabled,
-                subjectOptions,
-                subjectLoading,
-                onChange: (value) => onValueChange(field.fieldKey, value),
-              })}
-            </fieldset>
-          )}
+        <div
+          className={`work-item-layout-preview-field is-label-${labelPosition}`}
+          style={{ '--work-item-control-width': `${controlWidth}%` } as CSSProperties}
+        >
+          <div className="work-item-layout-preview-field-copy">
+            <label htmlFor={controlId}>
+              <span>{field.name}</span>
+              {projection.required ? <Tag color="purple">必填</Tag> : null}
+              {disabled ? <Tag>只读</Tag> : null}
+            </label>
+            {showDescription ? <Typography.Text type="secondary">{field.description}</Typography.Text> : null}
+          </div>
+          <div className="work-item-layout-preview-control">
+            {presentation === 'read' ? (
+              <ReadOnlyValue field={field} value={values[field.fieldKey]} />
+            ) : (
+              <fieldset disabled={disabled} title={projection.reasonCode}>
+                {renderer({
+                  field,
+                  id: controlId,
+                  value: values[field.fieldKey],
+                  disabled,
+                  subjectOptions,
+                  subjectLoading,
+                  onChange: (value) => onValueChange(field.fieldKey, value),
+                })}
+              </fieldset>
+            )}
+          </div>
         </div>
       </EditorNodeFrame>
     )
@@ -467,6 +487,19 @@ function previewNodeLabel(type: WorkItemLayoutNode['nodeType']) {
 function layoutContainerColumns(value: unknown) {
   const columns = Number(value)
   return Number.isInteger(columns) && columns >= 1 && columns <= 4 ? columns : 2
+}
+
+function layoutFieldLabelPosition(value: unknown) {
+  return value === 'left' ? 'left' : 'top'
+}
+
+function layoutFieldControlWidth(value: unknown) {
+  const width = Number(value)
+  return [25, 33, 50, 67, 75, 100].includes(width) ? width : 100
+}
+
+function isGeneratedControlDescription(field: RenderableField) {
+  return field.description.trim() === `${fieldControlLabel(field.fieldType, field.config.typeConfig)}控件`
 }
 
 function ReadOnlyValue({ field, value }: { field: RenderableField; value: unknown }) {

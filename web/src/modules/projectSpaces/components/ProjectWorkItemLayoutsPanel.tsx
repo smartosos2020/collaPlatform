@@ -335,7 +335,7 @@ export function ProjectWorkItemLayoutsPanel({
       return createWorkItemField(space.id, typeId, {
         fieldKey: values.fieldKey.trim(),
         name: values.name.trim(),
-        description: `${control.label}控件`,
+        description: '',
         fieldType: control.fieldType,
         config: applyFieldControlPreset(descriptor.defaultConfig, control),
         sortOrder: nextFieldSortOrder(fields),
@@ -901,6 +901,8 @@ function NodeProperties({
   const [relationMode, setRelationMode] = useState(String(selected.config.mode ?? 'list'))
   const [relationMaxItems, setRelationMaxItems] = useState(Number(selected.config.maxItems ?? 50))
   const [columns, setColumns] = useState(layoutContainerColumns(selected.config.columns))
+  const [labelPosition, setLabelPosition] = useState(layoutFieldLabelPosition(selected.config.labelPosition))
+  const [controlWidth, setControlWidth] = useState(layoutFieldControlWidth(selected.config.controlWidth))
   const initialCondition = parseConditionDrafts(selected.visibilityCondition.expression)
   const [conditionJoin, setConditionJoin] = useState<'all' | 'any'>(initialCondition.join)
   const [conditionNegated, setConditionNegated] = useState(initialCondition.negated)
@@ -954,6 +956,7 @@ function NodeProperties({
         ...selected.config,
         title: title.trim() || nodeLabel(selected.nodeType),
         ...(selected.nodeType === 'section' || selected.nodeType === 'tab' ? { columns } : {}),
+        ...(selected.nodeType === 'field' ? { labelPosition, controlWidth } : {}),
       }
     onSave({ ...selected, config, visibilityCondition })
   }
@@ -963,6 +966,37 @@ function NodeProperties({
       <label>节点类型<Input value={nodeLabel(selected.nodeType)} disabled /></label>
       <label>永久键<Input value={selected.nodeKey} disabled /></label>
       <label>显示名称<Input value={title} maxLength={128} onChange={(event) => setTitle(event.target.value)} /></label>
+      {selected.nodeType === 'field' ? (
+        <>
+          <label>
+            标签位置
+            <Segmented
+              block
+              value={labelPosition}
+              options={[
+                { label: '控件上方', value: 'top' },
+                { label: '控件左侧', value: 'left' },
+              ]}
+              onChange={(value) => setLabelPosition(value as 'top' | 'left')}
+            />
+          </label>
+          <label>
+            控件宽度
+            <Select
+              value={controlWidth}
+              options={[
+                { value: 100, label: '整行 · 100%' },
+                { value: 75, label: '四分之三 · 75%' },
+                { value: 67, label: '三分之二 · 67%' },
+                { value: 50, label: '一半 · 50%' },
+                { value: 33, label: '三分之一 · 33%' },
+                { value: 25, label: '四分之一 · 25%' },
+              ]}
+              onChange={setControlWidth}
+            />
+          </label>
+        </>
+      ) : null}
       {selected.nodeType === 'section' || selected.nodeType === 'tab' ? (
         <label>
           列数
@@ -1310,7 +1344,11 @@ function fieldNode(field: ConfiguredWorkItemField, parentId: string, sortOrder: 
   const suffix = id.replaceAll('-', '').slice(0, 10)
   const baseKey = `field_${field.fieldKey}`.slice(0, 64 - suffix.length - 1)
   return {
-    ...node(id, parentId, `${baseKey}_${suffix}`, 'field', sortOrder, { title: field.name }),
+    ...node(id, parentId, `${baseKey}_${suffix}`, 'field', sortOrder, {
+      title: field.name,
+      labelPosition: 'top',
+      controlWidth: 100,
+    }),
     fieldId: field.id,
     fieldKey: field.fieldKey,
   }
@@ -1348,6 +1386,15 @@ function nodeTitle(item: WorkItemLayoutNode) {
 function layoutContainerColumns(value: unknown) {
   const columns = Number(value)
   return Number.isInteger(columns) && columns >= 1 && columns <= 4 ? columns : 2
+}
+
+function layoutFieldLabelPosition(value: unknown): 'top' | 'left' {
+  return value === 'left' ? 'left' : 'top'
+}
+
+function layoutFieldControlWidth(value: unknown) {
+  const width = Number(value)
+  return [25, 33, 50, 67, 75, 100].includes(width) ? width : 100
 }
 
 function typedConditionValue(fieldType: string, operator: string | undefined, value: string): unknown {
